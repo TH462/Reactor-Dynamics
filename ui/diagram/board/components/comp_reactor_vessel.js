@@ -25,15 +25,27 @@
    * its upflow were authored 269..456 while the fuel rods run coreTop..coreBot = 276..454, so
    * the water started 7 px ABOVE the rods — and 276 is exactly where the upper-plenum fluid
    * (`hotresFullBot = coreTop`) ENDS, which is why the two overlapped instead of meeting.
-   * The bottom now reaches the lower support plate's flow-hole blocks (authored y 455, height
-   * 17), so the column runs from the top of the fuel to the bottom of the blocks beneath it,
-   * which is what the owner asked for and what the drawn internals actually show. */
+   * The bottom now reaches the lower support plate's flow-hole blocks (now derived — see
+   * floorTop/floorBot below — rather than the authored y 455, height 17 this was written
+   * against), so the column runs from the top of the fuel to the bottom of the blocks beneath
+   * it, which is what the owner asked for and what the drawn internals actually show. */
   var poolTop = coreTop, poolBot = 472, poolH = poolBot - poolTop;   /* 276..472, 196 */
   var coreW = coreR - coreL, coreH = coreBot - coreTop, cx = 280;
   var barrelL = 180, barrelR = 380;
   var stripBottom = 216, stripH = 216, tubeTop = -20, tubeW = 26;
   var hotresFullTop = 160, hotresFullBot = coreTop, hotresFullH = hotresFullBot - hotresFullTop; // 116
   var barrelTop = 150, dcTop = 244, legGapTop = 203, legGapBot = 226;
+  var fuelXs = [196, 238, 280, 322, 364];              // fuel-rod x centers (5)
+  var ctrlXs = [217, 259, 301, 343];                    // control-rod x centers, 2 per bank (4)
+  /* THE CORE-BOTTOM FLOW-CHANNEL BLOCKS (#809 item 5, owner playtest 2026-09-27): "small
+   * blocks similar color to the casing under the rods, both control and fuel ... simulate the
+   * water channels at the bottom of the core ... extend from the bottom of the rods to the
+   * bottom of the moving water column." One block per rod (9 = 5 fuel + 4 control), running
+   * from coreBot (bottom of the active fuel/absorber length) to poolBot (bottom of the
+   * animated core water column) — both already-authored constants above, no new magic
+   * numbers. Drawn casing-colored; see the paint-order note where they're pushed, below,
+   * for why they sit between the water wash and the animated upflow dashes. */
+  var floorTop = coreBot, floorBot = poolBot, floorH = floorBot - floorTop;
 
   function ensureStyles() {
     if (document.getElementById('bd-reactorvessel-styles')) return;
@@ -251,14 +263,9 @@
     svgKids.push(h('g', null,
       h('rect', { x: 149, y: 239, width: 35, height: 6, rx: 2.5, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.9 }),
       h('rect', { x: 377, y: 239, width: 35, height: 6, rx: 2.5, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.9 })));
-    // core plates: upper plate + lower support plate with flow holes
+    // core plates: upper plate + lower support plate
     svgKids.push(h('rect', { x: barrelL + 4, y: coreTop - 7, width: barrelR - barrelL - 8, height: 7, rx: 2, fill: '#2b3d4a' }));
-    var slotXs = [217, 259, 301, 343];
-    svgKids.push(h('g', null,
-      h('rect', { x: 177, y: 456, width: 206, height: 15, rx: 4, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.9 }),
-      slotXs.map(function (x) {
-        return h('rect', { x: x - 10, y: 455, width: 20, height: 17, rx: 3, fill: 'url(#' + ids.pool + ')', stroke: '#1a2833', strokeWidth: 0.8 });
-      })));
+    svgKids.push(h('rect', { x: 177, y: 456, width: 206, height: 15, rx: 4, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.9 }));
     svgKids.push(h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH, fill: '#07121a' }));
     // core steam space (visible as inventory drains below 50%)
     svgKids.push(R.coreSteam = h('g', { clipPath: 'url(#' + ids.coreClip + ')' },
@@ -272,10 +279,22 @@
     });
     svgKids.push(h('g', { clipPath: 'url(#' + ids.poolClip + ')' },
       h('rect', { x: coreL, y: poolTop, width: coreW, height: poolH, fill: 'url(#' + ids.cflow + ')', opacity: 0.45 }),
-      h('line', { x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cflow + ')', strokeWidth: coreW, strokeLinecap: 'butt', opacity: 0.78 }),
-      R.wideflow));
-    // fuel rods
-    var fuelXs = [196, 238, 280, 322, 364];
+      h('line', { x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cflow + ')', strokeWidth: coreW, strokeLinecap: 'butt', opacity: 0.78 })));
+    /* #809 item 5 (owner playtest 2026-09-27): the core-bottom flow-channel blocks, one per
+     * rod — see floorTop/floorBot up top. Drawn OVER the base water wash above (so they read
+     * as solid casing-colored structure rather than washing out under the tint — measured:
+     * at .78 opacity the wash left only 22% of a block painted BEFORE it) but BEFORE the
+     * animated upflow dashes (R.wideflow, next), which still pass in front through their own
+     * dash gaps — "must not cover... the water animation's moving parts". NOT wrapped in the
+     * poolClip group: this is STRUCTURE, and it does not empty when the water does (the clip
+     * shrinks from the top on falling inventory, coreBot..poolBot is always its bottom edge —
+     * but a drained core should still show the metal, not have it vanish with the water). */
+    svgKids.push(h('g', null,
+      fuelXs.concat(ctrlXs).map(function (x) {
+        return h('rect', { x: x - 7, y: floorTop, width: 14, height: floorH, rx: 2, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.8 });
+      })));
+    svgKids.push(h('g', { clipPath: 'url(#' + ids.poolClip + ')' }, R.wideflow));
+    // fuel rods (fuelXs is the module-level array, above)
     svgKids.push(R.fuelglow = h('rect', { x: coreL - 24, y: coreTop - 26, width: coreW + 48, height: coreH + 52, rx: 28, fill: gFuel.paint }));
     R.fuelRods = fuelXs.map(function (x) {
       return h('rect', { x: x - 7, y: coreTop, width: 14, height: coreH, rx: 3, fill: 'url(#' + ids.fuel + ')', strokeWidth: 0.6 });

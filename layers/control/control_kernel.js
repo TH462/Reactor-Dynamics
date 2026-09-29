@@ -1043,6 +1043,18 @@
     for (var i = 0; i < alarms.length; i++) {
       var alarm = alarms[i];
       var active = this._alarmRaw(alarm, ins);
+      // RESET DIFFERENTIAL (#811) — the `clears_below`/`clears_above` idiom the interlocks and
+      // runbacks already use, now on an alarm that declares one. A LIT alarm stays in until its
+      // reading is back past the clear line, not merely past the setpoint. Arrival is untouched
+      // (still the bare setpoint, on the evaluation it occurs); only the clear moves. Measured
+      // on the opener's trip, Cooldown Rate High: the slowly-rising, noisy rate meter re-crossed
+      // its setpoint at the clear and the tile went out and back in (the dropout hold above
+      // only bridges 2 s of quiet). An alarm without the field behaves exactly as before.
+      if (!active && this.alarmStates[alarm.id] && this.alarmStates[alarm.id] !== 'clear') {
+        var cv = ins[alarm.instrument];
+        if (alarm.direction === 'low' && alarm.clears_above != null) active = cv <= alarm.clears_above;
+        else if (alarm.direction === 'high' && alarm.clears_below != null) active = cv >= alarm.clears_below;
+      }
       // Optional LINEUP GATE (#273): an alarm may name a boolean indication that must
       // also hold. Same evaluator the trips and actuations use, so it reads INSTRUMENTS
       // (HR1) and the condition is plant DATA, not kernel knowledge (HR3). It can only
@@ -1922,9 +1934,16 @@
     // A NEW target = a new dose computation. Re-anchor the books from the
     // (filtered) analyzer only if they have clearly drifted — otherwise
     // sequential nudges meter exactly from where the last dose ended.
+    // What the analyzer cannot see yet: dose already metered into the plant's makeup path
+    // (def.inTransit, ppm signed; a plant with no path publishes nothing and reads 0). The
+    // loop is heading for analyzer + transit, so that — not the bare analyzer — is what the
+    // books are compared with and re-anchored to (#807 review: comparing the bare analyzer
+    // re-dosed the ~19 ppm still in the pipe).
+    var transit = def.inTransit ? (def.inTransit(ctx) || 0) : 0;
     if (sp !== c.concLastSp || c.concBasis == null) {
-      if (c.concBasis == null || (pv != null && Math.abs(pv - c.concBasis) > (def.reAnchorPpm || 15))) {
-        c.concBasis = pv != null ? pv : sp;
+      var est = pv != null ? pv + transit : null;
+      if (c.concBasis == null || (est != null && Math.abs(est - c.concBasis) > (def.reAnchorPpm || 15))) {
+        c.concBasis = est != null ? est : sp;
       }
       c.concLastSp = sp;
     }
@@ -1940,7 +1959,12 @@
       else if (seq !== c.concSampleSeq) {
         c.concSampleSeq = seq;
         var lab = ctx.instruments.boron_sample;
-        if (c.concMode === 'hold' && lab != null && isFinite(lab)) {
+        // ...unless the lab AGREES with the books to within its own resolution (def.sampleDeadband,
+        // ppm; 0 = always snap). The result is whole ppm, so a dose that landed at 719.3 posts as
+        // 719 or 720 on rounding alone, and snapping the operator's typed 719 to 720 is noise
+        // presented as chemistry (#807 review: it un-met a walkthrough row graded on the box).
+        if (c.concMode === 'hold' && lab != null && isFinite(lab) &&
+            !(def.sampleDeadband && c.concBasis != null && Math.abs(lab - c.concBasis) <= def.sampleDeadband)) {
           c.concBasis = lab;
           c.sp = def.sp ? clip(lab, def.sp.min, def.sp.max) : lab;
           c.concLastSp = c.sp;

@@ -16,9 +16,11 @@
  *      side, overstating your margin to criticality).
  *
  * Session tool by design: the table is the operator's scratchpad, not plant
- * state — it is NOT in save files, and it clears itself on plant change,
- * reset, or rewind past the last captured point. Works while paused (reads
- * the latest snapshot).
+ * state — it is NOT in save files, and it clears itself on plant change, a
+ * reset, a new initial condition or a save-file load (RD.OneOverMCore.newHistory),
+ * and on a rewind — which drops ONLY the points captured after the moment
+ * it lands on (RD.OneOverMCore.rewindTo). Works while paused (reads the latest
+ * snapshot).
  *
  * Attaches RD.OneOverM ({ init, open, close, tick }) and RD.makeDraggable.
  */
@@ -55,9 +57,13 @@
   var getSnap = null;        // () => latest snapshot
   var sendCmd = null;        // (cmd) => dispatch through the service (HR5)
   var win = null, svg = null, msgEl = null;
-  var points = [];           // [{ x: rod fraction withdrawn 0–1, counts, y: C0/counts }]
-  var C0 = null;
-  var lastPlant = null, lastCaptureT = null;
+  /* The table is RD.OneOverMCore's shape ({points, c0, t}) and every edit to it goes through that
+   * module (layers/instructor_layer.js) — the grader behind `pwr_startup` 9a holds a copy built
+   * from the samples this panel sends, and the two must be the same table (2026-09-24). */
+  var tbl = { points: [], c0: null, t: null };   // points: [{ x: fraction withdrawn, counts, y: C0/counts }]
+  var lastPlant = null;
+  var lastGen = null;        // the grader's walkthrough-clear counter (s.instructor.one_over_m.gen)
+  function core() { return RD.OneOverMCore; }
 
   /* THE STEPS AXIS READS THE BANK LIVE, AND THE NUMBER IS NEVER TYPED HERE (#746, the #707
    * resolution; same ladder as `bankFullScale` in ui/diagram/board/pwr_board_wiring.js).
@@ -80,19 +86,8 @@
    * dead channel out as null, which would put a plausible 0 on the axis. The last-ditch literal
    * fires only when no snapshot AND no plant module is reachable (a bare page, a fixture), so
    * the panel still draws a sensible axis rather than dividing by nothing. */
-  function bankFullScale() {
-    var s = getSnap && getSnap();
-    var g = s ? controlGroup(s) : null;
-    var n = g && g.max_steps;
-    if (typeof n === 'number' && isFinite(n) && n > 0) return n;
-    /* `RD` is this module's IIFE parameter — the SAME object as `globalThis.RD`, so a table
-     * attached by a plant module that loads AFTER this file is still visible through it. */
-    var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
-    if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
-    var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
-    if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
-    return 627;
-  }
+  /* The ladder itself now lives in RD.OneOverMCore.fullScale — the grader reads the same one. */
+  function bankFullScale() { return core().fullScale(getSnap && getSnap()); }
 
   /* Plot geometry (viewBox units).
    *
@@ -150,11 +145,7 @@
    * found (the dock lived in `.right-col`, and the board-focus button hides that column, so an open
    * plot went to 0x0 while still believing itself open). */
 
-  function controlGroup(s) {
-    var gs = (s.control_state && s.control_state.rod_groups) || [];
-    for (var i = 0; i < gs.length; i++) if (gs[i].function === 'control') return gs[i];
-    return null;
-  }
+  function controlGroup(s) { return core().controlGroup(s); }
 
   /* WHICH PLANTS THIS TOOL WORKS ON (#598 item 2). It used to ask `plant_id === 'pwr'`,
    * and PWR2 — the plant the site actually runs — publishes 'pwr2'. The window opened,
@@ -164,10 +155,7 @@
    * control group to plot it against, and any plant publishing both can use the tool.
    * That also means a future plant gains it by publishing the instrument, not by being
    * added to a list here. */
-  function supported(s) {
-    var ins = (s && s.instruments) || {};
-    return ins.source_range !== undefined && !!controlGroup(s || {});
-  }
+  function supported(s) { return core().supported(s); }
 
   // Least squares over the TRAILING window (the points nearest criticality) →
   // { a, b, x0 } for y = a + b·x, where x0 is the leading point of the window.
@@ -219,18 +207,10 @@
    * the approach now ENDS at pt 5. Re-measured on the shortened ladder, four seeds: trailing-3
    * reads 210.3-212.1 (panel: "step 211") against 212.6-213.4 before, true critical still 208.
    * The table is left as the record of what settled FIT_WINDOW; it is not the current ladder. */
-  var FIT_WINDOW = 3;
-  function fit() {
-    if (points.length < 2) return null;
-    var pts = points.slice(Math.max(0, points.length - FIT_WINDOW));
-    var n = pts.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
-    pts.forEach(function (p) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; });
-    var mx = sx / n, my = sy / n;
-    var den = sxx - n * mx * mx;
-    if (Math.abs(den) < 1e-9) return null;
-    var b = (sxy - n * mx * my) / den;
-    return { a: my - b * mx, b: b, x0: pts[0].x };
-  }
+  /* FIT_WINDOW = 3 and the fit itself are RD.OneOverMCore's (layers/instructor_layer.js) since
+   * 2026-09-24: ONE implementation, because `pwr_startup` 9a grades the prediction this panel
+   * prints. The ruling above is still the record of why the window is three. */
+  function fit() { return core().fit(tbl.points); }
 
   function setMsg(text, warn) {
     if (!msgEl) return;
@@ -259,16 +239,14 @@
      * The fit is pure arithmetic on `points` and owes the layout nothing, so there is no
      * circularity in computing it first — which is exactly why it can be hoisted and the cell
      * measurement cannot. */
-    var f = fit(), pred = null, xc = null;
+    var points = tbl.points;
+    var f = fit(), pred = core().predict(points), xc = null;
     var maxSteps = bankFullScale();   /* #746 — resolved per draw, never cached */
-    if (f && f.b < -1e-6) {
-      xc = -f.a / f.b;
-      if (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) pred = xc;
-    }
+    if (f && f.b < -1e-6) xc = -f.a / f.b;
     var predEl = win && win.querySelector ? win.querySelector('#oomPred') : null;
     if (predEl) {
       predEl.textContent = pred != null
-        ? 'predicted criticality ≈ step ' + Math.round(pred * maxSteps) +
+        ? 'predicted criticality ≈ step ' + core().predictSteps(points, maxSteps) +
           ' (' + (pred * 100).toFixed(1) + '% withdrawn)'
         : (points.length >= 2 ? 'insufficient trend — keep plotting' : '');
     }
@@ -301,8 +279,8 @@
       }
     }
     // points (baseline square, later captures circles)
-    points.forEach(function (p, i) {
-      h += i === 0
+    points.forEach(function (p) {
+      h += p.base
         ? '<rect x="' + (px(p.x) - 3) + '" y="' + (py(p.y) - 3) + '" width="6" height="6" class="oom-pt"/>'
         : '<circle cx="' + px(p.x) + '" cy="' + py(p.y) + '" r="3.2" class="oom-pt"/>';
     });
@@ -314,42 +292,36 @@
     var s = getSnap && getSnap();
     if (!s) return;
     if (!supported(s)) { setMsg('no source-range channel on this plant', true); return; }
-    var ins = s.instruments || {};
-    /* The refusal says what it MEANS, not only what it is (#641): the source range secures
-     * itself above 1e5 cps on this plant, so a de-energized channel here is the player past
-     * the approach, not a switch to find. The live checklist marks its plot steps overtaken on
+    /* The refusal says what it MEANS, not only what it is (#641): on this plant the source range
+     * goes off only when its trip is BLOCKED at P-6 (OWNER RULING 2026-09-26 "B" — the block removes
+     * the detector high voltage; the old self-switch-off at 1e5 cps is gone), so an off channel
+     * here is the player past the approach. The live checklist marks its plot steps overtaken on
      * the same condition. */
-    if (!ins.sr_energized) { setMsg('Source range de-energized — the approach is past 1/M territory; nothing to plot. Watch the startup rate and the intermediate range.', true); return; }
-    var counts = ins.source_range;
-    if (counts == null || !isFinite(counts) || counts < 1) { setMsg('no source-range reading', true); return; }
-    if (counts > 9e5) { setMsg('SR pegged near full scale — past 1/M territory', true); return; }
-    var g = controlGroup(s);
-    if (!g) return;
+    var smp = core().sample(s);
+    if (smp.why === 'sr_off') { setMsg('SOURCE RANGE blocked at P-6 — no more points. Watch the startup rate and the intermediate range.', true); return; }
+    if (smp.why === 'no_reading') { setMsg('no source-range reading', true); return; }
+    if (smp.why === 'pegged') { setMsg('SR pegged near full scale — past 1/M territory', true); return; }
+    if (!smp.ok) return;
+    var counts = smp.counts;
     /* The `maxSteps = g.max_steps` capture that used to live here is GONE (#746). It was the
      * only thing correcting the 912 literal, and it corrected it one press too late; the axis
      * reads the bank live at draw time now, so there is nothing to capture. */
-    var x = (g.position_pct || 0) / 100;
-    if (points.length === 0) {
-      C0 = counts;
-      points.push({ x: x, counts: counts, y: 1.0 });
-      setMsg('baseline C₀ = ' + Math.round(counts) + ' cps at ' + (x * 100).toFixed(1) + '% withdrawn');
-    } else {
-      points.push({ x: x, counts: counts, y: C0 / counts });
-      points.sort(function (a, b) { return a.x - b.x; });
-      setMsg('C = ' + Math.round(counts) + ' cps → 1/M = ' + (C0 / counts).toFixed(3));
-    }
-    lastCaptureT = s.metadata.sim_time;
+    var x = smp.x, first = tbl.points.length === 0;
+    core().add(tbl, x, counts, s.metadata.sim_time);
+    if (first) setMsg('baseline C₀ = ' + Math.round(counts) + ' cps at ' + (x * 100).toFixed(1) + '% withdrawn');
+    else setMsg('C = ' + Math.round(counts) + ' cps → 1/M = ' + (tbl.c0 / counts).toFixed(3));
     // Announce the reading downstream so a live checklist step that says "plot a
-    // point" checks itself off (#202 item 1). The points themselves stay UI-side;
-    // this carries no data, it just marks that the operator took the sample. Sent
-    // only on a point that was actually recorded — the early returns above bail
-    // first, so a refused press (SR de-energized, no counts) does not count.
-    if (sendCmd) sendCmd({ action: 'plot_1m_point' });
+    // point" checks itself off (#202 item 1). Sent only on a point that was actually
+    // recorded — the early returns above bail first, so a refused press (SR
+    // de-energized, no counts) does not count. It CARRIES THE SAMPLE (2026-09-24): the
+    // instructor keeps the same table off it, so `pwr_startup` 9a can grade "3 steps
+    // short of the 1/M prediction" against the number printed here.
+    if (sendCmd) sendCmd({ action: 'plot_1m_point', x: x, counts: counts, t: s.metadata.sim_time });
     render();
   }
 
   function clearAll(msg) {
-    points = []; C0 = null; lastCaptureT = null;
+    core().clear(tbl);
     setMsg(msg || '');
     render();
   }
@@ -499,7 +471,7 @@
       var op = b.getAttribute('data-oom');
       if (op === 'close') win.hidden = true;
       else if (op === 'plot') plotPoint();
-      else if (op === 'clear') clearAll();
+      else if (op === 'clear') { clearAll(); if (sendCmd) sendCmd({ action: 'plot_1m_clear' }); }
       else if (op === 'help') {
         var panel = win.querySelector('.oom-help');
         var open = panel.hidden;
@@ -519,18 +491,38 @@
     },
     close: function () { if (win) win.hidden = true; },
     // Per-broadcast: self-clear when the world the points describe is gone —
-    // plant change, reset, or a rewind to before the last captured point.
+    // plant change, reset, or a rewind (which drops only the later points).
     tick: function (s) {
       if (!s || !s.metadata) return;
+      /* a walkthrough that starts a new startup (`clear_1m`) cleared the grader's table; clear this
+       * copy with it, or the panel and 9a's "3 short" read two different plots (layman pass 8 S-1) */
+      var oi = s.instructor && s.instructor.one_over_m, gen = oi && typeof oi.gen === 'number' ? oi.gen : null;
+      if (gen != null) {
+        if (lastGen != null && gen !== lastGen && tbl.points.length) clearAll('new startup walkthrough — plot cleared');
+        lastGen = gen;
+      }
       var plant = s.metadata.plant_id;
       if (plant !== lastPlant) {
         lastPlant = plant;
-        if (points.length) clearAll('plant changed — plot cleared');
+        if (tbl.points.length) clearAll('plant changed — plot cleared');
+        tbl.epoch = s.metadata.timeline_epoch;
         if (win && !supported(s)) win.hidden = true;
         return;
       }
-      if (lastCaptureT != null && s.metadata.sim_time < lastCaptureT - 1e-6) {
-        clearAll('time rewound — plot cleared');
+      /* a save FILE loaded, a reset or a new initial condition is a different history, not the
+       * same one rewound: clear it all (RD.OneOverMCore.newHistory) */
+      if (core().newHistory(tbl, s.metadata)) {
+        if (tbl.points.length) clearAll('new plant history — plot cleared');
+        return;
+      }
+      /* a rewind drops only the points captured AFTER the moment it lands on (the rule and the
+       * playtest behind it: RD.OneOverMCore.rewindTo) */
+      var rw = core().rewindTo(tbl, s.metadata.sim_time);
+      if (rw === 'cleared') { setMsg('time rewound — plot cleared'); render(); }
+      else if (rw) {
+        setMsg('time rewound — ' + rw + ' later point' + (rw === 1 ? '' : 's') + ' removed, ' +
+          tbl.points.length + ' kept');
+        render();
       }
     },
   };

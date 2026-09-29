@@ -561,7 +561,14 @@
     // on the board. Reads the DERIVED tavg_rate channel (indicated tavg,
     // differentiated + damped) — HR1-clean. NOT reclassified in Modes 4/5: the limit
     // binds exactly during a planned cooldown — exceeding it there IS the error.
-    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
+    // RESET DIFFERENTIAL (#811, owner 2026-09-28 "All as recommended"): comes in at -100 °F/hr,
+    // clears only once the meter is back above -97 °F/hr (-53.9 °C/hr). The meter (tau 600 s) climbs
+    // back through the setpoint ~0.2 °F/hr per second with ±8 °F/hr of noise on it, so a bare
+    // setpoint clear re-lit the tile after every PWR2 trip. Measured on the opener's four trip
+    // routes (typical / hands-off / mistake / early SCRAM), re-lights after the first clear:
+    // 1 / 3-4 / 3 / 3 with no margin (hands-off varies with where the count starts); typical 0, hands-off 1 at 1-2 °F/hr; 0 / 0 / 0 / 0 at 3 °F/hr (chosen,
+    // the smallest that clears all four once). Cost: the clear lands 6-13 s later.
+    { id: 'cooldown_rate_high', instrument: 'tavg_rate', direction: 'low',  setpoint: -55.6, clears_above: -53.9, priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Cooldown Rate High (>100 °F/hr)', label_industry: 'RCS COOLDOWN RATE HI' },
     { id: 'heatup_rate_high',   instrument: 'tavg_rate', direction: 'high', setpoint: 55.6,  priority: 'warning', panel: 'A', category: 'coolant', label_learning: 'Heatup Rate High (>100 °F/hr)',   label_industry: 'RCS HEATUP RATE HI' },
     { id: 'pzr_pressure_high', instrument: 'primary_pressure', direction: 'high',    setpoint: 15.86, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure High',       label_industry: 'PZR PRESS HI' },
     { id: 'pzr_pressure_low',  instrument: 'primary_pressure', direction: 'low',     setpoint: 14.82, priority: 'warning',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Pressure Low',        label_industry: 'PZR PRESS LO',
@@ -785,7 +792,7 @@
     // +5 the plant acts, +10 it tells you, 75 % absolute it tells you again, 97 % it trips. And
     // it is the mirror of `pzr_level_dev_low` above: one number, ten points, either way, which
     // is one thing for the player to learn rather than two (DESIGN_CRITERIA Q4).
-    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program — letdown is not holding', label_industry: 'PZR LVL DEV HI' },
+    { id: 'pzr_level_dev_high', instrument: 'pzr_level_dev',   direction: 'high',    setpoint: 10.0, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Pressurizer Level Above Program', label_industry: 'PZR LVL DEV HI' },
     { id: 'charging_high',     instrument: 'charging_flow',    direction: 'high',    setpoint: 8.0e-5, priority: 'caution',  panel: 'A', category: 'coolant', label_learning: 'Charging Flow High — make-up is working hard',            label_industry: 'CHG FLOW HI' },   // #408 real currency: 36 gpm, nominal letdown 30 + a sev-0.2 seal leak — keeps the documented "from about severity 0.2 up" cue; was 0.036, unreachable once max charging became 1.333e-4
   ];
   var PWR_ALARMS_B = [
@@ -925,7 +932,10 @@
     // cooling", which is exactly what the operator needs to know before they stop injecting.
     { id: 'rhr_not_aligned', instrument: 'rhr_active', direction: 'is_false', setpoint: null, priority: 'warning', panel: 'B', category: 'safety_system',
       condition: { instrument: 'plant_mode', in: COLD_MODES },
-      label_learning: 'Shutdown Cooling Not In Service — RCS Is Below the RHR Entry Pressure', label_industry: 'RHR NOT IN SERVICE' },
+      // LABEL NAMES THE PREDICATE (layman pass 4, 2026-09-24): it read "— RCS Is Below the RHR Entry
+      // Pressure", which the predicate never tests (mode + valve only, Manuals/06 PWR-A33 "Why gated
+      // on the mode"), so on the heatup it came in at 665 psi, ABOVE the 400 psi entry, and read backwards.
+      label_learning: 'Shutdown Cooling Not In Service — RHR Not Aligned in Mode 4 or 5', label_industry: 'RHR NOT IN SERVICE' },
     { id: 'sbo',            instrument: 'station_blackout', direction: 'is_true',  setpoint: null, priority: 'critical', panel: 'B', category: 'safety_system', label_learning: 'Station Blackout — AC Power Lost', label_industry: 'SBO' },
     // Turbine trip / low steam demand. Reclassified in Modes 4/5 ONLY: below the
     // hot band the machine is secured by design and RHR is the heat sink, so zero
@@ -1733,6 +1743,19 @@
         var v = s.control_state ? s.control_state.boron_rate_delivered : null;
         return (v != null && isFinite(v)) ? v : null;
       },
+      /* METERED BUT NOT YET ARRIVED (#807 review, 2026-09-26). The makeup path (VCT + charging
+       * line) holds a dose for minutes after the blender stops — ~19 ppm of a long dilution,
+       * measured — and the analyzer sees only what has reached the loop. A new target compared
+       * the books with the bare analyzer, found them >15 ppm apart, re-anchored to the analyzer
+       * and dosed the in-transit boron a SECOND time (measured: 894 -> 820 retargeted to 815
+       * mid-dose landed 795.7; 840 set 30 s after an 850 dose landed 821.1). The plant publishes
+       * its own path holdup (control_state.boron_in_transit_ppm, pwr2 only — actuator
+       * bookkeeping, like the delivered rate above); the kernel compares analyzer + transit.
+       * Absent (the retired engine has no path), the kernel reads 0: byte-identical. */
+      inTransit: function (s) {
+        var v = s.control_state ? s.control_state.boron_in_transit_ppm : null;
+        return (v != null && Number.isFinite(v)) ? v : null;
+      },
       // rate: 0.05 ppm/s. The old 0.5 was a firehose: ~5 pcm/s spiked power ~10 % per
       // 10 ppm asked (TUNING_LOG S9). [tune]
       //
@@ -1755,7 +1778,10 @@
       // reAnchorPpm: a new target re-samples the analyzer for the dose books only
       // when they've drifted beyond this (e.g. ECCS boration) — beyond noise (±2σ≈4),
       // below any dose worth caring about.
-      rate: 0.05, reAnchorPpm: 15, pvTau: 5.0, period: 2.0 },
+      // sampleDeadband: the confirmatory lab result is WHOLE ppm; a result within 1 ppm of the
+      // books is a confirmation, not a correction, and leaves the operator's target alone
+      // (#807 review, 2026-09-26: 894 -> 719 posted 720 and re-typed the target box to 720).
+      rate: 0.05, reAnchorPpm: 15, sampleDeadband: 1, pvTau: 5.0, period: 2.0 },
 
     { id: 'pzr_pressure', kind: 'mode', group: 'Primary',
       label: 'Pressurizer pressure (heaters + spray)',

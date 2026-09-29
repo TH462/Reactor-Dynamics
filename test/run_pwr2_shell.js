@@ -223,20 +223,22 @@ function runSuite(SH, rec, quiet, only) {
    * shared by reference is therefore a real claim here — re-introducing a per-plant copy reds
    * it — and the second clause below pins the shape so "shared" cannot mean "shared and
    * absolute again". */
-  function capOnly(a, b, want, wasRe) {
-    return a.label_learning === want && wasRe.test(b.label_learning || '') &&
-           a.setpoint === b.setpoint && a.priority === b.priority &&
-           a.instrument === b.instrument && a.direction === b.direction &&
-           a.label_industry === b.label_industry;
-  }
+  /* capOnly() AND THE TWO CONTAINMENT ENTRIES ARE RETIRED (#784, OWNER RULING 2026-09-21
+   * "Drop the override"). They asserted that PWR2 rewrote the two containment captions to
+   * name their SETPOINT -- 'Containment Pressure High (3.5 psig)' / 'High-High (30 psig)' --
+   * over the shared table's '(SI signal)' / '(spray/MSLI)', which named mitigations this
+   * plant did not perform. #784 built them: measured on a large loss-of-coolant accident at
+   * severity 1.0, safety injection latches at 5.58 s on the 3.5 psig backup, the fan coolers
+   * realign at 49.5 s, the steam-line isolation shuts at 59.6 s and spray delivers at 88.2 s.
+   * The shared text is TRUE on this plant, so the override went and the rows are shared again.
+   *
+   * WHAT GUARDS THEM NOW IS STRONGER, not weaker, and it is the same argument the #500 note
+   * above makes: with no entry in OVERRIDDEN these two rows fall to the `a === baseAlarms[i]`
+   * IDENTITY clause, so they must be the shared OBJECT -- re-introducing a per-plant copy
+   * reds this check even if the copy is byte-identical. The old capOnly() could only say the
+   * caption differed and everything else matched. */
   var OVERRIDDEN = {
-    rod_limit_approach: function (a, b) { return a.setpoint === 10 && b.setpoint === 40; },
-    ctmt_press_hi: function (a, b) {
-      return capOnly(a, b, 'Containment Pressure High (3.5 psig)', /\(SI signal\)/);
-    },
-    ctmt_press_hihi: function (a, b) {
-      return capOnly(a, b, 'Containment Pressure High-High (30 psig)', /\(spray\/MSLI\)/);
-    }
+    rod_limit_approach: function (a, b) { return a.setpoint === 10 && b.setpoint === 40; }
   };
   var alarmsOk = Array.isArray(pc.alarms) && pc.alarms.length === baseAlarms.length &&
     pc.alarms.every(function (a, i) {
@@ -1119,12 +1121,27 @@ function runSuite(SH, rec, quiet, only) {
      * cooldown action, which is also the proof that the GATE is honoured. The derivation reads
      * `asserted`, and `asserted` is already false under a block, so the shell and the kernel's
      * own version agree by construction rather than by a second copy of the gate tests. */
-    ck('blocking the low-pressure trip (P-11, the sourced cooldown action) RELEASES the ' +
-       'permissive — the derivation honours the gate, so no second copy of the block test',
+    /* #800: a LATCHED SAFETY INJECTION is now a standing trip signal too (SI trips the reactor,
+     * WTSM 12.3.2.2 item 1), so the low-pressure block alone no longer releases it — before
+     * #800 that reset was accepted and, once the SI-to-trip wire existed, re-latched a step
+     * later. The exit is the sourced order: block the trip, reset SI at its own panel (P-4 and
+     * the 45-60 s relay are both met here), then reset the RPS. */
+    eQ.applyCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+    ridek(eQ, kQ, 2);
+    var mSI = facReset(eQ);
+    ck('#800: with the low-pressure trip blocked but SI still LATCHED the reset is REFUSED, ' +
+       'naming safety injection — not accepted and re-latched',
+       eQ.eng.pt.si === true && eQ.getInstruments().no_trip_signal_standing === false &&
+       mSI !== null && /safety injection is latched/.test(mSI) && eQ.eng.pt.reactor_trip === true,
+       mSI ? mSI.slice(0, 95) : 'ACCEPTED!');
+    ck('blocking the low-pressure trip (P-11, the sourced cooldown action) and resetting SI ' +
+       'RELEASES the permissive — the derivation honours the gate, so no second copy of the block test',
        (function () {
-         eQ.applyCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });
+         /* a build where the refusal above was ACCEPTED has already cleared P-4, so the SI
+          * reset throws there — report that as this check's FAIL, not a crashed runner */
+         try { eQ.applyCommand({ action: 'set_hpi', active: false }); } catch (x) { return false; }
          ridek(eQ, kQ, 2);
-         return eQ.getInstruments().no_trip_signal_standing === true &&
+         return eQ.eng.pt.si === false && eQ.getInstruments().no_trip_signal_standing === true &&
                 kQ.rpsResetBlock(eQ.getInstruments()) === null && facReset(eQ) === null;
        })(), 'blocked -> released, reset accepted');
     ridek(eQ, kQ, 5);
@@ -2768,8 +2785,20 @@ function runSuite(SH, rec, quiet, only) {
        travO.toFixed(2) + ' steps in 20 s, expected ' + (RS.fast * 20).toFixed(2));
     /* ...continued to the trip. The claim is the TRIP CAUSE and the peak, not a timestamp:
      * this is the difference between a withdrawal accident and a step insertion. */
+    /* THE OPERATOR TAKES THE P-6 BLOCK (OWNER RULING 2026-09-26, "B"). This ride tests the
+     * INTERMEDIATE/POWER-RANGE net, and since the source-range trip exists an UNBLOCKED ride
+     * never reaches it: measured on this fixture, it trips on `sr_high_flux` at 267.1 s with
+     * peak power 0.0 % and no rod stop — the plant catching it one rung lower, which is the new
+     * trip working (run_pwr2_protection holds that half). So the fixture states the lineup a
+     * startup operator has, blocking at P-6 the moment the permissive allows. HR10: this is a
+     * FIXTURE change, not a refit of the claim — the assertions below are untouched. */
+    var srBlockedAtO = null;
     var peakPO = 0, peakSO = 0, stopO = null, tripO = null, causeO = null;
     while (tO < 900 && tripO === null) {
+      if (srBlockedAtO === null && eO.eng.rpsReport && eO.eng.rpsReport.p6_met === true) {
+        eO.applyCommand({ action: 'set_trip_block', trip_id: 'sr_high', blocked: true });
+        srBlockedAtO = tO;
+      }
       var tsO = eO.step(DT); tO += DT;
       if (tsO.power_pct > peakPO) peakPO = tsO.power_pct;
       if ((tsO.startup_rate_dpm || 0) > peakSO) peakSO = tsO.startup_rate_dpm;
@@ -2785,10 +2814,69 @@ function runSuite(SH, rec, quiet, only) {
        'trips asserted but their 0.5 s analysis delays had not elapsed',
        stopO !== null && tripO !== null && causeO === 'ir_high_flux' &&
        stopO < tripO && peakPO < 50,
+       'SR blocked at ' + (srBlockedAtO === null ? 'NEVER' : srBlockedAtO.toFixed(1) + ' s') + ', ' +
        'rod stop ' + (stopO === null ? 'NEVER' : stopO.toFixed(1) + ' s') + ', trip ' +
        (tripO === null ? 'NEVER in 900 s' : tripO.toFixed(1) + ' s on ' + causeO) +
        ', peak ' + peakPO.toFixed(1) + ' %, peak startup rate ' + peakSO.toFixed(1) + ' DPM');
   })();
+  }
+
+  if (grp('P6')) {
+  /* ---- THE P-6 SOURCE-RANGE BLOCK AT POWER (rc8f, 2026-09-27; OWNER RULING 2026-09-26 "B") ------
+   * Three defects a reviewer MEASURED on the rc8 candidate, each re-measured here before the fix:
+   *   1. the SR row never warned: blocked at power it read {asserted:false}, and one release
+   *      tripped the reactor on sr_high_flux 0.52 s later — the de-energized SR cannot report its
+   *      own would-trip, so the shell now derives it off the INTERMEDIATE range;
+   *   2. one failed IR channel (fail low / dead) at Hot Full Power revoked the block and tripped
+   *      the reactor 0.54 s later;
+   *   3. an old-shape save (no `blockSR`) loaded at power seeded the block NOT taken off the SR's
+   *      1 cps floor, energized the SR on every one of 50 steps and TRIPPED the reactor. */
+  head('THE P-6 SOURCE-RANGE BLOCK AT POWER  [the warning, a failed IR, an old save]');
+  function engCmd(e, a, v) { globalThis.RD.pwr2.engine.command(e.eng, a, v); }
+  var eW = new SH.PWR2Engine({ initial_state: 'hot_full_power' }); run(eW, 2);
+  var rowW = eW.getTripBlocks().trip_block_status.sr_high;
+  ck('at Hot Full Power the SR row is BLOCKED and says releasing it WOULD TRIP (asserted)',
+     rowW.blocked === true && rowW.asserted === true && rowW.can_clear === true,
+     JSON.stringify({ blocked: rowW.blocked, asserted: rowW.asserted, can_clear: rowW.can_clear }));
+  eW.applyCommand({ action: 'set_trip_block', trip_id: 'sr_high', blocked: false });
+  var tRel = 0; while (tRel < 5 && !eW.eng.pt.reactor_trip) { eW.step(DT); tRel += DT; }
+  ck('...and the warning is TRUE: one release trips the reactor on sr_high_flux',
+     eW.eng.pt.reactor_trip === true && eW.eng.pt.trip_cause === 'sr_high_flux',
+     eW.eng.pt.reactor_trip ? 'tripped ' + tRel.toFixed(2) + ' s after the release' : 'no trip in 5 s');
+  var eZ = new SH.PWR2Engine({ initial_state: 'hot_zero_power' }); run(eZ, 2);
+  var rowZ = eZ.getTripBlocks().trip_block_status.sr_high;
+  ck('...while at hot zero power (unblocked, SR ~500 cps) the row does NOT warn',
+     rowZ.blocked === false && rowZ.asserted === false, JSON.stringify({ blocked: rowZ.blocked, asserted: rowZ.asserted }));
+  ['low', 'dead'].forEach(function (mode) {
+    var eF = new SH.PWR2Engine({ initial_state: 'hot_full_power' }); run(eF, 2);
+    engCmd(eF, 'instrument_fail', { id: 'intermediate_range', mode: mode });
+    var maxSr = 0, tF = 0;
+    while (tF < 30 && !eF.eng.pt.reactor_trip) {
+      var tsF = eF.step(DT); tF += DT; if (tsF.sr_counts_cps > maxSr) maxSr = tsF.sr_counts_cps;
+    }
+    ck('one FAILED (' + mode + ') intermediate-range channel at Hot Full Power does not revoke the SR ' +
+       'block: no trip in 30 s, the source range stays off',
+       !eF.eng.pt.reactor_trip && eF.eng.pt.blockSR === true && maxSr === 0,
+       (eF.eng.pt.reactor_trip ? 'TRIPPED on ' + eF.eng.pt.trip_cause + ' at ' + tF.toFixed(2) + ' s' : 'no trip') +
+       ', blockSR ' + eF.eng.pt.blockSR + ', peak true SR ' + maxSr.toExponential(2) + ' cps, IR reads ' +
+       eF.getInstruments().intermediate_range.toExponential(2) + ' A');
+  });
+  ['hot_full_power', 'low_power', '50_percent'].forEach(function (ic) {
+    var eA = new SH.PWR2Engine({ initial_state: ic }); run(eA, 2);
+    var blob = eA.saveState(); delete blob.state.pt.blockSR;          /* the pre-rc8 save shape */
+    var eB = new SH.PWR2Engine({ initial_state: 'hot_full_power' }); eB.loadState(blob);
+    var lit = 0, hi = 0;
+    for (var k = 0; k < 50; k++) {
+      var tsB = eB.step(DT);
+      if (tsB.sr_energized === true || tsB.sr_counts_cps > 0) lit++;
+      if (eB.getInstruments().source_range > 1e4) hi++;
+    }
+    ck('an OLD save (no blockSR) loaded at ' + ic + ': no step publishes the SR energized, the SR ' +
+       'reading never nears its alarm, no trip, the block seeds TAKEN',
+       lit === 0 && hi === 0 && !eB.eng.pt.reactor_trip && eB.eng.pt.blockSR === true,
+       lit + '/50 steps SR energized, ' + hi + '/50 SR reading over 1e4 cps, trip ' + !!eB.eng.pt.reactor_trip +
+       ', blockSR ' + eB.eng.pt.blockSR);
+  });
   }
 
   if (grp('T')) {
@@ -2869,6 +2957,52 @@ function runSuite(SH, rec, quiet, only) {
        lvlEnd > 28 && lvlEnd < 40 && flowEnd > 0.1 && flowEnd < 0.9,
        'level ' + lvlEnd.toFixed(1) + ' % NR, flow ' + flowEnd.toFixed(2) +
        ' of rated (measured 0.41-0.46 at the 30-min settle of the AFAS variant)');
+  })();
+  }
+
+  /* ---- THE COOLDOWN RATE LIMIT ON THE PLANT (OWNER RULING 2026-09-28, the automatic ramp —
+   * quoted on pwr2_dumpctl.js RAMP; DESIGN_COMPANION §8.38) -----------------------------------
+   * run_pwr2_dumpctl pins the WORKING SETPOINT's walk against a stub; this is the claim the
+   * ruling is about — the PLANT's cooldown. Hot Standby, pressure mode, DUMP SETPOINT typed
+   * 1020 -> 814 psi (7.03 -> 5.61 MPa) in one entry: 27 degF (15 degC) of saturation drop, a
+   * ~27 plant-minute walk at 60 degF/hr. MEASURED (2026-09-28, engine-direct, this fixture):
+   * 1-minute Tavg rate -58 to -68 degF/hr through the walk (the PI modulates the valve 0-4 %),
+   * steam 813.6 psia at +30 min against 813.7. The band on the rate is the limit x 1.25 — the
+   * PI's own modulation, declared — and the lower band proves the walk is not a crawl.
+   * Pre-ruling plant (limiter deleted): the same entry cools at hundreds of degF/hr in the
+   * first minutes. The clean run only — shell-source mutations cannot move a dumpctl claim, and
+   * a 30-plant-minute ride per untagged replay is ~15 s x the untagged count. */
+  if (only === 'CR' || (only === undefined && !quiet)) {
+  head('THE COOLDOWN RATE LIMIT ON THE PLANT  [a typed DUMP SETPOINT is a target, walked at the limit]');
+  (function () {
+    var eR = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
+    run(eR, 60);
+    var limF = globalThis.RD.pwr2.dumpctl.RAMP.cooldown_f_per_hr;
+    var T0 = eR.getTrueState().tavg_c, Tp = T0, worst = 0, arriveMin = null;
+    eR.applyCommand({ action: 'set_steam_dump_setpoint', mpa: 5.61 });
+    for (var m = 1; m <= 35; m++) {
+      run(eR, 60);
+      var Tm = eR.getTrueState().tavg_c, rF = (Tm - Tp) * 60 * 1.8;
+      Tp = Tm;
+      if (rF < worst) worst = rF;
+      if (arriveMin === null && eR.eng.dc.pressure_setpoint_mpa <= 5.61 + 1e-9) arriveMin = m;
+    }
+    var cs = eR.getControlState(), P = eR.eng.sg.P;
+    ck('a 1020 -> 814 psi DUMP SETPOINT entry cools the plant no faster than the limit (worst ' +
+       '1-minute Tavg rate within ' + limF + ' degF/hr x 1.25)',
+       worst >= -1.25 * limF && worst < -0.8 * limF,
+       'worst ' + worst.toFixed(1) + ' degF/hr against a ' + limF + ' degF/hr limit');
+    ck('...and it still ARRIVES: the working setpoint reaches the target and the steam header ' +
+       'sits on it (within 3 psi)',
+       arriveMin !== null && Math.abs(P - 5.61) * 145.0377 < 3 &&
+       Math.abs(cs.steam_dump_setpoint - 5.61) < 1e-9,
+       'working setpoint at target by +' + arriveMin + ' min; steam ' + (P * 145.0377).toFixed(1) +
+       ' psia; the box reads ' + (cs.steam_dump_setpoint * 145.0377).toFixed(1) + ' psi throughout');
+    eR.applyCommand({ action: 'set_steam_dump_setpoint', mpa: 7.03 });
+    run(eR, DT);
+    ck('an UPWARD entry is not limited: the working setpoint is back on 1020 psi one step later',
+       eR.eng.dc.pressure_setpoint_mpa === 7.03,
+       (eR.eng.dc.pressure_setpoint_mpa * 145.0377).toFixed(1) + ' psia working setpoint');
   })();
   }
 }
@@ -3119,9 +3253,17 @@ var MUTATIONS = [
    * The sweep above then finds the rows shared by reference and the arm that says only the
    * caption may move reds. run_pwr2_kernel band 6 owns the PLANT half (the mitigations
    * measurably do not happen); this is the config half. */
-  ['the containment caption override is dropped (the shared spray/MSLI text comes back)',
-   "          if (a.id === 'ctmt_press_hi') {\n            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });\n          }",
-   '', { grp: 'A' }],
+  /* MUTATION RETIRED (#784, OWNER RULING 2026-09-21 "Drop the override"): 'the containment
+   * caption override is dropped (the shared spray/MSLI text comes back)'. Its anchor was the
+   * override this change removed, so it is ORPHANED -- and, more to the point, it is a
+   * mutation whose SUBJECT no longer exists: dropping the override is now the correct state,
+   * not a defect. Re-anchoring it would have been pinning a non-event.
+   *
+   * The claim it carried has not gone anywhere. The two rows now fall to the sweep's
+   * `a === baseAlarms[i]` identity clause above, and the mutation that exercises THAT clause
+   * -- any per-plant copy of a shared row -- still stands. run_pwr2_kernel's own copy of this
+   * mutation was retired the same day for the same reason: it went BLIND the moment #784
+   * shipped, because the restored shared text stopped being a false promise. */
   ['the shutdown group reverts to the pre-#506 snap (200 -> 0 in one frame on scram)',
    "          steps: Math.round(e.sdSteps), max_steps: bankSteps()," + NL_ +
    "          position_pct: 100 * e.sdSteps / bankSteps(),",
@@ -3278,6 +3420,11 @@ var MUTATIONS = [
    '    this.instruments.reset(this._ts, this._instrExtras());\n' +
    '    this.instruments.update(this._ts, 0.02, this._instrExtras());\n' +
    '  };', { grp: 'U' }],
+  /* rc8f: the SR row's would-trip off the intermediate range (group P6) */
+  ['the SR row stops deriving its would-trip from the INTERMEDIATE range (a blocked row at power ' +
+   'reads BLOCKED and one click trips the reactor)',
+   "    if (srB && typeof irRd === 'number' && irRd >= root.RD.pwr2.protection.srTripIrAmps())\n" +
+   '      srAsserted = true;\n', '', { grp: 'P6' }],
   ['engine.seed is left STALE across loadState() (the restored instruments\' seed is never ' +
    'read back)',
    '    this.instruments.load(st.shellIns);\n' +
@@ -3285,15 +3432,25 @@ var MUTATIONS = [
    '    this.instruments.load(st.shellIns);', { grp: 'U' }]
 ];
 
+/* ---- THE NULL MUTATION, ONE PER GROUP (#657) --------------------------------------------
+ * GROUPS is the set of `.grp` tags MUTATIONS actually uses (not a hand-written map — the #513
+ * property). One no-op replay per group proves the QUIET-shortened ride is not, on its own,
+ * red for a group — the convention and rationale are in mut_flags.nullSelfTest. MUT_TOTAL
+ * freezes the real mutation count before the null entries are appended, since a null is a
+ * self-test OF the instrument, not a unit of coverage. */
+var GROUPS = MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
+  .filter(function (g, i, a) { return g && a.indexOf(g) === i; });
+var NULLS = MUT.nullSelfTest({ groups: GROUPS, anchor: "'use strict';" });
+var MUT_TOTAL = MUTATIONS.length;
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
 /* ---- SCOPED-CLEAN-PASS PREFLIGHT (#513) ------------------------------------------------
  * Every group a mutation names must be GREEN when run alone on the clean build. In the replay
  * loop a crash counts as caught, so a group whose checks lean on another section's setup would
  * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
 var scopeBad = 0;
 var SH0 = loadAll();
-MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
-  .filter(function (g, i, a) { return g && a.indexOf(g) === i; })
-  .forEach(function (g) {
+GROUPS.forEach(function (g) {
     var rg = [], threw = false;
     try { runSuite(SH0, rg, true, g); } catch (e) { threw = true; }
     var fg = rg.filter(function (r) { return !r.ok; }).length;
@@ -3306,11 +3463,19 @@ MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
     }
   });
 
-console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
+console.log('\ninjection self-test (' + MUT_TOTAL + ' mutations + ' + NULLS.entries.length +
+  ' null self-tests):');
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (mt) {
   var grpTag = (mt[3] && mt[3].grp) || undefined;
   var mutated = SHSRC.replace(mt[1], mt[2]);
+  if (NULLS.is(mt[0])) {
+    if (mutated === SHSRC) { NULLS.score(mt[0], { anchorMiss: true }); return; }
+    var recN = [], crashedN = false;
+    try { runSuite(loadAll(mutated), recN, true, grpTag); } catch (e) { crashedN = true; }
+    NULLS.score(mt[0], { base: SHSRC, mutated: mutated, rec: recN, crashed: crashedN });
+    return;
+  }
   if (mutated === SHSRC) { console.log('  ANCHOR MISS ' + mt[0]); blind++; return; }
   var rec2 = [], crashed = false;
   try { runSuite(loadAll(mutated), rec2, true, grpTag); }
@@ -3328,9 +3493,11 @@ MUT.select(MUTATIONS).forEach(function (mt) {
 loadAll();
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
   (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
+/* printed BEFORE the tally line, never after: run_all scrapes the LAST token-bearing line. */
+var nullFail = NULLS.report();
 console.log('  run_pwr2_shell: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 || scopeBad > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || scopeBad > 0 || nullFail > 0 ? 1 : 0);

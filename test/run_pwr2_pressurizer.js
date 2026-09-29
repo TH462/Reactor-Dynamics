@@ -679,7 +679,13 @@ function runSuite(RD, rec, quiet) {
       ' %, demand ' + prC.charging_demand.toFixed(2) + ' — a railed demand is a wound-up ' +
       'integral, the first closed-loop probe\'s measured defect');
   var lvlPre = prC.level_pct;
-  rideC(quiet ? 40 : 120, 6.0);
+  /* 40 -> 60 s (#657 null self-test). THE RED WAS THE DRAIN LEG, NOT THE RECOVERY BELOW:
+   * `demDrained >= 1` is the clause that failed, and charging does not rail until the level has
+   * fallen far enough. MEASURED at 1 s resolution on this fixture: demand 0.904 at 40 s, 0.99887
+   * at 42 s, 1.00000 from 43 s and flat at 1.00000 for the whole remaining 160 s of drain -- so
+   * 60 s is 40 % past the edge onto a saturated plateau, not a cliff. The recovery ride below
+   * was already clearing its bar at 80 s (+1.86 of a +1 bar) and is untouched. */
+  rideC(quiet ? 60 : 120, 6.0);
   var lvlDrained = prC.level_pct, demDrained = prC.charging_demand;
   rideC(quiet ? 80 : 300, 0);
   ckT('a 6 kg/s drain pulls the level down and the controller answers with FULL charging',
@@ -882,6 +888,66 @@ function runSuite(RD, rec, quiet) {
   ckT('no step of any ride approaches P_JUMP_MAX (2.0 MPa/step)',
       iInf.maxStep < 0.1 && iOut.maxStep < 0.1,
       'max |dP|/step ' + Math.max(iInf.maxStep, iOut.maxStep).toFixed(4) + ' MPa');
+  /* ---- WHERE THE INSURGE LANDS, AND WHAT IT BRINGS (#657 blind spots) ----------------------
+   * Two mutations survived everything above: the insurge handed to `addPool` (formulation 2
+   * re-armed) and the arrival enthalpy dropped to h_f. Neither moves any quantity the checks
+   * above read — the pressure still rises, the level still rises monotonically, every region
+   * is still single-phase at the boundary, and `singlePhase` asks only that h_sub <= h_f + eps,
+   * which a SATURATED layer satisfies exactly. The stratification is the whole reason the
+   * bottom layer exists (D5 §84), so it has to be asserted where it is VISIBLE: on the ride
+   * that puts 112 kg of 316 degC water into a 344 degC vessel.
+   *
+   * ⚠ THE FIXTURE IS RE-BUILT HERE rather than read off `iAdopt`, because both claims are about
+   * a CHANGE across the surge and `pOnly` keeps only the end state. Same harness, same
+   * +37 kg/s for 3.0 s, one step taken first so the "before" is a settled step boundary. */
+  var surgeAB = (function () {
+    var p = PZ.createPressurizer({});
+    var s = CORE.createSystem({ nodes: [{ id: 'hot_leg', V: 1.0, h: W.h_l(316, 15.41) },
+                                        { id: 'cold_leg', V: 1.0, h: W.h_l(288, 15.41) }],
+                                P: 15.41, extraMass: PZ.extraMassFn(p) });
+    s.mdot_loop = 1630;
+    var drv = { spray_manual: 0, heaters_manual: 0, block_valve: false }, hh = W.h_l(316, 15.41);
+    PZ.stepPressurizer(p, s, DT, drv);
+    var m0 = p.m_sub + p.m_sat, E0 = p.m_sub * p.h_sub + p.m_sat * p.h_sat,
+        sub0 = p.m_sub, sat0 = p.m_sat;
+    for (var t = 0; t < 3.0; t += DT) {
+      CORE.step(s, DT, { sources: [{ node: 'hot_leg', mdot: 37, h: hh }] });
+      PZ.stepPressurizer(p, s, DT, drv);
+    }
+    var hotH = null;
+    for (var i = 0; i < s.nodes.length; i++) if (s.nodes[i].id === 'hot_leg') hotH = s.nodes[i].h;
+    var dmL = (p.m_sub + p.m_sat) - m0;
+    return { dSub: p.m_sub - sub0, dSat: p.m_sat - sat0, dmL: dmL, hotH: hotH,
+             hArr: ((p.m_sub * p.h_sub + p.m_sat * p.h_sat) - E0) / dmL,
+             hf: W.h_f(s.P), h_sub: p.h_sub, P: s.P };
+  })();
+  /* 1. IT STRATIFIES. The insurge belongs in the BOTTOM layer, not mixed through the saturated
+   * pool — that difference is the bubble's job, and handing it to liquid density is the
+   * formulation this vessel was rebuilt to leave behind.
+   * MEASURED: the liquid inventory gains 112.2 kg, of which 108.4 kg (96.6 %) arrives in the
+   * stratified layer and 3.8 kg in the pool (rain-out). With the insurge routed to `addPool`
+   * it is 0.0 kg and 113.4 kg — the layer is never created at all. The 80 % bar sits 16.6
+   * points inside the measurement and the defect cannot produce any fraction above zero. */
+  ckT('an insurge STRATIFIES in the bottom layer -- it does not mix through the saturated pool',
+      surgeAB.dmL > 100 && surgeAB.dSub / surgeAB.dmL > 0.80,
+      surgeAB.dSub.toFixed(1) + ' of ' + surgeAB.dmL.toFixed(1) + ' kg (' +
+      (100 * surgeAB.dSub / surgeAB.dmL).toFixed(1) + ' %) landed in the layer, ' +
+      surgeAB.dSat.toFixed(1) + ' kg in the pool; routed to addPool it is 0.0 / 113.4');
+  /* 2. AND IT BRINGS THE HOT LEG'S ENTHALPY WITH IT. Asserted on the ENERGY the liquid gains
+   * per kg gained, not on h_sub, and deliberately: h_sub also reads wrong when the layer is
+   * never created (check 1's defect), while the energy form is placement-blind and answers
+   * only the question "what enthalpy arrived".
+   * ⚠ THE PRECONDITION IS PART OF THE CHECK. If the hot leg were AT saturation the two
+   * formulations would be the same number and this would be an identity — so the fixture's own
+   * subcooling is asserted from Layer 0, not assumed. MEASURED: the hot leg sits at
+   * 1429.4 kJ/kg against h_f = 1674.2, 244.8 kJ/kg (a 244.8 kJ/kg deficit is ~28 degC of
+   * subcooling at this pressure); the liquid gains 1500.3 kJ/kg, 173.9 BELOW saturation.
+   * With the arrival dropped to h_f it gains 1732.4 kJ/kg -- 48.7 kJ/kg ABOVE it, the wrong
+   * side of the bar by 148.7. The bar is h_f - 100, which is 73.9 inside the measurement. */
+  ckT('...at the HOT LEG\'s enthalpy -- the liquid gains energy well BELOW saturation',
+      surgeAB.hotH < surgeAB.hf - 150 && surgeAB.hArr < surgeAB.hf - 100,
+      surgeAB.hArr.toFixed(1) + ' kJ/kg gained per kg, against h_f ' + surgeAB.hf.toFixed(1) +
+      ' and a hot leg at ' + surgeAB.hotH.toFixed(1) + '; an arrival at h_f reads 1732.4');
   /* MANUAL heaters and spray on the design vessel, no surge: the two authorities act on their
    * own regions (heaters boil the liquid, spray condenses the steam) */
   var iHeat = pOnly(0, 60, tauSaved, { heaters_manual: 1 });
@@ -908,6 +974,47 @@ function runSuite(RD, rec, quiet) {
       Math.abs(100 * migrated.V_liq / migrated.V - 55) < 0.5 && migrated.h_bar === undefined,
       'seat ' + PZ.extraMassFn(migrated)(15.41).toFixed(2) + ' vs ' + oldPz.m_pzr.toFixed(2) +
       ' kg, level ' + (100 * migrated.V_liq / migrated.V).toFixed(2) + ' %');
+  /* ...AND THE SAVE THAT NEEDS NO OTHER MIGRATION GETS ITS SHELL (#587, blind until #657).
+   * A post-#515 save already carries regions, so it takes migrateState's early return — the
+   * wall build sits BEFORE that return for exactly this path, and nothing was reading it. The
+   * shell checks at the top of this file all build a FRESH vessel, which takes the constructor's
+   * own wall seat and says nothing about the restore path.
+   * ⚠ ASSERTED AS AN EFFECT AND AN A/B, not as a field: `createPressurizer({ dryWall: true })`
+   * IS the pre-#587 save shape (regions, no metal), so the same insurge ride runs three ways.
+   * MEASURED over the +37 kg/s, 3 s insurge: the restored vessel exchanges -5.95 kJ with its
+   * metal, peaking at 4.17 kW, and that is the SAME number a freshly built vessel exchanges to
+   * 0.01 kJ; the metal-less vessel exchanges exactly 0.00. With the build skipped the restored
+   * vessel reads 0.00 too and the pressure response is the dry one. */
+  var wallAB = (function () {
+    function insurge(pz) {
+      var s = CORE.createSystem({ nodes: [{ id: 'hot_leg', V: 1.0, h: W.h_l(316, 15.41) },
+                                          { id: 'cold_leg', V: 1.0, h: W.h_l(288, 15.41) }],
+                                  P: 15.41, extraMass: PZ.extraMassFn(pz) });
+      s.mdot_loop = 1630;
+      var drv = { spray_manual: 0, heaters_manual: 0, block_valve: false },
+          hh = W.h_l(316, 15.41), Q = 0, peak = 0, r;
+      PZ.stepPressurizer(pz, s, DT, drv);
+      for (var t = 0; t < 3.0; t += DT) {
+        CORE.step(s, DT, { sources: [{ node: 'hot_leg', mdot: 37, h: hh }] });
+        r = PZ.stepPressurizer(pz, s, DT, drv);
+        Q += (r.wall_kW || 0) * DT;
+        if (Math.abs(r.wall_kW || 0) > peak) peak = Math.abs(r.wall_kW || 0);
+      }
+      return { Q: Q, peak: peak };
+    }
+    var restored = PZ.migrateState(PZ.createPressurizer({ P: 15.41, dryWall: true }), 15.41);
+    var fresh = PZ.createPressurizer({ P: 15.41 });
+    return { M: restored.wall ? restored.wall.M_kg : 0,
+             Mfresh: fresh.wall ? fresh.wall.M_kg : 0,
+             r: insurge(restored), f: insurge(fresh),
+             d: insurge(PZ.createPressurizer({ P: 15.41, dryWall: true })) };
+  })();
+  ckT('...and a save that needs NO other migration still comes back with WORKING shell metal',
+      wallAB.M > 0 && wallAB.M === wallAB.Mfresh &&
+      wallAB.r.Q < -1 && Math.abs(wallAB.r.Q - wallAB.f.Q) < 0.01 && Math.abs(wallAB.d.Q) < 1e-12,
+      wallAB.M.toFixed(0) + ' kg of metal taking ' + (-wallAB.r.Q).toFixed(2) + ' kJ out of the ' +
+      'insurge (peak ' + wallAB.r.peak.toFixed(2) + ' kW) against ' + (-wallAB.f.Q).toFixed(2) +
+      ' kJ for a freshly built vessel and ' + wallAB.d.Q.toFixed(2) + ' for one with no metal');
 
   /* ---- 8. THE CHOKED RELIEF LAW (#515 Build 2, 2026-08-26) --------------------------------- */
   head('THE CHOKED RELIEF  [area from the rating, flux from Layer 0; steam, then flashing water]');
@@ -1258,10 +1365,27 @@ var MUTATIONS = [
    'var auxFrac = drivers.aux_spray === undefined ? 0 : clip(drivers.aux_spray, 0, 1);']
 ];
 
-console.log('\ninjection self-test (' + MUTATIONS.length + ' mutations):');
+/* ---- THE NULL MUTATION (#657) -------------------------------------------------------------
+ * This runner has no `grp()` scoping — every replay runs the WHOLE suite quiet — so there is
+ * exactly one group: the one short (quiet) ride every real mutation is also replayed on. One
+ * no-op edit proves that ride is not, on its own, red. MUT_TOTAL freezes the real count first;
+ * a null is a self-test OF the instrument, not a unit of coverage. */
+var MUT_TOTAL = MUTATIONS.length;
+var NULLS = MUT.nullSelfTest({ groups: ['ALL'], anchor: "'use strict';" });
+MUTATIONS = MUTATIONS.concat(NULLS.entries);
+
+console.log('\ninjection self-test (' + MUT_TOTAL + ' mutations + ' + NULLS.entries.length +
+  ' null self-tests):');
 var blind = 0;
 MUT.select(MUTATIONS).forEach(function (m) {
   var mutated = PZSRC.replace(m[1], m[2]);
+  if (NULLS.is(m[0])) {
+    if (mutated === PZSRC) { NULLS.score(m[0], { anchorMiss: true }); return; }
+    var recN = [], crashedN = false;
+    try { runSuite(loadAll(mutated), recN, true); } catch (e) { crashedN = true; }
+    NULLS.score(m[0], { base: PZSRC, mutated: mutated, rec: recN, crashed: crashedN });
+    return;
+  }
   if (mutated === PZSRC) {
     console.log('  ANCHOR MISS ' + m[0] + '   <-- mutation did not apply');
     blind++;
@@ -1276,9 +1400,10 @@ MUT.select(MUTATIONS).forEach(function (m) {
 loadAll();   /* restore the real module for whoever requires after us */
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUTATIONS.length - blind) + '/' + MUTATIONS.length +
+console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots'));
+var nullFail = NULLS.report();
 console.log('  run_pwr2_pressurizer: ' + pass + ' passed, ' + fail + ' failed  (' +
   rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || nullFail > 0 ? 1 : 0);

@@ -4,18 +4,22 @@
  * The chain-reaction lesson, re-run as a checkpoint: the player takes the
  * core from hot-zero-power shutdown to CRITICAL and stabilizes between 1 %
  * and 10 % power — this time with the source-range counter live (the
- * chain-reaction mission secured it for them), so the SR→IR handoff is part
- * of the grade. One briefing card, one quiet word at criticality, then the
+ * chain-reaction mission coached the P-6 block), so the SR→IR handoff is part
+ * of the grade (the P-6 block, OWNER RULING 2026-09-26 "B"). One briefing card, one quiet word at criticality, then the
  * instruments do the talking (the pwr_qualify register).
  *
- * Probed calibration (scratchpad probe_startup1/2/3, seed 42):
- *   - HZP: SR reads ~5e2 cps, IR ~8e-9 A — P-6 is already satisfied, so
- *     set_sr_detector off is legal from the first second (the interlock only
- *     refuses in deep shutdown, IR < 1e-10 A).
- *   - SR left energized: its 1e5 cps trip ends the climb at t≈120 s
- *     (~0.017 % power); sr_energized stays TRUE after the scram (the auto
- *     re-energize actuation needs IR < 1e-10 A — hours away), so the
- *     diagnose beat can grade the handoff on true state.
+ * ⚠ SHIPPED-ENGINE FACTS (rc8f, 2026-09-27 — owner ruling "B", the P-6 source-range block;
+ * MEASURED by test/run_preview_scenarios_pwr2.js on pwr2, seed 42). The bullet this replaces said
+ * "IR ~8e-9 A — P-6 is already satisfied" at hot zero power; on the shipped plant that is FALSE:
+ *   - HZP: SR ~530 cps, IR 1.64e-11 A — P-6 (1e-10 A) is NOT met. A held Normal-speed pull
+ *     brings it in at ~247 s (IR 1.06e-10 A, SR ~3,100 cps); the player then BLOCKS the SR trip
+ *     (TRIP BLOCKS -> SOURCE RANGE HIGH FLUX), which also removes the detector high voltage, so
+ *     `sr_energized` false is the graded handoff on either engine.
+ *   - Block not taken: the SR high-flux trip (1e5 cps) ends the climb; `sr_energized` stays TRUE
+ *     after the scram (the block was never taken), so the diagnose beat names it.
+ * The bullets BELOW are the RETIRED engine's probes (run_campaign still drives them there) and
+ * were NOT re-measured on pwr2 — in particular the 1.5 DPM withdrawal block does not exist on the
+ * shipped plant (#572), whose startup net is the IR rod stop (20 %) and IR trip (25 %).
  *   - Re-probed 2026-07-25 for the tightened SUR interlock (block 1.5 DPM,
  *     clears 0.8 — issue #134; was 2.5/1.5, which never fired on a startup).
  *   - A CONTINUOUS pull no longer runs away: the block interrupts it at
@@ -52,8 +56,8 @@
       { id: 'briefing',
         trigger: { type: 'time', value: 2.0 },
         commentary: {
-          learning: 'Your board, your startup. The reactor is shut down: control bank full in, the source-range counter alive at a few hundred counts. The exam is one clean solo startup — take the core critical and stabilize anywhere between 1 and 10 percent power, without a trip. Two protections are waiting to grade you. The source-range counter trips at 100,000 counts — barely 0.02 percent power — so secure it before your climb gets there; the intermediate range is already on scale to carry the watch. Above the band, the intermediate-range trip ends careless overshoots. Your startup-rate meter is the truth: pull gently, and remember that rods ADD reactivity only rods take back — the withdrawal interlock can freeze your hand, but it cannot subtract. The 1/M plot is there if you want it. One quiet word at criticality; after that, the instruments do the talking.',
-          industry: 'Startup examination, solo. IC: HZP, control bank 0 steps, SR energized (~5e2 cps), IR on scale (P-6 satisfied). Task: establish criticality and stabilize in the 1–10 % band, executing the SR→IR handoff (de-energize SR before 1e5 cps) en route; no protective actuation. SUR withdrawal inhibit 1.5/0.8 DPM active; IR high-flux trip 1.67e-3 A (≈20 %). Single criticality acknowledgment; no further coaching. Commencing.',
+          learning: 'Your board, your startup. The reactor is shut down: control bank full in, the source-range counter alive at a few hundred counts, the intermediate range still below its scale. The exam is one clean solo startup — take the core critical and stabilize anywhere between 1 and 10 percent power, without a trip. Two protections are waiting to grade you. The source-range counter trips at 100,000 counts — a tiny fraction of one percent power — so once the intermediate range comes on scale partway up the approach (P-6), open TRIP BLOCKS and BLOCK SOURCE RANGE HIGH FLUX before your climb gets there. Above the band, the intermediate-range trip ends careless overshoots. Your startup-rate meter is the truth: pull gently, and remember that rods ADD reactivity only rods take back — a rod stop can freeze your hand, but it cannot subtract. The 1/M plot is there if you want it. One quiet word at criticality; after that, the instruments do the talking.',
+          industry: 'Startup examination, solo. IC: HZP, control bank 0 steps, SR energized (~5E2 cps), IR below P-6 (1E-10 A). Task: establish criticality and stabilize in the 1–10 % band, executing the SR→IR handoff en route — block the SR high-flux trip at P-6 (detector high voltage removed with the block) before 1E5 cps; no protective actuation. IR high-flux trip armed above the band. Single criticality acknowledgment; no further coaching. Commencing.',
         },
         advance: 'wait_for_trigger' },
 
@@ -69,7 +73,7 @@
         ] },
 
       // The one quiet word. The graded hold: 120 s after this fires, in band
-      // with the SR secured, in either order of achievement. The 12 % branch
+      // with the SR blocked, in either order of achievement. The 12 % branch
       // intercepts every runaway (probed ~7 s ahead of the IR trip) AND the
       // slow creep that exits the band top without ever tripping.
       { id: 'critical_marker',
@@ -103,8 +107,8 @@
       { id: 'passed',
         trigger: { type: 'delay', value: 2.0 },
         commentary: {
-          learning: 'Exam over — passed. You woke a dead-quiet core, walked it through criticality, and parked it inside the band with the source-range counter secured before its gate could object. The handoff happened when it had to, the rate never ran away from you, and the protection stayed a spectator. That is the whole craft of a startup: reactivity in small honest amounts, instruments believed, trips never consulted.',
-          industry: 'Solo startup complete: criticality established, SR de-energized ahead of the 1e5 cps gate, power stabilized 1–10 % with zero protective actuations. Examination standard met in full.',
+          learning: 'Exam over — passed. You woke a dead-quiet core, walked it through criticality, and parked it inside the band with the source-range trip blocked at P-6 before its gate could object. The handoff happened when it had to, the rate never ran away from you, and the protection stayed a spectator. That is the whole craft of a startup: reactivity in small honest amounts, instruments believed, trips never consulted.',
+          industry: 'Solo startup complete: criticality established, SR blocked at P-6 ahead of the 1E5 cps gate, power stabilized 1–10 % with zero protective actuations. Examination standard met in full.',
         },
         level_complete: {
           title: 'Criticality, Solo — Clean Startup',
@@ -118,13 +122,13 @@
         trigger: { type: 'delay', value: 1.5 },
         speed: 1,
         commentary: {
-          learning: 'A trip — and the source-range counter was still energized when it came. Its gate sits at 100,000 counts, about two-hundredths of one percent power: it ends every climb that forgets it. That is not a nuisance — at shutdown that counter is the only protection that can see the core at all. The handoff discipline: confirm the intermediate range is on scale (here it is, from the first second), secure the source range, THEN climb. Rewind and run it again.',
-          industry: 'Reactor trip with SR channel energized — SR high-flux (1e5 cps ≈ 2e-4 rated power). Required sequence: verify IR on scale (P-6 satisfied), de-energize SR, then continue the ascent. Re-examination via Rewind/Retry.',
+          learning: 'A trip — and the source-range counter was still live when it came. Its gate sits at 100,000 counts, a tiny fraction of one percent power: it ends every climb that forgets it. That is not a nuisance — at shutdown that counter is the only protection that can see the core at all. The handoff discipline: climb until the intermediate range comes on scale (P-6), BLOCK the source-range trip on the TRIP BLOCKS panel, THEN keep climbing. Rewind and run it again.',
+          industry: 'Reactor trip with SR channel energized — SR high-flux (1E5 cps). Required sequence: at P-6 (IR ≥ 1E-10 A) block the SR high-flux trip (detector high voltage removed with it), then continue the ascent. Re-examination via Rewind/Retry.',
         },
         level_complete: {
           title: 'Startup Ended — Source Range Trip',
-          outcome_learning: 'The counter you forgot was the one watching. Secure it before the climb, not after.',
-          outcome_industry: 'SR high-flux trip during ascent: SR→IR handoff omitted. Re-run required.',
+          outcome_learning: 'The counter you forgot was the one watching. Block it at P-6, before it reaches its gate.',
+          outcome_industry: 'SR high-flux trip during ascent: P-6 block (SR→IR handoff) omitted. Re-run required.',
           actions: ['continue', 'retry', 'rewind'],
         },
         advance: 'end' },
@@ -133,8 +137,8 @@
         trigger: { type: 'delay', value: 1.5 },
         speed: 1,
         commentary: {
-          learning: 'A trip, with the handoff already done — so the machine caught you on the physics, not the counter. The sobering arithmetic of startup rate: at two decades per minute, one percent becomes twenty in under a minute, and the intermediate-range net waits exactly there. The withdrawal interlock freezes your bank when the rate hits 1.5 DPM, but an interlock cannot subtract reactivity — only insertion can, and everything you banked below that rate is still in the core. Stop pulling the moment power comes alive, and kill the rate before it kills the run.',
-          industry: 'Reactor trip during the graded startup with SR secured. Review: SUR management — terminate withdrawal at criticality, insert to null SUR inside the band; the withdrawal inhibit (≥1.5 DPM, clears &lt;0.8) limits rate of addition but removes nothing. Re-examination via Rewind/Retry.',
+          learning: 'A trip, with the handoff already done — so the machine caught you on the physics, not the counter. The sobering arithmetic of startup rate: at two decades per minute, one percent becomes twenty in under a minute, and the intermediate-range net waits just above. A rod stop can freeze your bank, but it cannot subtract reactivity — only insertion can, and everything you banked is still in the core. Stop pulling the moment power comes alive, and kill the rate before it kills the run.',
+          industry: 'Reactor trip during the graded startup with the SR blocked. Review: SUR management — terminate withdrawal at criticality, insert to null SUR inside the band; a rod stop halts addition but removes nothing. Re-examination via Rewind/Retry.',
         },
         level_complete: {
           title: 'Startup Ended — Tripped on the Climb',
@@ -148,8 +152,8 @@
         trigger: { type: 'delay', value: 1.5 },
         speed: 1,
         commentary: {
-          learning: 'You made criticality — and then let the rise slide past the top of the band. Above ten percent this exam is over, and on a trajectory like this the intermediate-range trip at twenty percent is only seconds behind. The rise feels gentle right up until the decades start arriving; what parks a startup is insertion, early and unhurried, the moment power enters the band. Rewind and put the brakes on sooner.',
-          industry: 'PR > 12 % — grading ceiling (10 %) exceeded; IR high-flux (1.67e-3 A ≈ 20 %) imminent on the observed trajectory. Examination terminated. Corrective: null SUR by insertion on band entry; excess reactivity from the pull must be removed, not ridden.',
+          learning: 'You made criticality — and then let the rise slide past the top of the band. Above ten percent this exam is over, and on a trajectory like this the intermediate-range trip is only seconds behind. The rise feels gentle right up until the decades start arriving; what parks a startup is insertion, early and unhurried, the moment power enters the band. Rewind and put the brakes on sooner.',
+          industry: 'PR > 12 % — grading ceiling (10 %) exceeded; IR high-flux trip imminent on the observed trajectory. Examination terminated. Corrective: null SUR by insertion on band entry; excess reactivity from the pull must be removed, not ridden.',
         },
         level_complete: {
           title: 'Startup Ended — Band Overshot',

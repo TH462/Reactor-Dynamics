@@ -6,7 +6,7 @@
  * a single figure in it against the running plant. Measured when this was written, against
  * `engines/pwr2/pwr2_protection.js`:
  *
- *     power range high        120 %      the plant trips at 118 %
+ *     power range high        120 %      the plant trips at 115 %
  *     power range low          25 %      the plant trips at  35 %
  *     primary pressure high  2384 psi    the plant trips at 2425 psia
  *     primary pressure low   1800 psi    the plant trips at 1775 psia
@@ -108,7 +108,10 @@ var ROWS = [
    * PERMISSIVE, and that permissive's number is checked on the **P-9** row below. Narrative
    * here means "the figure lives one table down", not "nothing to check against". */
   { m: /^\*\*Turbine trip \(P-9\)\*\*/,      narrative: true },
-  /* THE PLANT HAS NO SOURCE-RANGE REACTOR TRIP, and the row documented one at 1e5 cps (#642).
+  /* THE SOURCE-RANGE REACTOR TRIP EXISTS SINCE 2026-09-26 (OWNER RULING, "B": a manual SR block
+   * at P-6, superseding #598 item 7's auto-off) — pwr2_protection SR_TRIP, 1e5 cps, checked like
+   * every other row. The history below is why the row was `absent` until then.
+   * WAS: THE PLANT HAS NO SOURCE-RANGE REACTOR TRIP, and the row documented one at 1e5 cps (#642).
    * Nothing could catch it: 1e5 cps IS a real constant here — `pwr2_true_state`'s SR_SECURE_CPS,
    * where the channel DE-ENERGIZES — so the figure was right and the function was absent. The
    * de-energization is also what hid it, because a count rate that stops at 1e5 can never reach
@@ -116,7 +119,7 @@ var ROWS = [
    * channel stays live and publishes 1.285e11 cps at 50 % power, and the plant does not scram.
    * `pwr2_protection` has fourteen functions and none of them is source range; the RETIRED plant's
    * `sr_high` trip at 1.0e5 is in `pwr_control.js` and reaches PWR2 through a `trips: []`. */
-  { m: /^Source range/,   absent: true, what: 'a source-range high-flux reactor trip' },
+  { m: /^Source range/,                      want: P.SR_TRIP.cps,                  unit: 'cps', tol: 1 },
   /* NO LONGER NARRATIVE (#601). It was listed here as "no single plant constant to check
    * against", which was true only while the plant had no intermediate-range trip — and that is
    * precisely how the row came to carry 1.67e-3 A, the ROD STOP's setpoint, for the trip. The
@@ -136,8 +139,10 @@ var ROWS = [
   /* Ginna's numeric P-12 is in its TS proper, which is not in the corpus — the 532.4 °F here is
    * the plant's LO TAVG annunciator, and that alarm IS checked, by the §4.0 tables below. */
   { m: /^\*\*P-12\*\*/,                      narrative: true },
-  /* ABSENT, same finding as the source-range trip row (#642): the block protects the counter
-   * against being switched back on at high flux, and this plant has no switch — `set_sr_detector`
+  /* ABSENT (#642; restated 2026-09-26): the interlock refuses switching the counter back on at
+   * high flux. The SR block that arrived 2026-09-26 is never refused on release — above 1e5 cps
+   * releasing it trips the reactor instead — so there is still no interlock here. Was: the block
+   * protects the counter against being switched back on at high flux, and this plant has no switch — `set_sr_detector`
    * is REFUSED by the shell by name and the board button was deleted at #598 item 7. The 1e-6 A
    * is the retired plant's interlock, live there and dead here (measured: PWR2's kernel gets
    * `interlocks: []`, so ZERO rows block that command). */
@@ -170,10 +175,28 @@ var ROWS = [
   { m: /^Feedwater isolation \(on SI\)/,     want: P.ESFAS.si_lo_pzr_press_psia,   unit: 'psi', tol: 1 },
   { m: /^\*\*Atmospheric dump \(ADV\)\*\*/,     want: RD.pwr2.relief.RELIEF.adv_setpoint_psig + 14.7, unit: 'psi', tol: 1 },
   { m: /^\*\*Main steam line isolation \(MSLI\)\*\*/, absent: true, what: 'any automatic main steam line isolation' },
-  { m: /^\*\*MSLI \(containment leg\)\*\*/,      absent: true, what: 'a containment-pressure steam line isolation' },
-  { m: /^\*\*SI backup \(containment\)\*\*/,     absent: true, what: 'a containment-pressure safety injection' },
-  { m: /^\*\*Containment spray\*\*/,           absent: true, what: 'containment spray' },
-  { m: /^\*\*Fan coolers/,                    absent: true, what: 'a containment fan-cooler safety realign' },
+  /* NO LONGER ABSENT (#784, 2026-09-21, OWNER RULING "Authorise it -- auto-only"). All four rows
+   * carried `absent: true` while the systems did not exist; containment spray, the recirculation
+   * fan coolers and the steam-line isolation are now BUILT auto-only inside the PWR2 engine.
+   *
+   * THE SAME LESSON #624 ITEM 14 LEFT ON THE LETDOWN ROW, and it is why these are bound to the
+   * constant rather than re-marked: `absent: true` asserts THE MARKER, never the plant, so a row
+   * that says NOT MODELLED can go on agreeing with a manual for as long as nobody re-reads it.
+   * Both containment rows now check the sourced setpoint out of `P.CTMT_ESF`, so a drift in
+   * either direction -- the constant moving, or the manual's number moving -- reddens.
+   *
+   * The spray and steam-line-isolation rows share the high-high because they are ONE bistable
+   * with two consumers; that is the plant's wiring (WTSM 12.3), so they carry the same `want`
+   * rather than two independently maintained numbers. */
+  { m: /^\*\*MSLI \(containment leg\)\*\*/,      want: P.CTMT_ESF.hihi_mpa * PSI, unit: 'psi', tol: 1 },
+  { m: /^\*\*SI backup \(containment\)\*\*/,     want: P.CTMT_ESF.si_mpa   * PSI, unit: 'psi', tol: 1 },
+  { m: /^\*\*Containment spray\*\*/,           want: P.CTMT_ESF.hihi_mpa * PSI, unit: 'psi', tol: 1 },
+  /* The fan realign has NO setpoint of its own -- it keys on ANY safety injection (Ginna TS Bases
+   * B 3.6.6: "following a SI actuation signal, the CRFC System fans are designed to start
+   * automatically if not already running"), so there is no constant for this row to check and
+   * `narrative` is the honest marking, not a dodge. Its 44 s response time IS a constant and is
+   * asserted where it belongs -- run_pwr2_ctmt_esf's resp-fan check, measured 43.94 s. */
+  { m: /^\*\*Fan coolers/,                    narrative: true },
   { m: /recombiners/,                       absent: true, what: 'hydrogen recombiners' },
   { m: /flammability alarm/,                narrative: true },
   { m: /ignition \(the burn\)/,              absent: true, what: 'a hydrogen deflagration' },

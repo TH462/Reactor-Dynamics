@@ -44,7 +44,7 @@
       CD = RD.condenser, CV = RD.cvcs, EC = RD.eccs, AW = RD.afw, DG = RD.damage,
       PT = RD.protection, PZ = RD.pressurizer, DC = RD.dumpctl, BK = RD.break_,
       CT = RD.containment, TS = RD.trueState, IN = RD.instruments, RH = RD.rhr,
-      FWM = RD.feedwater;
+      FWM = RD.feedwater, LP = RD.loop;
 
   /* the design point is ONE object, owned by pwr2_sources (its DESIGN — #509 item 3): the
    * pump's rated-density reference and these normalizations must be the same numbers, and
@@ -311,9 +311,33 @@
      * the seed was 9.3 % high and the IC — whose whole contract is to open SETTLED — rang
      * 10.50 -> 9.60 % over its first 600 s. Measured at #650, on the same harness as every
      * other figure here. `load_mwe` is the authority because the turbine enforces it; `pf`
-     * follows the plant's own heat rate at that draw and is re-measured when it moves. */
-    low_power:      { pf: 0.09604, load_mwe: 10, ctrl_steps: 227 },
-    hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true },
+     * follows the plant's own heat rate at that draw and is re-measured when it moves.
+     *
+     * ⚠ XENON-FREE, AND THE BANK AT 222 *(OWNER RULING, 2026-09-24, option selection "Rebuild the
+     * preset"; option text, not verbatim: "Make the low-power starting condition match what the
+     * startup walkthrough actually hands over (no xenon)")*. The createKinetics default seeds
+     * iodine and xenon at the IC's OWN power equilibrium, i.e. a plant that has run at 10 % for
+     * days: 17.2 % of full-power xenon, 684 ppm. The startup hands over a core that went critical
+     * minutes ago. MEASURED, `run_walkthrough_routes --leg=chain` (seed 42), the plant at the
+     * start of `pwr_raise_power` after heatup + startup on one service: xenon 0.008 % of
+     * full-power equilibrium, iodine 0.9 % of its 10 % equilibrium, bank 222, 718.7 ppm, 10.0
+     * MWe, Tavg 547.6 degF and still rising (STARTUP RATE +0.05 DPM — the handover is a
+     * transient, not a settled state). So `xenon_free` seeds I = X = 0 and the bank at 222; the
+     * criticalBoron trim then lands at **718.5 ppm** at the programme Tavg (550.3 degF), 0.2 ppm
+     * from the handover, and the state opens settled (550.5 -> 550.0 degF over its first hour
+     * as xenon starts to build). With it, the raise leg's preset and chained routes end at the
+     * same place: 589.7 degF, bank 318 (preset 35.5 plant-min, chain 36.8). Decay heat is still
+     * seeded at the 10 % equilibrium (0.60 %); the handover carries 0.29 % — left, unmeasured
+     * in effect beyond that convergence. */
+    low_power:      { pf: 0.09604, load_mwe: 10, ctrl_steps: 222, xenon_free: true },
+    /* afw_lineup + sg_mass_frac (#808): Mode 3 runs on the motor-driven aux feed pump, main feed
+     * secured (the block after the turbine latch in createEngine). The SG boots at the aux feed
+     * hold's own level, not main feed's 65 % program: mass fraction 0.7338 reads 36.7 % narrow
+     * range, where the `afw_level` channel (33 +/- 5 %, WTSM 19 step 15) settles at zero power —
+     * MEASURED, the 65 % boot boiled off to 36.5-37.0 % and held there (0.45 %/plant-minute on
+     * the way down, 65 plant-minutes) — settled construction, not a first hour of drift. */
+    hot_zero_power: { pf: 0,   load_mwe: 0, subcritical: true, afw_lineup: true,
+                      sg_mass_frac: 0.7338 },
     /* THE SHUTDOWN IC (#507 wave 10) is MODE 4, HOT SHUTDOWN — 250 degF / 350 psig,
      * RHR-held, RCPs secured, both banks in, the P-11 blocks taken (the cooldown's own
      * lineup). It is deliberately NOT Mode 5: Layer 0's property floor is 0.1 MPa, whose
@@ -469,7 +493,8 @@
      *
      * Read off the BUILT plant rather than recomputed, so designHmap's node map and this seed
      * cannot drift apart. The no-load and cold ICs have dT0 = 0 and are byte-identical. */
-    var rx = R.createReactor({ P: powf, coolTemp_c: tLeg(sys, 'core') });
+    var rx = R.createReactor({ P: powf, coolTemp_c: tLeg(sys, 'core'),
+                               I: ic.xenon_free ? 0 : undefined, X: ic.xenon_free ? 0 : undefined });
     /* TWO BANKS (#506.3, 2026-08-22): control + shutdown, worths from the kinetics module's
      * own gated pair (WTSM 2.2 Table 2.2-1: 4068 / 3676 pcm — the citation, ML11216A051, is
      * NOT in the corpus; the figures are cited-but-uncorroborated, recorded in
@@ -547,7 +572,9 @@
      * (byte-identical construction, the save-replay bar). */
     var sgDesign = G.createSG({});            /* the DESIGN point: 825 psia, Ginna outlet class */
     var sg = ic.pf === 1 ? sgDesign
-           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))) });
+           : G.createSG({ P: W.P_sat(tavg0 - ic.pf * (TREF - W.T_sat(sgDesign.P))),
+                          mass: ic.sg_mass_frac === undefined ? undefined
+                              : ic.sg_mass_frac * G.SG.mass_nominal });
     /* rated_steam is the RATED scale — every secondary normalization's denominator (main feed
      * is feed_frac × it, the dumps are 0.28 × it, the code safeties 0.84 × it, and the AFW
      * fraction divides by it). It is FROZEN ON BOTH AXES steamDemand reads: the RATED dispatch
@@ -608,7 +635,10 @@
        * IDENTICAL ON ALL SIX ICs UNDER BOTH SETS OF `pf` VALUES (checked, HR10): the only one it
        * moves is `low_power`, and only back to what it always meant. A seed can be re-derived;
        * the dispatch is what the turbine enforces. */
+      /* ...and the SOURCE-RANGE block (2026-09-26): an at-power plant took it at P-6 on the
+       * way up, three decades below P-10, so the same on-the-grid test states it */
       pt: PT.createProtection({ blockLowFlux: ic.load_mwe > 0, blockIrHigh: ic.load_mwe > 0,
+                                blockSR: ic.load_mwe > 0,
                                 blockLoPress: !!ic.cold, blockSI: !!ic.cold }),
       brk: null,
       ctm: CT.createContainment({}),
@@ -803,6 +833,35 @@
      * by neither measure but IS on the grid at 10 MWe, and a tripped turbine there would be a
      * plant that cannot exist. */
     if (!(ic.load_mwe > 0)) eng.tb.tripped = true;
+    /* MODE 3 RUNS ON AUXILIARY FEED, MAIN FEED PUMPS SECURED *(OWNER, 2026-09-27, #808 item A:
+     * "Yes", on the proposal "Mode 3 runs on auxiliary feed, main feed pumps off; a new startup
+     * step at about 2 % starts main feed and secures auxiliary feed")*. It extends the 2026-09-02
+     * Mode 5 ruling ("Feed pumps secured", the cold branch above) up to Hot Standby.
+     *   [sourced] Ginna UFSAR §10.5.3.1.2 (GIN-10 p.35): "The system is used to maintain steam
+     *   generator level during startup because a certain loading is required prior to starting
+     *   a main feedwater pump." / "After reactor power is at about 2% to 4% and a main
+     *   feedwater pump has been started, the system is shut down and set up for automatic
+     *   start operations."
+     *   [sourced] WTSM 19 p.19-8: the motor-driven AFW pump "can supply only about two percent
+     *   of rated feed flow"; p.19-9: "The power level is maintained at two percent while a main
+     *   feedwater pump is started and aligned".
+     * The MOTOR-DRIVEN pump only (the startup's pump; the turbine-driven one is the casualty
+     * backup), on the `afw_level` channel's sourced 33 % narrow-range hold, which is defaultOn.
+     * The AFW start off the feed pumps cannot fire here: it is a Mode 1 function (the
+     * `main_feed_lost` driver in stepInner). */
+    if (ic.afw_lineup) {
+      eng.fw.auto = false;
+      eng.fw.manual_frac = 0;
+      eng.fw.pumpA = false;
+      eng.fw.pumpB = false;
+      eng.aw.mdafwRunning = true;
+      /* THE THROTTLE AT ITS SETTLED POSITION, not the constructor's wide-open 1.0: the `afw_level`
+       * channel lives in the kernel, so an ENGINE-DIRECT harness has no level hold at all, and a
+       * wide-open pump overcooled the booted plant 32 degF/hr (MEASURED, run_pwr2_endurance's
+       * settled check). 0.26 is where the channel settles at zero power (afw_flow_normalized
+       * 0.080-0.099 of the 0.333 one pump delivers, measure808 full stack). */
+      eng.aw.throttle = 0.26;
+    }
     /* the feed train at the IC's own operating point (the module's constructor knows only
      * at-power/no-load; a mid-load IC sets the delivered point so the boot does not spend
      * its first pump-tau finding it — the same settled-construction rule as the hmap) */
@@ -850,7 +909,7 @@
       if (!moving) return;
       throw new Error('ROD DRIVE BLOCKED: the reactor trip is LATCHED — the reactor trip ' +
         'breakers are open and power to the control rod drive mechanisms is interrupted ' +
-        '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS to restore rod drive ' +
+        '[sourced, Ginna TS Bases B 3.3.1 ML20339A221]. Reset the RPS (press SCRAM on the ROD CONTROL card while it reads PRESS TO RESET) to restore rod drive ' +
         'power; the rods stay where they are until you deliberately withdraw them.');
     }
     /* THE ROD STOPS REFUSE OUTWARD MOTION ONLY, which is the source's own scope: *"These
@@ -931,6 +990,20 @@
          * source lists two operator actions and the ladder is taken in order — the IR trip at
          * 25 % arrives before the power-range low setting at 35 %. */
         eng.pt.blockIrHigh = !!value; break;
+      case 'sr_block':
+        /* THE P-6 REQUEST (OWNER RULING 2026-09-26, "B") — the source-range high flux trip AND
+         * the detector high voltage, one lever (pwr2_protection P6 for the law and the declared
+         * one-lever simplification). Blocking is REFUSED below P-6 on the IR INSTRUMENT (HR1),
+         * the si_block precedent; clearing is always honoured — it re-energizes the detector,
+         * and above 1e5 cps that trips the reactor, which is the real plant's consequence. */
+        if (value) {
+          var irInd = eng.ins.reading.intermediate_range;
+          if (!(irInd >= PT.P6.amps)) {
+            throw new Error('pwr2_engine: source-range block REFUSED — below P-6 (intermediate ' +
+              'range under 1e-10 A); the source range is the only instrument on scale');
+          }
+        }
+        eng.pt.blockSR = !!value; break;
       case 'scram':
         /* The pushbutton is an RPS INPUT, not a rod command — the trip latches in
          * pwr2_protection ('manual') and the trip edge below inserts the rods, so a manual
@@ -1474,7 +1547,27 @@
     /* the MDAFW pump is a VITAL load — it lives through a plain LOOP (diesels) and dies in
      * a blackout; the TDAFW pump is steam-driven and NEVER gated (WTSM 5.7.5) */
     var awr = AW.stepAFW(eng.aw, dt, { mdafw_power_ok: acAvail });
+    /* ---- WHAT THE PRIMARY SIDE OF THE BUNDLE IS DOING (#588) --------------------------------
+     * The steam generator's tube-side film scales with flow AND phase, exactly as
+     * `pwr2_fuel.filmCoefficient` and `pwr2_core`'s `WALL_FILM` do — Ginna UFSAR ch15
+     * (ML20339A101) §15.3.2.1 names it in this component: *"the reduced RCS flow results in a
+     * decreased tube-side film coefficient"*. Only this layer can supply either half: Layer 5's
+     * generator has no loop and no node.
+     *
+     * THE FLOW FRACTION comes from Layer 3's own helper, never from a retyped `|mdot|/1630` —
+     * the rated flow has ONE owner and a second copy here is the PROTECTION_DT trap.
+     *
+     * THE VOID FRACTION IS THE `sg_primary` NODE'S OWN, and it is `voidFraction`, NOT `quality`:
+     * a film coefficient blends on the fraction of the tube wall the vapour is against, which is
+     * a VOLUME fraction. Measured at the #588 endgame those differ by 0.645 against 0.998 —
+     * `pwr2_fuel.filmCoefficient` shipped taking quality and #490 recorded it as a defect. */
+    var sgpN = null;
+    for (var iSG = 0; iSG < sys.nodes.length; iSG++) {
+      if (sys.nodes[iSG].id === 'sg_primary') { sgpN = sys.nodes[iSG]; break; }
+    }
     var sr = G.stepSG(eng.sg, tavg, dt, { feed: fwr.feed_frac * eng.rated_steam, steam: out,
+                                          flowFrac: LP.flowFrac(sys),
+                                          voidFrac: sgpN ? W.voidFraction(sgpN.h, sys.P) : 0,
                                           afw_kgs: awr.total_kgs, afw_h: awr.h_kJkg,
                                           /* the SGTR stream, one step old (#507 wave 5):
                                            * stepBreak runs AFTER stepSG, so the discharge
@@ -1538,6 +1631,17 @@
      * that happened to diverge, and went BLIND the moment #574's metal walls moved the ride.
      * A wire nobody can see reads as a working feature — which is the whole subject of #574. */
     eng._brkBackP = br ? sys.P - br.dP_mpa : undefined;
+    /* AND THE RCS PRESSURE THE BREAK SAW, at the same instant, for the same reason (#588).
+     * `_brkBackP` made the backpressure observable; the OTHER half of that comparison was
+     * still only readable from `true_state`, which publishes the END-OF-STEP pressure. Those
+     * are not the same number, and on a near-empty RCS they are not close: measured on the
+     * 20 cm2 cold-leg ride at t = 514.18 s, the break computed its flow at 220.87 psia
+     * (1.5228 MPa) and the step ENDED at 45.53 psia (0.3139 MPa) -- a 175 psi intra-step
+     * excursion, larger than the 150 psi gradient the flow was driven by. A gate comparing
+     * the end-of-step pressure against a mid-step flow therefore reads `adverse` on a step
+     * that discharged downhill by 150 psi. This is the honest instant for that comparison.
+     * A DIAGNOSTIC on the same `eng._*` shelf; nothing in the plant reads it. */
+    eng._brkP = br ? sys.P : undefined;
 
     var rrx = R.stepReactor(eng.rx, sys, dt,
       { boron_ppm: cvr.boron_ppm, rodGroups: eng.rodBank, Q_ox_kW: eng._Qox });
@@ -1604,7 +1708,37 @@
       if (heats === rrx.heats) heats = Object.assign({}, rrx.heats);
       heats.hot_leg = (heats.hot_leg || 0) + eng._pzSurgeHeat;
     }
-    var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs });
+    /* ---- THE DECLARED HEAT EXCHANGES (#588) ---------------------------------------------------
+     * Layer 2 bounds a relaxation at the temperature it relaxes TOWARD, and only the component
+     * that computed the duty knows what that temperature is. Two duties in this engine are
+     * relaxations and both are declared:
+     *
+     *   the STEAM GENERATOR   `U*wet*area*(Tavg - T_sec)`, toward the secondary's saturation
+     *                         temperature — passed as `sgTarget_c` beside the duty it belongs to.
+     *   RESIDUAL HEAT REMOVAL `UA*(T_hot - ccw)`, toward the component cooling water. Its `heats`
+     *                         map is already spread across the ring by volume fraction, so each
+     *                         share is declared at ITS OWN node — one exchange per node, not one
+     *                         for the train, because the limiter is a PER-NODE bound and a lumped
+     *                         declaration would bound nothing.
+     *
+     * NOT DECLARED, deliberately: core power (generation, no body to relax toward), pump work
+     * (the same), the pressurizer surge enthalpy (a transport term, already bounded by the
+     * advective half at its own node) and the break/ECCS/CVCS streams (mass sources — the
+     * advective half already carries them through `qIn`). */
+    var exch = [];
+    if (rhrR.duty_kW > 0 && rhrR.G_kW_per_K > 0 && rhrR.T_sink_c !== undefined) {
+      /* the duty is spread by volume fraction, so the CONDUCTANCE is spread by the same
+       * fraction — recovered from the shares themselves (`heats[n] / -duty`) rather than by
+       * re-deriving the split, so the two cannot come apart if `shareOut` ever changes. */
+      Object.keys(rhrR.heats).forEach(function (n) {
+        var f = -rhrR.heats[n] / rhrR.duty_kW;
+        exch.push({ node: n, kW: rhrR.heats[n], T_c: rhrR.T_sink_c,
+                    G_kW_per_K: rhrR.G_kW_per_K * f });
+      });
+    }
+    var pr = S.stepPlant(sys, dt, { heats: heats, sgDuty: sr.duty_kW, sources: srcs,
+                                    sgTarget_c: sr.T_sec, sgG_kW_per_K: sr.UA_kW_per_K,
+                                    exchanges: exch });
     /* #625 — the loop's Courant report (courantLimit_s / subSteps / held) had no reader above
      * Layer 3; the shell publishes it through getStepReport() so the service's WARP tier can
      * refuse a step the ring would have to lean on its sub-step ceiling to survive. */
@@ -1678,9 +1812,29 @@
       turbine_tripped: eng.tb.tripped,
       steam_dumps_available: eng._cdAvail !== false,
       p9_defeated: eng.p9Defeated === true,           /* #515: the failed channel */
+      /* CONTAINMENT PRESSURE (#784) — HR1, off the instrument like every other analog driver
+       * above, with truth filling in only on the pre-reading first step. The channel is
+       * `containment_pressure` (tau 1.0 s, range [0, 2] MPa), which already holds both sourced
+       * setpoints strictly inside. Absolute MPa: the two rows convert their own psig once. */
+      containment_pressure_mpa: rd.containment_pressure !== undefined
+        ? rd.containment_pressure : eng._ctP,
       /* [sourced ch10] the loss-of-both-feed-pumps MDAFW start's input — a STATE signal
        * (breaker positions), the turbine_tripped convention, not an analog channel */
-      main_feed_lost: mfLost,        /* armed only off RHR — see the block above `var mfLost` */
+      /* THE AFW START OFF IT IS A MODE 1 FUNCTION (#808, 2026-09-27). The turbine-trip half
+       * above stays armed off RHR; the MDAFW start is armed only AT POWER — the plant_mode
+       * ladder's own Mode 1 line (power range above 5 %), read off the instrument (HR1).
+       *   [sourced] Ginna TS Bases B 3.3.2, Function 6.f "Auxiliary Feedwater-Trip Of Both
+       *   Main Feedwater Pumps" (ML20339A221): "This Function must be OPERABLE in MODE 1 ...
+       *   In MODES 2, 3, 4, 5, and 6 the MFW pumps may not be in operation, and thus pump
+       *   trip is not indicative of a condition requiring automatic AFW initiation."
+       * MEASURED (#808): Hot Standby with both main feed pumps secured and the MDAFW started —
+       * the startup lineup, GIN-10 §10.5.3.1.2 — latched AFAS `loss_of_main_feed` inside its
+       * first 10 plant-minutes without this gate, and stays clear with it.
+       * DECLARED: the source gives the applicability, not the hardware that takes the
+       * function out below Mode 1; the power line is that applicability, stated as a gate.
+       * A loss of main feed AT power still starts the MDAFW the same step (the reading is
+       * one step old, and still reads rated). */
+      main_feed_lost: mfLost && (rd.power_range !== undefined ? rd.power_range : rrx.power_pct) > 5,
       /* [sourced ch10] the loss-of-offsite-power AFW start's input — the same state-signal
        * class (#507 wave 4; the deferred start pwr2_protection.js recorded is now built) */
       loss_of_offsite: !offsiteOk,
@@ -1691,6 +1845,14 @@
        * it (#650). Protection converts to the source's units itself. */
       delta_t_frac: rd.thot !== undefined ? (rd.thot - rd.tcold) / DT0_C
                     : (tLeg(sys, 'hot_leg') - tLeg(sys, 'cold_leg')) / DT0_C,
+      /* THE TWO LOW NUCLEAR RANGES (2026-09-26) — the SR trip and P-6. OPTIONAL drivers with no
+       * truth fill (the sg_level_frac precedent): on the pre-reading first step the SR row is
+       * unavailable and P-6 unmet for 0.02 s rather than borrowing truth */
+      sr_cps: rd.source_range,
+      ir_amps: rd.intermediate_range,
+      /* the IR channel's injected-failure state — P-6's reset ignores a FAILED channel, the
+       * declared stand-in for the real plant's two-channel coincidence (pwr2_protection) */
+      ir_failed: !!(eng.ins.failure && eng.ins.failure.intermediate_range),
       tavg_c: rd.tavg !== undefined ? rd.tavg : tavg   /* stepInner's own — #514, was a
                                                         * third primaryTavg leg-inverse pair */
     });
@@ -1731,6 +1893,44 @@
      * against excessive moisture carryover", WTSM 3.2). Level-held while latched. */
     if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }
 
+    /* ---- THE CONTAINMENT ENGINEERED SAFETY FEATURES (#784) ----------------------------------
+     * The caller's half again: `pwr2_protection.js` decided WHETHER on sourced setpoints and
+     * `pwr2_containment.js` owns HOW MUCH; this block owns the three things in between — the
+     * steam-line isolation, the sourced system RESPONSE TIMES, and the AC gate.
+     *
+     * ⚠ EACH HALF IS SEPARATELY SUFFICIENT TO FAIL, which is why the demand and the delivery are
+     * two fields and not one (#295/#545). Break the actuation and the demand never rises; break
+     * the delivery and the demand stands with nothing coming out of the nozzles. A single
+     * boolean would make either injection look like the other's success.
+     *
+     * ⚠ AND THE DE-ENERGIZATION IS IN THE DELIVERY, NEVER IN THE DEMAND (#200/#329/#332). A
+     * blackout takes away the pumped water and the fan motors; it does not reach back and
+     * un-actuate the signal, so `ctmt_spray_demand` stands through a blackout and delivery
+     * resumes the moment a bus comes back — the `afw_pump_running` / `afw_flow_normalized`
+     * split, which is this house's idiom for exactly this. */
+    /* steam-line isolation, sealed in — a valve that shut on the containment signal stays shut */
+    if (ptr.msli_ctmt) eng.msiv.open = false;
+    /* the CRFC safety realign is ON ANY SAFETY INJECTION, not on containment pressure
+     * [sourced — Ginna TS Bases B 3.6.6 (ML20339A221): "In post accident operation following a
+     * SI actuation signal, the CRFC System fans are designed to start automatically if not
+     * already running"]. ONE-SHOT with no automatic securing: realigned fans stay realigned
+     * until an operator restores normal mode, which this auto-only build does not surface. The
+     * retired engine's row keys on the same signal for the same reason. */
+    if (ptr.si) eng.ctmtFanDemand = true;
+    eng.ctmtSprayDemand = !!ptr.ctmt_spray_demand;
+    /* THE SOURCED RESPONSE TIMES, counted on the DEMAND and reset with it [sourced — B 3.6.6:
+     * spray "total response time is 28.5 seconds for one pump to the upper spray header";
+     * "The CRFC System total response time of 44 seconds, includes signal delay, DG startup
+     * (for loss of offsite power), and service water pump and CRFC unit startup times"]. They
+     * are SYSTEM times — valve travel, pump start, line fill — which is why they live here and
+     * not in the protection row's channel delay, where they would have delayed the steam-line
+     * isolation that shares the bistable. */
+    eng._spray_t = eng.ctmtSprayDemand ? (eng._spray_t || 0) + dt : 0;
+    eng._fan_t   = eng.ctmtFanDemand   ? (eng._fan_t   || 0) + dt : 0;
+    var sprayActive = eng.ctmtSprayDemand && eng._spray_t >= CT.CS.spray_response_s && acAvail;
+    var fanActive   = eng.ctmtFanDemand   && eng._fan_t   >= CT.CS.crfc_response_s  && acAvail;
+    eng._sprayActive = sprayActive; eng._fanActive = fanActive;
+
     /* containment receives the break AND the pressurizer relief (PORV/safety discharge ends
      * up there via the relief tank; the tank itself is unmodelled, declared). An SGTR is
      * EXCLUDED — the tube discharges into the SG, a closed receiver, and containment seeing
@@ -1746,12 +1946,29 @@
     var mBr = br && !toSG && br.mdot_kgs > 0 ? br.mdot_kgs : 0;
     var mPz = eng._pzRelief > 0 ? eng._pzRelief : 0;
     var ctIn = mBr + mPz;
-    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt,
-      ctIn > 0 && dtAcc > 0
-        ? { mdot_kgs: ctIn,
-            h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
-        : { mdot_kgs: 0 });
+    /* #784: the active systems ride the SAME call, so they are stepped over the same interval
+     * the discharge is. DECLARED: on a REFUSED or PARTIAL step that interval is `dtAcc`, the
+     * time the PRIMARY lost inventory over, and spray and the fan coolers are credited for that
+     * interval rather than the full `dt` — they actually ran for `dt`. The two differ only on a
+     * step the solver did not fully accept, where the whole plant's clock is short by the same
+     * amount; splitting them into a second `stepContainment` call over `dt` would make the
+     * atmosphere and the discharge disagree about what time it is, which is worse. */
+    var ctDrv = ctIn > 0 && dtAcc > 0
+      ? { mdot_kgs: ctIn,
+          h_kJkg: (mBr * (mBr > 0 ? br.source.h : 0) + mPz * eng._pzReliefH) / ctIn }
+      : { mdot_kgs: 0 };
+    ctDrv.spray_active = sprayActive;
+    ctDrv.fan_active = fanActive;
+    var ctr = CT.stepContainment(eng.ctm, dtAcc > 0 ? dtAcc : dt, ctDrv);
+    /* the two-field split the contract asks for: DEMANDED, and DELIVERING */
+    ctr.spray_demand = eng.ctmtSprayDemand === true;
+    ctr.spray_active = sprayActive === true;
+    ctr.fan_safety   = eng.ctmtFanDemand === true;
+    ctr.fan_active   = fanActive === true;
     eng._ctP = ctr.containment_pressure_mpa;   /* next step's break backpressure (#543) */
+    /* #784: the containment result itself, for a gate that must assert the EFFECT — the
+     * kg/s and kW the active systems actually moved — rather than that a flag was set. */
+    eng._lastCtr = ctr;
 
     eng.simTime += dt;
     eng._pzr = pzr; eng._dcr = dcr;

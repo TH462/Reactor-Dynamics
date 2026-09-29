@@ -271,6 +271,11 @@
     this.simTime = 0;
     this._sinceEval = 0;  // the protection accumulator rides the timeline (#588)
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
+    /* A NEW HISTORY, as opposed to the same history rewound (2026-09-28 review of the 1/M rewind
+     * rule). Bumped by selectPlant (a reset, a new initial condition) and by a save-FILE load —
+     * never by Rewind. Published as metadata.timeline_epoch so session scratch that outlives a
+     * rewind (the 1/M plot) can still tell "the clock went back" from "a different plant". */
+    this.timelineEpoch = 0;
     this.timeAcceleration = 1.0;
     // True while the CURRENT acceleration was requested by a scenario beat (an
     // authored fast-forward), false once the user touches the speed control. A
@@ -355,6 +360,7 @@
     this.simTime = 0;
     this._sinceEval = 0;  // the protection accumulator rides the timeline (#588)
     this._fineBuf = [];   // timeline moved — stale sub-samples must not splice in
+    this.timelineEpoch = (this.timelineEpoch || 0) + 1;   // a new history (constructor note)
     this._prevTrueState = null;
     this._prevAlarms = null;
     this._prevScrammed = false;
@@ -377,6 +383,12 @@
       var lineup = this.engine.getStartupLineup() || [];
       for (var li = 0; li < lineup.length; li++) this.handleCommand(lineup[li]);
     }
+    /* A FRESH PLANT (#811 follow-up): a free-play load nobody has touched yet. The opener offer
+     * resets the plant in one click, so it is only offered while that costs the player nothing —
+     * cleared by the first plant command (the default branch of handleCommand), by starting an
+     * opener, and by a restore or rewind; set only here, AFTER the lineup above, whose own
+     * commands would otherwise clear it. Instructed content (noDefaults) is never fresh. */
+    this.plantFresh = !(opts && opts.noDefaults);
 
     // Assemble + broadcast the initial snapshot so the UI renders the start state.
     var snap = this._assembleWithInstructor();
@@ -702,7 +714,7 @@
     // that follow do not drop the tier one by one — the fidelity leg after a scram runs its
     // decay-heat hour on WARP for exactly that reason (WT-1b).
     var na = this._boardQuiet(prev.alarms) ? this._newAlarmOfPriority(alarms, prev.alarms) : null;
-    if (na) return 'new alarm: ' + (na.label || na.id);
+    if (na) return 'new alarm: ' + alarmBoardName(na);
     /* SAY WHICH WINDOW THE RATE IS OVER (#670 operator pass 2, S-6). `spanS` is PLANT seconds,
      * not warped ones — but on WARP one evaluation is one WARP_DT step, so this is an
      * instantaneous half-second rate, and the threshold is 0.28 MPa/s, which is why every
@@ -940,6 +952,7 @@
         wall_time: new Date().toISOString(),     // display-only; never in physics (§9)
         plant_id: this.activePlantId,
         design_version: this.activeDesignVersion,
+        timeline_epoch: this.timelineEpoch,      // bumps on reset / IC / file load, never on Rewind
       },
       true_state: this.engine.getTrueState(),
       instruments: this.engine.getInstruments(),
@@ -1074,7 +1087,7 @@
      * filter lives inside `_newAlarmOfPriority` so the WARP drop inherits it unchanged — see
      * `_stepExpectsAlarm` below for the ruling, the measurement and why it is a declaration. */
     var newAlarm = this._boardQuiet(this._prevAlarms) ? this._newAlarmOfPriority(snap.alarms, this._prevAlarms) : null;
-    if (newAlarm) { this._attnAlarmLabel = newAlarm.label || newAlarm.id; return 'alarm'; }
+    if (newAlarm) { this._attnAlarmLabel = alarmBoardName(newAlarm); return 'alarm'; }
     /* The checklist step index is deliberately NOT consulted here — see the ruling at the top
      * of this function. The reasons above are the plant interrupting you; a step advancing is
      * not, and the walkthrough's own pacing cue (the `.ckl-wait` line and the speed rung it
@@ -1164,7 +1177,7 @@
    * low-pressure warning from a casualty. Only the step knows which one it is about to cause.
    *
    * MEASURED, the case that produced the ruling: on the heatup leg 600× held about 5 s then fell
-   * to 1×, on "Shutdown Cooling Not In Service — RCS Is Below the RHR Entry Pressure" — a tile
+   * to 1×, on "Shutdown Cooling Not In Service" (PWR-A33) — a tile
    * the step itself brings on. Pressure then crawled 596 to 600 psia (4.11 to 4.14 MPa) over
    * 200 s of real time, about four minutes lost, and the player escaped it by guessing at Ack
    * All.
@@ -1179,13 +1192,19 @@
    * drop (`_attentionStop`) and the WARP tier drop (`_warpBlocked`), which #655 already wrote to
    * the same terms. Splitting them would leave WARP dropping on a step's own alarm while
    * fast-forward held, which is the disagreement the `speed_hold` half already cost us once. */
+  /* THE NAME THE ALARM CARD SHOWS (layman pass 4, 2026-09-24). The control layer's alarm objects
+   * carry `tile_label` (the register's label, control_kernel.js) and NO `label`, so `a.label ||
+   * a.id` printed the internal id on every real alarm: the player read "new alarm: high_tavg"
+   * beside a card that says "High Coolant Temperature". `label` stays as the fallback for the
+   * synthetic alarms the gates inject. */
+  function alarmBoardName(a) { return a.tile_label || a.label || a.id; }
   SimulationService.prototype._stepExpectsAlarm = function (a) {
     var ckl = this.instructor && this.instructor.checklist;
     if (!a || !ckl || ckl.complete || !ckl.proc || !ckl.proc.steps) return false;
     var st = ckl.proc.steps[ckl.idx];
     var list = st && st.expect_alarms;
     if (!list || !list.length) return false;
-    var id = String(a.id || ''), label = String(a.label || '').toLowerCase();
+    var id = String(a.id || ''), label = String(a.tile_label || a.label || '').toLowerCase();
     for (var i = 0; i < list.length; i++) {
       var w = String(list[i] || '');
       if (!w) continue;
@@ -1208,6 +1227,9 @@
     }
     return false;
   };
+
+  // Is this a free-play load no command has touched yet? (#811 follow-up — see selectPlant.)
+  SimulationService.prototype.isFreshPlant = function () { return !!this.plantFresh; };
 
   // ---------------------------------------------------------- command routing (§5)
   SimulationService.prototype.handleCommand = function (command) {
@@ -1257,6 +1279,20 @@
         var snap = this._assembleWithInstructor();
         this._broadcast(snap);
         return snap;
+      }
+      /* ---- OPENERS (#811): a short instructor chat offered on the idle Instructor tab. Runs on
+       * the Instructor's scenario machinery, but resets to the opener's IC WITH the free-play
+       * lineup (no `noDefaults`) — it teaches the plant the player gets, not a clean board. */
+      case 'start_opener': {
+        var op = RD.OPENERS ? RD.OPENERS[command.opener_id] : null;
+        if (!op) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown opener_id', received: command };
+        var reset3 = this.selectPlant(op.plant_id, op.initial_state, op.design_version || null);
+        if (reset3 && reset3.type === 'error') return reset3;
+        if (this.instructor.load) this.instructor.load(op);
+        this.plantFresh = false;          // an opener ran on this load: never offer it again here
+        var osnap = this._assembleWithInstructor();
+        this._broadcast(osnap);
+        return osnap;
       }
       // ---- Path 2 walkthroughs: the Instructor runs a manual procedure from
       // RD.MANUAL_PROCEDURES (the single validated artifact — CONTEXT §12).
@@ -1335,6 +1371,7 @@
          * checkpoint in, and a walkthrough restored from a file (ring 0, step_index 2). Both
          * returned this error with step_index and the ring untouched, so the guard belongs on
          * the BUTTON (instructor.checklist.rewind_ready), not here. */
+        this.plantFresh = false;
         var rsnap = this._rewind(command.steps || 1, command.scope || 'full', !!command.exact);
         if (!rsnap) return { type: 'error', code: 'COMMAND_ERROR', message: 'no checkpoint to rewind to', received: command };
         return rsnap;
@@ -1342,6 +1379,7 @@
       default:
         // Plant / operator commands descend the stack from the Instructor slot (HR5).
         if (!this.engine) return { type: 'error', code: 'COMMAND_ERROR', message: 'no active plant', received: command };
+        this.plantFresh = false;          // the player has touched this plant (see selectPlant)
         return this.instructor.handleCommand(command);
     }
   };
@@ -1427,10 +1465,12 @@
 
   SimulationService.prototype.loadState = function (state) {
     if (!state || !state.metadata) return { type: 'error', code: 'COMMAND_ERROR', message: 'bad save state', received: state };
+    this.plantFresh = false;           // a restored plant is somebody's session (#811 follow-up)
     if (!engineCtor(state.metadata.plant_id)) return { type: 'error', code: 'COMMAND_ERROR', message: 'unknown plant_id in save', received: state.metadata.plant_id };
     this.checkpoints = [];             // a user file-load invalidates the rewind ring
     this._rewindCursor = null;
     this._lastSandboxCpMs = null;
+    this.timelineEpoch = (this.timelineEpoch || 0) + 1;   // a new history, not a rewind
     return this._restore(state, false);
   };
 

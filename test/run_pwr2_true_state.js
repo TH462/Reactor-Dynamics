@@ -112,7 +112,9 @@ function runSuite(TS, rec, quiet) {
      * block requested, which P-10 permits at 100 %. A healthy plant, so `scrammed` reads false
      * because it EARNED false. */
     var prt = RD.protection.stepProtection(
-      RD.protection.createProtection({ blockLowFlux: true }), 0.02,
+      /* ...and the SOURCE-RANGE block (OWNER RULING 2026-09-26, "B"): a plant at power took it
+       * at P-6 on the way up, and the block is what de-energizes the detector now */
+      RD.protection.createProtection({ blockLowFlux: true, blockSR: true }), 0.02,
       { pressure_mpa: sys.P, power_frac: r.power_pct / 100,
         flow_frac: sys.mdot_loop / 1630, steam_pressure_mpa: sr.P_sec, steam_flow_frac: 1.0 });
     /* The pressurizer, stepped at the plant's own state like every other system — a healthy
@@ -184,12 +186,45 @@ function runSuite(TS, rec, quiet) {
   /* TURNED AROUND (stage B1, owner ruling "Next: option B"): the shell contract needs every
    * field EMITTED. Spray/fans/recombiners are REGISTERED STATICS — constants stating the
    * systems' absence — and the sump is SUPPLIED from the containment's real tracked mass
-   * through a declared display scale (100 % = the whole primary inventory). */
-  ck('containment ESF fields are REGISTERED STATICS, and the sump is SUPPLIED from real mass',
-     ts.ctmt_spray_active === false && !!TS.STATIC.ctmt_spray_active &&
+   * through a declared display scale (100 % = the whole primary inventory).
+   *
+   * ⚠ TURNED AROUND A THIRD TIME (#784, OWNER RULING 2026-09-21: "Authorise it — auto-only").
+   * `!!TS.STATIC.ctmt_spray_active` was true of spray, the fan coolers AND the recombiners
+   * alike, which is what let one clause stand for all seven fields — until spray and the fan
+   * coolers were BUILT. A check still asserting a static there is pinning the ABSENCE OF A
+   * SYSTEM THAT EXISTS, the same shape as the scram check below, so it guards the repair now.
+   *
+   * IT REDS IN BOTH DIRECTIONS, and that is the point of keeping the hydrogen clause rather
+   * than deleting it. Re-register a static over spray or the fans and the SUPPLIED half reds;
+   * supply a recombiner field (or drop its static) without a ruling and the STATIC half reds.
+   * Kept as ONE check on purpose — the score is the gate's baseline, and these are one claim
+   * about one registry.
+   *
+   * ⚠ AND THE SUPPLIED FALSE IS EARNED. A shim hard-wiring `false` agrees with the healthy
+   * fixture exactly, so the same four fields are read off a containment result that carries
+   * them TRUE — the unearned-false worry the scram check below names, one door over. */
+  var tsEsf = TS.buildTrueState(Object.assign({}, B.ctx, {
+    containment: Object.assign({}, B.ctr, { spray_demand: true, spray_active: true,
+                                            fan_safety: true, fan_active: true })
+  }));
+  ck('the four containment-ESF fields are SUPPLIED and earned-false, the HYDROGEN half is ' +
+     'still STATIC, and the sump is SUPPLIED from real mass',
+     /* SUPPLIED: out of the statics registry, false on a healthy plant... */
+     ts.ctmt_spray_demand === false && ts.ctmt_spray_active === false &&
+     ts.ctmt_fan_safety === false && ts.ctmt_fan_active === false &&
+     TS.STATIC.ctmt_spray_demand === undefined && TS.STATIC.ctmt_spray_active === undefined &&
+     TS.STATIC.ctmt_fan_safety === undefined && TS.STATIC.ctmt_fan_active === undefined &&
+     /* ...and TRUE when the engine's actuation says so, so the false above is earned */
+     tsEsf.ctmt_spray_demand === true && tsEsf.ctmt_spray_active === true &&
+     tsEsf.ctmt_fan_safety === true && tsEsf.ctmt_fan_active === true &&
+     /* STILL STATIC: the hydrogen half, which #784 did not authorise */
+     ts.ctmt_recomb_demand === false && !!TS.STATIC.ctmt_recomb_demand &&
+     ts.ctmt_recomb_active === false && !!TS.STATIC.ctmt_recomb_active &&
+     ts.ctmt_h2_burned === 0 && !!TS.STATIC.ctmt_h2_burned &&
      ts.containment_sump_pct !== undefined && !TS.STATIC.containment_sump_pct,
-     'a static false states the system does not exist; the sump percentage tracks water that ' +
-     'is really there');
+     'spray and the fans follow the engine\'s own actuation, not a registered constant; a ' +
+     'static false still states the recombiners do not exist; the sump percentage tracks ' +
+     'water that is really there');
   /* TURNED AROUND (same rule as the scrammed check below): this asserted the pressurizer was
    * ABSENT ("a level of 0 would be a fabricated TMI trainer") until pwr2_pressurizer.js landed
    * (owner ruling 2026-08-18 "Option 1"). It now guards the repair: a REAL level from the
@@ -800,8 +835,10 @@ function runSuite(TS, rec, quiet) {
   var HZP_FRAC = 1.9325e-9;      /* hot standby, -1137.2 pcm  */
   var TRIP_FRAC = 3.4068e-10;    /* settled post-trip, -6450 pcm */
   function atFlux(frac) {
+    /* a SHUTDOWN plant's lineup: the SR block is not taken (it is refused below P-6) */
     return TS.buildTrueState(Object.assign({}, B.ctx, {
-      reactor: Object.assign({}, B.r, { power_pct: frac * 100 }) }));
+      reactor: Object.assign({}, B.r, { power_pct: frac * 100 }),
+      protection: Object.assign({}, B.prt, { sr_blocked: false }) }));
   }
   var tsHZP = atFlux(HZP_FRAC), tsTripped = atFlux(TRIP_FRAC);
   ck('the shutdown plant indicates in the hundreds of counts per second, as the manual says',
@@ -850,10 +887,19 @@ function runSuite(TS, rec, quiet) {
    * power rise BEFORE SR high-flux trip (1e5 cps)". Written against 1e5 the rule survives a
    * scale change; written as `pFrac < 1e-3` — what it was — it silently became four decades
    * past the gauge's own 1e6 range top the moment k_sr moved. */
-  ck('the SR de-energizes at its own 1e5 cps cue, so the rule cannot drift from the scale again',
-     atFlux(3.8e-7).sr_energized === true && atFlux(3.9e-7).sr_energized === false,
-     'live at ' + atFlux(3.8e-7).sr_counts_cps.toExponential(2) + ' cps, secured just ' +
-     'past 1e5 — a `pFrac < 1e-3` rule would have kept indicating to 2.6e8 cps');
+  /* SUPERSEDED 2026-09-26 (OWNER RULING, "B"): the detector no longer secures itself at 1e5 cps.
+   * Its high voltage IS the operator's P-6 block (the protection report's `sr_blocked`), and past
+   * 1e5 cps unblocked it stays live — stopping the plant there is the SR trip's job
+   * (run_pwr2_protection). Both directions, on the same flux. */
+  var tsSrB = TS.buildTrueState(Object.assign({}, B.ctx, {
+    reactor: Object.assign({}, B.r, { power_pct: 1e-5 * 100 }),
+    protection: Object.assign({}, B.prt, { sr_blocked: true }) }));
+  ck('the SR detector follows the P-6 BLOCK, not the flux: blocked it reads nothing; ' +
+     'unblocked past 1e5 cps it is still live (the SR trip stops the plant, not the detector)',
+     tsSrB.sr_energized === false && tsSrB.sr_counts_cps === 0 &&
+     atFlux(1e-5).sr_energized === true && atFlux(1e-5).sr_counts_cps > 1e5,
+     'blocked at 1e-5 rated: ' + tsSrB.sr_counts_cps + ' cps; unblocked: ' +
+     atFlux(1e-5).sr_counts_cps.toExponential(2) + ' cps');
   ck('the governor IS the steam demand and the stop valve is the trip',
      ts.governor_valve_pct > 90 && ts.stop_valve_pct === 100,
      'governor ' + ts.governor_valve_pct.toFixed(1) + ' %, stop 100 -- and a tripped turbine ' +
@@ -915,15 +961,17 @@ var MUTATIONS = [
    '    var P6_A = 5e-11;'],
   /* ---- THE NIS GAUGE SCALES (#536) ---- */
   ['k_sr reverts to the RETIRED plant\'s scale (the shutdown board reads half a count)',
-   '    var K_SR = 2.6e11;', '    var K_SR = 5.0e8;'],
+   '  var NIS = { K_SR: 2.6e11, K_IR: 8.333e-3 };', '  var NIS = { K_SR: 5.0e8, K_IR: 8.333e-3 };'],
   ['the display floors come back (every deeply subcritical state reads the same number)',
    "    put('sr_counts_cps', srOn ? K_SR * pFrac : 0);\n    put('ir_amps',       K_IR * pFrac);",
    "    put('sr_counts_cps', srOn ? K_SR * Math.max(pFrac, 1e-9) : 0);\n" +
    "    put('ir_amps',       K_IR * Math.max(pFrac, 1e-9));"],
-  ['the SR securing cue goes back to a power literal instead of its own setpoint',
-   '    var srOn = pFrac * K_SR < SR_SECURE_CPS;', '    var srOn = pFrac < 1e-3;'],
+  ['the SR detector secures itself on flux alone at 1e5 again (the superseded #598 item 7 law)',
+   '    var srOn = pt.sr_blocked !== undefined ? pt.sr_blocked !== true', '    var srOn = pt.sr_blocked !== undefined ? pFrac * K_SR < SR_TRIP_CPS'],
+  ['the SR detector ignores the P-6 block (the retired flux-alone cue comes back)',
+   '    var srOn = pt.sr_blocked !== undefined ? pt.sr_blocked !== true', '    var srOn = pt.sr_blocked !== undefined ? true'],
   ['k_ir drifts, moving the SOURCED intermediate-range rod stop with it',
-   '    var K_IR = 8.333e-3;', '    var K_IR = 4.0e-3;'],
+   '  var NIS = { K_SR: 2.6e11, K_IR: 8.333e-3 };', '  var NIS = { K_SR: 2.6e11, K_IR: 4.0e-3 };'],
   ['the CVCS currency conversion is dropped (kg/s published as the #408 fraction again)',
    "    put('charging_flow_actual', cv.charging_kgs * FRAC_PER_KGS);",
    "    put('charging_flow_actual', cv.charging_kgs);"],
@@ -960,6 +1008,25 @@ var MUTATIONS = [
   ['the sump reads a constant instead of the tracked mass',
    "      put('containment_sump_pct', clip(100 * ct.m_sump_kg / ctx.M_nominal, 0, 100));",
    "      put('containment_sump_pct', 0);"],
+  /* ---- THE CONTAINMENT ESF FIELDS (#784) ----------------------------------------------------
+   * The first is the PRE-#784 SHIM RESTORED: the four fields back in the statics registry, which
+   * is applied AFTER every put and therefore overwrites them — a built system reading as absent,
+   * which is the one defect this whole file exists to stop. The other two are the dark-wire
+   * shape, one per half: the field wears a supplied name while carrying a constant. They are
+   * SEPARATE because each half is separately sufficient (#295/#545) — fabricating spray alone
+   * leaves the fans honest, and a single mutation covering both would let a check that watches
+   * only one of them report as coverage of both. */
+  ['the spray and fan fields go back to REGISTERED STATICS (a built system reads as absent)',
+   "    { ctmt_h2_burned: 0,\n      ctmt_recomb_demand: false, ctmt_recomb_active: false });",
+   "    { ctmt_h2_burned: 0, ctmt_spray_demand: false, ctmt_spray_active: false,\n" +
+   "      ctmt_fan_safety: false, ctmt_fan_active: false,\n" +
+   "      ctmt_recomb_demand: false, ctmt_recomb_active: false });"],
+  ['ctmt_spray_active is fabricated FALSE instead of read from the engine\'s actuation',
+   "    put('ctmt_spray_active', ct.spray_active === true);",
+   "    put('ctmt_spray_active', false);"],
+  ['ctmt_fan_active is fabricated FALSE instead of read from the engine\'s actuation',
+   "    put('ctmt_fan_active',   ct.fan_active === true);",
+   "    put('ctmt_fan_active',   false);"],
 
   ['scram state is never wired through, so a tripped plant reads as no protection system',
    "    put('scrammed', pt.reactor_trip);", ''],

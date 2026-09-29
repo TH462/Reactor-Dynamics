@@ -65,6 +65,8 @@
  *   NO VOLUME CONTROL TANK. Charging draws from an infinite source at the selected boron
  *   concentration and letdown discharges to one. The VCT is a real inventory with a real level
  *   and a real gas space, and it is where "letdown isolated" actually bites. Not modelled.
+ *   ONLY ITS BORON HOLDUP IS (#807): a dilution mixes through a fixed VCT liquid volume before
+ *   it reaches the charging suction — see CVCS.vct_gal_ginna. Its level and gas are not.
  *
  *   SEAL INJECTION IS NOW BUILT — 5 gpm, UNSCALED, by owner ruling 2026-08-15. See its own note
  *   at the constant. It was the open question this list used to record, and the answer is that a
@@ -172,8 +174,54 @@
     /* Lab turnaround for an RCS boron grab sample. [derived]: adopted from the old engine's
      * real-time figure (#419 wave 1 made it real time there); no corpus document states a
      * turnaround, so the number is a class figure, declared. */
-    boron_sample_lab_s: 1800
+    boron_sample_lab_s: 1800,
+    /* ---- THE MAKEUP PATH'S HOLDUP (#807 item 1) -------------------------------------------
+     * A boron change used to reach the RCS the instant it was commanded: the blend was applied
+     * to the charging stream AT the cold leg, so power moved -0.26 % within 4 s of a +10 ppm
+     * boration at hot full power (measured, #807). A real makeup does not do that, and the
+     * sourced reason is the ROUTING (WTSM §4.1.3.2, ML11223A214):
+     *   BORATE: "boric acid is added from a boric acid tank to the charging pump suction via
+     *   the boric acid flow control valve (FCV-110A), the blender, and the blender supply valve
+     *   to the charging pumps (FCV-110B)"  -> the charging path only.
+     *   DILUTE: "water is added from the primary water storage tank to the VCT via the total
+     *   flow control valve (FCV-111A), the blender, and the blender supply valve to the VCT
+     *   (FCV-111B)"  -> through the VCT, then the charging path.
+     *   ALTERNATE DILUTE "reduces the time for the dilution to take effect in the reactor
+     *   coolant, because some of the dilution water does not have to drain from the top of the
+     *   VCT to the charging pump suction before it is pumped into the RCS."
+     *   NUREG/CR-2798 in ACRS memo AWC-114.2000 (ML082911010), St. Lucie 1 LER 335/80-71:
+     *   "Because dilution via the VCT is a slow process, the transient had been in progress
+     *   for several minutes before there was any indication of dilution."
+     * Built as two well-mixed holdups in series, each draining at the charging-pump throughput
+     * (charging + seal injection), carrying the makeup's EXCESS boron (ppm·kg relative to the
+     * RCS): a dilution fills the VCT, a boration enters the line directly. No flow, no drain —
+     * a stopped charging pump freezes the dose in the pipe. The dose is conserved: what the
+     * blender meters is what the RCS eventually receives, so the totalizer keeps counting at
+     * the blender, as the real batch integrator does, and the RCS keeps moving after it stops.
+     *
+     * VCT: [sourced] Ginna 1,500 gal (UFSAR ch.15 §15.7.1.2, ML20339A101: "The volume control
+     * tank (1,500 gallons)"), volume-scaled like every CVCS rating here. ⚠ The LIQUID fraction
+     * is [tune] UNVERIFIED — no corpus document states the VCT's normal level; 0.5 is a
+     * mid-band assumption. At the shipped normal lineup (charging 6.7 + seal 5 gpm) this is a
+     * ~9 plant-minute mixing time.
+     * LINE: [tune] UNVERIFIED — no corpus document states the charging-path volume (suction
+     * header, pump, regenerative HX tube side, charging line). Stated in Ginna gallons (80,
+     * ~300 ft of 3-inch line plus the regen HX, an estimate) and volume-scaled, which is
+     * ~1 plant-minute at the normal lineup. Loop mixing inside the RCS stays lumped by ruling
+     * (pwr2_kinetics). */
+    vct_gal_ginna: 1500,          // [sourced] ML20339A101 §15.7.1.2
+    vct_liquid_frac: 0.5,         // [tune] UNVERIFIED — normal VCT level not in the corpus
+    charging_path_gal_ginna: 80   // [tune] UNVERIFIED — charging path volume, estimate
   };
+  /* the two holdups' water masses, kg (cold makeup water, 1000 kg/m3 — the gpmToKgs basis) */
+  function vctHoldupKg() { return CVCS.vct_gal_ginna * CVCS.vct_liquid_frac * volumeScale() / GAL_PER_M3 * 1000; }
+  function linePathKg() { return CVCS.charging_path_gal_ginna * volumeScale() / GAL_PER_M3 * 1000; }
+  /* drain a well-mixed holdup exactly over dt (exp, not Euler — stable at any dt/throughput) */
+  function drain(E, flow, M, dt) {
+    if (!(E !== 0) || !(flow > 0) || !(M > 0)) return { E: E || 0, out: 0 };
+    var keep = Math.exp(-flow * dt / M);
+    return { E: E * keep, out: E * (1 - keep) };
+  }
 
   /* Seal injection returns to the RCS through the pump's hydraulic chambers. It is NOT operator
    * demand — it runs whenever the charging pumps are lined up — so it is a property of the lineup
@@ -247,6 +295,10 @@
        * the achieved ceilings at both lineups; the old engine's flat 0.14 ppm/s clamp is the
        * contrast case. */
       boron_rate_cmd: opts.boron_rate_cmd === undefined ? 0 : opts.boron_rate_cmd,
+      /* THE MAKEUP PATH'S HOLDUPS (#807): excess boron in transit, ppm·kg relative to the RCS.
+       * An old save lands on undefined, read as 0 — an empty path, the pre-#807 plant at rest. */
+      _vctExcess: 0,
+      _lineExcess: 0,
       /* THE LAB SAMPLE. A plant handed over mid-shift has a standing lab number, so the
        * constructor seeds one (seq 1) — the old engine's preset-boot convention. NO MIXING
        * LAG: this plant's boron is lumped by ruling (pwr2_kinetics), so the sample reports
@@ -393,8 +445,24 @@
      * ECCS boration during a dose is still not fought (the design's declared side effect).
      * Zero when no rate is commanded: the 'match' lineup shifts nothing by construction. */
     cv.boron_rate_delivered = (cv.boron_rate_cmd !== 0 && M > 0) ? inFlow * (C_in - cv.boron_ppm) / M : 0;
+    /* THE MAKEUP PATH (#807, see the constants). The blender's excess boron flux — exactly what
+     * this line used to hand the RCS in the same step — enters the VCT (dilution) or the
+     * charging line (boration); the VCT drains into the line, the line into the cold leg, both
+     * at the charging-pump throughput. Charging then arrives at the RCS concentration PLUS
+     * what the line delivers. */
+    var qMakeup = (M > 0 && inFlow > 0) ? inFlow * (C_in - cv.boron_ppm) : 0;
+    var Ev = (cv._vctExcess || 0) + (qMakeup < 0 ? qMakeup * dt : 0);
+    var El = (cv._lineExcess || 0) + (qMakeup > 0 ? qMakeup * dt : 0);
+    var dv = drain(Ev, inFlow, vctHoldupKg(), dt);
+    El += dv.out;
+    var dl = drain(El, inFlow, linePathKg(), dt);
+    cv._vctExcess = dv.E; cv._lineExcess = dl.E;
+    var fluxIn = dt > 0 ? dl.out / dt : 0;           /* ppm·kg/s reaching the cold leg */
+    /* published for gates and diagnosis: the ppm still in the pipe, and what reached the RCS */
+    cv.boron_in_transit_ppm = M > 0 ? (cv._vctExcess + cv._lineExcess) / M : 0;
+    cv.boron_rate_arriving = M > 0 ? fluxIn / M : 0;
     if (M > 0) {
-      var dC = (inFlow * C_in + si * C_si - letdown * cv.boron_ppm) / M;
+      var dC = (inFlow * cv.boron_ppm + fluxIn + si * C_si - letdown * cv.boron_ppm) / M;
       /* the inventory change itself re-concentrates what is left */
       var dM = inFlow + si - letdown;
       cv.boron_ppm = cv.boron_ppm + dt * (dC - cv.boron_ppm * dM / M);

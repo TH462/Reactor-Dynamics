@@ -425,8 +425,15 @@ function pinChannel(ch) {
       if ((+pool[i].steps[0].hold || 0) < 180) continue;
       var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
       if (!btn) continue;
+      /* THE FIXTURE, NOT THE CLAIM (2026-09-24, wt-cooldown). This picked `pwr_cooldown` step 1,
+       * which the owner's per-substep format ported to `wait_hint: false` (its substep prints its
+       * own speed line) — so no step 1 in the pwr2 pool draws the generated line any more, and
+       * the check read card="" bar="". The claim is about the #686 consolidation, so the step is
+       * made to qualify IN THIS PAGE ONLY (the pool object the renderer reads), and says so. */
+      var forced = pool[i].steps[0].wait_hint === false;
+      if (forced) delete pool[i].steps[0].wait_hint;
       btn.click();
-      return { id: pool[i].id, hold: +pool[i].steps[0].hold };
+      return { id: pool[i].id, hold: +pool[i].steps[0].hold, forced: forced };
     }
     return { id: null };
   });
@@ -497,6 +504,13 @@ function pinChannel(ch) {
     for (var i = 0; i < pool.length; i++) {
       for (var j = 0; j < (pool[i].steps || []).length; j++) {
         if (!(+pool[i].steps[j].wait_speed > 0)) continue;
+        /* 2026-09-25: skip a step whose authored rung EQUALS the hold rule (the negative half
+         * below could never pass on it — pwr_startup step 1 gained `wait_speed: 1` and the check
+         * went red on the fixture, not the plant), and a step whose `cmd` is still owed (the
+         * action gate holds it at 1× by design, `cklActionPending`). */
+        var sj = pool[i].steps[j];
+        if (+sj.wait_speed === RD.CklSpeedHint(+sj.hold || 0).speed) continue;
+        if (sj.cmd && !sj.wait_first) continue;
         var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
         if (!btn) continue;
         btn.click();
@@ -542,6 +556,384 @@ function pinChannel(ch) {
              '×, 30 s rule would give ' + ws.byRule + '×, clock landed at ' +
              (wsGot ? wsGot.accel : '?') + '× with rung ' + (wsGot ? wsGot.rung : '?'))
           : 'no pwr2 step authors wait_speed');
+  await b.ctx.close();
+
+  /* ---- SUBSTEP PACING: THE ACTIVE SUBSTEP'S OWN wait_speed WINS OVER AN EARLIER ONE (the
+   * walkthrough-step-format project). Same dark-wire risk #796 names, one field over:
+   * `accs[i].wait_speed` is read in exactly one place (`cklAccsHeadRung`), so this asserts the
+   * CLOCK rather than trusting a source read that the field is "honoured".
+   *
+   * A SYNTHETIC LEG, one step, two `accs` heads: A trivially met (`power_pct > -1`), B trivially
+   * unmet (`power_pct < -1`) — so B is the first unmet VISIBLE row from the instant the step
+   * paints, no plant-state driving required. A's own `wait_speed` (5×) must NOT win; only B's
+   * (60×) may, because B is the substep the player is actually on. THE NEGATIVE HALF IS WHAT
+   * MAKES IT NON-VACUOUS, same shape as #796: a build that ignores `accs[].wait_speed` altogether
+   * reads neither number (no step-level `wait_speed`, `hold` is 0) and never leaves 1×, which
+   * would still show a "PASS" on a check that only asserted "accel !== 5". */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_probe'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_probe', category: 'control', manual_ref: 'ZZ-05',
+             title: 'Pacing probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A step whose second substep sets its own rung.', control: '(observe)',
+                       accs: [
+                         { p: 'power_pct', op: '>', v: -1, label: 'A met', wait_speed: 5 },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met', wait_speed: 60 }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_probe"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var pace = await b.page.evaluate(function () {
+    return { accel: globalThis.RD.__dev.service().timeAcceleration,
+             rung: (document.querySelector('#speed .ckl-speed-rung') || {}).getAttribute
+                   ? document.querySelector('#speed .ckl-speed-rung').getAttribute('data-speed') : null };
+  });
+  ck('dev (pwr2): the ACTIVE substep\'s wait_speed sets the clock, not an earlier substep\'s',
+    pace.accel === 60 && +pace.rung === 60,
+    'clock landed at ' + pace.accel + '× with rung ' + pace.rung + ' (A authors 5×, B authors 60×, B is unmet)');
+  await b.ctx.close();
+
+  /* ---- AND THE FALLBACK: NO `accs[].wait_speed` ANYWHERE -> THE STEP'S OWN `wait_speed` STANDS
+   * (or, absent that too, the 30 s/`hold` rule). `cklAccsHeadRung` must return null cleanly rather
+   * than pinning the clock at 1× merely because `st.accs` exists — the shape a half-built
+   * override (checks for `st.accs` but forgets to fall through) would produce. Same leg, no
+   * `wait_speed` on either `accs` entry, a `wait_speed: 10` on the STEP. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_fallback'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_fallback', category: 'control', manual_ref: 'ZZ-06',
+             title: 'Pacing fallback probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A step with accs but no per-substep rung.', control: '(observe)',
+                       wait_speed: 10,
+                       accs: [
+                         { p: 'power_pct', op: '>', v: -1, label: 'A met' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met' }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_fallback"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var fb = await b.page.evaluate(function () {
+    return { accel: globalThis.RD.__dev.service().timeAcceleration,
+             rung: (document.querySelector('#speed .ckl-speed-rung') || {}).getAttribute
+                   ? document.querySelector('#speed .ckl-speed-rung').getAttribute('data-speed') : null };
+  });
+  ck('dev (pwr2): with no accs[].wait_speed authored, the STEP\'s own wait_speed still wins',
+    fb.accel === 10 && +fb.rung === 10,
+    'clock landed at ' + fb.accel + '× with rung ' + fb.rung + ' (step authors 10×, neither accs entry does)');
+
+  /* ---- AND A LEGACY MULTI-ROW STEP KEEPS THE PLAYER'S OVERRIDE WHEN A ROW TICKS (quality pass,
+   * 2026-09-23). The substep index went into auto's KEY on every `accs` step, so on a step with
+   * no per-substep rung a row ticking mid-step changed the key and auto re-forced the step's one
+   * rung over the player's own speed choice. Same leg as above (rung 10× on the STEP only): the
+   * player presses 1×, then row A latches the way the runtime latches it, and the clock must stay
+   * at 1×. Its own leg, because the fallback leg's row A is met from the first paint (nothing
+   * would tick). INJECTION-PROVEN: the pre-fix key (`a.st.accs ? cklActiveAccsHead(...)`) reds it
+   * at 10×. */
+  await b.ctx.close();
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_legacy'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_legacy', category: 'control', manual_ref: 'ZZ-07',
+             title: 'Pacing legacy probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A legacy two-row step with one step-level rung.', control: '(observe)',
+                       wait_speed: 10,
+                       accs: [
+                         { p: 'power_pct', op: '<', v: -1, label: 'A not met yet' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met' }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_legacy"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var lg0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var btn = document.querySelector('#speed [data-speed="1"]'); if (btn) btn.click();
+  });
+  await b.page.waitForTimeout(1500);
+  var ov0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+  });
+  await b.page.waitForTimeout(2000);
+  var ov1 = await b.page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+    return { accel: svc.timeAcceleration, met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+  });
+  ck('dev (pwr2): a legacy multi-row step keeps the player\'s speed override when one of its rows ticks',
+    lg0 === 10 && ov0 === 1 && ov1.met0 && ov1.accel === 1,
+    'auto ' + lg0 + '×, player pressed 1× -> ' + ov0 + '×, row A met ' + ov1.met0 + ' -> ' + ov1.accel + '×');
+  await b.ctx.close();
+
+  /* ---- A TAP ON A LATCHED TAP-AND-WAIT STEP DOES NOT HAND THE CLOCK BACK (2026-09-23 layman
+   * playtest S-1). `pwr_startup` 9a is a `stopped` row; before `latch` every tap 9b asks for
+   * un-ticked it, the active substep fell back to 9a and auto forced its 1× over 9b's 10× wait.
+   * Same shape here, synthetic so no plant has to be driven to criticality: A = rods still 5 s,
+   * latched, 1×; a hidden 600 s hold; B unmet, 10×. The first tap puts the bank in MAN (it may be
+   * moving in auto on this IC); once A ticks auto goes to 10×; a second tap must leave it there.
+   * INJECTION-PROVEN: `latch` deleted from A -> 1× on the sample 1.5 s after the tap. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_latch'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_latch', category: 'control', manual_ref: 'ZZ-08',
+             title: 'Pacing latch probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A tap-and-wait step.', control: '(observe)', accs_ordered: true,
+                       accs: [
+                         { p: 'control_bank_steps', op: 'stopped', v: 5, latch: true, label: 'A still', wait_speed: 1 },
+                         { p: 'control_bank_steps', op: 'stopped', v: 600, hidden: true, label: 'hold' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met', wait_speed: 10 }
+                       ] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_latch"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  function lt() {
+    return b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, met0: !!(c && c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+  }
+  function tap() {
+    return b.page.evaluate(function () {
+      try { globalThis.RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: -1, speed: 'med' }); } catch (e) {}
+    });
+  }
+  await tap();
+  var la = await lt(), waited = 0;
+  while (!(la.met0 && la.accel === 10) && waited < 20000) { await b.page.waitForTimeout(500); waited += 500; la = await lt(); }
+  await tap();
+  await b.page.waitForTimeout(1500);
+  var lb = await lt();
+  ck('dev (pwr2): a tap on a latched tap-and-wait step leaves the clock on the wait\'s rung (S-1)',
+    la.met0 && la.accel === 10 && lb.met0 && lb.accel === 10,
+    'before the tap: A met ' + la.met0 + ' at ' + la.accel + '×; 1.5 s after: A met ' + lb.met0 + ' at ' + lb.accel + '×');
+  await b.ctx.close();
+
+  /* ---- SPEED THE WAIT, NOT THE ACTION (2026-09-24 layman pass 4, S-1) — and the line under the
+   * speed buttons stays true. MEASURED before the fix: entering pwr_cooldown 11 / pwr_heatup 14 /
+   * pwr_startup 2 / pwr_cooldown 1 with no input put the clock at 600× at once, 75-77 plant-minutes
+   * per 10 s of wall. A synthetic two-step leg, each step a `cmd` (a pressure setpoint) whose only
+   * row is unmet and carries a 60× rung, `hold` 600 s so the fast-forward line is drawn:
+   *   1. on entry the clock stays 1× and the line says real time now, 60× after the change —
+   *      never "fast-forwarding at 1×";
+   *   2. a drop note raised on step 1 is gone once step 2 is active (it was carried whole legs);
+   *   3. a "Held at real time" note is gone once the walkthrough itself has raised the clock
+   *      (it stood under a lit 3600× for all of pwr_heatup 11);
+   *   4. the step's own command lands -> the clock goes to the 60× rung.
+   * A `wait_first` step (its wait comes before its press) is paced from entry — the opt-out.
+   * INJECTION-PROVEN: without the `cklActionPending` line, (1) reads 60×; without the rate
+   * retirement, (3) still reads "Held at real time"; without the step retirement, (2) reads the
+   * old note. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_action' && x.id !== 'zz_pace_wfirst'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    function st(t, extra) {
+      return Object.assign({ text: t, control: '(observe)', hold: 600, cmd: { action: 'set_pressure_setpoint', mpa: 15.41 },
+               accs: [{ p: 'power_pct', op: '<', v: -1, label: 'the wait', wait_speed: 60 }] }, extra || {});
+    }
+    P.push({ id: 'zz_pace_action', category: 'control', manual_ref: 'ZZ-09', title: 'Action-then-wait probe',
+             purpose: 'Rung fixture.', from: 'hot_full_power', steps: [st('Set the pressure, then wait.'), st('Again.')] });
+    P.push({ id: 'zz_pace_wfirst', category: 'control', manual_ref: 'ZZ-10', title: 'Wait-then-act probe',
+             purpose: 'Rung fixture.', from: 'hot_full_power', steps: [st('Wait, then set the pressure.', { wait_first: true })] });
+  });
+  function paceRead() {
+    return b.page.evaluate(function () {
+      var el = document.getElementById('warpInfo');
+      return { accel: globalThis.RD.__dev.service().timeAcceleration, info: el && !el.hidden ? el.textContent : '' };
+    });
+  }
+  function injectSnap(snap) {
+    return b.page.evaluate(function (snap) {
+      var svc = globalThis.RD.__dev.service(), orig = svc.assembleSnapshot, left = 1;
+      svc.assembleSnapshot = function () { var q = orig.apply(svc, arguments);
+        if (left > 0 && q && q.metadata) { left--; q.metadata.speed_snap = snap; svc.assembleSnapshot = orig; } return q; };
+    }, snap);
+  }
+  await b.page.click('button[data-ckl-start="zz_pace_action"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.evaluate(function () { globalThis.RD.__dev.service().attentionStops = false; });
+  await b.page.waitForTimeout(1800);
+  var pa1 = await paceRead();
+  ck('dev (pwr2): a step whose action is a command opens at 1×, not on the rung of its wait (S-1)',
+    pa1.accel === 1 && /real time until you make this change, then 60×/.test(pa1.info) && !/fast-forwarding at 1×/.test(pa1.info),
+    'clock ' + pa1.accel + '× · line: "' + pa1.info + '"');
+  await injectSnap({ reason: 'alarm', detail: 'new alarm: Probe Note' });
+  await b.page.waitForTimeout(1200);
+  var pa2a = await paceRead();
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    c.idx = 1; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = false;
+  });
+  await b.page.waitForTimeout(1500);
+  var pa2b = await paceRead();
+  ck('dev (pwr2): a drop note from the previous step is gone once the next step is active',
+    /Probe Note/.test(pa2a.info) && !/Probe Note/.test(pa2b.info) && pa2b.accel === 1,
+    'on step 1: "' + pa2a.info + '" · on step 2: "' + pa2b.info + '" at ' + pa2b.accel + '×');
+  await injectSnap({ reason: 'hold' });
+  await b.page.waitForTimeout(1200);
+  var pa3a = await paceRead();
+  await b.page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_pressure_setpoint', mpa: 15.41 });
+  });
+  await b.page.waitForTimeout(2000);
+  var pa3b = await paceRead();
+  ck('dev (pwr2): once the command of the step lands the clock takes the rung of the wait (S-1)',
+    pa3b.accel === 60, 'clock ' + pa3b.accel + '× 2 s after the command');
+  ck('dev (pwr2): "Held at real time" does not stand under a clock the walkthrough has raised',
+    /Held at real time/.test(pa3a.info) && !/Held at real time/.test(pa3b.info),
+    'before: "' + pa3a.info + '" · after, at ' + pa3b.accel + '×: "' + pa3b.info + '"');
+  await b.ctx.close();
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_wfirst'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_wfirst', category: 'control', manual_ref: 'ZZ-10', title: 'Wait-then-act probe',
+             purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'Wait, then set the pressure.', control: '(observe)', hold: 600, wait_first: true,
+                       cmd: { action: 'set_pressure_setpoint', mpa: 15.41 },
+                       accs: [{ p: 'power_pct', op: '<', v: -1, label: 'the wait', wait_speed: 60 }] }] });
+  });
+  await b.page.click('button[data-ckl-start="zz_pace_wfirst"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var pw1 = await paceRead();
+  ck('dev (pwr2): a wait_first step is paced from entry (the opt-out)', pw1.accel === 60, 'clock ' + pw1.accel + '×');
+  await b.ctx.close();
+
+  /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
+   * the pwr_startup reconcile). The two synthetic probes above each read ONE substep from the first
+   * paint; neither proves auto acts AGAIN when the player moves from one substep to the next inside
+   * a running step, which is the case the owner's format exists for. `pwr_startup` step 5 is the
+   * shipped instance: 5a (hold WITHDRAW to 7.0e2) authors 5×, 5b (Plot point) authors 1×, and the
+   * step's own `hold: 300` would give 10× by the 30 s rule — so each phase names a number no other
+   * path produces. Phase 1 reads the clock on 5a; then 5a's latch is set the way the runtime sets
+   * it (`accsState[0].met`, the row's own latch — a non-band row is never re-graded once met) and
+   * phase 2 reads it again on 5b. INJECTION-PROVEN 2026-09-23, two ways: `cklAccsHeadRung` forced
+   * to return null reds it "1× then 1×" (step 5 authors `wait_hint: false` and no step-level
+   * rung, so nothing else speeds it); and auto made to act ONCE per step (the latch compared on
+   * the step part of the key only) reds it "5× then 5×" — the re-act half, which is what the
+   * `zz_pace` probes cannot see. `&init=hot_zero_power` is load-bearing: on the
+   * default at-power plant SOURCE RANGE is already secured, so steps 5-8 are OVERTAKEN on arrival
+   * and the checklist is on step 9 before the first read (measured, the first draft of this). */
+  b = await build('dev', WT2 + '&run=1&dev=1&init=hot_zero_power');
+  await b.page.click('#tabbar [data-tab="checklists"]');
+  var subOk = await b.page.evaluate(function () {
+    var btn = document.querySelector('[data-ckl-start="pwr_startup"]');
+    if (!btn) return false;
+    btn.click(); return true;
+  });
+  var sub = { z: null, a: null, b: null };
+  if (subOk) {
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 20000 }).catch(function () {});
+    await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service();
+      svc.attentionStops = false;
+      var c = svc.instructor.checklist;
+      c.idx = 4; c.stepAt = null; c.awaitingAck = false; c.accsState = null; c.predBags = null; c.cmdSeen = false;
+    });
+    await b.page.waitForTimeout(2000);
+    /* PHASE 0 (layman pass 4, S-1): 5a is "hold WITHDRAW" — the ACTION is the press, the 5× is
+     * for the wait it starts. Until the step's `cmd` family (rod_nudge) has been seen the clock
+     * stays 1×; the runtime's own latch (`cmdSeen`) is then set the way the instructor sets it
+     * on the first press, without moving a rod that could tick 5a. REFIT 2026-09-24: this probe
+     * read 5× on entry, which pinned the S-1 defect; phases 1-2 still pass on the pre-fix build. */
+    sub.z = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+    await b.page.evaluate(function () { globalThis.RD.__dev.service().instructor.checklist.cmdSeen = true; });
+    await b.page.waitForTimeout(2000);
+    sub.a = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+    await b.page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+    });
+    await b.page.waitForTimeout(2000);
+    sub.b = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+  }
+  /* RE-STATED 2026-09-26 (807g) for the owner's #807 item 9 *(OWNER, 1.8.0-rc6 playtest: "steps 5, 6 7
+   * should be at 10x")*: one warp for both substeps, so 5a is 1× until WITHDRAW, then 10×, and 5b STAYS
+   * 10× — the plot substep's old 1× was the "jump out of warp" he reported. The observed 1× / 10× / 10×
+   * is that ruling, not a defect. INJECTION-PROVEN 2026-09-26: the pre-#807 rungs put back (5a 5×, 5b
+   * 1×, no step `wait_speed`) red it "1×, after 5×, then on 5b 1×". */
+  ck('dev (pwr2): pwr_startup step 5 — one warp for both substeps (#807 item 9): 5a 1× until WITHDRAW, then 10×, and 5b stays 10×',
+    sub.z === 1 && !!sub.a && !!sub.b && sub.a.idx === 4 && sub.b.idx === 4 && !sub.a.met0 && sub.b.met0 &&
+    sub.a.accel === 10 && sub.b.accel === 10,
+    sub.a ? ('on 5a before the press ' + sub.z + '×, after ' + sub.a.accel + '× (5a met ' + sub.a.met0 + '), then on 5b ' +
+             (sub.b ? sub.b.accel + '× (5a met ' + sub.b.met0 + ', step index ' + sub.b.idx + ')' : '?'))
+          : 'pwr_startup start button not found');
+  /* ---- …AND A LATER SUBSTEP WHOSE ACTION IS A PRESS OF A FAMILY ALREADY SPENT (2026-09-25,
+   * layman pass 5 S-1, #653). `pwr_startup` 9b ("Tap WITHDRAW one step, wait…", 10×) follows 9a's
+   * hold, so the step-level `cmd_seen` is already true and 9b opened straight onto 10× before the
+   * first tap (reviewer: ~13 plant-minutes). 9b authors `act_first`: on entering it the clock holds
+   * 1× until a rod-family press lands WHILE 9b IS ACTIVE (`cmd_head`), then takes 10×. Driven by
+   * real commands through the service: a `rod_stop` (rod family, moves nothing) on 9a, 9a's latch
+   * set the way the runtime sets it, then a second `rod_stop` on 9b. INJECTION-PROVEN 2026-09-25:
+   * `act_first` removed from 9b reds it "9b on entry 10×, after the tap 10×" (the filed defect);
+   * the instructor's `cmdSeenHead` line removed reds it "1×, after the tap 1×" (never releases). */
+  var s9 = { a: null, b: null, c: null };
+  if (subOk) {
+    await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      /* 2026-09-27-develop-a: no shipped substep carries `act_first` since the startup rebuild (10b's hold is
+       * 1×; 12a is the step's first substep, held by the step-level rule). The MECHANISM stays, so it is
+       * driven on 10b with the field authored in-page -- a fixture, not the shipped card. */
+      var tb = ((c.proc || {}).steps || [])[9]; if (tb && tb.accs && tb.accs[1]) { tb.accs[1].act_first = true; tb.accs[1].wait_speed = 60; }
+      c.idx = 9; c.stepAt = null; c.awaitingAck = false; c.accsState = null; c.predBags = null;
+      c.cmdSeen = false; c.cmdSeenHead = -1;
+      svc.handleCommand({ action: 'rod_stop', group_id: 'control' });   // 9a's press
+    });
+    await b.page.waitForTimeout(2000);
+    s9.a = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      if (c.accsState && c.accsState[0]) c.accsState[0].met = true;      // 9a done: 9b is active
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead };
+    });
+    await b.page.waitForTimeout(2000);
+    s9.b = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead,
+               met0: !!(c.accsState && c.accsState[0] && c.accsState[0].met) };
+    });
+    await b.page.evaluate(function () {
+      globalThis.RD.__dev.service().handleCommand({ action: 'rod_stop', group_id: 'control' });   // 9b's first tap
+    });
+    await b.page.waitForTimeout(2000);
+    s9.c = await b.page.evaluate(function () {
+      var svc = globalThis.RD.__dev.service(), c = svc.instructor.checklist;
+      /* 9b's HEAD INDEX, read off the pool: it was 3 until #807 item 10 took the settle row out of 9
+       * (2026-09-26) and the hard-coded 3 went red on a correct cmd_head of 2 */
+      var pr = c.proc || {}, st9 = (pr.steps || [])[9] || {}, hd = -1;
+      (st9.accs || []).forEach(function (e, i) { if (hd < 0 && e && e.act_first) hd = i; });
+      /* ...and its rung, read off the pool too: 10× until develop-k (2026-09-26, owner: "suggest 60x
+       * speed for step 9b") */
+      return { accel: svc.timeAcceleration, idx: c.idx, head: c.cmdSeenHead, want: hd, rung: hd >= 0 ? +st9.accs[hd].wait_speed : null };
+    });
+  }
+  ck('dev (pwr2): an `act_first` substep (fixture on pwr_startup 10b) holds 1× on entry until its first tap lands, then takes its own rung, 60×',
+    !!s9.a && !!s9.b && !!s9.c && s9.a.idx === 9 && s9.b.idx === 9 && s9.c.idx === 9 && s9.a.head === 0 &&
+    s9.b.met0 && s9.b.accel === 1 && s9.c.want > 0 && s9.c.head === s9.c.want && s9.c.rung === 60 && s9.c.accel === s9.c.rung,
+    s9.a ? ('9a after its press ' + s9.a.accel + '× (cmd_head ' + s9.a.head + '); 9b on entry ' +
+            (s9.b ? s9.b.accel + '× (9a met ' + s9.b.met0 + ')' : '?') + '; after the tap ' +
+            (s9.c ? s9.c.accel + '× (cmd_head ' + s9.c.head + ' of 9b head ' + s9.c.want + ', step index ' + s9.c.idx + ')' : '?'))
+          : 'pwr_startup start button not found');
   await b.ctx.close();
 
   // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
@@ -704,12 +1096,13 @@ function pinChannel(ch) {
    * and it now also pins that the withdrawn five are absent BY NAME. Validated against the OLD
    * behaviour too — with the five back at 'public' this form goes red naming them, so it is not
    * a check refitted to whatever the build happens to do. */
-  ck('public: ONLY the Mode 5 to Mode 3 heatup is offered; the other five legs and the incident walkthrough are NOT (#722, owner 2026-09-15)',
-    pubWalkIds.join(',') === 'pwr_heatup' &&
-    (await b.page.evaluate(function () {
-      return ['pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown',
-              'pwr_tmi2_incident'].every(function (id) { return RD.Flags.on('procedure:' + id) === false; });
-    })) === true,
+  /* RE-POINTED AGAIN FOR ALPHA 1.8.0 *(OWNER, 2026-09-29: "Do a full release and unlock the
+   * walkthroughs (except the TMI2 one) and the hot full power preview.")*: the six cycle legs are
+   * public, the incident leg is not. Still an EXACT list and still names the incident leg's flag, so
+   * it goes red on the 2026-09-15 heatup-only build (list 'pwr_heatup') and on a TMI-2 leak alike. */
+  ck('public: exactly the six cycle legs are offered and the incident walkthrough is NOT (owner 2026-09-29)',
+    pubWalkIds.join(',') === 'pwr_heatup,pwr_startup,pwr_raise_power,pwr_lower_power,pwr_shutdown,pwr_cooldown' &&
+    (await b.page.evaluate(function () { return RD.Flags.on('procedure:pwr_tmi2_incident') === false; })) === true,
     pubWalkIds.join(','));
   await b.ctx.close();
 
@@ -739,8 +1132,8 @@ function pinChannel(ch) {
    * NOT COVERED BY THE `?follow=` DEEP LINK a few lines of app.js away: that is a hand-typed URL
    * in the `?inject=` / `?ff=` family and `site/flags.js` says plainly that gating is not access
    * control. This is a button the app DREW for the player, which is a different claim. */
-  async function chainLeg(channel) {
-    var c = await build(channel, WT2.replace('?engine=pwr2', '?engine=pwr2&dev=1'));
+  async function chainLeg(channel, extra) {
+    var c = await build(channel, WT2.replace('?engine=pwr2', '?engine=pwr2&dev=1' + (extra || '')));
     var r = await c.page.evaluate(function () {
       var pool = (RD.MANUAL_PROCEDURES || {}).pwr2 || [];
       var heatup = pool.filter(function (x) { return x.id === 'pwr_heatup'; })[0] || null;
@@ -758,8 +1151,11 @@ function pinChannel(ch) {
     await c.ctx.close();
     return r;
   }
-  var chainPub = await chainLeg('public');
-  ck('public: a finished pwr_heatup does NOT offer the gated next leg (the chain handoff is gated, owner 2026-09-15)',
+  /* Since Alpha 1.8.0 every cycle leg is public, so the shipped build no longer carries a gated
+   * `next` — the gate is exercised by FORCING the next leg off with the documented override, which
+   * is the state the 2026-09-15 defect lived in. Same function, same channel. */
+  var chainPub = await chainLeg('public', '&flags=-procedure:pwr_startup');
+  ck('public: a finished pwr_heatup does NOT offer a gated next leg (the chain handoff is gated, owner 2026-09-15)',
     chainPub.channel === 'public' && chainPub.next === 'pwr_startup' &&
     chainPub.nextOn === false && chainPub.offered === null,
     JSON.stringify(chainPub));

@@ -262,6 +262,9 @@
         if (st.acc && RD.InstructorLayer.isBagOp(st.acc.op)) ks.push({ p: st.acc, k: 'acc' });
         (st.accs || []).forEach(function (en, k) {
           if (en && RD.InstructorLayer.isBagOp(en.op)) ks.push({ p: en, k: 'accs' + k });
+          /* `still_s` (pwr_startup 9b, 2026-09-26-develop-k): the rods-still conjunct is a trailing
+           * window too, sampled every tick through the same `gradeStopped` the live row calls */
+          if (en && en.still_s > 0) ks.push({ p: { p: 'control_bank_steps', op: 'stopped', v: en.still_s }, k: 'still' + k });
         });
         return ks;
       }
@@ -283,11 +286,13 @@
             var h = predBags['accs' + i];
             ordMet[i] = !!(h && h.last && h.last.met);
           } else if (en && en.p) {
-            ordMet[i] = pred(s, en);
+            var hs = predBags['still' + i];
+            ordMet[i] = pred(s, en) && (!(en.still_s > 0) || !!(hs && hs.last && hs.last.met));
           } else ordMet[i] = true;
           if (!ordMet[i]) break;
         }
       }
+      var thenIssued = false;
       var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
       for (var i = 0; i < ticks; i++) {
         if (st.ramp && (i % RAMP_EVERY === 0)) {
@@ -297,8 +302,43 @@
         var s = svc.tick();
         if (!s) continue;
         lastSnap = s;
-        baggedList.forEach(function (e) { var h = bagOf(e.p, e.k); h.last = RD.InstructorLayer.gradeBagged(h.bag, s, e.p); });
+        baggedList.forEach(function (e) {
+          var h = bagOf(e.p, e.k); h.last = RD.InstructorLayer.gradeBagged(h.bag, s, e.p);
+          /* `below_1m` (pwr_startup 9a, 2026-09-24): the SAME applyBelow1m the live row calls, off
+           * the prediction the instructor publishes from the points this replay plotted. */
+          if (e.p.below_1m != null) {
+            var oom = s.instructor && s.instructor.one_over_m;
+            RD.InstructorLayer.applyBelow1m(h.last, oom ? oom.pred_steps : null, e.p);
+          }
+          if (e.p.reach_1m != null) {      /* 9a since develop-k: the SAME applyReach1m */
+            var oomR = s.instructor && s.instructor.one_over_m;
+            RD.InstructorLayer.applyReach1m(h.last, oomR ? oomR.pred_steps : null, e.p);
+          }
+          /* a `latch` row is a "you got here" claim live, so the replay asserts that it WAS met
+           * inside the hold, not that it still is at the end (the live row never un-ticks). */
+          if (h.last.met) h.ever = true;
+        });
         if (ordMet) ordAdvance(s);
+        /* `replay_then` (2026-09-24, pwr_startup 9a): a REPLAY-ONLY second command, issued once
+         * on the first tick the named accs row has been met — the player's next action after a
+         * milestone, which a single step-entry `cmd` cannot express. The live runtime never reads it. */
+        /* A NON-BAGGED row (2026-09-24, `pwr_raise_power` 4-8, load first): a cmd-kind row counts
+         * as met once the replay has issued it — at step entry on an unordered step, by `ordMet`
+         * on an ordered one — and a plain predicate row is read off this tick. Before this only a
+         * bagged row could name the milestone, and any other `after_acc` never fired. */
+        if (st.replay_then && !thenIssued) {
+          var thI = st.replay_then.after_acc, thEn = (st.accs || [])[thI];
+          var th = predBags['accs' + thI];
+          if (!th && thEn) th = { ever: thEn.cmd ? (ordMet ? !!ordMet[thI] : true) : !!(thEn.p && pred(s, thEn)) };
+          /* `when` (2026-09-25, `pwr_cooldown` 11): a predicate of its own in place of `after_acc`
+           * -- the card's conditional press ("if SUBCOOLING MARGIN falls below 20 degF, SPRAY OFF") */
+          if (st.replay_then.when) th = { ever: !!pred(s, st.replay_then.when) };
+          if (th && th.ever) {
+            var tc = JSON.parse(JSON.stringify(st.replay_then.cmd));
+            if (tc.group_id === 'control' || tc.group_id === 'shutdown') tc.group_id = groupId(svc, tc.group_id);
+            issue(tc); thenIssued = true;
+          }
+        }
         if (s.metadata && s.metadata.time_acceleration < ACCEL) {
           if (!slowTicks) firstSlow = 'step ' + curStep + ' @ t=' + s.metadata.sim_time.toFixed(1) +
             ' → ' + s.metadata.time_acceleration + '×' +
@@ -324,15 +364,22 @@
         checks.push({ d: 'step ' + curStep + ' saw ' + sw.p + ' ' + sw.op + ' ' + sw.v, pass: !!sawHits[k], obs: !!sawHits[k] });
       });
       function accVerdict(c, key) {
-        if (!RD.InstructorLayer.isBagOp(c.op)) return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
+        if (!RD.InstructorLayer.isBagOp(c.op)) {
+          if (c.still_s > 0) {             /* develop-k: the row's own rods-still conjunct */
+            var hS = predBags[key.replace('accs', 'still')], lS = hS && hS.last;
+            return { pass: pred(lastSnap, c) && !!(lS && lS.met), obs: pv(lastSnap, c.p) + ', rods still ' + (lS && lS.still != null ? lS.still.toFixed(0) : '?') + ' s' };
+          }
+          return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
+        }
         var h = predBags[key];
         var last = h && h.last;
         if (!last) return { pass: false, obs: 'never sampled (hold is 0)' };
         var reading = (last.value == null ? '?' : Number(last.value).toFixed(0));
         if (c.op === 'stopped') {
-          return { pass: !!last.met,
+          return { pass: c.latch ? !!h.ever : !!last.met,
                    obs: (last.still == null ? 'nothing to read' : last.still.toFixed(0) + ' s unchanged') +
-                        ' @ ' + reading };
+                        ' @ ' + reading + (c.latch ? (h.ever ? ', latched' : ', never met') : '') +
+                        ((c.below_1m != null || c.reach_1m != null) ? (last.no_1m ? ', no 1/M prediction' : ', 1/M prediction ' + last.pred_1m) : '') };
         }
         return { pass: !!last.met,
                  obs: (last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
@@ -350,6 +397,13 @@
         st.accs.forEach(function (en, k) {
           if (!en || !en.p) return;
           var ev = accVerdict(en, 'accs' + k);
+          /* A LATCHING ROW ON AN ORDERED STEP IS A MILESTONE, AS THE LIVE RUNTIME GRADES IT (2026-09-26,
+           * #807 review item 4): a `>`/`<` row latches once met (instructor `_gradeAccs`), and the
+           * ordered tracker above already holds that verdict in `ordMet`. `pwr_cooldown` 11b ("watch
+           * SUBCOOLING MARGIN fall to 32 degF") is met mid-hold and is 106 degC by the step's end,
+           * because the spray it gates is then shut. `~` bands and bag ops still grade at the end. */
+          if (!ev.pass && ordMet && ordMet[k] && !RD.InstructorLayer.isBagOp(en.op) && /^(<|>|<=|>=)$/.test(en.op))
+            ev = { pass: true, obs: ev.obs + ' (latched in order)' };
           checks.push({
             d: 'step ' + curStep + ' accs[' + k + '] ' + en.p + ' ' + en.op + ' ' + en.v,
             pass: ev.pass, obs: ev.obs });
@@ -359,6 +413,8 @@
          * also asserts that every cmd entry DID get issued inside the authored hold — i.e. the
          * route the player is forced onto is one the plant actually completes. This is what
          * reddens if a settle predicate is tightened past what its hold delivers. */
+        if (st.replay_then) checks.push({ d: 'step ' + curStep + ' replay_then issued inside the hold',
+          pass: thenIssued, obs: thenIssued ? 'issued' : (st.replay_then.when ? JSON.stringify(st.replay_then.when) : 'accs[' + st.replay_then.after_acc + ']') + ' never met' });
         if (st.accs_ordered) {
           for (var oi = 0; oi < st.accs.length; oi++) {
             if (!st.accs[oi] || !st.accs[oi].cmd) continue;

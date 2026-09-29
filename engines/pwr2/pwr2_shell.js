@@ -248,12 +248,19 @@
    * latch INPUTS in pwr2_protection, not table rows, so they never appear in `functions`.
    * That is load-bearing — the turbine stays tripped until it is latched, and `latch_turbine`
    * itself refuses under a standing reactor trip, so a turbine row here would deadlock the
-   * two commands against each other. */
+   * two commands against each other.
+   *
+   * A LATCHED SAFETY INJECTION IS A STANDING TRIP SIGNAL (#800). Since SI trips the reactor
+   * (pwr2_protection, WTSM 12.3.2.2 item 1) off the SI LATCH, an RPS reset under it was accepted
+   * and re-latched one protection step later — this block's own defect class, back through the
+   * new wire. It cannot deadlock the other way: the SI reset needs P-4, a reactor trip, which is
+   * exactly the state this refusal holds. Named AFTER the table rows, which are more specific. */
   function standingTrip(e) {
     var fns = (e.rpsReport && e.rpsReport.functions) || [];
     for (var i = 0; i < fns.length; i++) {
       if (fns[i].kind === 'rps' && fns[i].asserted) return fns[i];
     }
+    if (e.pt && e.pt.si) return { id: 'safety_injection', name: 'safety injection', siLatch: true };
     return null;
   }
 
@@ -466,6 +473,11 @@
        * which is the more fundamental refusal. Rod bottom is the second one. */
       if (e.pt.reactor_trip) {
         var live = standingTrip(e);
+        if (live && live.siLatch) {
+          throw new Error('RPS RESET BLOCKED: safety injection is latched (actuated on ' +
+            (e.pt.si_cause || 'SI') + ') and a safety injection trips the reactor — a breaker ' +
+            'will not hold in against it. Reset SI at its own panel first, then reset the RPS.');
+        }
         if (live) {
           throw new Error('RPS RESET BLOCKED: the ' + live.name + ' trip signal is still ' +
             'asserted (' + live.value.toFixed(3) + ' against a setpoint of ' +
@@ -934,7 +946,10 @@
      * set_trip_block here when ITS trips list is empty (PWR2's RPS lives in the engine);
      * the board's button uses the pwr1 id for the class. One blockable function. */
     set_trip_block: function (e, c) {
-      if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
+      if (c.trip_id === 'sr_high' || c.trip_id === 'sr_high_flux') {
+        /* the P-6 row (OWNER RULING 2026-09-26, "B"): SR trip + detector high voltage, one lever */
+        EN.command(e, 'sr_block', c.blocked !== false);
+      } else if (c.trip_id === 'pr_low_setpoint' || c.trip_id === 'hi_flux_lo') {
         EN.command(e, 'low_flux_block', c.blocked !== false);
       } else if (c.trip_id === 'ir_high' || c.trip_id === 'ir_high_flux') {
         /* the other half of the startup net (#601) — the pwr1 board's id and this engine's own */
@@ -1229,7 +1244,7 @@
      * plant's own (WTSM 11.3: "if the turbine is LATCHED (not tripped)"). */
     connect_grid:     'reconnection is three real commands, not one synthetic verb: reset_rps, latch_turbine, set_load_target',
     set_adv_setpoint: 'the ADV auto setpoint is a sourced constant (1040 psig, §48); only demand is an operator lever',
-    set_sr_detector:  'the SR channel auto-energizes below the P-6 class point; no operator lever',
+    set_sr_detector:  'the SR detector high voltage goes with the SR trip block at P-6 — use the TRIP BLOCKS panel (set_trip_block sr_high)',
     set_condensate_pump: 'no discrete condensate pump lever — the feed train (pwr2_feedwater) models the pumps as the feed module\'s own A/B pair',
     set_containment_spray: 'containment sprays are unmodeled (matches the shim\'s registered statics)',
     set_ctmt_fans:    'containment fan coolers are unmodeled (registered static)',
@@ -1493,14 +1508,17 @@
          * The message is GENERIC where the kernel's names the channel, because a permissive row
          * carries static text and teaching the kernel to interpolate would be a shared-code
          * change for one plant (HR3). The annunciators name which trip is in — that is what
-         * they are for — and the shell's own reset refusal, which the facade and the board both
-         * reach, quotes the channel, its value and its setpoint. */
+         * they are for — and the shell's own reset refusal quotes the channel, its value and
+         * its setpoint. THE BOARD NEVER REACHES THAT ONE: this row refuses first in the kernel,
+         * so only the facade sees the shell's text. That is why the SI latch (#800) is named in
+         * the static text below rather than only in the shell's. */
         rps_reset_permissive: [{
           instrument: 'no_trip_signal_standing', direction: 'is_true',
           reason: 'TRIP_SIGNAL_PRESENT',
           message_learning: 'A reactor trip signal is still asserted — the breakers will not ' +
             'hold in against it. Clear the condition that tripped the plant first; the ' +
-            'annunciators name which channel is in.',
+            'annunciators name which channel is in. A latched safety injection also holds ' +
+            'it — stop the ECCS pumps to reset SI first.',
           message_industry: 'RPS RESET BLOCKED — trip signal still asserted'
         }].concat(base.rps_reset_permissive || []),
         /* EXACTLY ONE automation channel rides through (#507 wave 1): the boron batch-dose
@@ -1542,38 +1560,38 @@
            * "RIL + 10 steps" in pwr1's FINE-step currency (4 fine per step) — this bank's
            * steps ARE the currency, so the same physical number is 10. */
           if (a.id === 'rod_limit_approach') return Object.assign({}, a, { setpoint: 10 });
-          /* THE SECOND OVERRIDE (#783, OWNER RULING 2026-09-18 "Containment as you
-           * recommend"): the two containment-pressure captions, which on the shared table
-           * name their own mitigations — "(SI signal)" and "(spray/MSLI)". On the RETIRED
-           * engine that is TRUE and must stay: its actuation table fires the safety-injection
-           * backup, containment spray, the fan-cooler realign and the steam-line isolation
-           * off exactly these two setpoints. On PWR2 not one of the four happens. #778
-           * measured why — `actuations: []` three lines up hands this plant's kernel a
-           * different, EMPTY array — and a large loss-of-coolant accident rides to 78.5 psig
-           * (0.643 MPa) with spray, fans and the main steam isolation valves all untouched.
+          /* THE SECOND OVERRIDE IS RETIRED (#784, OWNER RULING 2026-09-21 "Drop the
+           * override"). It stood here from #783 (OWNER RULING 2026-09-18 "Containment as you
+           * recommend") and rewrote the two containment-pressure captions to name their
+           * SETPOINT -- "(3.5 psig)" and "(30 psig)" -- because the shared table names their
+           * MITIGATIONS, "(SI signal)" and "(spray/MSLI)", and PWR2 performed none of them.
            *
-           * ⚠ AND THE `hi` ROW IS WRONG THE SAME WAY — MEASURED for this issue, not assumed.
-           * PWR2's protection is its own (pwr2_protection.js) and could have carried a
-           * containment safety-injection channel the retired row was merely shadowing. It
-           * does not. Pressurizing the building to 35.3 psig (49.98 psia, 0.345 MPa) on an
-           * otherwise healthy plant lights BOTH annunciators (31.0 s and 32.5 s) and latches
-           * NO safety injection: this plant's ESFAS is three rows — low pressurizer pressure,
-           * low steam pressure, high-high steam flow — and nothing in it reads containment at
-           * all. On the large loss-of-coolant accident the safety injection that does occur is
-           * caused by `si_lo_pzr_press` at 27.02 s, 51.5 s BEFORE containment reaches hi-hi.
+           * ITS OWN COMMENT SAID WHAT WOULD RETIRE IT, and that is the whole reason this
+           * removal is a measurement rather than a preference: "If #784 models spray and the
+           * fan coolers inside this engine the parenthetical is earned back, and
+           * run_pwr2_kernel band 6 grades the PLANT rather than the string, so it will say
+           * so." #784 landed on 2026-09-21 and the plant now performs all four off exactly
+           * these two setpoints -- measured on a large loss-of-coolant accident at severity
+           * 1.0, full power: safety injection 5.56 s (re-measured after #800's 2.0 s hold; the 3.5 psig backup, ahead of the
+           * low-pressure path), fan coolers 49.5 s, steam-line isolation 59.6 s, spray
+           * demanded 59.6 s and delivering 88.2 s. The shared text is TRUE on this plant, so
+           * PWR2 takes it back and the board teaches what the signal DOES rather than
+           * restating the number already on the gauge.
            *
-           * So both captions state the CONDITION and the line it crossed, and promise nothing.
-           * The industry register is bare already ('CTMT PRESS HI' / 'CTMT PRESS HI HI') and
-           * needs no override. Do NOT "fix" this in pwr_control.js — the shared text is
-           * correct on the plant that fires the rows. If #784 models spray and the fan coolers
-           * inside this engine the parenthetical is earned back, and run_pwr2_kernel band 6
-           * grades the PLANT rather than the string, so it will say so. */
-          if (a.id === 'ctmt_press_hi') {
-            return Object.assign({}, a, { label_learning: 'Containment Pressure High (3.5 psig)' });
-          }
-          if (a.id === 'ctmt_press_hihi') {
-            return Object.assign({}, a, { label_learning: 'Containment Pressure High-High (30 psig)' });
-          }
+           * THE THING TO KNOW IF YOU ARE TEMPTED TO PUT IT BACK: the override's own mutation
+           * in run_pwr2_kernel -- "the PWR2 caption override is reverted, the shared
+           * containment text comes back" -- went BLIND the moment #784 shipped, because the
+           * restored text stopped being a false promise. A mutation going blind is the gate
+           * reporting that the thing it guarded no longer exists; it was retired with its
+           * reason, not re-anchored. Band 6's caption ban still holds the claim, and it holds
+           * it from the POSITIVE side now: cap-no-false-promise cannot red while all four
+           * mitigations measure as firing, so the ban is carried by cap-ride-mitigates --
+           * regress any mitigation and that check reds AND the ban re-arms behind it.
+           *
+           * A STATION BLACKOUT still defeats spray and the fan coolers (they are
+           * alternating-current loads) while the main steam isolation valve, which is not a
+           * motor load, still shuts. The caption promises the SIGNAL's function, not that
+           * every consumer has power, so that is not a false promise either. */
           return a;
         }),
         failures: (function () {
@@ -1682,7 +1700,21 @@
     var asserted = false, sp = 35;
     /* the SECOND P-10 request (#601) — the 25 % intermediate-range trip, its own lever */
     var irB = !!e.pt.blockIrHigh, irAsserted = false, spIr = 25;
+    /* the P-6 request (2026-09-26) — the source-range trip and detector high voltage. Its
+     * setpoint is in CPS, the channel's own unit; `would_assert` for the same reason as the
+     * P-11 rows below: releasing a block above 1e5 cps trips the reactor on the spot. */
+    var srB = e.pt.blockSR === true, srAsserted = false,
+        spSr = root.RD.pwr2.protection.SR_TRIP.cps;
+    /* ⚠ WHILE BLOCKED THE SOURCE RANGE IS DE-ENERGIZED and reads its 1 cps floor, so its own
+     * `would_assert` can never be true and the row's two-click RELEASE? warning (#598 item 15)
+     * never appeared — MEASURED at Hot Full Power before rc8f: {blocked:true, asserted:false},
+     * and one release tripped the reactor on sr_high_flux 0.52 s later. The would-trip is read
+     * off the INTERMEDIATE-RANGE instrument (HR1) at the SR setpoint's IR equivalent. */
+    var irRd = e.ins && e.ins.reading ? e.ins.reading.intermediate_range : undefined;
+    if (srB && typeof irRd === 'number' && irRd >= root.RD.pwr2.protection.srTripIrAmps())
+      srAsserted = true;
     (rp.functions || []).forEach(function (f) {
+      if (f.id === 'sr_high_flux' && f.would_assert === true) srAsserted = true;
       if (f.id === 'hi_flux_lo') {
         asserted = f.asserted === true;
         if (typeof f.setpoint === 'number') sp = f.setpoint * 100;   /* frac -> % */
@@ -1742,7 +1774,8 @@
     });
 
     return {
-      trip_blocks: { pr_low_setpoint: blocked, ir_high: irB, lo_press: loB, si_trip: siB },
+      trip_blocks: { sr_high: srB, pr_low_setpoint: blocked, ir_high: irB, lo_press: loB,
+                     si_trip: siB },
       trip_setpoints: tripSetpoints,
       trip_setpoint_instruments: ['pzr_level'],   /* what the list above SPEAKS FOR — see comment */
       /* `permissive` IS PUBLISHED SEPARATELY FROM `can_block`, AND THE REASON IS THAT
@@ -1796,7 +1829,19 @@
         lo_press: { blocked: loB, asserted: loAsserted, permissive: p11,
                     can_block: !loB && p11, can_clear: loB, setpoint: spLo },
         si_trip:  { blocked: siB, asserted: siAsserted, permissive: p11,
-                    can_block: !siB && p11, can_clear: siB, setpoint: spSi }
+                    can_block: !siB && p11, can_clear: siB, setpoint: spSi },
+        /* THE P-6 ROW (OWNER RULING 2026-09-26, "B"). The pwr1 board's id `sr_high`, like every
+         * row here. `permissive` is the protection module's own p6_met, never re-derived. LAST,
+         * like its board row: consumers that pick "the first free row" keep picking the rows they
+         * always did (verify_board_cues' ROW_A). */
+        sr_high: {
+          blocked: srB, asserted: srAsserted,
+          permissive: rp.p6_met === true,
+          can_block: !srB && rp.p6_met === true,
+          can_clear: srB,
+          setpoint: spSr,
+          permissive_amps: root.RD.pwr2.protection.P6.amps
+        }
       }
     };
   };
@@ -2041,6 +2086,14 @@
        * totalizer counts this, not the command, because the blender clamps at pure water /
        * the acid tank and the plant then delivers less than it was asked */
       boron_rate_delivered: e.cv.boron_rate_delivered || 0,
+      /* WHAT HAS BEEN METERED AND HAS NOT YET ARRIVED, ppm signed (#807 review, 2026-09-26) — the
+       * boron the blender has put into the VCT and charging line that the RCS has not received
+       * (pwr2_cvcs `boron_in_transit_ppm`). ACTUATOR bookkeeping, not a plant measurement (HR1):
+       * the makeup integrator knows what it metered and the charging flow says how much has been
+       * pushed through, exactly as it knows `boron_rate_delivered` above. The batch-dose books
+       * need it to compare against the analyzer, which only sees what has ARRIVED; the board's
+       * BORON STATUS reads MIXING while it is non-zero. */
+      boron_in_transit_ppm: e.cv.boron_in_transit_ppm || 0,
       /* REAL since the feed train (2026-08-21): the delivered main-feed fraction — the
        * "speed" gauge presentation the board's five reader tiles expect (measured) */
       feed_pump_speed_pct: Math.min(120, e.fw.feed_frac * 100),
@@ -2090,6 +2143,15 @@
        * entirely. Published so the card's status word can say WHICH controller is in service;
        * the retired engine publishes no such field and the board falls back to its old word. */
       steam_dump_mode: dumpMode(e),
+      /* RAMPING (OWNER RULING 2026-09-28: "Does the steam dump have a status indication on it? If
+       * so, we could just have that say ramping."). True while pressure mode is still walking its
+       * WORKING setpoint down to a lower typed TARGET (pwr2_dumpctl.js RAMP); the walk clamps onto
+       * the target exactly, so any gap above 1e-6 MPa (0.00015 psi) is a walk still in progress.
+       * The target is the one the DUMP SETPOINT box shows (driver first, as below), so a fresh
+       * entry reads RAMPING on the same frame the box reads it. */
+      steam_dump_ramping: dumpMode(e) === 'pressure' && !!e.dc &&
+        e.dc.pressure_setpoint_mpa - (e.dcDrivers.pressure_setpoint_mpa !== undefined
+          ? e.dcDrivers.pressure_setpoint_mpa : e.dc.pressure_target_mpa) > 1e-6,
       adv_pct: ts.adv_valve_pct !== undefined ? ts.adv_valve_pct : 0,
       /* from the latched selection (AUTO vs SHUT command both zero demand); a manual %
        * demand clears the latch */
@@ -2104,7 +2166,7 @@
        * throw, which is the dead-button class wearing an error message. The refusal texts stay
        * (they are correct and they teach); what changes is that the player is no longer invited
        * to press. */
-      sr_detector_fixed: true,         /* the SR channel auto-energizes below the P-6 class point */
+      sr_detector_fixed: true,         /* no separate detector switch: the P-6 SR block row carries the high voltage (2026-09-26) */
       /* `condenser_cw_temp_fixed` RETIRED at #591 item 1 — the flag was true because the action
        * was refused, and the action was refused for a reason that belonged to the retired
        * plant. The box is live and the sink moves; the board keeps its numberDisabled law for
@@ -2129,7 +2191,8 @@
        * dc.pressure_setpoint_mpa holds the 7.03 MPa (1019 psi) Ginna no-load anchor */
       steam_dump_setpoint: e.dcDrivers.pressure_setpoint_mpa !== undefined
         ? e.dcDrivers.pressure_setpoint_mpa
-        : (e.dc && e.dc.pressure_setpoint_mpa !== undefined ? e.dc.pressure_setpoint_mpa : 7.03),
+        : (e.dc && e.dc.pressure_target_mpa !== undefined ? e.dc.pressure_target_mpa   /* typed */
+          : (e.dc && e.dc.pressure_setpoint_mpa !== undefined ? e.dc.pressure_setpoint_mpa : 7.03)),
       governor_valve_pct: ts.governor_valve_pct !== undefined ? ts.governor_valve_pct : 0,
       hpi_active: ts.hpi_active === true,
       eccs_mode: ts.eccs_mode,

@@ -33,16 +33,24 @@
  *     High-Pressurizer Pressure Reactor Trip .................. 2425 psia      2.0 s
  *     Low-Pressurizer Pressure Reactor Trip .................. 1775 psia      2.0 s
  *     Power-Range High Neutron Flux Reactor Trip (Low) ....... 35 %           0.5 s
- *     Power-Range High Neutron Flux Reactor Trip (High) ...... 118 %          0.5 s
+ *     Power-Range High Neutron Flux Reactor Trip (High) ...... 115 %          0.5 s
  *     Low RCL Flow Reactor Trip .............................. 87 %           1.0 s
  *     Low-Pressurizer Pressure Safety Injection .............. 1715.0 psia
  *     Low Steam Pressure Safety Injection .................... 327.7 psia (lead/lag=12/2)  2.0 s
  *     High-High Steam Flow Setpoint .......................... 155 % of nominal            2.0 s
  *
- * The high-flux HIGH setting appears twice in the table — "115%" in the 15.4.2 row and "118%
- * (high setting)" in the 15.4.5 rod-ejection row. **118 % is used and the disagreement is
- * declared**, because 15.4.5 states the setting explicitly as "(high setting)" while the 15.4.2
- * row's number sits in a column the OCR has already shifted once on this page.
+ * The high-flux HIGH setting appears twice in the table: "115%" in the 15.4.2 row (RCCA
+ * withdrawal at power) and "118% (high setting)" in the 15.4.5 row (RCCA ejection). **115 % is
+ * used (2026-09-27, #808), and the split is NOT an OCR artifact** -- an earlier version of this
+ * header said it was, and ran 118 %. The UFSAR states the split on purpose, §15.4.5 item H
+ * (lines 6315-6316 of the on-disk copy): "A high neutron flux setpoint of 118% is used which is
+ * conservative compared to the 115% setpoint required by the rod withdrawal at power analysis."
+ * So 118 % is a deliberately conservative bound for the ejection analysis alone. The general
+ * value is 115 %: Ginna TS Bases B 3.4.4 (ML20339A221), "The value for the accident analysis
+ * setpoint of the nuclear overpower (high flux) trip is 115%", and UFSAR Table 15.0-8 gives
+ * 115 % of rated as the "Maximum overpower trip point per uncertainty analysis" over a NOMINAL
+ * setpoint of 108 %. This engine uses ANALYSIS values throughout (the 2425 / 1775 psia rows are
+ * also "safety analysis value"), so 115 % is the consistent choice, not 108 %.
  *
  * ---------------------------------------------------------------------------------------
  * ⚠ WHAT IS DELIBERATELY NOT BUILT, AND WHY. Each of these is a REAL protection function that a
@@ -103,7 +111,7 @@
     hi_pzr_press_psia:  2425,
     lo_pzr_press_psia:  1775,
     hi_flux_lo_frac:    0.35,
-    hi_flux_hi_frac:    1.18,
+    hi_flux_hi_frac:    1.15,
     lo_flow_frac:       0.87,
     /* stage 2b (2026-08-19): the HIGH PRESSURIZER LEVEL trip. Ginna TS Bases B 3.4.9
      * (ML20339A221): "the upper limit is the same as the Pressurizer High Level Trip" -- the
@@ -159,6 +167,45 @@
     si_lo_steam_press_psia: 327.7,
     hi_hi_steam_flow_frac:  1.55,
     src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.0-6'
+  };
+  /* ---- SOURCED: the two CONTAINMENT PRESSURE actuations (#784) ------------------------------
+   * Westinghouse Technology Systems Manual section 12.3 (ML11223A310), verbatim:
+   *   safety injection on high containment pressure — *"The setpoint for this protection signal
+   *   is 3.5 psig ... This SI actuation signal cannot be blocked by the operator."*
+   *   containment spray on the high-high — *"The setpoint is 30 psig."*, the same signal that
+   *   isolates main steam (*"(1) a high-high containment pressure signal or (2) high steam flow
+   *   coincident with ..."*).
+   *
+   * ⚠ "CANNOT BE BLOCKED BY THE OPERATOR" IS MODELLED, not just quoted. P-11 disarms the whole
+   * `esfas` kind below — all three of the pressure/flow initiating rows — and that is right for
+   * those three and WRONG for this one. `unblockable` on the row is the sourced exception; it is
+   * a named property rather than an id test so the next row that needs it cannot inherit the
+   * wrong behaviour silently (the `blockable` lesson from #601, one door over).
+   *
+   * ⚠ ONE BISTABLE, TWO CONSUMERS — the SGLL shape, for the same reason. The source's hi-hi
+   * signal starts containment spray AND isolates main steam; giving each its own row would put
+   * two setpoints and two hold timers where the plant has one, and they could then drift apart.
+   * The row's kind is 'cse' (containment spray and steam-line isolation) with its own latch, the
+   * way the hi-hi level row's 'fwi' has its own.
+   *
+   * ⚠ NO SOURCED BISTABLE DELAY EXISTS for either row. Table 15.0-6's delay column covers the
+   * reactor-trip and ESFAS functions it lists and contains no containment-pressure row, and the
+   * response times B 3.6.6 gives (28.5 s for spray, 44 s for the fan coolers) are SYSTEM response
+   * times — valve travel, pump start, line fill — not channel delays, and they live where they
+   * belong, in `pwr2_containment.js`'s CS block, applied by the caller between DEMAND and
+   * DELIVERY. Putting them here would delay the steam-line isolation too, which shares the
+   * bistable and has no such travel. Both rows therefore carry delay 0.0, declared.
+   */
+  var CTMT_ESF = {
+    kind: '[sourced]',
+    si_psig:   3.5,
+    hihi_psig: 30.0,
+    /* gauge -> absolute on the containment model's own ambient datum, converted ONCE here */
+    si_mpa:   (3.5  + 14.696) / PSIA_PER_MPA,      /* 0.12546 MPa */
+    hihi_mpa: (30.0 + 14.696) / PSIA_PER_MPA,      /* 0.30817 MPa */
+    src: 'WTSM 12.3 (ML11223A310) — SI backup "The setpoint for this protection signal is 3.5 ' +
+         'psig ... cannot be blocked by the operator"; spray and main steam isolation on the ' +
+         'high-high, "The setpoint is 30 psig."'
   };
   /* ---- SOURCED: low-low steam generator water level — ONE bistable, TWO consumers ------------
    * Ginna TS Bases B 3.3.1 Function 13 (ML20339A221): the reactor-trip Function "also performs
@@ -397,24 +444,59 @@
    * strength survives the correction with margin, which is the thing that had to be re-checked.
    * At the old 5e-11 A it was bank 157/627 and ρ = −355 pcm.
    *
-   * ⚠ A DECLARED DEPARTURE, and it is why this permissive PERMITS NOTHING on this plant. The
-   * Bases' P-6 function is *"allows the manual block of the NIS Source Range, Neutron Flux
-   * reactor trip by use of two defeat push buttons"* — a real plant has that lever. This one
-   * does not *(OWNER DIRECTIVE, 2026-09-01, #598 item 7: "The SR DET button is greyed out. I
-   * think we should remove this button and have the SOURCE RANGE disable itself
-   * automatically.")*: the source range de-energizes on flux alone at
-   * SR_SECURE_CPS, `set_sr_detector` is REFUSED by the shell by name, and the board button was
-   * deleted. That cue sits at IR 3.21e-9 A, 32x above P-6, so the handoff this plant performs is
-   * NOT at P-6 and the manual must not say it is. What P-6 does do here is real and visible:
-   * it is the bottom of the intermediate range's in-use band on the NIS card
-   * (`pwr2_true_state`'s nis_ir_inuse_a), the point below which the operator should be reading
-   * the source range instead. Expressed in AMPS because that is the channel's own currency and
-   * the source's; the amps<->power mapping stays in `pwr2_true_state` (K_IR), one copy. */
+   * P-6 PERMITS THE MANUAL SOURCE-RANGE BLOCK (2026-09-26). The Bases' P-6 function is
+   * *"allows the manual block of the NIS Source Range, Neutron Flux reactor trip"*, and
+   * NUREG-1431 B 3.3.1: *"When the source range trip is blocked, the high voltage to the
+   * detectors is also removed"*. OWNER RULING, 2026-09-26, replying "B" to *"B: A, plus a manual
+   * source-range block at P-6"*. It SUPERSEDES the 2026-09-01 directive (#598 item 7: *"The SR
+   * DET button is greyed out. I think we should remove this button and have the SOURCE RANGE
+   * disable itself automatically."*), under which the channel de-energized on flux alone at
+   * 1e5 cps and P-6 permitted nothing. The source range now stays energized until the operator
+   * blocks it, and the source-range high flux trip (SR_TRIP below) fires if nobody does.
+   *
+   * THE LAW IS P-10's, one permissive down (the #295 F1/F2 lesson carries verbatim): the block
+   * is an operator REQUEST that P-6 PERMITS, and the permissive's RESET revokes it. The reset is
+   * a separate sourced point in the same Bases passage — *"on decreasing power, the P-6
+   * interlock automatically energizes the NIS source range detectors and enables the Source
+   * Range Neutron Flux reactor trip at 5E-11 amps"* — so between 5E-11 and 1E-10 A a standing
+   * block holds (the relay's own hysteresis, not an invented deadband). No confirmation timer,
+   * unlike P-10's: the IR channel the RPS reads carries no noise (pwr2_instruments
+   * `intermediate_range`, sigma 0), so the stray-sample case P-10's timer exists for cannot
+   * occur here.
+   *
+   * ONE LEVER, NOT TWO PUSHBUTTONS — a DECLARED simplification. WTSM 9.1 and the McGuire and
+   * Robinson procedures describe two momentary switches, one per train; this plant has one
+   * lumped SR channel, so the TRIP BLOCKS panel's single row takes the trip block and the high
+   * voltage together (the P-10 rows' idiom; DESIGN_CRITERIA Q4 — a second button that must
+   * always be pressed with the first teaches nothing the first does not). The sources'
+   * one-decade overlap before blocking is PROCEDURE, not interlock, and is left to the
+   * procedure. AMPS because that is the channel's own currency and the source's; the
+   * amps<->power mapping stays in `pwr2_true_state` (K_IR), one copy. */
   var P6 = {
     kind: '[sourced]',
     amps: 1.0e-10,
+    reset_amps: 5.0e-11,
     src: 'Ginna TS Bases B 3.3.1 (ML20339A221), Intermediate Range Neutron Flux, P-6 Permissive'
   };
+  /* ---- SOURCED: the SOURCE RANGE high flux reactor trip (2026-09-26) ------------------------
+   * WTSM 9.1 p.9.1-7 (ML11223A263): the source range *"HIGH FLUX LEVEL REACTOR TRIP setpoint
+   * (10^5 cps)"*. Worked case, Turkey Point 2020 (ML20344A126): a startup stopped only by
+   * *"a valid SR Hi Flux RPS trip signal"*. Blockable at P-6 (above); the block also removes the
+   * detector high voltage, so a blocked channel reads nothing (pwr2_true_state). */
+  var SR_TRIP = {
+    kind: '[sourced]',
+    cps: 1.0e5,
+    src: 'WTSM 9.1 p.9.1-7 (ML11223A263); blockable per Ginna TS Bases B 3.3.1 (ML20339A221), P-6'
+  };
+  /* the SR trip setpoint in the INTERMEDIATE range's currency, amps [derived]: 1e5 cps
+   * x K_IR / K_SR = 3.205e-9 A. Read at call time from pwr2_true_state's NIS scales (one copy);
+   * the literal fallback is for a caller that loads this module alone (run_pwr2_protection) and
+   * is the same arithmetic on the same two constants. Consumers: the migration seed below and
+   * the TRIP BLOCKS panel's "would trip if released" on the SR row (pwr2_shell). */
+  function srTripIrAmps() {
+    var N = root.RD && root.RD.pwr2 && root.RD.pwr2.trueState && root.RD.pwr2.trueState.NIS;
+    return SR_TRIP.cps * (N ? N.K_IR / N.K_SR : 8.333e-3 / 2.6e11);
+  }
 
   /* ---- SOURCED: the two FLUX rod stops (#572) ------------------------------------------------
    * WTSM 8.1 §8.1.7.3 (ML11223A252), Manual Rod Withdrawal Stops, items 1 and 2 verbatim:
@@ -454,6 +536,8 @@
     kind: '[sourced]',
     hi_pzr_press: 2.0, lo_pzr_press: 2.0,
     hi_flux_lo:   0.5, hi_flux_hi:   0.5,
+    sr_high_flux: 0.5,         /* [derived] -- no analysis delay exists for it (Ginna TS Bases
+                                * Fn 4); the IR row's carried 0.5 s below, same NIS family */
     ir_high_flux: 0.5,         /* [derived] -- 15.0-6 has no intermediate-range row (the Function
                                 * "is not specifically modeled in the accident analysis", Ginna TS
                                 * Bases B 3.3.1 Fn 3, so it has no analysis delay to quote). The
@@ -471,6 +555,19 @@
     hi_hi_steam_flow: 2.0,
     hi_hi_sg_level: 2.0,       /* [derived] signal delay by the module's SI-32.0 precedent; the
                                 * table's 22.0 s is the valve's AT-CLOSURE figure, a consequence */
+    si_hi_ctmt_press: 2.0,     /* [derived] (#800) — CARRIED from the other SI channels above,
+                                * the ir_high_flux precedent; NOT sourced: no containment row
+                                * exists in the 15.0-6 delay set, and the B 3.6.6 response times
+                                * are SYSTEM times applied by the caller, not channel delays.
+                                * It was 0.0 [open] (#784), and on this single-channel plant
+                                * (Manuals/12 §12.6 — Ginna votes 2-of-3, UFSAR ch15
+                                * §15.1.5.3.1 A.3) one noise sample latched an unblockable SI,
+                                * which now trips the reactor, with TRUE containment 0.3 psi
+                                * (2.9 sigma) under the setpoint. OWNER RULING (2026-09-23): "A"
+                                * — given on the option "2.0 s, marked [derived]". Correct it if
+                                * a plant response-time figure turns up. */
+    ctmt_hihi_press:  0.0,     /* [open] (#784) — same, and it is SHARED by the spray and the
+                                * steam-line isolation because they are one bistable */
     sg_lolo_level: 2.0         /* [sourced] 15.0-6, 15.2.6 LONF: "Low-Low Steam Generator Water
                                 * Level Reactor Trip 0% NRS 2.0". The SAME table's AFW row reads
                                 * "AFW Pump Start 0% NRS 60.0" — that 60 s is the analysis'
@@ -523,6 +620,11 @@
        * the C-1 rod stop, 2. Allows the operator to manually block the low setpoint power
        * range high flux trip"*. `blockable` NAMES its request rather than being a bare `true`,
        * so a row cannot inherit the wrong lever the way the C-1 rod stop did. */
+      /* the bottom rung (2026-09-26): the SOURCE range trip, P-6's block. Reads the SR
+       * INSTRUMENT (HR1); an absent reading is an unavailable row, the sg_level precedent. */
+      { id: 'sr_high_flux', name: 'Source range high flux', kind: 'rps', dir: +1,
+        sp: SR_TRIP.cps, unit: 'cps', read: 'sr_cps', delay: DELAY.sr_high_flux,
+        blockable: 'sr' },
       { id: 'ir_high_flux', name: 'Intermediate range high flux', kind: 'rps', dir: +1,
         sp: IR_TRIP.frac, unit: 'frac', read: 'power_frac', delay: DELAY.ir_high_flux,
         blockable: 'ir_high' },
@@ -560,6 +662,14 @@
       { id: 'hi_hi_steam_flow', name: 'High-high steam flow', kind: 'esfas', dir: +1,
         sp: ESFAS.hi_hi_steam_flow_frac, unit: 'frac', read: 'steam_flow_frac',
         delay: DELAY.hi_hi_steam_flow },
+      /* THE TWO CONTAINMENT ROWS (#784) — see the CTMT_ESF block for the source and for why the
+       * first one carries `unblockable` and the second carries a kind of its own. */
+      { id: 'si_hi_ctmt_press', name: 'Safety injection on high containment pressure',
+        kind: 'esfas', dir: +1, sp: CTMT_ESF.si_mpa, unit: 'MPa',
+        read: 'containment_pressure_mpa', delay: DELAY.si_hi_ctmt_press, unblockable: true },
+      { id: 'ctmt_hihi_press', name: 'High-high containment pressure', kind: 'cse', dir: +1,
+        sp: CTMT_ESF.hihi_mpa, unit: 'MPa', read: 'containment_pressure_mpa',
+        delay: DELAY.ctmt_hihi_press },
       /* The delta-T pair compare a MEASURED fraction against a COMPUTED setpoint — spFn
        * resolves per step from Tavg and pressure; sp is the nominal-condition value so the
        * row still reads sensibly in a listing. Both need delta_t_frac AND tavg_c: absent
@@ -604,6 +714,9 @@
        * actions. It also carries the C-1 rod stop (that list's item 1), which is why
        * `irHiFluxStop` below reads THIS and not `blockLowFlux`. */
       blockIrHigh: !!opts.blockIrHigh,
+      /* THE SOURCE-RANGE BLOCK (2026-09-26) — P-6's request: the SR trip AND the detector high
+       * voltage. Same asymmetric law as the P-10 pair; revoked below P6.reset_amps. */
+      blockSR: !!opts.blockSR,
       /* the P-11 pair (#507 wave 10) — a shutdown IC boots with the cooldown's blocks taken */
       blockLoPress: !!opts.blockLoPress,
       blockSI: !!opts.blockSI,
@@ -613,6 +726,17 @@
       afas_mdafw: false,                    /* LATCHED — the AFW starts, same law as si */
       afas_tdafw: false,                    /* LATCHED */
       fwi: false,                           /* LATCHED — hi-hi feedwater isolation */
+      /* LATCHED (#784) — containment spray AND steam-line isolation, one bistable at the
+       * sourced 30 psig high-high. `cse_spray` is the SAME latch with its release condition
+       * applied; see the latch block in stepProtection for why spray releases and isolation
+       * does not. `|| false` at the reader guards a pre-#784 save (the p10_below_s migration
+       * pattern, #752): `undefined` here reads falsy, which is the SAFE side — a restored
+       * plant re-latches the instant the bistable is still met. */
+      cse: false,
+      cse_cause: null,
+      cse_live: false,
+      cse_t: 0,
+      cse_rearm_block: false,
       trip_cause: null,
       si_cause: null,
       afas_mdafw_cause: null,
@@ -638,8 +762,10 @@
     pr.reactor_trip = false; pr.si = false;
     pr.afas_mdafw = false; pr.afas_tdafw = false;
     pr.fwi = false;
+    pr.cse = false;
     pr.trip_cause = null; pr.si_cause = null;
     pr.afas_mdafw_cause = null; pr.afas_tdafw_cause = null; pr.fwi_cause = null;
+    pr.cse_cause = null;
     Object.keys(pr.held_s).forEach(function (k) { pr.held_s[k] = 0; });
     return pr;
   }
@@ -663,6 +789,12 @@
    *                              (drives the lo-lo trip + the AFW starts; absent, that row
    *                              reports available:false — the hi_pzr_level precedent, a
    *                              later-added trip whose reading is not in the REQUIRED three)
+   *   drivers.containment_pressure_mpa  containment pressure, ABSOLUTE     optional (#784)
+   *                              (drives the 3.5 psig SI backup and the 30 psig high-high
+   *                              spray/steam-line isolation; absent, BOTH rows report
+   *                              available:false — the sg_level_frac precedent, never a
+   *                              silent not-asserted. A caller with no containment model
+   *                              should not be made to invent one.)
    *   drivers.main_feed_lost     both main feed pumps failed               optional, STATE
    *                              (starts the MDAFW — sourced ch10; a breaker fact like
    *                              turbine_tripped, so absent simply means "not lost")
@@ -703,6 +835,35 @@
     var p10Revoke = pr.p10_below_s >= P10.confirm_s;
     if (p10Revoke && pr.blockLowFlux) pr.blockLowFlux = false;
     if (p10Revoke && pr.blockIrHigh) pr.blockIrHigh = false;   /* the second request, same law (#601) */
+    /* ---- P-6 (2026-09-26): the source-range block's permissive and its reset. `ir_amps` is
+     * the IR INSTRUMENT (HR1). MIGRATION: a save written before this field existed carries no
+     * `blockSR`, and its plant had the SR switched off by flux alone at the trip setpoint — so
+     * the request is seeded to exactly that (SR reading at or above SR_TRIP.cps), which
+     * reproduces the old board and cannot scram a restored at-power plant. Left undefined until
+     * an SR reading exists; the SR row is unavailable on that step anyway. */
+    var irA = drivers.ir_amps;
+    var irOk = irA !== undefined && irA !== null && isFinite(irA);
+    var p6Met = irOk && irA >= P6.amps;
+    /* ⚠ THE SEED READS THE INTERMEDIATE RANGE, NOT THE SOURCE RANGE (rc8f, 2026-09-27). The
+     * retired plant's SR switched itself OFF at 1e5 cps, so an old at-power save carries a
+     * source-range reading of 1 cps (the channel floor), and seeding off it said "not taken" —
+     * MEASURED before this fix: an old-shape save loaded at Hot Full Power, 50 % and Low Power
+     * TRIPPED THE REACTOR on sr_high_flux within 50 steps. The IR is on scale across the whole
+     * band, and its equivalent of 1e5 cps (srTripIrAmps, ~3.2e-9 A) is the same threshold. */
+    if (pr.blockSR === undefined) {
+      if (irOk) pr.blockSR = irA >= srTripIrAmps();
+      else if (drivers.sr_cps !== undefined && drivers.sr_cps !== null && isFinite(drivers.sr_cps))
+        pr.blockSR = drivers.sr_cps >= SR_TRIP.cps;
+    }
+    /* ⚠ A FAILED intermediate-range channel does NOT revoke the block (rc8f, 2026-09-27) —
+     * DECLARED SIMPLIFICATION. A real plant resets P-6 only when BOTH IR channels read below it
+     * (coincidence), so one failed channel cannot take the block away; this plant has one
+     * lumped IR channel, and without this guard a single fail-low or dead IR at power revoked the
+     * block, re-energized the source range and TRIPPED THE REACTOR (measured: 0.54 s at Hot Full
+     * Power). Protection still reads the instrument (HR1); `ir_failed` is the injected-failure
+     * state standing in for the healthy second channel. The cost, stated: while the IR is failed
+     * the block cannot auto-revoke on a genuine power fall either. */
+    if (irOk && irA < P6.reset_amps && pr.blockSR && drivers.ir_failed !== true) pr.blockSR = false;
     /* ---- P-11, THE SHUTDOWN PERMISSIVE (#507 wave 10) — the mirror of P-10's law in the
      * other direction: the low-pressure trip block and the SI block are OPERATOR REQUESTS
      * permitted only BELOW P-11, and climbing back above it REVOKES both requests
@@ -730,10 +891,12 @@
      * how the C-1 rod stop came to ride the power-range lever instead of its own. A row now
      * names its request and an unrecognised name blocks NOTHING, which is the conservative
      * end: a typo cannot silently disarm a trip. */
-    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh };
+    var BLOCK_REQUEST = { low_flux: pr.blockLowFlux, ir_high: pr.blockIrHigh,
+                          sr: pr.blockSR === true };
     var blockEffective = pr.blockLowFlux;
 
-    var out = [], fns = functions(), anyRps = null, anyEsfas = null, sgLolo = false, anyFwi = null;
+    var out = [], fns = functions(), anyRps = null, anyEsfas = null, sgLolo = false, anyFwi = null,
+        anyCse = null;
     for (var i = 0; i < fns.length; i++) {
       var f = fns[i];
       var raw = drivers[f.read];
@@ -772,7 +935,10 @@
          * esfas kind (the SI actuation — all three initiating rows are the one disarm the
          * sources describe). Assertion-gated like P-7, so no hold time accumulates. */
         if (f.id === 'lo_pzr_press' && pr.blockLoPress) { asserted = false; gated = true; }
-        if (f.kind === 'esfas' && pr.blockSI) { asserted = false; gated = true; }
+        /* `unblockable` is the SOURCED exception (#784): WTSM 12.3 says of the containment
+         * high-pressure SI that it "cannot be blocked by the operator", so P-11 does not
+         * reach it. Named on the row, never tested by id. */
+        if (f.kind === 'esfas' && f.unblockable !== true && pr.blockSI) { asserted = false; gated = true; }
         /* P-7: an at-power trip is NOT ACTIVE below 10 % power. A plain gate, deliberately --
          * there is no operator request in P-7 to revoke, so the revoke-not-gate lesson from
          * P-10 does not transfer; gating the ASSERTION also zeroes the hold timer below, so
@@ -783,7 +949,9 @@
       /* THE DELAY IS A CONTINUOUS HOLD, not an elapsed-time-since-first-seen. A function that
        * crosses, clears, and crosses again starts its delay over — which is what a real channel
        * does and is the difference between a trip and a transient. */
-      pr.held_s[f.id] = asserted ? pr.held_s[f.id] + (dt > 0 ? dt : 0) : 0;
+      /* `|| 0`: a save written before a row existed restores `held_s` without it, and
+       * undefined + dt is NaN — a delay that never completes (the p10_below_s shape, #752) */
+      pr.held_s[f.id] = asserted ? (pr.held_s[f.id] || 0) + (dt > 0 ? dt : 0) : 0;
       var tripping = asserted && pr.held_s[f.id] >= f.delay;
 
       if (tripping) {
@@ -791,6 +959,7 @@
         if (f.kind === 'esfas' && !anyEsfas) anyEsfas = f.id;
         if (f.id === 'sg_lolo_level') sgLolo = true;   /* the bistable's second consumer */
         if (f.kind === 'fwi' && !anyFwi) anyFwi = f.id;
+        if (f.kind === 'cse' && !anyCse) anyCse = f.id;   /* #784 */
       }
       out.push({
         id: f.id, name: f.name, kind: f.kind, dir: f.dir, available: available,
@@ -825,6 +994,16 @@
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
     if (anyEsfas && !pr.si && !pr.si_rearm_block) { pr.si = true; pr.si_cause = anyEsfas; }
 
+    /* SAFETY INJECTION TRIPS THE REACTOR (#800) [sourced] — ML11223A310, Westinghouse TSM
+     * §12.3.2.2, item 1 of the SI actuation's own consequence list: "Reactor trip: A trip
+     * shuts down the reactor if one has not already occurred." Reads the SI LATCH, which the
+     * source calls retentive memory held until the SI reset (§12.3.2.3), so an RPS reset under
+     * a standing SI re-trips — reset SI at its own panel first. Evaluated after the credited
+     * RPS functions (a same-step setpoint trip keeps its cause) and before the anticipatory
+     * turbine trip. Invisible until #784: every other SI path sits past a condition that has
+     * already tripped the reactor; the 3.5 psig containment backup reached SI 78.2 s at power. */
+    if (pr.si && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = 'safety_injection'; }
+
     /* THE AFW STARTS [sourced — the SGLL block]. Same latch law as si; evaluated AFTER the SI
      * latch so a safety injection arriving this very step starts the MDAFW pumps this step.
      * Lo-lo level starts BOTH pumps (the declared single-loop collapse); SI starts the
@@ -852,6 +1031,10 @@
      * (The SI-driven isolation lives in pwr2_feedwater with its own sourced 32 s delay.) */
     if (anyFwi && !pr.fwi && !pr.fwi_rearm_block) { pr.fwi = true; pr.fwi_cause = anyFwi; }
 
+    /* CONTAINMENT SPRAY + STEAM-LINE ISOLATION on the sourced 30 psig high-high (#784). Same
+     * latch law again: one bistable, one latch, two consumers, reported and not acted on. */
+    if (anyCse && !pr.cse && !pr.cse_rearm_block) { pr.cse = true; pr.cse_cause = anyCse; }
+
     /* LIVE SIGNALS (#512, the owner's per-system unlatch design): is each function's
      * ACTUATING CONDITION present right now, latch aside. The panel's own securing click
      * refuses while its signal is live and resets-then-executes once it clears — so these
@@ -863,6 +1046,7 @@
     pr.afas_mdafw_live = !!(sgLolo || pr.si || drivers.main_feed_lost || drivers.loss_of_offsite);
     pr.afas_tdafw_live = !!(sgLolo || drivers.loss_of_offsite);
     pr.fwi_live = !!anyFwi;
+    pr.cse_live = !!anyCse;
 
     /* THE RESET PERMISSIVE TIMERS (#512) [sourced — the reset circuit's time-delay relay,
      * "usually 45 - 60 sec"]: each latch's age, zeroed when the latch is clear. The SHELL
@@ -875,10 +1059,12 @@
     pr.si_t   = pr.si ? pr.si_t + dtT : 0;
     pr.afas_t = (pr.afas_mdafw || pr.afas_tdafw) ? pr.afas_t + dtT : 0;
     pr.fwi_t  = pr.fwi ? pr.fwi_t + dtT : 0;
+    pr.cse_t  = pr.cse ? (pr.cse_t || 0) + dtT : 0;
     /* the re-arm blocks clear when the live signal drops — a recovered plant re-arms */
     if (!pr.si_live) pr.si_rearm_block = false;
     if (!pr.afas_mdafw_live && !pr.afas_tdafw_live) pr.afas_rearm_block = false;
     if (!pr.fwi_live) pr.fwi_rearm_block = false;
+    if (!pr.cse_live) pr.cse_rearm_block = false;
 
     /* TURBINE-TRIP REACTOR TRIP, gated by P-9 [sourced] — Ginna TS Bases B 3.3.1 Function 14
      * (ML20339A221): "A reactor trip is automatically initiated on a turbine trip when it is
@@ -1022,6 +1208,31 @@
        * cannot drift apart, and it is LEVEL-HELD, which is what stops the operator re-latching
        * the turbine into a steam line that is carrying water. */
       turbine_trip_hi_level: !!pr.fwi,
+      /* ---- THE CONTAINMENT HIGH-HIGH ACTUATION (#784), ONE BISTABLE AND TWO CONSUMERS ------
+       * The latch itself, then each consumer NAMED — the `turbine_trip_hi_level` lesson four
+       * lines up, applied on purpose rather than after the fact: a function with two
+       * consequences reported as one boolean is how a reader concludes the second is missing.
+       *
+       * ⚠ THE TWO CONSUMERS DO NOT SHARE A RELEASE CONDITION, and that asymmetry is the
+       * substance of this report.
+       *   `msli_ctmt` is the LATCH, unconditionally. A main steam isolation valve that shut on
+       *   a containment signal stays shut; nothing in any source re-opens it automatically, and
+       *   a valve that re-opened itself on falling containment pressure would be the
+       *   defeatable-protection shape #295 rejected.
+       *   `ctmt_spray_demand` is the latch RELEASED when the building has fallen back below the
+       *   SI signal at 3.5 psig. DECLARED INFERENCE, the retired engine's own (its row carries
+       *   `reset_below: CTMT_SI_MPA`): WTSM documents an SI reset and no spray-reset logic, and
+       *   in an AUTO-ONLY build with no operator surface the securing has to be automatic or a
+       *   fired spray runs until the end of the run. This plant has no RWST inventory node, so
+       *   "runs forever" is literal.
+       * Both are LEVEL-HELD off the latch, so re-crossing the high-high re-demands spray. */
+      cse: pr.cse,
+      cse_cause: pr.cse_cause,
+      cse_live: pr.cse_live,
+      msli_ctmt: !!pr.cse,
+      ctmt_spray_demand: !!pr.cse &&
+        drivers.containment_pressure_mpa !== undefined &&
+        drivers.containment_pressure_mpa >= CTMT_ESF.si_mpa,
       p10_met: p10Met,
       p11_permit: p11Below,
       lo_press_blocked: pr.blockLoPress,
@@ -1033,13 +1244,18 @@
       /* the OTHER P-10 request (#601) — reported separately because the operator takes them
        * separately and a surface must be able to say which one is standing */
       ir_high_blocked: pr.blockIrHigh,
+      /* P-6 and its request (2026-09-26). `sr_blocked` is also the detector HIGH VOLTAGE —
+       * pwr2_true_state de-energizes the channel off it */
+      p6_met: p6Met,
+      sr_blocked: pr.blockSR === true,
       trip_cause: pr.trip_cause,
       si_cause: pr.si_cause,
       /* ASSERTED-NOW is distinct from LATCHED, and both are reported. A consumer that only ever
        * sees the latch cannot tell a plant still crossing a setpoint from one that crossed it
        * once and recovered. */
       rps_asserted_now: !!anyRps,
-      esfas_asserted_now: !!anyEsfas
+      esfas_asserted_now: !!anyEsfas,
+      cse_asserted_now: !!anyCse
     };
   }
 
@@ -1051,7 +1267,7 @@
      * fitted DNB surface. The shell hands these coefficients to that layer so the gauge and the
      * trip are one equation instead of two. Exported as data, not as a second evaluator. */
     OTDT: OTDT,
-    RPS: RPS, ESFAS: ESFAS, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
+    RPS: RPS, ESFAS: ESFAS, CTMT_ESF: CTMT_ESF, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
     P11: P11, RESET: RESET,
     /* P-6 and P-9 EXPORTED (#642). Both were locals, and both were consequently unpinnable:
      * `run_manual_setpoints` had to carry their manual rows as `narrative` — "no single plant
@@ -1060,7 +1276,7 @@
      * of them. P-6 has one consumer beyond the gate (`pwr2_true_state`'s in-use band), P-9 has
      * none yet; a constant that only a gate reads is still worth exporting, because the
      * alternative is a manual row nothing can contradict. */
-    P6: P6, P9: P9,
+    P6: P6, P9: P9, SR_TRIP: SR_TRIP, srTripIrAmps: srTripIrAmps,
     /* the board reads ROD_STOP.pr_frac / ir_frac so its rod-stop marks come from the PLANT and
      * not from a literal — the #572 defect was exactly a board band drawn from a fallback */
     ROD_STOP: ROD_STOP, IR_TRIP: IR_TRIP,

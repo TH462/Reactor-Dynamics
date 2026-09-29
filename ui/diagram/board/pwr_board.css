@@ -76,6 +76,8 @@
 .pwr-board-stage .bd-tile.ckl-glow,
 .pwr-board-stage .bd-tile.ckl-step-glow,
 .pwr-board-stage .bd-tile.ckl-watch-glow,
+.pwr-board-stage .bd-tile.ckl-check-glow,
+.pwr-board-stage .bd-tile.ckl-panel-glow,
 .pwr-board-stage .bd-tile.instr-glow,
 .pwr-board-stage .bd-tile.hl-glow,
 .pwr-board-stage .bd-tile.hl-pin { z-index: auto; }
@@ -102,6 +104,8 @@
 .pwr-board-stage .bd-halo.ckl-glow,
 .pwr-board-stage .bd-halo.ckl-step-glow,
 .pwr-board-stage .bd-halo.ckl-watch-glow,
+.pwr-board-stage .bd-halo.ckl-check-glow,
+.pwr-board-stage .bd-halo.ckl-panel-glow,
 .pwr-board-stage .bd-halo.instr-glow,
 .pwr-board-stage .bd-halo.hl-glow,
 .pwr-board-stage .bd-halo.hl-pin { z-index: auto; }
@@ -598,4 +602,55 @@
 .pwr-board-stage.bd-frozen *, .pwr-board-stage.bd-frozen *::before, .pwr-board-stage.bd-frozen *::after {
   animation-play-state: paused !important;
   transition: none !important;
+}
+
+/* ===================================================== instructor focus (#811)
+   SCOPE (dimming) and POINTER (a brief silhouette outline) — built in pwr_board.js setScope() /
+   pointAt(), which say how the silhouette is made. ONLY OPACITY ANIMATES: the outline's filter is
+   rastered once and the cue is a compositor-only opacity animation on its own layer (the board has
+   a frame budget, #613). The board has one theme (dark), so there is no light variant to keep in
+   step. */
+.pwr-board-stage .bd-focus-layer {
+  position: absolute; left: 0; top: 0; width: 0; height: 0;
+  overflow: visible; pointer-events: none; z-index: 6;
+}
+.bd-focus-ol { position: absolute; pointer-events: none; opacity: 0; will-change: opacity; }
+.bd-focus-sil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.bd-focus-sil > * { pointer-events: none !important; }
+/* THE POINTER'S CUE: fade in, three pulses, fade out — 4.2 s, run once. pointAt() removes the
+   element on a timer just after (POINT_MS / POINT_REMOVE_MS), so it expires with or without the
+   animation. Clearing it early (End) fades it out. */
+.bd-focus-ol.on { opacity: 0; animation: bdPointer 4.2s ease-in-out both; }
+.bd-focus-ol.bd-out { opacity: 0; animation: bdFocusExit 0.42s ease-in both; }
+@keyframes bdPointer {
+  0% { opacity: 0; } 10% { opacity: 1; } 25% { opacity: 0.4; } 40% { opacity: 1; }
+  55% { opacity: 0.4; } 70% { opacity: 1; } 86% { opacity: 0.8; } 100% { opacity: 0; }
+}
+@keyframes bdFocusExit  { 0% { opacity: 0.7; } 100% { opacity: 0; } }
+/* SCOPE DIMMING. Not hidden, still clickable (pointer-events untouched), and nothing here has a
+   :hover branch — a dimmed tile does not brighten under the pointer (owner, 2026-09-28). Pipes and
+   flanges carry `bd-dim` per element (lit when both their ends are). Transitions only while
+   dimming is on or being lifted, so no tile's other opacity changes start animating.
+   The OPACITY and the DESATURATION are separate rules on purpose — see the alarm-hue rule.
+   PIPES GET THE OPACITY ONLY, NO GRAYSCALE (#811 QA4, measured tools/perf_trace.js --secs=25):
+   the pipes' flow dashes repaint every frame, so a filter on each dimmed pipe is re-run every
+   frame — raster 7.5-7.8 s per 25 s with it vs 5.9-6.1 s undimmed and 6.3 s without it. A dimmed
+   tile is static between readings, so its grayscale is nearly free. */
+.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit),
+.pwr-board-stage.bd-dimming > svg:first-child > .bd-dim { opacity: 0.38; }
+.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit) { filter: grayscale(0.75); }
+/* ALARM HUE (OWNER RULING 2026-09-28, option (b): "keep dimming, but let a tile in alarm keep its
+   hue (drop the grayscale for alarm/actuated states only; no brightening)"). Same opacity as every
+   dimmed tile; only the desaturation goes. `bd-alarm-hue` is set by the renderer (pwr_board.js,
+   ALARM_HUES), the three button classes by the button loop. */
+.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit):is(.bd-alarm-hue, :has(.bd-alarm-hue, .bd-warn, .bd-actuated, .bd-msg)) { filter: none; }
+.pwr-board-stage.bd-dimming > .bd-tile, .pwr-board-stage.bd-dimming > svg:first-child > *,
+.pwr-board-stage.bd-undimming > .bd-tile, .pwr-board-stage.bd-undimming > svg:first-child > * {
+  transition: opacity 0.45s ease, filter 0.45s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bd-focus-ol.on { animation: none; opacity: 0.9; }
+  .bd-focus-ol.bd-out { animation: none; opacity: 0; }
+  .pwr-board-stage.bd-dimming > .bd-tile, .pwr-board-stage.bd-dimming > svg:first-child > *,
+  .pwr-board-stage.bd-undimming > .bd-tile, .pwr-board-stage.bd-undimming > svg:first-child > * { transition: none; }
 }

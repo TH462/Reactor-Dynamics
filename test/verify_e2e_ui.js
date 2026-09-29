@@ -581,7 +581,7 @@ async function testRefusalReachesTheScanner(page) {
  *
  * The popover is shrink-to-fit and one of its captions is 90 characters: a blocked trip whose
  * setpoint is crossed prints "RELEASING THIS WILL TRIP THE REACTOR NOW - the setpoint is
- * crossed. Press again to confirm." (pwr_board_wiring.js `tripBlockRows`). MEASURED at
+ * crossed. Releasing takes two presses." (pwr_board_wiring.js `tripBlockRows`). MEASURED at
  * 1600x1000 before the fix: the panel went 393.9 -> 519.0 rendered px on that one caption and
  * covered the PORV block valve's hit circle, so `document.elementFromPoint` at the valve centre
  * returned the panel's row and the click was SWALLOWED - while the System Scanner still hovered
@@ -638,7 +638,7 @@ async function testTripBlockPopoverStaysOffTheBoard(page) {
     var sub = row.previousSibling && row.previousSibling.querySelector
             ? row.previousSibling.querySelector('.sub') : null;
     if (!sub) return { missing: 'the row caption element' };
-    sub.textContent = 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to confirm.';
+    sub.textContent = 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Releasing takes two presses.';
     return { valve: { x: +v.x.toFixed(1), right: +v.right.toFixed(1) }, before: before, after: probe() };
   });
   if (r.missing) {
@@ -798,6 +798,249 @@ async function testTripBlockPopoverDismissesOnOutsideClick(page) {
   } else {
     console.log('  trip-block popover dismisses on an outside press and still toggles from its ' +
       'own button (#690)');
+  }
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
+/* THE TRIP BLOCKS POPOVER DISMISSES FROM ANYWHERE, ON ESCAPE, AND RETURNS FOCUS
+ * (#721, OWNER RULING 2026-09-21: "Widen to anywhere + Escape + focus (Recommended)").
+ * #690 scoped the outside-press listener to the board wrap; MEASURED with that scope, the
+ * Instructor tab, the time controls (a speed button) and the alarms/chart strip (Ack All) all
+ * left the panel open, because none of them lives inside the board wrap. pwr_board_wiring.js's
+ * `armPopAway` now hosts the pointerdown listener on `document`, arms a `keydown` listener for
+ * Escape alongside it, and `closePop` hands focus back to the TRIP BLOCKS button on a player
+ * dismiss — see the WIDENED note there.
+ *
+ * EVERY PRESS HERE IS A REAL EVENT — `page.click`/`page.mouse.click` (Playwright dispatches
+ * actual input events, not a bare DOM `.click()`) and `page.keyboard.press`. Never
+ * `element.click()` inside an evaluate — same reason as #690's own check above.
+ *
+ * THE LISTENER-COUNT ASSERTIONS patch `document.addEventListener`/`removeEventListener` on the
+ * already-loaded page and read the DELTA from that point forward, so a pre-existing document
+ * listener (app.js's own global Escape handler, for one) cannot inflate the count — only NEW
+ * pointerdown/keydown listeners added by `armPopAway` move it, which is what "one while a panel
+ * is up and none otherwise" actually asserts.
+ *
+ * INJECTION-VERIFIED — see the note in run_all.js's BASELINES entry. */
+async function testTripBlockPopoverWidenedDismissal(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+
+  await page.evaluate(function () {
+    window.__rdCounts = { pointerdown: 0, keydown: 0 };
+    var origAdd = document.addEventListener, origRemove = document.removeEventListener;
+    document.addEventListener = function (type, fn, opts) {
+      if (type === 'pointerdown' || type === 'keydown') window.__rdCounts[type]++;
+      return origAdd.call(this, type, fn, opts);
+    };
+    document.removeEventListener = function (type, fn, opts) {
+      if (type === 'pointerdown' || type === 'keydown') window.__rdCounts[type]--;
+      return origRemove.call(this, type, fn, opts);
+    };
+  });
+
+  function findTripBtn() {
+    return page.evaluate(function () {
+      var el = null, w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), n;
+      while ((n = w.nextNode())) {
+        if ((n.nodeValue || '').trim() === 'TRIP BLOCKS' && n.parentElement.matches('button')) {
+          el = n.parentElement; break;
+        }
+      }
+      if (!el) return null;
+      el.setAttribute('data-rd-trip-btn', '1');   // stable marker — the button's own text can
+      var b = el.getBoundingClientRect();          // carry a count badge, so textContent is not
+      return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };   // reliable
+    });
+  }
+  var isOpen = function () { return page.evaluate(function () { return !!document.querySelector('.bd-pop'); }); };
+  var counts = function () { return page.evaluate(function () { return window.__rdCounts; }); };
+  var activeIsTrip = function () {
+    return page.evaluate(function () {
+      var el = document.activeElement;
+      return !!(el && el.getAttribute && el.getAttribute('data-rd-trip-btn') === '1');
+    });
+  };
+  function findBareOutsidePoint() {
+    return page.evaluate(function () {
+      var pop = document.querySelector('.bd-pop'), stage = document.querySelector('.pwr-board-stage');
+      if (!pop || !stage) return null;
+      var sb = stage.getBoundingClientRect(), pb = pop.getBoundingClientRect();
+      for (var y = sb.top + 8; y < sb.bottom - 8; y += 17) {
+        for (var x = sb.left + 8; x < sb.right - 8; x += 17) {
+          if (x > pb.left - 6 && x < pb.right + 6 && y > pb.top - 6 && y < pb.bottom + 6) continue;
+          if (document.elementFromPoint(x, y) !== stage) continue;
+          return { x: Math.round(x), y: Math.round(y) };
+        }
+      }
+      return null;
+    });
+  }
+
+  var tripPt = await findTripBtn();
+  if (!tripPt) {
+    console.error('FAIL: the trip-block widened-dismissal fixture is gone (no TRIP BLOCKS button) — re-point this check');
+    process.exitCode = 1;
+    return 'trip-block-widened: FIXTURE MISSING — no TRIP BLOCKS button' + String.fromCharCode(10);
+  }
+
+  var bad = [];
+
+  /* EVERY CASE OPENS THE PANEL ITSELF AND ASSERTS IT IS OPEN BEFORE PRESSING. No case may
+   * inherit a previous case's state (#721 quality-pass finding, the reason this was sent back
+   * once already): the first cut just pressed the TRIP BLOCKS button and assumed it opened, so a
+   * case whose OWN dismissal press failed to close the panel left the NEXT case's opening press
+   * hitting the button's own close-on-second-press branch instead of a fresh open — measured on
+   * the pre-#721 code, where the Instructor-tab and alarms-strip cases both read "closed" even
+   * though neither press could reach a board-scoped listener, purely because Escape (the case
+   * before them) had left the panel open.
+   *
+   * FORCE A CLEAN CLOSED BASELINE FIRST, through the button's OWN unconditional toggle-close
+   * (`if (pop) { closePop(true); return; }` in `toggleTripBlocks` — unrelated to, and untouched
+   * by, the outside-dismiss code under test), then open fresh from there. That makes every case
+   * self-sufficient regardless of what a previous case's press did or didn't do: a still-broken
+   * dismissal upstream can no longer masquerade as, or mask, a case downstream. */
+  async function openAndAssert(tag) {
+    if (await isOpen()) {
+      await page.mouse.click(tripPt.x, tripPt.y);   // the button's own toggle — always closes when open
+      await page.waitForTimeout(50);
+    }
+    await page.mouse.click(tripPt.x, tripPt.y);
+    var o = await isOpen();
+    if (!o) bad.push(tag + ': the popover did not open on its own precondition press — not evaluated');
+    return o;
+  }
+
+  // ---- case: Escape ----
+  if (await openAndAssert('Escape')) {
+    var cOpen1 = await counts();
+    if (cOpen1.pointerdown !== 1 || cOpen1.keydown !== 1) {
+      bad.push('Escape case: listener counts while open ' + JSON.stringify(cOpen1) + ' (want {pointerdown:1,keydown:1})');
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('Escape did not dismiss the popover (#721 item 2)');
+    } else {
+      var cEsc = await counts();
+      if (cEsc.pointerdown !== 0 || cEsc.keydown !== 0) {
+        bad.push('listener counts after Escape close: ' + JSON.stringify(cEsc) + ' (want {pointerdown:0,keydown:0})');
+      }
+      if (!(await activeIsTrip())) bad.push('focus after Escape dismiss is not the TRIP BLOCKS button (#721 item 3)');
+      log.push('Escape: open=true → Escape → open=false, counts ' + JSON.stringify(cEsc));
+    }
+  }
+
+  // ---- case: the Instructor tab (outside the board wrap) ----
+  if (await openAndAssert('Instructor tab')) {
+    await page.click('button[data-tab="instructor"]');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('a press on the Instructor tab left the popover open (#721 item 1)');
+    } else {
+      if (!(await activeIsTrip())) bad.push('focus after the Instructor-tab dismiss is not the TRIP BLOCKS button');
+      log.push('Instructor tab: open=true → press → open=false');
+    }
+  }
+
+  // ---- case: the time controls (a speed button, outside the board wrap) ----
+  if (await openAndAssert('time controls')) {
+    await page.click('#speed button[data-speed="1"]');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('a press on the time controls left the popover open (#721 item 1)');
+    } else {
+      if (!(await activeIsTrip())) bad.push('focus after the time-controls dismiss is not the TRIP BLOCKS button');
+      log.push('time controls: open=true → press → open=false');
+    }
+  }
+
+  // ---- case: the alarms/chart strip (Ack All, outside the board wrap) ----
+  if (await openAndAssert('alarms/chart strip')) {
+    await page.click('[data-act="ack-all"]');
+    await page.waitForTimeout(80);
+    if (await isOpen()) {
+      bad.push('a press on the alarms/chart strip (Ack All) left the popover open (#721 item 1)');
+    } else {
+      if (!(await activeIsTrip())) bad.push('focus after the alarms-strip dismiss is not the TRIP BLOCKS button');
+      log.push('alarms/chart strip: open=true → press → open=false');
+    }
+  }
+
+  /* ---- case: re-arms cleanly across a board remount ----
+   * Its OWN precondition is CLOSED, not open — a leaked open panel from a case above would
+   * otherwise let the remount's `onMount -> closePop()` teardown masquerade as "the listener
+   * count is zero because nothing was ever armed". Same self-sufficiency rule as `openAndAssert`
+   * above: force it closed through the button's own toggle rather than skipping this case
+   * outright, so a broken case upstream cannot also swallow this one. The remount itself needs
+   * the real Main Menu -> Reset the plant flow (`rebuildPlantUI` is the only production path to
+   * `RD.PwrBoardDriver.onMount`); nothing else in this function navigates or rebuilds the board,
+   * so this is the one case that pays for it. */
+  if (await isOpen()) {
+    await page.mouse.click(tripPt.x, tripPt.y);   // the button's own toggle — always closes when open
+    await page.waitForTimeout(50);
+  }
+  if (await isOpen()) {
+    bad.push('remount case: could not reach a closed baseline — not evaluated');
+  } else {
+    var cBaseline = await counts();
+    if (cBaseline.pointerdown !== 0 || cBaseline.keydown !== 0) {
+      bad.push('remount case: listener counts before the remount are not zero: ' + JSON.stringify(cBaseline));
+    }
+    await page.click('#mainMenuBtn');
+    await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 }).catch(function () {});
+    await page.click('[data-mreset]');   // arm
+    await page.click('[data-mreset]');   // confirm -> doReset(true) -> rebuildPlantUI -> onMount
+    await page.waitForTimeout(500);
+    await waitBoardLive(page).catch(function () {});
+    var cAfterRemount = await counts();
+    if (cAfterRemount.pointerdown !== 0 || cAfterRemount.keydown !== 0) {
+      bad.push('listener counts after a remount (popover never reopened): ' + JSON.stringify(cAfterRemount) +
+        ' (want {pointerdown:0,keydown:0} — onMount calls closePop() on every rebuild)');
+    }
+    var tripPt2 = await findTripBtn();
+    if (!tripPt2) {
+      bad.push('the TRIP BLOCKS button fixture is gone after a remount');
+    } else {
+      await page.mouse.click(tripPt2.x, tripPt2.y);
+      if (!(await isOpen())) {
+        bad.push('remount case: the popover did not (re)open after the remount — not evaluated further');
+      } else {
+        var cReopen = await counts();
+        if (cReopen.pointerdown !== 1 || cReopen.keydown !== 1) {
+          bad.push('listener counts re-opened after remount: ' + JSON.stringify(cReopen) +
+            ' (want {pointerdown:1,keydown:1} — a leaked pre-remount listener would show 2)');
+        }
+        var outPt = await findBareOutsidePoint();
+        if (!outPt) {
+          bad.push('could not find a bare outside point on the board after the remount — re-point this check');
+        } else {
+          await page.mouse.click(outPt.x, outPt.y);
+          await page.waitForTimeout(80);
+          if (await isOpen()) {
+            bad.push('after a remount, an outside press no longer dismisses the popover');
+          } else {
+            var cClosedAfter = await counts();
+            if (cClosedAfter.pointerdown !== 0 || cClosedAfter.keydown !== 0) {
+              bad.push('listener counts after the post-remount close: ' + JSON.stringify(cClosedAfter));
+            }
+          }
+        }
+      }
+    }
+    log.push('remount: counts after teardown ' + JSON.stringify(cAfterRemount) +
+      ', after reopen ' + JSON.stringify(await counts()));
+  }
+
+  if (bad.length) {
+    console.error('FAIL: trip-block popover widened dismissal (#721): ' + bad.join('; '));
+    process.exitCode = 1;
+  } else {
+    console.log('  trip-block popover dismisses from anywhere, on Escape, returns focus, and ' +
+      're-arms cleanly across a remount (#721)');
   }
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
@@ -2861,6 +3104,200 @@ async function testWalkthroughHoldReleasedOnExit(page) {
  * outer ring reds the inset assertion; re-adding `bar.classList.add('ckl-step-glow')` in app.js
  * reds the strip assertion and nothing else.
  */
+/* HELD BUTTONS AND HIDDEN TARGETS (#809 layman pass 13, S-3 and S-2, 2026-09-28). Two ways the
+ * press pulse pointed at nothing while the row still asked for the press, both MEASURED on
+ * `pwr_startup` before the fix: (S-3) WITHDRAW went steady on the first pointerdown of 5a and stayed
+ * steady with 5a unmet at bank 40 of the ~72 it needs, and through 10b's second hold; (S-2) with the
+ * 1/M window shut, 5b/6b/7b rang a 0x0 hidden Plot point and nothing on screen glowed. A synthetic
+ * two-step procedure, so the plant state the earlier tests leave behind cannot meet the rows: a
+ * never-met row lighting WITHDRAW, then a plot row with the window shut. REAL pointer presses at
+ * real coordinates, for the reason the #755 item 19 block gives. */
+/* STARTS FROM ITS OWN PAGE LOAD (#809 pass-13 review item 4): it used to inherit the previous
+ * test's page — TRIP BLOCKS popover and all — which is the likeliest cause of the pass-13 agent's
+ * full-run-red / solo-green split. Extended 2026-09-28 (layman pass 14 + review):
+ *   step 3 (S-2): every row met on a step whose `hl` is STEP-LEVEL pulses nothing;
+ *   step 4 (S-3): a plot row whose `hl_when` reads false pulses neither Plot point nor its opener;
+ *   the opener's card (ROD CONTROL) wears the panel glow while 1/M PLOT carries the pulse (item 6);
+ *   step 5 (OWNER RULING 2026-09-28, D): `moving_speed` 5 plays 5x while the bank moves, 10x after;
+ *   and after the run ends a click on empty board leaves NO `.ckl-step-glow` (review item 1).
+ * Injection-proven 2026-09-28 — see the report on #809 for each red. */
+async function testHeldAndOpenerGlow(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () {
+    var P = globalThis.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_glow_probe'; });
+    globalThis.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_glow_probe', category: 'control', manual_ref: 'ZZ-03', title: 'Glow probe', purpose: 'Fixture.',
+             from: 'hot_zero_power',
+             steps: [{ text: 'Hold WITHDRAW.', control: 'Control Bank', press_expected: true, hl: ['Withdraw'],
+                       accs: [{ p: 'power_pct', op: '<', v: -1, hl: ['Withdraw'], ask: 'Hold WITHDRAW.', label: 'Never met' }] },
+                     { text: 'Plot.', control: '1/M Plot', hl: ['Plot point'],
+                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], ask: 'Press 1/M PLOT, then Plot point.', label: 'Point plotted' }] },
+                     { text: 'Already done.', control: 'Control Bank', press_expected: true, hl: ['Withdraw'],
+                       accs: [{ p: 'power_pct', op: '>', v: -1, ask: 'Nothing left to do.', label: 'Always met' }] },
+                     { text: 'Wait, then plot.', control: '1/M Plot', hl: ['Plot point'],
+                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'power_pct', op: '<', v: -1 },
+                                ask: 'Wait for a cue that never comes, then plot.', label: 'Point plotted' }] },
+                     { text: 'Pull.', control: 'Control Bank', cmd: { action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'normal' },
+                       hl: ['Withdraw'], hold: 600, wait_speed: 10, moving_speed: 5,
+                       accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Never met.', label: 'Never met' }] }] });
+    var w = document.querySelector('#oomWin [data-oom="close"]');
+    if (w && w.getClientRects().length) w.click();
+  });
+  await startWalkthrough(page, 'zz_glow_probe');
+  await page.waitForFunction(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    var el = document.querySelector('.ckl-step[data-ckl-step]');
+    return !!c && c.proc && c.proc.id === 'zz_glow_probe' && !!el && +el.getAttribute('data-ckl-step') === c.idx &&
+           el.getAttribute('data-ckl-proc') === 'zz_glow_probe' &&   /* the PANEL's leg, not only the model's */
+           !!document.querySelector('.ckl-step-glow');
+  }, { timeout: 15000, polling: 100 });
+  function read() {
+    return page.evaluate(function () {
+      var H = globalThis.RD.Highlight, B = globalThis.RD.PwrBoard;
+      var st = function (el) { return !el ? 'null' : el.classList.contains('ckl-step-done') ? 'steady'
+                                        : el.classList.contains('ckl-step-glow') ? 'pulse' : 'none'; };
+      var h = H.resolve('Withdraw'), b = h && h.parentElement ? h.parentElement.querySelector('.bd-btn') : null;
+      var r = b ? b.getBoundingClientRect() : null;
+      var op = B.revealControl('1/M Plot Tool'), ob = op && op.parentElement ? op.parentElement.querySelector('.bd-btn, button') : null;
+      var orr = ob ? ob.getBoundingClientRect() : null;
+      var pp = document.querySelector('#oomWin [data-oom="plot"]');
+      return { w: st(h), wx: r ? r.left + r.width / 2 : null, wy: r ? r.top + r.height / 2 : null,
+               op: st(op), ox: orr ? orr.left + orr.width / 2 : null, oy: orr ? orr.top + orr.height / 2 : null,
+               pp: st(pp), ppShown: !!(pp && pp.getClientRects().length) };
+    });
+  }
+  var a = await read();
+  if (a.w !== 'pulse' || a.wx == null) throw new Error('#809 S-3 fixture: WITHDRAW is not pulsing on the probe step — ' + JSON.stringify(a));
+  await page.mouse.move(a.wx, a.wy);
+  await page.mouse.down();
+  await page.waitForTimeout(400);
+  var held = await read();
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  var rel = await read();
+  if (held.w !== 'steady') throw new Error('#809 S-3 / #755 item 19: WITHDRAW is not steady WHILE held — ' + held.w);
+  if (rel.w !== 'pulse') {
+    throw new Error('#809 S-3: WITHDRAW stayed ' + rel.w + ' after the hold was released with its row unmet — a held ' +
+      'button is one burst, not the action; the pulse must come back while the row still asks for it');
+  }
+  log.push('WITHDRAW: pulse -> steady while held -> pulse after release (row unmet)');
+  await page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist; c.idx = 1; c.stepAt = null; c.awaitingAck = false;
+  });
+  await page.waitForFunction(function () {
+    var el = document.querySelector('.ckl-step[data-ckl-step]');
+    return !!el && el.getAttribute('data-ckl-step') === '1';
+  }, { timeout: 15000, polling: 100 });
+  await page.waitForTimeout(300);
+  var shut = await read();
+  if (shut.ppShown) throw new Error('#809 S-2 fixture: the 1/M window is open, the closed case cannot be read');
+  if (shut.op !== 'pulse') {
+    throw new Error('#809 S-2: with the 1/M window shut, the Plot point row pulses nothing on screen — 1/M PLOT reads "' +
+      shut.op + '" (Plot point: ' + shut.pp + ' on a hidden button)');
+  }
+  await page.mouse.click(shut.ox, shut.oy);
+  await page.waitForTimeout(500);
+  var open = await read();
+  if (!open.ppShown || open.pp !== 'pulse' || open.op !== 'none') {
+    throw new Error('#809 S-2: after 1/M PLOT opened the window the pulse did not move onto Plot point — ' + JSON.stringify(open));
+  }
+  log.push('Plot point: window shut -> 1/M PLOT pulses; pressed -> window open, Plot point pulses, opener dark');
+  function cardLit() {
+    return page.evaluate(function () {
+      var r = globalThis.RD.PwrBoardInspect.glowRole('Plot point');
+      var el = r && r.panel ? globalThis.RD.PwrBoard.haloElement(r.panel) : null;
+      return { panel: r && r.panel, lit: !!(el && el.classList.contains('ckl-panel-glow')) };
+    });
+  }
+  var cOpen = await cardLit();
+  /* the window closed PROGRAMMATICALLY (no pointer): the opener pulse and its card must come back */
+  await page.evaluate(function () { globalThis.RD.OneOverM.close(); });
+  await page.waitForTimeout(400);
+  var shut2 = await read(), cShut = await cardLit();
+  if (shut2.op !== 'pulse') throw new Error('#809 review item 6: the 1/M window shut by code, and 1/M PLOT did not re-pulse — ' + shut2.op);
+  if (!cShut.lit) throw new Error('#809 review item 6: 1/M PLOT pulses but its card (' + cShut.panel + ') is not lit — every lit control lights its card');
+  log.push('opener card: ' + cShut.panel + ' lit while 1/M PLOT pulses (window open: lit=' + cOpen.lit + '); programmatic close re-pulses the opener');
+  async function jump(i) {
+    await page.evaluate(function (i) {
+      /* `accsState = null`: the per-row latches are the PREVIOUS step's until cleared, and a stale
+       * "met" read here makes every-row-met true on a step whose row can never be met */
+      var c = globalThis.RD.__dev.service().instructor.checklist; c.idx = i; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;
+      c.accsState = null; c.accStreak = 0; c.accMetNow = false;
+    }, i);
+    await page.waitForFunction(function (i) {
+      var el = document.querySelector('.ckl-step[data-ckl-step]');
+      return !!el && el.getAttribute('data-ckl-step') === String(i);
+    }, i, { timeout: 15000, polling: 100 });
+    await page.waitForTimeout(400);
+  }
+  await jump(2);
+  /* the row is graded on the broadcast AFTER the jump; read once the card says every row is met */
+  await page.waitForFunction(function () {
+    var b = globalThis.RD.__dev.service()._instructorBlock(), c = b && b.checklist;
+    return !!c && c.step_index === 2 && !!(c.accs && c.accs[0] && c.accs[0].met);
+  }, { timeout: 15000, polling: 100 });
+  await page.waitForTimeout(600);
+  var met = await read();
+  if (met.w !== 'none') {
+    throw new Error('#809 layman pass 14 S-2: every row met and Continue lit, and WITHDRAW (a STEP-level `hl`) still reads "' + met.w + '" — nothing may pulse');
+  }
+  log.push('every row met (step-level hl): WITHDRAW ' + met.w);
+  await jump(3);
+  /* not vacuous: the plot row must be the ACTIVE substep (head 0), not "every row met" */
+  await page.waitForFunction(function () {
+    var el = document.querySelector('.ckl-step[data-ckl-step]');
+    return !!el && el.getAttribute('data-ckl-hl-head') === '0';
+  }, { timeout: 15000, polling: 100 });
+  var cue = await read();
+  if (cue.op !== 'none' || cue.pp === 'pulse') {
+    throw new Error('#809 layman pass 14 S-3: `hl_when` reads false and the plot press still pulses — opener ' + cue.op + ', Plot point ' + cue.pp);
+  }
+  log.push('hl_when false: 1/M PLOT ' + cue.op + ', Plot point ' + cue.pp);
+  /* OWNER RULING 2026-09-28 (option D): "In step 8 5x while the rods move." */
+  await jump(4);
+  /* no set_speed here: a speed press is the PLAYER taking the clock (cklAuto.over), which would blind the injection */
+  await page.waitForTimeout(1500);
+  var still = await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' });
+  });
+  await page.waitForFunction(function (st) { return globalThis.RD.__dev.service().timeAcceleration !== st; }, still, { timeout: 4000, polling: 100 }).catch(function () {});
+  var mv = await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service(), e = svc.engine && svc.engine.eng;
+    return { acc: svc.timeAcceleration, rod: e ? e.rodSteps + '->' + e.rodTarget : '?', run: svc.running, t: svc.simTime };
+  });
+  await page.waitForFunction(function () {
+    var s = globalThis.RD.__dev.service();
+    return s.timeAcceleration === 10;
+  }, { timeout: 30000, polling: 200 }).catch(function () {});
+  var after = await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  /* before the pull auto holds 1x by design (the action first, then the wait: cklActionPending, #653 S-1) */
+  if (mv.acc !== 5) throw new Error('OWNER RULING 2026-09-28 (D): with the bank moving the walkthrough must play 5x — read ' + mv.acc + 'x (rods ' + mv.rod + ', still ' + still + 'x, running ' + mv.run + ', t ' + mv.t + ')');
+  if (after !== 10) throw new Error('OWNER RULING 2026-09-28 (D): once the bank stops the step rung (10x) must return — read ' + after + 'x');
+  log.push('moving_speed: still ' + still + 'x, moving ' + mv.acc + 'x, stopped ' + after + 'x');
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 });
+    globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' });
+    var w = document.querySelector('#oomWin [data-oom="close"]'); if (w && w.getClientRects().length) w.click();
+    globalThis.RD.MANUAL_PROCEDURES.pwr2 = globalThis.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_glow_probe'; });
+  });
+  /* #809 pass-13 review item 1: End walkthrough, then a click on empty board, and nothing pulses */
+  await page.waitForFunction(function () { return !document.querySelector('.ckl-step[data-ckl-step]'); }, { timeout: 10000, polling: 100 });
+  var bx = await page.evaluate(function () {
+    var r = document.querySelector('.pwr-board-stage').getBoundingClientRect(); return { x: r.left + 4, y: r.bottom - 4 };
+  });
+  await page.mouse.click(bx.x, bx.y);
+  await page.waitForTimeout(400);
+  var left = await page.evaluate(function () { return document.querySelectorAll('.ckl-step-glow').length; });
+  if (left !== 0) throw new Error('#809 pass-13 review item 1: the walkthrough is over and a click re-lit ' + left + ' .ckl-step-glow element(s)');
+  log.push('after the run: click on empty board, .ckl-step-glow count ' + left);
+  return log.join('\n') + '\n';
+}
+
 async function testSpeedRungGlowRendered(page) {
   var log = [];
   await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
@@ -2892,10 +3329,21 @@ async function testSpeedRungGlowRendered(page) {
     var target = -1;
     for (var i = 0; i < c.proc.steps.length; i++) {
       var s = c.proc.steps[i];
-      if ((+s.hold || 0) >= 180 && s.wait_hint !== false) { target = i; break; }
+      /* A STEP-LEVEL `wait_speed` SINCE 2026-09-25 (workbench-f): every pwr_heatup long step now
+       * authors `wait_hint: false` (its substep-format warp line is the one speed line), and the
+       * old `wait_hint !== false` filter had been landing on step 3, whose rung in this jumped
+       * state came only from the hint (its substep rungs need a graded active head; measured:
+       * 0 rungs once the hint went). The claim is the RUNG the step authors; this lands on
+       * step 11 (3600x). */
+      if ((+s.hold || 0) >= 180 && +s.wait_speed > 1) { target = i; break; }
     }
     if (target < 0) return { ok: false };
-    c.idx = target; c.stepAt = null; c.awaitingAck = false;
+    /* …with the step's own ACTION already taken (layman pass 4, S-1): since 2026-09-24 auto holds
+     * 1× on a `cmd` step until that command has been seen (speed the wait, not the action), and
+     * this was pwr_heatup 3, a rod press (step 11 since workbench-f; harmless there). The latch is set the way the instructor sets it on
+     * the press; the claim under test — the WAIT gets its rung — is unchanged, and passes on the
+     * pre-fix build too. The gate itself is verify_flags_ui's zz_pace_action probe. */
+    c.idx = target; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;
     return { ok: true, idx: target, hold: +c.proc.steps[target].hold };
   });
   if (!jumped.ok) throw new Error('#743 fixture: pwr_heatup authors no step with hold >= 180');
@@ -3127,7 +3575,7 @@ async function testSpeedRungGlowRendered(page) {
   await page.waitForTimeout(800);
   await page.evaluate(function (idx) {
     var c = globalThis.RD.__dev.service().instructor.checklist;
-    c.idx = idx; c.stepAt = null; c.awaitingAck = false;
+    c.idx = idx; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;   // action taken (S-1, above)
   }, jumped.idx);
   await page.waitForTimeout(2000);
   var beforeStop = await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
@@ -3147,6 +3595,225 @@ async function testSpeedRungGlowRendered(page) {
       'at ' + handedBack.accel + '× with nothing tracking it. ' + JSON.stringify(handedBack));
   }
   log.push('  walkthrough ended at ' + beforeStop + '×: clock handed back to ' + handedBack.accel + '×');
+  return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
+/* #807 item 7 — "WALKTHROUGH SETS TIME WARP", A PLAYER-VISIBLE OFF SWITCH FOR #796's OWN
+ * AUTOMATION *(OWNER: "Add a setting that shows up under the time warp bar that toggles the
+ * walkthrough automatically setting time warp. this setting only shows up when playing a
+ * walkthrough otherwise its not visible.")*.
+ *
+ * FOUR CLAIMS: the box is HIDDEN with no walkthrough loaded, VISIBLE (and checked — ON is the
+ * default, today's unchanged behaviour) the moment one is running, ON still raises the clock to
+ * the step's own rung exactly as #796 already does, and OFF makes NO automatic change at all —
+ * the clock stays where the fixture set it even though the step's rung is well above it — while
+ * the card's own "Suggested time warp" line keeps printing (that is prose, not a command, and is
+ * untouched either way).
+ *
+ * REUSES #743's OWN STEP-FINDING FIXTURE (a step authoring `hold >= 180` and `wait_speed > 1`,
+ * with its action already taken via `cmdSeen`) rather than inventing a second one, and re-derives
+ * it fresh for each checklist instance rather than caching the index, for the same reason #743's
+ * own comment gives: a re-authored pwr_heatup must not rot a typed number.
+ *
+ * TWO SEPARATE CHECKLIST INSTANCES, ON PURPOSE. `cklAuto.key` (ui/app.js) is a "this driver has
+ * already acted on this (step, rung) pair" latch that only resets when the walkthrough ends (a
+ * `want == null` broadcast) — and the OFF gate added for this issue returns before that latch is
+ * ever touched, so toggling OFF **after** ON has already fired on a step, then back ON on the
+ * SAME step, could read as "no change" for a reason that has nothing to do with the feature
+ * (the latch, not the gate). Starting a second instance for the OFF half sidesteps that ambiguity
+ * entirely rather than asserting through it.
+ *
+ * REVIEW (2026-09-26): the OFF gate now sits ABOVE the hand-back branch and clears the latch, and
+ * the change handler clears it on ON — so the two tail checks below (OFF/1x/ON on the same step
+ * re-applies the rung; OFF then the walkthrough's end leaves the clock alone) are injection-proven
+ * too: HEAD's app.js reds the first ("read 1x (a stale latch)"), the OFF gate moved back below the
+ * hand-back reds the second ("read 1x, it was 3600x").
+ *
+ * Injection-proven 2026-09-26 (`inbox/807/inject_toggle.js`): commenting out the
+ * `if (!cklAutoWarpOn) return;` guard in `syncCklAutoSpeed` (ui/app.js) reds the "OFF suppresses
+ * the raise" assertion (accel climbs to the rung anyway, 1 -> N with the box unchecked); reverting
+ * `syncWarpInfo`'s `wpRow.hidden = !actv;` line to a no-op reds both visibility assertions (the
+ * row stays `hidden` from the markup forever, so "visible inside" fails first). Both restored. */
+async function testWalkthroughWarpTogglePref(page) {
+  var log = [];
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&run=1&dev=1',
+                  { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page, 20000);
+  await page.evaluate(function () { globalThis.RD.__dev.service().attentionStops = false; });
+  /* #743's OWN OVERRIDE, reused verbatim: jumping the index the way this fixture does can land on
+   * a step whose criterion the plant ALREADY satisfies (pwr2's default free-play IC is hot and at
+   * power, so an "AVG COOLANT TEMPERATURE 542 °F or higher" observation reads true at once) — the
+   * card would read "Wait complete", `cklStepSpeed` hands the clock back to 1× on its very first
+   * line, and BOTH the ON and the OFF half would read 1× for the same wrong reason. Forced false
+   * for the life of this page, across both checklist instances. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    var orig = svc._instructorBlock.bind(svc);
+    svc._instructorBlock = function () {
+      var b = orig();
+      if (b && b.checklist) { b.checklist.acc_met = false; b.checklist.awaiting_ack = false; }
+      return b;
+    };
+  });
+
+  async function readRow() {
+    return await page.evaluate(function () {
+      var row = document.getElementById('cklWarpPrefRow');
+      var box = document.getElementById('cklWarpPrefBox');
+      return { hidden: row ? row.hidden : null, checked: box ? box.checked : null };
+    });
+  }
+  async function startLeg() {
+    var started = await page.evaluate(function () {
+      try {
+        var svc = globalThis.RD.__dev.service();
+        var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+        return { ok: !(r && r.type === 'error'), msg: r && r.message };
+      } catch (e) { return { ok: false, msg: String(e) }; }
+    });
+    if (!started.ok) throw new Error('#807 fixture: start_checklist failed — ' + started.msg);
+    await page.waitForFunction(function () {
+      var b = document.querySelector('#tabbar button.on');
+      return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
+    }, { timeout: 15000, polling: 200 });
+    await page.waitForTimeout(500);
+  }
+  async function jumpToRungStep() {
+    var jumped = await page.evaluate(function () {
+      var c = globalThis.RD.__dev.service().instructor.checklist;
+      var target = -1;
+      for (var i = 0; i < c.proc.steps.length; i++) {
+        var s = c.proc.steps[i];
+        if ((+s.hold || 0) >= 180 && +s.wait_speed > 1) { target = i; break; }
+      }
+      if (target < 0) return { ok: false };
+      c.idx = target; c.stepAt = null; c.awaitingAck = false; c.cmdSeen = true;
+      return { ok: true, idx: target, speed: +c.proc.steps[target].wait_speed };
+    });
+    if (!jumped.ok) throw new Error('#807 fixture: pwr_heatup authors no step with hold >= 180 and a rung');
+    return jumped;
+  }
+  async function setSpeed1() {
+    await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 }); });
+  }
+  async function accel() {
+    return await page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  }
+
+  // ---- free play: hidden ----
+  var free = await readRow();
+  if (free.hidden !== true) throw new Error('#807: the box must be hidden with no walkthrough loaded — ' + JSON.stringify(free));
+  log.push('free play: row hidden=' + free.hidden);
+
+  // ---- instance 1: default ON keeps #796's own automation ----
+  await startLeg();
+  var running = await readRow();
+  if (running.hidden !== false) throw new Error('#807: the box must show while a walkthrough is running — ' + JSON.stringify(running));
+  if (running.checked !== true) throw new Error('#807: default must be ON (today\'s behaviour) — ' + JSON.stringify(running));
+  log.push('walkthrough running: row hidden=' + running.hidden + ', checked=' + running.checked);
+
+  var j1 = await jumpToRungStep();
+  await setSpeed1();
+  await page.waitForTimeout(3000);   // #743's own margin: the WARP tier can take a few
+                                      // broadcasts to settle before a 600×/3600× rung lands
+  var onAccel = await accel();
+  if (onAccel !== j1.speed) {
+    throw new Error('#807: with the box ON the walkthrough must still raise the clock to ' + j1.speed + '× — read ' + onAccel + '×');
+  }
+  log.push('ON (default): clock raised to ' + onAccel + '× (step rung ' + j1.speed + '×)');
+
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  await page.waitForTimeout(500);
+  var stopped1 = await readRow();
+  if (stopped1.hidden !== true) throw new Error('#807: the box must hide again once the walkthrough ends — ' + JSON.stringify(stopped1));
+  log.push('instance 1 stopped: row hidden=' + stopped1.hidden);
+
+  // ---- instance 2: OFF makes no automatic change, and its own text still shows ----
+  await startLeg();
+  await page.click('#cklWarpPrefBox');                       // real click — the app's own handler, not a poke
+  var offBox = await readRow();
+  if (offBox.checked !== false) throw new Error('#807: the click did not uncheck the box — ' + JSON.stringify(offBox));
+
+  var j2 = await jumpToRungStep();
+  await setSpeed1();
+  await page.waitForTimeout(3000);
+  var offAccel = await accel();
+  if (offAccel !== 1) {
+    throw new Error('#807: with the box OFF the walkthrough must make NO automatic change — clock read ' +
+      offAccel + '× on a step whose rung is ' + j2.speed + '×');
+  }
+  log.push('OFF: clock stays ' + offAccel + '× on a step whose rung is ' + j2.speed + '× (suppressed)');
+
+  // THE CARD'S OWN "Suggested time warp" LINE (`.ckl-step-speed`, drawn from the step's authored
+  // `wait_speed`/`speed_text` by the checklist renderer) is untouched by this toggle — it is
+  // prose describing the step, not a command, and has nothing to do with `cklAutoWarpOn`.
+  var advice = await page.evaluate(function () {
+    var el = document.querySelector('.ckl-step .ckl-step-speed');
+    return el ? el.textContent : '';
+  });
+  if (!/Suggested time warp/.test(advice)) {
+    throw new Error('#807: the step\'s own "Suggested time warp" text must still print with the box OFF — read "' + advice + '"');
+  }
+  log.push('OFF: card still reads "' + advice.trim() + '"');
+
+  // ---- re-checking resumes the automation, on the SAME instance (the handler clears the
+  // latch on ON — see the comment above this function) ----
+  await page.click('#cklWarpPrefBox');
+  var onBox2 = await readRow();
+  if (onBox2.checked !== true) throw new Error('#807: the second click did not re-check the box — ' + JSON.stringify(onBox2));
+  await page.waitForTimeout(3000);
+  var backAccel = await accel();
+  if (backAccel !== j2.speed) {
+    throw new Error('#807: re-checking the box must resume the walkthrough\'s own pacing — read ' +
+      backAccel + '×, expected ' + j2.speed + '×');
+  }
+  log.push('back ON: clock resumes to ' + backAccel + '×');
+
+  var persisted = await page.evaluate(function () { return localStorage.getItem('rd_ckl_auto_warp'); });
+  if (persisted !== '1') throw new Error('#807: the ON state must persist to localStorage — read ' + JSON.stringify(persisted));
+  log.push('persisted: rd_ckl_auto_warp="' + persisted + '"');
+
+  /* (#807 review, 2026-09-26) THE STALE LATCH: the step's rung has fired (clock at j2.speed, the
+   * driver's key latched on this step). OFF, the player puts the clock at 1x, ON again — the
+   * rung must re-apply on THIS step. Before the fix the OFF gate returned without touching the
+   * latch and ON matched it, so the clock sat at 1x until the next step. */
+  await page.click('#cklWarpPrefBox');
+  await setSpeed1();
+  await page.waitForTimeout(1000);
+  await page.click('#cklWarpPrefBox');
+  await page.waitForTimeout(3000);
+  var relatch = await accel();
+  if (relatch !== j2.speed) {
+    throw new Error('#807 review: OFF, 1x, ON again on the same step must re-apply the step rung, ' + j2.speed +
+      'x rung — read ' + relatch + 'x (a stale latch)');
+  }
+  log.push('OFF, 1x, ON on the same step: rung re-applied, ' + relatch + '×');
+
+  /* OFF MEANS NO AUTOMATIC DROP EITHER: the clock is at the rung auto set; the player switches
+   * the box OFF and the walkthrough ends. Before the fix the hand-back branch ran ahead of the
+   * OFF gate and dropped it to 1x. */
+  await page.click('#cklWarpPrefBox');
+  var offAgain = await readRow();
+  if (offAgain.checked !== false) throw new Error('#807 review: the click did not uncheck the box — ' + JSON.stringify(offAgain));
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  await page.waitForTimeout(3000);
+  var noDrop = await accel();
+  if (noDrop !== j2.speed) {
+    throw new Error('#807 review: with the box OFF the end of the walkthrough must not touch the clock — read ' +
+      noDrop + 'x, it was ' + j2.speed + 'x');
+  }
+  log.push('OFF, walkthrough ended: clock left at ' + noDrop + '× (no automatic drop)');
+  // put the preference back ON and the clock at 1x for whatever runs next on this page
+  await page.evaluate(function () {
+    try { localStorage.setItem('rd_ckl_auto_warp', '1'); } catch (e) { /* private mode */ }
+    globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 });
+  });
+
+  var stopped2 = await readRow();
+  if (stopped2.hidden !== true) throw new Error('#807: the box must hide again once the walkthrough ends — ' + JSON.stringify(stopped2));
+  log.push('instance 2 stopped: row hidden=' + stopped2.hidden);
+
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
@@ -3258,7 +3925,12 @@ async function testWatchGlowRendered(page) {
     await page.waitForFunction(function () {
       var c = globalThis.RD.__dev.service().instructor.checklist;
       var el = document.querySelector('.ckl-step[data-ckl-step]');
-      return !!el && +el.getAttribute('data-ckl-step') === c.idx;
+      /* THE LEG TOO, NOT ONLY THE INDEX (2026-09-28). Every leg has a step N, so an index match
+       * is satisfied by the PREVIOUS leg's panel until the first broadcast after `start_checklist`
+       * repaints it — which is how the negative below counted `pwr_heatup` 17's three rings
+       * (Reactor Power, Control Bank, Boron) against `pwr_startup` 17, on ~half the runs. */
+      return !!el && +el.getAttribute('data-ckl-step') === c.idx &&
+             el.getAttribute('data-ckl-proc') === c.proc.id;
     }, { timeout: 15000, polling: 100 });
     return await page.evaluate(function () {
       var c = globalThis.RD.__dev.service().instructor.checklist;
@@ -3278,8 +3950,23 @@ async function testWatchGlowRendered(page) {
       var watch = (st.hl_watch && st.hl_watch.length) ? st.hl_watch.slice()
                 : (st.hl && st.hl.length) ? []
                 : (ctl && !asks) ? [ctl] : [];
-      return { idx: c.idx, watchLabels: watch, pressLabels: press,
-               watch: document.querySelectorAll('.ckl-watch-glow').length,
+      /* PER-SUBSTEP LISTS (#809 item 14). WHICH substep is active is the app's call (it reads the
+       * grading flags of the render it painted — re-deriving it here from a later tick would race),
+       * so it is read off `data-ckl-hl-head`; WHAT that substep lights is recomputed from the step. */
+      var el0 = document.querySelector('.ckl-step[data-ckl-step]');
+      var head = el0 ? +el0.getAttribute('data-ckl-hl-head') : -1;
+      var sub = head >= 0 && st.accs && st.accs[head];
+      if (sub && (sub.hl || sub.hl_watch)) { press = (sub.hl || []).slice(); watch = (sub.hl_watch || []).slice(); }
+      /* -2: every row met on a step that authors substep lists — nothing pulses, the step's watch
+       * list stays (#809 quality pass; `cklSubstepHl`). */
+      if (head === -2) { press = []; watch = (st.hl_watch || []).slice(); }
+      /* The watch count reads `data-ckl-w`, the AUTHORED watch labels: since #809 a watch label wears
+       * one of three classes by what its element is (solid indication / dashed checked control / dim
+       * card), and the cards derived from a lit control carry the dim class with no attribute. */
+      return { idx: c.idx, watchLabels: watch, pressLabels: press, head: head,
+               watch: document.querySelectorAll('[data-ckl-w]').length,
+               wLabs: Array.prototype.map.call(document.querySelectorAll('[data-ckl-w]'), function (e) {
+                 return e.getAttribute('data-ckl-w') + ' {' + (e.getAttribute('class') || '') + '}'; }),
                painted: document.querySelectorAll('.ckl-step-glow').length };
     });
   }
@@ -3342,6 +4029,7 @@ async function testWatchGlowRendered(page) {
       for (var b = 0; b < (procs[a].steps || []).length; b++) {
         var st = procs[a].steps[b];
         if (st.hl_watch && st.hl_watch.length) continue;
+        if ((st.accs || []).some(function (e) { return e && (e.hl || e.hl_watch); })) continue;   /* #809 */
         /* …and the watch fallback too (#653 S-3b): a step with no `hl_watch`, no `hl` and a
          * press-free `control` now paints a STEADY ring off that `control`, so it is no
          * longer a "0 watch rings" negative. Same mirror as `landOn` above. */
@@ -3361,6 +4049,24 @@ async function testWatchGlowRendered(page) {
       '"authors none paints none" cannot be asserted on real content — re-point this half.');
   }
   await startLeg(neg.pid, false);
+  /* THE NEGATIVE STEP'S ROW IS HELD UNMET (#809 layman pass 14 S-2, 2026-09-28). The step found is
+   * `pwr_startup` 17, whose one row (PR HIGH LOW SETPT blocked) the at-power free-play IC already
+   * meets; its "press labels" pulsed only because every-row-met fell back to the step's `hl` — the
+   * defect S-2 reported, which this fixture was standing on. A press step with its row unmet is the
+   * case the half below is about, so the snapshot says so; restored at the end of this test. */
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    if (svc.__origIB) return;
+    svc.__origIB = svc._instructorBlock;
+    svc._instructorBlock = function () {
+      var b = svc.__origIB.apply(svc, arguments);
+      if (b && b.checklist) {
+        b.checklist.acc_met = false; b.checklist.awaiting_ack = false;
+        (b.checklist.accs || []).forEach(function (a) { if (a) a.met = false; });
+      }
+      return b;
+    };
+  });
   var nr = await landOn(neg.idx);
   if (nr.idx !== neg.idx) {
     throw new Error('#685 fixture: ' + neg.pid + ' advanced off step ' + (neg.idx + 1) + ' to step ' +
@@ -3369,7 +4075,7 @@ async function testWatchGlowRendered(page) {
   if (nr.watch !== 0) {
     throw new Error('#685: ' + nr.watch + ' watch ring(s) painted on ' + neg.pid + ' step ' +
       (nr.idx + 1) + ', which authors NO hl_watch (press labels: ' + nr.pressLabels.join(', ') +
-      ') — the two treatments are not distinct.');
+      ') — the two treatments are not distinct. Painted: ' + (nr.wLabs || []).join(' | '));
   }
   if (nr.painted === 0) {
     throw new Error('#685 fixture: ' + neg.pid + ' step ' + (nr.idx + 1) + ' painted no ' +
@@ -3398,10 +4104,10 @@ async function testWatchGlowRendered(page) {
    * (measured; the DOM-relation forms of that handler both failed) — so a synthetic click with no
    * clientX/clientY would exercise nothing the player does. */
   var treat = await page.evaluate(function () {
-    var p = document.querySelector('.ckl-step-glow'); if (!p) return { press: null };
+    var p = document.querySelector('.ckl-step-glow[data-ckl-hl]'); if (!p) return { press: null };
     var cs = getComputedStyle(p), r = p.getBoundingClientRect();
     return { press: { anim: cs.animationName, shadow: cs.boxShadow, outlineStyle: cs.outlineStyle,
-                      done: p.classList.contains('ckl-step-done'),
+                      lab: p.getAttribute('data-ckl-hl'), done: p.classList.contains('ckl-step-done'),
                       w: +r.width.toFixed(1), h: +r.height.toFixed(1),
                       x: r.left + r.width / 2, y: r.top + r.height / 2 } };
   });
@@ -3426,11 +4132,15 @@ async function testWatchGlowRendered(page) {
   await page.mouse.down();
   await page.mouse.up();
   await page.waitForTimeout(300);
-  var pressed = await page.evaluate(function () {
-    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+  /* READ THE RING THAT WAS PRESSED, BY ITS LABEL (#809 layman pass 13): the first `.ckl-step-glow`
+   * on the page is not always it — a press that opens a panel (TRIP BLOCKS) puts a ring on the
+   * panel's row, which pulses for its own press. Measured when this fixture moved from startup 16 to
+   * 17: the read landed on the popover row and reported the pressed button as still pulsing. */
+  var pressed = await page.evaluate(function (lab) {
+    var p = document.querySelector('.ckl-step-glow[data-ckl-hl="' + lab + '"]'); if (!p) return null;
     var cs = getComputedStyle(p);
     return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
-  });
+  }, treat.press.lab);
   if (!pressed) {
     throw new Error('#755 item 19: the ring went away entirely on the press — the ruling is ' +
       '"steady glow, no pulse", and a cue that vanishes says the player is on the wrong control ' +
@@ -3457,11 +4167,11 @@ async function testWatchGlowRendered(page) {
    * observations move most broadcasts on a live plant — and a naive fix is swept seconds later,
    * which a read taken 300 ms after the press cannot see. 2 s is ~20 broadcasts at 1x. */
   await page.waitForTimeout(2000);
-  var stillDone = await page.evaluate(function () {
-    var p = document.querySelector('.ckl-step-glow'); if (!p) return null;
+  var stillDone = await page.evaluate(function (lab) {
+    var p = document.querySelector('.ckl-step-glow[data-ckl-hl="' + lab + '"]'); if (!p) return null;
     var cs = getComputedStyle(p);
     return { anim: cs.animationName, shadow: cs.boxShadow, done: p.classList.contains('ckl-step-done') };
-  });
+  }, treat.press.lab);
   if (!stillDone || stillDone.anim !== 'none' || !stillDone.shadow || stillDone.shadow === 'none') {
     throw new Error('#755 item 19: the stood-down cue did not survive the panel re-render — ' +
       JSON.stringify(stillDone) + '. The "already pressed" memory must be keyed on the step and ' +
@@ -3509,7 +4219,11 @@ async function testWatchGlowRendered(page) {
       treat.watch.anim + ', shadow ' + treat.watch.shadow.slice(0, 40) + '…');
   }
 
-  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' }); });
+  await page.evaluate(function () {
+    var svc = globalThis.RD.__dev.service();
+    if (svc.__origIB) { svc._instructorBlock = svc.__origIB; delete svc.__origIB; }
+    svc.handleCommand({ action: 'stop_checklist' });
+  });
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
@@ -5220,6 +5934,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
     var tdLog = await testTripBlockPopoverDismissesOnOutsideClick(page);
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-dismiss.log'), tdLog);
+    var twLog = await testTripBlockPopoverWidenedDismissal(page);
+    fs.writeFileSync(path.join(SCRATCH, 'trip-block-widened-dismiss.log'), twLog);
     var dbLog = await testDiagBundle(page);
     fs.writeFileSync(path.join(SCRATCH, 'diag-bundle.log'), dbLog);
     var hpLog = await testHeldPlantDialog(page);
@@ -5236,8 +5952,12 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'walkthrough-hold-released-on-exit.log'), whLog);
     var wgLog = await testWatchGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'watch-glow-rendered.log'), wgLog);
+    var hoLog = await testHeldAndOpenerGlow(page);   /* #809 layman pass 13 S-2 / S-3 */
+    fs.writeFileSync(path.join(SCRATCH, 'held-and-opener-glow.log'), hoLog);
     var srLog = await testSpeedRungGlowRendered(page);
     fs.writeFileSync(path.join(SCRATCH, 'speed-rung-glow.log'), srLog);
+    var wtLog = await testWalkthroughWarpTogglePref(page);
+    fs.writeFileSync(path.join(SCRATCH, 'walkthrough-warp-toggle-pref.log'), wtLog);
     var prLog = await testPauseResumeSpeed(page);
     fs.writeFileSync(path.join(SCRATCH, 'pause-resume-speed.log'), prLog);
     var hnLog = await testHeldNotePauseResume(page);
@@ -5292,6 +6012,7 @@ if (require.main !== module) {
                      startWalkthrough: startWalkthrough,
                      testPauseResumeSpeed: testPauseResumeSpeed, testWalkthroughEventPause: testWalkthroughEventPause,
                      testTripBlockPopoverDismissesOnOutsideClick: testTripBlockPopoverDismissesOnOutsideClick,
+                     testTripBlockPopoverWidenedDismissal: testTripBlockPopoverWidenedDismissal,
                      waitBoardLive: waitBoardLive,
                      testWalkthroughHoldReleasedOnExit: testWalkthroughHoldReleasedOnExit,
                      testHeldNotePauseResume: testHeldNotePauseResume,
@@ -5301,7 +6022,9 @@ if (require.main !== module) {
                       * and never noticed. Found adjudicating #743/#744 (2026-09-13). */
                      testOneOverMGeometry: testOneOverMGeometry,
                      testWatchGlowRendered: testWatchGlowRendered,
+                     testHeldAndOpenerGlow: testHeldAndOpenerGlow,
                      testSpeedRungGlowRendered: testSpeedRungGlowRendered,
+                     testWalkthroughWarpTogglePref: testWalkthroughWarpTogglePref,
                      port: function () { return PORT; } };
 } else {
   main().catch(function (e) {

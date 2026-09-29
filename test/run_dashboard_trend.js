@@ -317,6 +317,25 @@ function seedDeepLinkByDay(nDays) {
   return d;
 }
 
+/* RELEASE MARKERS (#797 item 5) — its OWN isolated fixture, 20 clean consecutive days
+ * (2026-08-20..2026-09-08, all well before "today" 2026-09-18, so every day is closed and
+ * no check here has to reason about a live merge). Long enough that ONE fixture serves both
+ * chart forms: a 7-day slice of it draws the bar chart, the whole 20 days draws the line
+ * chart (the >14-day threshold, check 'line-threshold-wrong' pins the number). */
+function seedReleaseMarkers() {
+  var d = makeDb();
+  var months = { 8: 31 };
+  var day = 20, mon = 8;
+  for (var i = 0; i < 20; i++) {
+    var ds = '2026-' + (mon < 10 ? '0' + mon : mon) + '-' + (day < 10 ? '0' + day : day);
+    traffic(d, ds, 'United States', 4, 2, 1, 0);
+    ran(d, ds, 1, 1);
+    day++;
+    if (day > (months[mon] || 30)) { day = 1; mon++; }
+  }
+  return d;
+}
+
 // ---------------------------------------------------------------- the fake Cloudflare upstream
 var TODAY_LIVE = { rumPageloadEventsAdaptiveGroups: [
   { count: 8, avg: { sampleInterval: 1 }, sum: { visits: 5 }, dimensions: { bot: false } },
@@ -432,13 +451,35 @@ function fakeGql(token, q) {
   SEEN.push(q);
   try { return Promise.resolve(dispatchGql(q)); } catch (e) { return Promise.reject(e); }
 }
+
+/* THE `sql()` (Analytics Engine SQL API, not GraphQL) UPSTREAM — used by the throttle line
+ * (unchanged) and, since #797 item 5, by `fetchReleaseMarkers`. Dispatches on query text like
+ * `dispatchGql` above; anything unrecognised still rejects with the same message the old
+ * unconditional stub carried, so the throttle line's own try/catch keeps swallowing it exactly
+ * as before and no existing check's behaviour moves. */
+var RELEASE_ROWS = [];
+var SQL_FAIL = false;
+function dispatchSql(q) {
+  var s = String(q).replace(/\s+/g, ' ');
+  if (s.indexOf('blob3 AS release') !== -1) {
+    if (SQL_FAIL) throw new Error('run_dashboard_trend: simulated sql() upstream failure');
+    return RELEASE_ROWS.slice();
+  }
+  throw new Error('run_dashboard_trend: unexpected sql() call: ' + s.slice(0, 150));
+}
+var SEEN_SQL = [];
+function fakeSql(token, q) {
+  SEEN_SQL.push(q);
+  try { return Promise.resolve(dispatchSql(q)); } catch (e) { return Promise.reject(e); }
+}
 function fakeCfapi() {
   return 'export const DATASET = "reactor_dynamics_usage";\n'
-    + 'export const sql = () => Promise.reject(new Error("run_dashboard_trend: unexpected sql() call"));\n'
+    + 'export const sql = globalThis.__RD_FAKE_SQL;\n'
     + 'export const gql = globalThis.__RD_FAKE_GQL;\n'
     + 'export const ACCOUNT = "acct"; export const SITE_TAG = "tag";\n';
 }
 globalThis.__RD_FAKE_GQL = fakeGql;
+globalThis.__RD_FAKE_SQL = fakeSql;
 
 // ---------------------------------------------------------------- injections
 var ARG = process.argv.slice(2).join(' ');
@@ -633,6 +674,22 @@ var INJECTIONS = {
   'legend-worstsi-blind': ['analytics.js',
     'const worstSi = rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);',
     'const worstSi = 1;'],
+  /* RELEASE MARKERS (#797 item 5). Three behaviours: the wiring that turns a fetched release
+   * row into `releaseAt`, the PUBLIC-CHANNEL-ONLY filter (see `fetchReleaseMarkers`'s own
+   * header for why NOT merely `<> 'dev'`), and the best-effort guard around the query. */
+  'release-marker-missing': ['analytics.js',
+    'releaseAt = rows.map((r) => releasesByDay.get(r.day) || null);',
+    'releaseAt = rows.map(() => null);'],
+  'release-marker-not-public': ['analytics.js',
+    "     FROM ${DATASET} WHERE blob2 = 'public' AND blob3 <> '' GROUP BY release`);",
+    "     FROM ${DATASET} WHERE blob2 <> 'dev' AND blob3 <> '' GROUP BY release`);"],
+  'release-marker-sql-not-guarded': ['analytics.js',
+    "} catch (e) { /* best-effort: release markers just don't draw this render */ }",
+    '} catch (e) { throw e; }'],
+  /* INTERNAL ROWS SHOW A DASH, NOT THE NUMBER (#797 item 8). */
+  'internal-visits-not-dashed': ['analytics.js',
+    "if (kind !== 'internal') return String(Number(visits) || 0);",
+    'return String(Number(visits) || 0);'],
 };
 
 if (/--list-injections/.test(ARG)) {
@@ -690,6 +747,7 @@ async function threwAsync(fn) {
   var ALL_HTML = [];
   async function renderPage(qs) {
     SEEN.length = 0;
+    SEEN_SQL.length = 0;
     var url = new URL('https://example.invalid/dashboard?view=analytics' + (qs || ''));
     var res = await A.analyticsPage({ STATS: db, CF_ANALYTICS_TOKEN: 'tok' }, url);
     var body = await res.text();
@@ -701,6 +759,7 @@ async function threwAsync(fn) {
   // exact totals (see `seedDeepLinkClosed`/`seedDeepLinkLive`'s own header).
   async function renderPageOn(db2, qs) {
     SEEN.length = 0;
+    SEEN_SQL.length = 0;
     var url = new URL('https://example.invalid/dashboard?view=analytics' + (qs || ''));
     var res = await A.analyticsPage({ STATS: db2, CF_ANALYTICS_TOKEN: 'tok' }, url);
     var body = await res.text();
@@ -1160,7 +1219,14 @@ async function threwAsync(fn) {
        (cday20a.match(/<tr>/g) || []).length + ' <tr>');
     ck('the Canada/preview.example.net row carries the STORED kind (internal), never recomputed '
      + 'from the host alone',
-       /<td>2026-09-03<\/td><td>Canada<\/td><td>preview\.example\.net<\/td><td>internal<\/td><td class="num">5<\/td><td class="num">2<\/td><td><\/td>/.test(cday20a));
+       /<td>2026-09-03<\/td><td>Canada<\/td><td>preview\.example\.net<\/td><td>internal<\/td><td class="num">5<\/td>/.test(cday20a));
+    /* #797 item 8: an internal row's visits show an em dash with a reason, never the number —
+     * the row above carries visits:2 in the fixture, deliberately NONZERO, so this proves the
+     * dash replaces ANY value, not just a zero one. Pageloads (5, checked above) is unchanged. */
+    ck('the internal row’s Landing visits cell is an em dash with a reason, not the number',
+       /<td class="num"><span class="muted" title="An internal row cannot carry a landing visit[^"]*">—<\/span><\/td>/.test(cday20a));
+    ck('the internal row’s own stored visits number (2) is not printed bare in that cell',
+       !/preview\.example\.net[\s\S]{0,80}<td class="num">2<\/td>/.test(cday20a));
     ck('the section’s own source note says first-party exact for this exact span, and never '
      + 'mentions today — the window does not reach it',
        /Source: <b>first-party exact<\/b> \(2026-09-01 to 2026-09-07\)/.test(cday20a)
@@ -1585,6 +1651,61 @@ async function threwAsync(fn) {
     ck('and the 50 bot pageloads in the same batch are still excluded',
        !/>75<\/div><div class="k">Pageloads<\/div>/.test(p28)
        && !/>39<\/div><div class="k">Pageloads<\/div>/.test(p28));
+
+    /* ================ 29. release markers on the by-day chart (#797 item 5) ============= */
+    head('29. release markers -- vertical rule + version label, public releases only, '
+       + 'sourced from MIN(timestamp) GROUP BY blob3, both chart forms');
+    var dbRel = seedReleaseMarkers();
+    RELEASE_ROWS = [
+      { release: 'Alpha 1.7.6', first_seen: '2026-08-22 13:00:00' },
+      { release: 'Alpha 1.7.7', first_seen: '2026-08-22 19:00:00' },
+      // Outside every window rendered below -- must never draw.
+      { release: 'Alpha 1.6.0', first_seen: '2026-07-01 12:00:00' },
+    ];
+    var p29a, p29b;
+    try {
+      p29a = await renderPageOn(dbRel, '&from=2026-08-20&to=2026-08-26');   // 7 days -> bar
+      p29b = await renderPageOn(dbRel, '&from=2026-08-20&to=2026-09-08');   // 20 days -> line
+    } finally { RELEASE_ROWS = []; }
+    var sqlQ29 = SEEN_SQL.filter(function (q) { return /blob3 AS release/.test(q); });
+    ck('the release-marker query groups blob3 by its OWN MIN(timestamp), not a literal date',
+       sqlQ29.length > 0 && /min\(timestamp\) AS first_seen/i.test(sqlQ29[0]),
+       sqlQ29[0] || '(no matching query seen)');
+    ck('the query is PUBLIC CHANNEL ONLY (blob2 = \'public\'), not the weaker dev-exclusion '
+     + 'every other query on this page uses',
+       sqlQ29.length > 0 && sqlQ29.every(function (q) { return /blob2 = 'public'/.test(q); }));
+    ['bar', 'line'].forEach(function (kind, idx) {
+      var page = idx ? p29b : p29a;
+      ck(kind + ' chart: two releases landing the SAME day merge into ONE rule, versions '
+       + 'joined with "+" rather than two overlapping rules',
+         page.indexOf('>Alpha 1.7.6+Alpha 1.7.7<') !== -1);
+      ck(kind + ' chart: exactly one release rule drawn (the out-of-window release never '
+       + 'reaches it)',
+         (page.match(/stroke="#e0c451"/g) || []).length === 1,
+         (page.match(/stroke="#e0c451"/g) || []).length + ' rule(s)');
+      ck(kind + ' chart: the out-of-window release (2026-07-01, Alpha 1.6.0) never appears',
+         page.indexOf('Alpha 1.6.0') === -1);
+      ck(kind + ' chart: the legend mentions the marker only because one actually drew',
+         /version label = a release reaching real users/.test(page));
+    });
+
+    // ---- no release in the picked window: nothing drawn, nothing said in the legend -------
+    RELEASE_ROWS = [{ release: 'Alpha 1.6.0', first_seen: '2026-07-01 12:00:00' }];
+    var p29c;
+    try { p29c = await renderPageOn(dbRel, '&from=2026-08-20&to=2026-08-26'); }
+    finally { RELEASE_ROWS = []; }
+    ck('no release in range draws NOTHING -- no rule, no label, no legend clause',
+       !/stroke="#e0c451"/.test(p29c) && !/version label = a release/.test(p29c));
+
+    // ---- a failed sql() probe degrades to no markers, never a broken page -----------------
+    RELEASE_ROWS = [{ release: 'Alpha 1.7.6', first_seen: '2026-08-22 13:00:00' }];
+    SQL_FAIL = true;
+    var p29d;
+    try { p29d = await renderPageOn(dbRel, '&from=2026-08-20&to=2026-08-26'); }
+    finally { SQL_FAIL = false; RELEASE_ROWS = []; }
+    ck('a failed release-marker query still renders the rest of the page (best-effort, same '
+     + 'convention as the throttle line)',
+       /<h1>Analytics/.test(p29d) && !/stroke="#e0c451"/.test(p29d));
 
     /* =================================================================== 9. no token= */
     head('9. no rendered page anywhere carries a credential in a href');

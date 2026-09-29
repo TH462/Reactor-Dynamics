@@ -240,6 +240,12 @@
 
   function cmd(c) { if (ctxRef && ctxRef.cmd) ctxRef.cmd(c); }
   function CS(s) { return s.control_state || {}; }
+  /* a metered boron dose still in the makeup path (#807 review): |transit| >= 1 ppm. The SAME
+   * threshold as instructor_layer DERIVED_CTL_PARAMS.boron_status_hold — change both. */
+  function boronMixing(s) {
+    var t = CS(s).boron_in_transit_ppm;
+    return typeof t === 'number' && Math.abs(t) >= 1;
+  }
   // ---- indicator damping (#234) -----------------------------------------------------
   // Every board reading goes through here. This is the PANEL INDICATOR's own damping, not
   // the transmitter's: one transmitter feeds both the control system and the meter, but the
@@ -655,7 +661,17 @@
      * because it had been sitting here emitting into nothing. `set_afw {active:true}` is
      * still a live command for scenarios and the instructor. */
     imrmssoa137: { press: function () { cmd({ action: 'set_afw', active: false }); }, active: function (s) { return !esfAuto(s, 'afw') && !(IN(s).afw_active || IN(s).afw_pump_running); } },
-    imrmssr9ihq: { press: function () { cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
+    /* AUTO PUTS AUX FEED IN SERVICE (#808 item A, 2026-09-27). Mode 3 now runs on the motor-
+     * driven pump (GIN-10 §10.5.3.1.2, the startup lineup) and the heatup has to start it — but
+     * #591 item 2 left this card only STOP and AUTO *(OWNER, 2026-08-30: "leave just STOP and
+     * AUTO controls")*, and the work order is "NO NEW CONTROLS". So AUTO is read in the owner's
+     * own #591 words (coordinator's call, 2026-09-27, within that wording), "automatic mode and off": it starts the MOTOR-DRIVEN pump on the
+     * `afw_level` channel's 33 % hold (which throttles it; nothing here opens the valve) and
+     * re-arms, as before. STOP secures. At power the hold keeps the valve shut above 38 %, so a
+     * press there runs a pump into a shut valve and changes no flow. DECLARED DEPARTURE: a real
+     * AFW control switch starts the pump from START, not AUTO. The turbine-driven pump is not
+     * started here — it stays the casualty backup its own AFAS starts. */
+    imrmssr9ihq: { press: function () { cmd({ action: 'set_afw', active: true, pump: 'mdafw' }); cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
     // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
     //     OFF stops the charging pump, AUTO/MAN run it in auto make-up / manual charging) ---
     imrmtg3r8ez: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).charging_pump_running && CS(s).cvcs_auto; } },
@@ -1207,14 +1223,25 @@
      * fast the plant may move. Falls back to the reference before any load is set. */
     imro8rmka2y: { set: function (v) { cmd({ action: 'set_load_target', mwe: v }); },
       get: function (s) { var c = CS(s); return c.load_cmd_mwe != null ? c.load_cmd_mwe : c.load_target_mwe; } },   // Generator Load MW
-    /* A SETPOINT BOX READS BACK THE SETPOINT, NOT THE DELIVERY (#516 item 1, 2026-08-29).
-     * `feed_pump_speed_pct` is the DELIVERED feed fraction, behind the feed pump lag — the
-     * retired engine published this channel as the COMMANDED value until 2026-07-25 and this
-     * box was authored against that convention. Reading the delivery makes every arrow click
-     * re-anchor the demand onto a lagging number: measured, eight +1 gpm clicks moved the box
-     * +0.5 gpm. `feed_demand_pct` is the plant's own demand; the delivered channel stays where
-     * it is for the five reader tiles, and is the fallback for anything not publishing it. */
-    imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) { var c = CS(s); var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT; } }, // SG Feed rate gpm
+    /* A SETPOINT BOX READS BACK THE SETPOINT, NOT THE DELIVERY (#516 item 1, 2026-08-29) — but
+     * only in MANUAL. `feed_pump_speed_pct` is the DELIVERED feed fraction, behind the feed
+     * pump lag — the retired engine published this channel as the COMMANDED value until
+     * 2026-07-25 and this box was authored against that convention. Reading the delivery makes
+     * every arrow click re-anchor the demand onto a lagging number: measured, eight +1 gpm
+     * clicks moved the box +0.5 gpm. `feed_demand_pct` is the plant's own demand in MANUAL; the
+     * delivered channel stays where it is for the five reader tiles, and is the fallback for
+     * anything not publishing it.
+     * IN AUTO, `feed_demand_pct` is the three-element channel's raw output, recomputed every
+     * evaluation — "dances around a lot" (owner playtest, #809 item 13). The box now reads the
+     * MEASURED feed flow instead, same instrument and scale as the FEED FLOW tile above it
+     * (`imrsgkz4lq0`, `IN(s).fw_flow * GPM_FEED`) — HR1: the board reads the instrument, and
+     * `IN()` already damps `fw_flow` (tau 2 s, DISPLAY_DAMP), which is why this box settles
+     * while the raw setpoint keeps moving. `feedAutoOn()` covers both the kernel channel and
+     * PWR2's `feed_coupled` fallback, same as every other AUTO/MAN read on this card. */
+    imro8xhy2me: { set: function (v) { cmd({ action: 'set_feed_pump_speed', pct: v / GPM_FEED_PER_PCT }); }, get: function (s) {
+      if (feedAutoOn(s)) return (IN(s).fw_flow || 0) * GPM_FEED;   // AUTO: measured FEED FLOW, not the jittery demand
+      var c = CS(s); var d = c.feed_demand_pct; return ((d != null && isFinite(d)) ? d : (c.feed_pump_speed_pct || 0)) * GPM_FEED_PER_PCT;
+    } }, // SG Feed rate gpm
     /* PZR SPRAY: the box reads the operator's DEMAND, never the delivered flow (#564 item 1).
      * It read `spray_valve_pct` — which on PWR2 is DELIVERY, after the stuck-valve override and
      * the water-solid gate — so the player's own setting vanished from the box they typed it
@@ -1474,7 +1501,7 @@
     // The retired engine publishes no `steam_dump_mode`, so it keeps the old word.
     imrppq5r7kw: function (s) {
       var m = CS(s).steam_dump_mode;
-      if (m === 'pressure') return 'PRESS';
+      if (m === 'pressure') return CS(s).steam_dump_ramping ? 'RAMPING' : 'STM PRESS';   // 2026-09-28 ruling
       if (m === 'tavg') return 'TAVG';
       if (CS(s).steam_dump_auto) return 'NORMAL';
       return (CS(s).steam_dump_pct || 0) > 0 ? 'DUMPING' : 'MANUAL';
@@ -1491,6 +1518,11 @@
       // Batch-dose totalizer: append the metered ppm remaining while a channel dose runs.
       var c = chan(s, 'boron_conc'), rem = c && c.dose_remaining;
       if (r !== 0 && rem != null && Math.abs(rem) > 0.05) base += ' ' + Math.round(Math.abs(rem)) + '→';
+      // MIXING (#807 review, 2026-09-26): the blender has stopped but a metered dose is still in
+      // the VCT / charging line and arriving — ~19 ppm after a long dilution, a ~30 min tail. The
+      // same test as instructor_layer's `boron_status_hold`, so a row grading HOLD and this word
+      // cannot disagree. Pure display; the retired engine publishes no transit and never mixes.
+      else if (r === 0 && boronMixing(s)) base = 'MIXING ' + Math.round(Math.abs(CS(s).boron_in_transit_ppm)) + '→';
       return base;
     },
     // ADV position (#371). No VALUE_UNIT entry — % is unit-neutral, and a conversion
@@ -1663,7 +1695,9 @@
     if (v >= sp) return NIS_TRIP_COLOR;
     return (Math.log10(sp) - Math.log10(v) <= NIS_NEAR_DECADES) ? SR_HANDOFF_COLOR : SR_NORMAL_COLOR;
   }
-  function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); return m.toFixed(1) + 'e' + e; }
+  // A mantissa that ROUNDS to 10.0 carries into the exponent (2026-09-25, #653 layman pass 5): it
+  // printed "10.0e-5" for 9.95e-5..1e-4. Every value now draws in 1.0..9.9.
+  function fmtExp(v) { if (!v || v <= 0) return '0'; var e = Math.floor(Math.log10(v)); var m = v / Math.pow(10, e); if (+m.toFixed(1) >= 10) { m /= 10; e++; } return m.toFixed(1) + 'e' + e; }
   function accIsolated(s) { return CS(s).accumulator_valve_open === false; }
   function accFill(s) { var t = s.true_state || {}; return t.accumulator_volume_pct != null ? t.accumulator_volume_pct : 78; }
   // N2 cover-gas pressure. Older saves predate the engine field — show a dash rather than a
@@ -3126,6 +3160,18 @@
         var sp = st.si_trip && typeof st.si_trip.setpoint === 'number' ? st.si_trip.setpoint : null;
         return 'REACTOR TRIP · ' + (sp == null ? 'LOW PRESSURE' : dP(sp) + ' ' + uStr('press', 'psi')) +
                ' (P-11 PERMISSIVE) · ALSO BLOCKS SI ACTUATION';
+      } },
+    // THE P-6 ROW (OWNER RULING 2026-09-26, "B"): the source-range high flux trip, and taking the
+    // block also removes the detector high voltage (NUREG-1431 B 3.3.1), so the SR tile goes dark.
+    // The setpoint is the plant's (`trip_block_status.sr_high.setpoint`, cps); no fallback figure.
+    // LAST ON THE CARD, deliberately: the plant releases this block on its own after every trip
+    // (the 5E-11 A reset), and a row that gains a message line pushes every row below it — at the
+    // bottom it moves nothing under the cursor (verify_board_cues, the pass-5 height hold).
+    { id: 'sr_high', label: 'SR HIGH FLUX',
+      sub: function (s) {
+        var v = blockSp(s, 'sr_high');
+        return 'STARTUP TRIP · ' + (v == null ? '' : v.toExponential(0).replace('e+', 'E') + ' cps · ') +
+               '(P-6 PERMISSIVE) · ALSO SWITCHES OFF THE DETECTOR';
       } }
   ];
 
@@ -3139,19 +3185,40 @@
    *     one while a panel is up and none otherwise. That is also the unmount/remount teardown:
    *     `onMount` already calls `closePop()`, so a board rebuild cannot leave a listener behind
    *     on a detached stage. Nothing else has to remember to clean up.
-   *  2. THE HOST IS THE BOARD, NEVER `document`. A document-level listener fires on every piece
-   *     of chrome — the walkthrough panel, the menus, the chart — which is not what "outside
-   *     that popup" means for a panel that lives on the board. It is attached to the wrap rather
-   *     than the stage so the letterbox margin around the scaled canvas counts as outside too.
-   *  3. THE TRIP BLOCKS BUTTON IS EXEMPT, and that guard is what makes the panel openable at
-   *     all. The button toggles on 'click'; this listener runs on 'pointerdown', which fires
-   *     FIRST. Without the exemption a press on the button while the panel is up would close it
-   *     here and then the click would re-open it, so the button could never shut it — the panel
-   *     would be dismissible by every press except the one an operator would try. A press inside
-   *     the panel is exempt for the obvious reason: the rows are buttons.
+   *  2. THE HOST IS `document` (WIDENED #721, see below). THE TRIP BLOCKS BUTTON IS EXEMPT, and
+   *     that guard is what makes the panel openable at all. The button toggles on 'click'; this
+   *     listener runs on 'pointerdown', which fires FIRST. Without the exemption a press on the
+   *     button while the panel is up would close it here and then the click would re-open it, so
+   *     the button could never shut it — the panel would be dismissible by every press except the
+   *     one an operator would try. A press inside the panel is exempt for the obvious reason: the
+   *     rows are buttons.
    *
    * pointerdown rather than click so the panel goes away on the press, and in the CAPTURE phase
-   * so a handler that ever starts calling stopPropagation cannot strand it open. */
+   * so a handler that ever starts calling stopPropagation cannot strand it open.
+   *
+   * ---------------------------------------------------------- WIDENED 2026-09-21 (#721, RULED)
+   * The host used to be the board wrap, on the reading that "outside that popup" meant "outside
+   * the popup, on the board". The owner's ruling took the #675 sentence literally: outside the
+   * popup, full stop. MEASURED with the board-scoped host: the Instructor tab, the time controls
+   * and the alarms/chart strip all left the panel open, because none of them lives inside the
+   * board wrap. The host is `document` now — the exemptions above are what keep it from also
+   * closing on the button that opens it or a press inside the card.
+   *
+   * TWO MORE THINGS DISMISS IT, SAME RULING:
+   *   - Escape, via a `keydown` listener armed and torn down alongside the pointerdown one —
+   *     same one-while-up, none-otherwise lifetime, same `closePop(true)` acknowledge path.
+   *   - Focus returns to the opener. `closePop` hands it back to the button that was passed to
+   *     `armPopAway`, but DEFERRED one tick (`setTimeout(…, 0)`), not synchronously — a real
+   *     mouse press on another focusable control (the Instructor tab, a speed button…) assigns
+   *     that control's OWN focus as the browser's native default action of the mousedown, which
+   *     runs AFTER this capture-phase listener returns. Focusing the opener synchronously here
+   *     would be overwritten by that default action a moment later; the deferral runs after it.
+   *     Escape and the opener's own second press have nothing competing for focus, so the same
+   *     deferred call is harmless there too — same visible result, just one tick later.
+   *
+   * NOT done: putting the popover in the tab order (item 2 of #721's body). That is a
+   * roving-focus job with no precedent in this product — left as a known, written-down gap;
+   * shift-tab back to the button and Enter still work. */
   /* ==================== THE TRIP-BLOCK MESSAGE STATE (#738, #716) ====================
    * *(OWNER RULING, 2026-09-13: "I don't want to add new UI elements to the main board. What if
    * we flash the permissive button amber when there's a message and put the permissive messages
@@ -3231,7 +3298,10 @@
    *     is what "persist for too long" was about: it used to stand for ever, across every future
    *     opening, until the row happened to be re-blocked.
    *
-   * WHAT CLEARING THE CUE MUST NOT CLEAR IS THE FACT. #738 exists because the plant silently
+   * WHAT CLEARING THE CUE MUST NOT CLEAR IS THE FACT — WHILE IT IS A FACT. Since 2026-09-26 (owner
+   * ruling "Clear it", see noteTripBlockEvents) the message itself goes when the permissive allows
+   * blocking again: the cause it names is then no longer true. Until then, this holds:
+   * #738 exists because the plant silently
    * revoked a block the player had placed. The row still says "RELEASED BY THE PLANT — <cause>",
    * the status line still says what the lineup is and which rows are waiting on a permissive, and
    * the player's own releases still carry their standing note. Only the amber goes. And a FRESH
@@ -3263,7 +3333,7 @@
    * What the CARD says is derived from STATE instead (blocked / permissive, read fresh every
    * broadcast), so the lineup and the permissive status are correct immediately after a load. The
    * split is deliberate: the flash is a live annunciator, the card is the record. */
-  var TB_IDS = ['lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'];
+  var TB_IDS = ['sr_high', 'lo_press', 'ir_high', 'pr_low_setpoint', 'si_trip'];
   var tbSeq = 0, tbAck = 0;
   var tbPrev = null;      // last broadcast's per-row {blocked, permissive}, null before the first
   var tbMsg = {};         // id -> { seq, text } — an outstanding "you did not do this" message
@@ -3334,6 +3404,7 @@
    * setpoint would teach a number their own gauge contradicts — they would watch it pass with the
    * block still on and lose it seven psi later. Name the condition and the interlock instead. */
   function tbCause(id) {
+    if (id === 'sr_high') return 'reactor power fell below the source-range permissive reset (P-6)';
     return (id === 'ir_high' || id === 'pr_low_setpoint')
       ? 'reactor power fell below the startup permissive (P-10)'
       : 'pressure rose above the shutdown permissive (P-11)';
@@ -3372,6 +3443,15 @@
         delete tbMsg[id]; delete tbNote[id];
         if (tbSelf[id] && tbSelf[id].want === true) delete tbSelf[id];
       }
+      /* THE REASON CLEARS WHEN IT STOPS BEING TRUE *(OWNER RULING, 2026-09-26, selected "Clear it":
+       * "The message disappears once the permissive allows blocking again, so the panel only shows
+       * reasons that are currently true.")*. "Pressure rose above P-11" is a claim about the plant
+       * NOW; back under P-11 the row can be blocked again and the line was a stale reason on a
+       * cooldown (layman pass 7: still drawn at 1930 psi). The revoke happens with the permissive
+       * LOST, so this cannot fire on the broadcast that raised the message, and it cannot chatter:
+       * nothing re-raises a message without the player re-blocking first. The header count reads
+       * `tbMsg` through `tbMessages`, so it follows. */
+      if (tbMsg[id] && now[id].blocked === false && now[id].permissive === true) delete tbMsg[id];
     });
     tbPrev = now;
     /* Expire anything the plant never delivered, so a refused or lost command cannot leave a
@@ -3402,7 +3482,7 @@
     }).filter(function (r) { return r.msg || r.note; });
   }
 
-  var popAway = null;                // { host, fn } while a popover is up, else null
+  var popAway = null;                // { fn, keyFn, btn } while a popover is up, else null
 
   /* `ack` IS THE PLAYER'S CLOSE, NOT EVERY CLOSE (#738). A TEARDOWN close must not bank what the
    * player was looking at: `onMount` calls closePop() on every board rebuild, and a rebuild
@@ -3422,13 +3502,23 @@
       });
     }
     tbSeenPend = {};
-    if (popAway) { popAway.host.removeEventListener('pointerdown', popAway.fn, true); popAway = null; }
+    var opener = popAway && popAway.btn;
+    if (popAway) {
+      document.removeEventListener('pointerdown', popAway.fn, true);
+      document.removeEventListener('keydown', popAway.keyFn, true);
+      popAway = null;
+    }
     if (pop && pop.parentNode) pop.parentNode.removeChild(pop); pop = null;
+    /* #721 item 3 — hand focus back to the opener on a PLAYER dismiss only. `ack` is unset on the
+     * teardown path (`onMount` rebuilding the board), which has no reason to steal focus from
+     * wherever the page already is. See the WIDENED note above `armPopAway` for why this is
+     * deferred rather than synchronous. */
+    if (ack && opener && typeof opener.focus === 'function') {
+      setTimeout(function () { opener.focus(); }, 0);
+    }
   }
 
   function armPopAway(btn) {
-    var host = refs && (refs.wrap || refs.stage);
-    if (!host) return;
     var fn = function (e) {
       var t = e.target;
       if (!t) return;
@@ -3437,8 +3527,13 @@
       if (t.closest && t.closest('[data-item="imrsk4xz2dm"]')) return;       // …and its tile
       closePop(true);            // the player dismissed it — that is the acknowledge (#738)
     };
-    host.addEventListener('pointerdown', fn, true);
-    popAway = { host: host, fn: fn };
+    var keyFn = function (e) {
+      if (e.key !== 'Escape' && e.key !== 'Esc') return;   // #721 — 'Esc' is the old-IE key string
+      closePop(true);
+    };
+    document.addEventListener('pointerdown', fn, true);
+    document.addEventListener('keydown', keyFn, true);
+    popAway = { fn: fn, keyFn: keyFn, btn: btn };
   }
 
   /* The per-row "press again to confirm" arm (#598 item 15). Reset whenever the popover opens,
@@ -3554,6 +3649,72 @@
   };
 
   // held in parity with the V1 synoptic's SYN_CONTROL_MAP, which was retired in #246.)
+  var FOCUS_COMPONENT_MAP = {
+    'Reactor Vessel': 'reactorVessel', 'Pressurizer': 'pressurizer', 'Steam Generator': 'steamGenerator',
+    'Turbine and Generator': 'turbineGenerator', 'Condenser': 'condenser', 'Cooling Tower': 'coolingTower',
+    'Reactor Coolant Pump': 'imrobpq4a70', 'PORV': 'porv', 'Steam Dump Valve': 'imrprmm4u5q',
+  };
+  /* BOARD REGIONS (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the part of the board
+   * we are focusing on"). A beat's `scope` names regions (or single focus names); everything not in
+   * them is dimmed. Membership is by board item id, read off the layout: a CARD (box) lights
+   * everything drawn inside it, so a panel is listed once — EXCEPT a readout whose tile overhangs
+   * its card (right-anchored values, EXTRA_ITEMS tags), which containment misses and must be
+   * listed by id (QA4: OUTPUT/GOVERNOR/TURBINE rpm stayed dim under `secondary`; verify_opener_ui
+   * fails on a tile no region lights). A pipe is lit when both its ends are.
+   * An item may sit in several regions (the steam generator is both sides of the plant). The
+   * breaker lives on the Turbine-Generator card, so there is no separate `electrical` region. */
+  var FOCUS_REGIONS = {
+    primary: [
+      'reactorVessel', 'steamGenerator', 'imrobpq4a70' /* RCP */, 'imrsjyqoq6t' /* RCP control */,
+      'imsgteavgid' /* RCP flow */, 'imrr4fnxhlc' /* T-hot */, 'imrr4g29a7c' /* T-cold */,
+      'ims2kt7fu64' /* surge-line tee (hot leg) */, 'ims2k3q7ehq', 'ims2k1rhzh3', 'ims3yt5oyp8', 'ims3x2n4o2p' /* cold-leg tees */,
+      'imrzl4b7g9m' /* Reactor Power */, 'ims2immk7ks' /* Tavg */, 'ims2immxl2s' /* Subcooling */, 'ims2immsvn6' /* Plant Pressure */,
+    ],
+    pressurizer: [
+      'pressurizer', 'porv', 'imrppb3kuav' /* PORV block */, 'imrsi2svtgn' /* PORV discharge */, 'ims2jf7fv7m', 'imrsgch20pv', 'imsgurhunn9',
+      'imsgt7mfbq1' /* spray flow / PZR temp / heater power readouts */, 'ims5gprvl7n', 'imsgt6qmdgx', 'ims5gq44zgr',
+      'ims2kt7fu64' /* surge line */, 'ims3yt5oyp8' /* spray take-off */,
+      'ims1518jad4' /* PRESSURIZER card: spray, heaters, pressure SP */,
+      'ims2immsvn6' /* Plant Pressure */, 'ims2immon9z' /* Pressurizer Level */,
+    ],
+    rods: [
+      'ims14ylw4az' /* REACTOR/ROD CONTROL card: SCRAM, banks, rod speed, trip blocks */,
+      'ims2hvqbvee', 'imrpk4pjcpd', 'ims15i4eyhf', 'ims2hnpzc1t' /* control rod position */,
+      'ims2hvv0wgo', 'imrpnzfsfcx', 'ims15i60dd8', 'ims2hnyt0jk' /* shutdown rod position */,
+    ],
+    nis: [
+      'ims175lciah' /* NIS card */, 'bdReactivityCard', 'ims89mc0hl3', 'ims89mkaj2r' /* period card */,
+      'imro6qsncb9', 'imro6rctcgm' /* startup rate, IR readouts */, 'bdDtMargin' /* core ΔT margin */,
+    ],
+    secondary: [
+      'steamGenerator', 'imsgu622dld', 'imsgu024ehh' /* steam tees */, 'imrpp99kx2y' /* MSIV */, 'imrr45syy4v' /* TCV */,
+      'turbineGenerator', 'imrprmm4u5q' /* steam dump valve */, 'condenser', 'coolingTower',
+      'imsgu6qi776', 'imsgujvh6iw' /* atmospheric dump */, 'imsgt98wjjc', 'imsgus30fl2', 'imsgt8z606k', 'imrr1hecwq7' /* steam temp */,
+      'imsgt8to27x', 'imrr1gttt2l', 'imsgupfprkp', 'ims31ngjkf8' /* steam flow */, 'imsgunuyvon', 'imsguptyg16', 'imrqzuhzre3',
+      'imro8k5pzem' /* TURBINE-GENERATOR card */, 'imrop5ouw7h' /* STEAM DUMP card */, 'imsgt1ebv1d' /* ATMOS DUMP card */,
+      'ims3v3lpw5v' /* CONDENSER COOLING card */,
+      'imrppeh5hkb', 'imrppej8ulo', 'imrppee04aj' /* output, governor, turbine rpm */, 'imrppq5r7kw' /* dump status */, 'bdAdvPct' /* ADV % */, 'imrr1gwi93j' /* SG pressure */, 'ims3wm0d0bu' /* steam flow */,
+      'ims2imn1nny' /* SG Level */,
+    ],
+    feed: [
+      'steamGenerator', 'condenser', 'imrqvzbd9hd' /* condensate pump */, 'imrqrnclhn' /* polisher */, 'imrqrouhrdr',
+      'imrobph7xrq' /* feed pump */, 'ims31q71cmu' /* feed junction */, 'imrpp2g2m8k' /* AFW valve */,
+      'ims2k81zwi8' /* AFW indications */, 'imrmstovyli', 'imrmsu1bl4r',
+      'imrqxsodu5j' /* SG FEED card */, 'imrmssto6d' /* AUX FEED WATER card */, 'ims3xw3vue6', 'ims89lnqmip', 'imrsgkz4lq0',
+      'ims2imn1nny' /* SG Level */,
+    ],
+    cvcs: [
+      'imrqp87ueqb' /* charging pump */, 'ims3x01kvp4', 'ims2k1rhzh3', 'ims2k3q7ehq' /* charging / letdown tees */,
+      'imrmsjta95r' /* CVCS flow readouts */, 'imsgti1p0rm', 'imsgti0gnpf', 'ims3wy5oym4',
+      'imrmslginf9' /* CHARGING card */, 'imrmslvu2c0' /* LETDOWN card */, 'imrmtlyf64y' /* BORON card */, 'ims2jva1ff5', 'bdLetdownStatus',
+      'ims2immon9z' /* Pressurizer Level */,
+    ],
+    eccs: [
+      'imrzpfd4qox' /* ECCS card */, 'ims3xf18pk8' /* RHR card */, 'bdRhrCooldownRate', 'ims3vqox0fc' /* ECCS indications */, 'ims3w1cb6jc', 'ims3w61jjbi', 'ims3w1lj7n6',
+      'imrobnzlha1' /* ECCS pump */, 'imrppx5n1ay' /* ACCUMULATORS */, 'imrppyp0wfo', 'imrppztrng1', 'imrpq0n2ujv', 'imrppzjvfpf',
+      'imrppxt2aqd' /* accumulator valve */, 'ims3x2n4o2p', 'ims3yt5oyp8', 'ims3x01kvp4',
+    ],
+  };
   var CONTROL_LABEL_MAP = {
     'Control Bank': 'imrpk3wvydp', 'Rod Speed': 'imrpk3wvydp', 'Rod motion': 'imrpk3wvydp',
     'Nudge': 'imrpk3wvydp', 'Shutdown Bank': 'imrpny66npx',
@@ -3688,6 +3849,10 @@
      *                     against 'Dump SP', which is the card around it.
      *   'Load Setpoint'   imro8rmka2y — the generator LOAD input, as against 'Turbine Load',
      *                     which is the TURBINE-GENERATOR card. */
+    /* 'Boron ON' imrqp6com2b — the BORON card's ON button (CHANNEL_BUTTONS above: it engages the
+     * `boron_conc` channel), the press `pwr_startup` 2a "Turn the boron dilution system ON"
+     * names (2026-09-25). */
+    'Boron ON': 'imrqp6com2b',
     'Boron Target': 'imrpq29jo7t', 'Boron Status': 'ims3wy5oym4',
     'Boron Concentration': 'ims2jva1ff5',
     'Dump Setpoint': 'ims31tq7mgc', 'Load Setpoint': 'imro8rmka2y',
@@ -3734,6 +3899,28 @@
     'Rod Speed — Fast': 'imrpk8kjsjs',
     'Shutdown Bank — Withdraw': 'imrpnyaxsb3', 'Shutdown Bank — Insert': 'imrpnyf37ju',
     'SG Feed AUTO': 'imrsgjmrjfg', 'SG Feed MAN': 'imrsgjuh7l0',
+    /* #808: the feed transfer at the point of adding heat presses these three */
+    'SG Feed Rate': 'imro8xhy2me', 'AFW — Auto': 'imrmssr9ihq', 'AFW — Stop': 'imrmssoa137',
+    /* THE BUTTON INSIDE THE CARD (#807 item 3, owner playtest of 1.8.0-rc6: "the A+B 7% button
+     * should have the dashed line around it not the whole card. the glowing line should be around
+     * the card ... step 8 should have the PZR SPRAY AUTO button lit with the dashed line and the
+     * card glowing"). The pulse goes on the one button the step presses and the steady ring on
+     * the card that holds it — the split `pwr_heatup` 13 already had for the STEAM DUMP. These
+     * four had no key, so every step pressing them pulsed the whole card. Ids read off the press
+     * handlers above (set_rcp running:true, set_letdown_orifices a+b, set_spray auto,
+     * set_heater auto). */
+    'RCP — On': 'imrsjy1m9g', 'Letdown — A+B 7%': 'imrmtimyxef',
+    'Pressurizer Spray — Auto': 'imro8zestdm', 'Pressurizer Heater — Auto': 'imro969lnex',
+    /* THE SAME SPLIT FOR THE SHUTDOWN, COOLDOWN AND TMI-2 LEGS (#807 item 2, 2026-09-26): nine
+     * buttons/boxes those steps press, each of which pulsed its whole card for want of a key. Ids
+     * read off the press/set handlers above (set_hpi false/true, set_rcp running:false,
+     * set_heater 0, set_spray manual/0, set_rhr active:true, set_rhr_hx box, set_afw_block) and
+     * each one's card checked with `PwrBoardInspect.parentOf` (the HPI pair sits in ECCS PANEL
+     * `imrzpfd4qox` = 'HPI/LPI', the RHR pair in the RHR card). The AFW block valve has no card. */
+    'ECCS — Stop': 'imrldz0wqds', 'ECCS — Start': 'imrldymb837', 'RCP — Off': 'imrsjy59pnu',
+    'Pressurizer Heater — Off': 'imro96h8lip', 'Pressurizer Spray — Manual': 'imro900yzeq',
+    'Pressurizer Spray — Off': 'imro901sddd', 'RHR — Align': 'ims3wg27iif', 'RHR — HX Split': 'ims3xu86zm5',
+    'AFW — Block Valve': 'imrpp2g2m8k',
     'Plot point': 'bdOneOverM',
     'Primary Pressure': 'ims2immsvn6',
     // #341 / #319 item 2 — the post-trip procedure's restore step points here.
@@ -3816,8 +4003,12 @@
          * because the only way to read one was to render a popover — the same argument #564
          * made about the button state, applied to the line underneath it. It is recomputed on
          * every refresh, so it follows the display-unit toggle and a live setpoint change. */
+        /* "Press again" here was a standing caption, drawn on a row nobody had pressed: layman
+         * 2026-09-28 saw it on SR HIGH FLUX, blocked at startup step 9 and untouched, the moment
+         * IR HIGH FLUX was blocked at step 16, and read it as a half-finished release. The arm
+         * itself is the button: it reads CONFIRM only after a first press (refreshTripBlocks). */
         sub: willTrip
-          ? 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Press again to confirm.'
+          ? 'RELEASING THIS WILL TRIP THE REACTOR NOW — the setpoint is crossed. Releasing takes two presses.'
           : (typeof t.sub === 'function' ? t.sub(s) : t.sub)
       };
     });
@@ -3859,8 +4050,24 @@
     var proc = null;
     for (var i = 0; i < pool.length; i++) if (pool[i].id === cs.procedure_id) proc = pool[i];
     var st = proc && proc.steps && proc.steps[cs.step_index];
+    /* THE ACTIVE SUBSTEP'S ROW, NOT ONLY THE STEP'S (OWNER playtest 2026-09-28: "mode 3-5 step 3b
+     * doesnt highlight the si reactor trip row"). A step that blocks two rows carries the second
+     * on an `accs[].cmd`, and `st.cmd` names only the first, so 3b's row never lit. The first
+     * UNMET row that carries a trip-block command pulses — the same "next thing to do" the
+     * per-substep glow follows — and the rows already met before it keep the steady ring the
+     * 2026-09-14 ruling gives a satisfied ask ("after press: steady glow, no pulse"); later rows
+     * wait dark. The step-level `cmd` is the fallback for steps with none on their rows. */
+    var accs = (st && st.accs) || [], verdicts = cs.accs || [];
+    for (var k = 0; k < accs.length; k++) {
+      var ac = accs[k] && accs[k].cmd;
+      if (!ac || ac.action !== 'set_trip_block' || !ac.trip_id) continue;
+      want[ac.trip_id] = ac.blocked !== false;
+      if (!(verdicts[k] && verdicts[k].met)) return want;
+    }
     var c = st && st.cmd;
-    if (c && c.action === 'set_trip_block' && c.trip_id) want[c.trip_id] = c.blocked !== false;
+    if (c && c.action === 'set_trip_block' && c.trip_id && !accs.some(function (a) {
+      return a && a.cmd && a.cmd.action === 'set_trip_block';
+    })) want[c.trip_id] = c.blocked !== false;
     return want;
   }
 
@@ -3937,6 +4144,25 @@
       }
     }
     renderTripBlockStatus(s, rows);
+    holdTripPopHeights();
+  }
+  /* THE ROWS NEVER SHRINK WHILE THE CARD IS OPEN (layman pass 4, 2026-09-24, S-9). Blocking a
+   * row clears its "RELEASED BY THE PLANT" line and the status block above loses one too, so
+   * everything under it rose. MEASURED on a9eae479: after the plant had released PZR PRESS
+   * LO-LO once, BLOCK on that row moved the SI REACTOR TRIP button 441.8 -> 424.2 px (17.6 px:
+   * 10.0 from the status block, 7.6 from the row) and a second click at the old centre hit the
+   * card's background — the two-click step the cooldown asks for, missed. Each row and the
+   * status block keep the tallest height they have had since the card opened; a new card starts
+   * fresh, so nothing is reserved that was never shown. Border-box, so the floor is the height
+   * itself and cannot creep up by the padding on every refresh. */
+  function holdTripPopHeights() {
+    if (!pop) return;
+    var els = [pop.querySelector('.bd-pop-status')].concat([].slice.call(pop.querySelectorAll('.bd-pop-row')));
+    els.forEach(function (el) {
+      if (!el) return;
+      var h = el.offsetHeight, m = parseFloat(el.style.minHeight) || 0;
+      if (h > m) { el.style.boxSizing = 'border-box'; el.style.minHeight = h + 'px'; }
+    });
   }
 
   /* THE CARD'S OWN STATUS BLOCK (#738/#716). Two things the board could not say before, and
@@ -3976,7 +4202,11 @@
     ];
     var outstanding = tbMessages().filter(function (r) { return r.msg; });
     if (outstanding.length) {
-      lines.push(outstanding.length + ' TRIP' + (outstanding.length === 1 ? '' : 'S')
+      /* A SUBSET, SAID AS ONE (rc8f layman pass 10 S-4, 2026-09-27). This read "3 of 5 BLOCKED · 2
+       * WAITING ON ITS PERMISSIVE · 2 TRIPS RELEASED BY THE PLANT" -- 7 of 5 to a reader who adds, when
+       * the released rows are among the not-blocked ones (blocking a row clears its message). */
+      lines.push('OF THE ' + (live.length - blockedN) + ' NOT BLOCKED, ' + outstanding.length
+        + (outstanding.length === 1 ? ' WAS' : ' WERE')
         + ' RELEASED BY THE PLANT — see the row' + (outstanding.length === 1 ? '' : 's') + ' below');
     }
     host.textContent = lines.join('  ·  ');
@@ -4089,6 +4319,10 @@
      * READOUT, not this button, so the highlight and run_manual_controls are unaffected; what a
      * preview-channel player loses is the ability to perform it by hand. Not worth an
      * engine-conditional DOC_REMOVE for an engine #523 strips from every public build. */
+    /* SUPERSEDED IN PART, 2026-09-26 (OWNER RULING, "B": a manual source-range block at P-6). The
+     * detector no longer disables itself — its high voltage goes with the SR HIGH FLUX row on the
+     * TRIP BLOCKS panel. The button STAYS deleted: that row is the one lever (Q4), and a second,
+     * separate detector switch would be a duplicate authority. */
     bdSrDetector: 1,
     /* THE ROD AUTO BUTTON *(OWNER DIRECTIVE, 2026-09-01, #598 items 9/10: "Remove the ROD AUTO button. Move
      * the 1/m button to where the ROD AUTO button used to be." / "Adjust the NIS card and
@@ -4215,6 +4449,12 @@
        * names for `bdOneOverM`; it bit this fix on the first attempt). */
       imrqrnzbm6h: { props: { fontSize: 13 } },   // CONDENSATE
       imsgtedbunb: { props: { fontSize: 13 } },   // RCP FLOW
+      /* THE STEAM DUMP STATUS WORD FITS BESIDE ITS TITLE AT EVERY WORD (2026-09-28 rulings: STM
+       * PRESS replaces PRESS, RAMPING is new). MEASURED in board_check under the native stack and
+       * CI's DejaVu: at the authored 15 px, right edge 1642, STM PRESS overprinted the STEAM DUMP
+       * title by 4.3 px (8.6 px in DejaVu). Smaller, and right-anchored 5 px nearer the card
+       * edge (1652), it clears in both — the gap is board_check's "status word clears" line. */
+      imrppq5r7kw: { props: { fontSize: 13, left: 1647 } },
       /* PORV TAILPIPE TEMPERATURE GETS ITS ENGRAVING (#673). The tile rendered a bare number
        * and unit under the PORV status light with nothing saying which pipe it was, and a TMI-2
        * walkthrough step grades on the player reading it — the tailpipe temperature is the only
@@ -4233,6 +4473,14 @@
        * a run_*.js is invisible to run_all") arriving by a different road: the runner exists and
        * could not load. */
       imrsgch20pv: { props: { label: 'TAILPIPE', labelSize: 10 } },
+      /* THE TWO % TAGS BY THE CONDENSER GET CAPTIONS (#811 layman pass 2, OWNER RULING 2026-09-28:
+       * "All as recommended"). `imsgunuyvon` reads the condenser steam dump, `imsguptyg16` the
+       * atmospheric dump (ADV); the ADV's 0 % sat against the dump valve's left edge, so the valve
+       * was bracketed by two identical unlabelled numbers. `caption` (buildValue) hangs the word
+       * under the number. The ADV tag's authored name was a copy-paste "STEAM TURB FLOW
+       * indication" from the turbine-flow tag; renamed here, re-export-safe. */
+      imsgunuyvon: { props: { caption: 'DUMP' } },
+      imsguptyg16: { props: { caption: 'ADV', name: 'ATMOSPHERIC DUMP (ADV) position indication' } },
       /* THE HX FLOW CAPTION IS RENAMED *(OWNER RULING, 2026-09-10, option A, #700)*. The ruled
        * name is "COOLDOWN RATE / HX SPLIT" and it is rendered as its TWO HALVES, each attached
        * to the thing it names: this caption becomes "HX SPLIT" (the lever) and the new
@@ -5038,7 +5286,7 @@
       var cs = CS(s);
       switch (item.id) {
         case 'imro8rmka2y': return cs.load_mode === 'follow';                         // generator load auto-tracks in FOLLOW
-        case 'imro8xhy2me': var c = chan(s, 'feed_sg'); return !!(c && c.engaged);     // SG feed on the feed_sg auto channel
+        case 'imro8xhy2me': return feedAutoOn(s);                                      // SG feed in AUTO (kernel channel or PWR2's feed_coupled, #809)
         case 'imro929i738': return !!cs.spray_auto;                                    // pressurizer spray AUTO
         case 'imro96mj15p': return !!cs.heater_auto;                                   // pressurizer heater AUTO
         case 'imrpq48hn3t': return !!cs.cvcs_auto;                                     // charging AUTO make-up
@@ -5052,7 +5300,10 @@
     // all for the first ~10 minutes), and after a LOOP the latched demand outlives the
     // isolation — 355 gpm on a plant with no main feed for 28 minutes. The corner word
     // carries NO FLOW for the engaged case; this marks the NUMBER, which is the thing
-    // designed to look like a flow, in every case including MANUAL.
+    // designed to look like a flow, in every case including MANUAL. Since #809 item 13 the box
+    // reads the MEASURED feed flow in AUTO, so there the amber sits on a near-zero reading and
+    // says "the controller is asking for feed the plant is not delivering" — kept on purpose:
+    // `board_check` func:blackout asserts it (#358), and nothing has ruled it away.
     numberWarn: function (item, s) {
       return item.id === 'imro8xhy2me' && feedNoFlow(s) ? BD_WARN : null;
     },
@@ -5220,6 +5471,16 @@
     // instructor highlight vocabulary (consumed by pwr_board.revealControl / highlightLabels)
     controlLabelItem: function (label) { return CONTROL_LABEL_MAP[label] || null; },
     controlLabels: function () { return Object.keys(CONTROL_LABEL_MAP); },
+    /* THE FOCUS VOCABULARY (#811, owner 2026-09-28: an outline "that follows the detailed
+     * silhouette of the object … to point out what parts of the plant we are talking about").
+     * A chat line's `point` names COMPONENTS — the big art the text talks about, by the name the
+     * inspect panel gives them — or any highlight label above; a beat's `scope` names REGIONS
+     * (focusRegions) or any of these. Components first, so 'Steam Dump' stays the CARD (the
+     * highlight vocabulary's meaning) and the valve is 'Steam Dump Valve'. */
+    focusItem: function (name) { return FOCUS_COMPONENT_MAP[name] || CONTROL_LABEL_MAP[name] || null; },
+    focusLabels: function () { return Object.keys(FOCUS_COMPONENT_MAP).concat(Object.keys(CONTROL_LABEL_MAP)); },
+    focusRegion: function (name) { return FOCUS_REGIONS[name] ? FOCUS_REGIONS[name].slice() : null; },
+    focusRegions: function () { return Object.keys(FOCUS_REGIONS); },
     // Board items the operator can actually WORK — a press handler or a tap-or-hold drive.
     // Introspection for run_manual_controls, which fails if a manual calls a control
     // "read-only" while this list says otherwise (#304). Entries carrying only `active`,

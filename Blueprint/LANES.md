@@ -28,9 +28,9 @@ directory does, which is why the lanes are worktrees and not branches.
 | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2 |
 | `C:\grok_build\RD_Audit` | *(none — detached)* | the AUDIT LANE, not a work lane |
 
-A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules` junctioned
-from the primary tree (it is gitignored, and the Playwright gates need it) plus an `inbox/`
-directory. `CLAUDE.md` arrives with the checkout.
+A new STANDING lane comes from `git worktree add <path> <branch>`, and needs `node_modules`
+junctioned from the primary tree (it is gitignored, and the Playwright gates need it) plus an
+`inbox/` directory. `CLAUDE.md` arrives with the checkout. A SCRATCH tree gets no junction — §9.
 
 ## 2. The occupancy check, and the two things it cannot see
 
@@ -249,21 +249,33 @@ measured `#720` fix — which survived only because that agent still held a copy
 
 ```
 git worktree add -b exp/<task> C:/grok_build/RD_<task> develop
-powershell -c "New-Item -ItemType Junction -Path C:\grok_build\RD_<task>\node_modules -Target C:\grok_build\Reactor_Dynamics\node_modules"
 mkdir C:/grok_build/RD_<task>/inbox
 ```
 
-**`mklink /J` through Git Bash fails on the path escaping** — use the PowerShell form above.
-Without the junction every browser gate in that tree dies. **The junction is also the one thing
-here that can damage the PRIMARY tree — see the teardown warning below.**
-
-**Teardown**, once the work is merged. **THE ORDER IS NOT OPTIONAL:**
+**NO `node_modules` JUNCTION IN A SCRATCH TREE — point Node at the primary's copy instead**
+*(2026-09-21, the third emptying; owner chose this fix)*. Every gate in the scratch tree runs
+with the environment variable set, and `run_all` hands its environment to every child:
 
 ```
-cmd /c rmdir "C:\grok_build\RD_<task>\node_modules"     <-- the JUNCTION first, and no /S
+NODE_PATH='C:\grok_build\Reactor_Dynamics\node_modules' node test/run_all.js --only verify_board_check
+```
+
+A subagent's brief carries that prefix on every gate command. **Measured 2026-09-21:** a detached
+scratch tree with no `node_modules` at all ran `verify_board_check` through `run_all` at baseline
+(282) under `NODE_PATH`, and without it `require.resolve('playwright')` threw — so the variable is
+load-bearing, not decorative. The **standing lanes** (`RD_workbench`, `RD_backshop`) keep their
+junctions: they are never force-removed.
+
+**Teardown**, once the work is merged — nothing to sequence, because there is nothing to follow:
+
+```
 git worktree remove --force C:/grok_build/RD_<task>
 git branch -D exp/<task>
 ```
+
+Verified the same day: that force-remove over the `NODE_PATH` tree left the primary's
+`node_modules/playwright` at 1.61.1, intact. **If you junctioned anyway**, `cmd /c rmdir` the
+junction (no `/S`) BEFORE the remove — and read the record below for why that is not enough.
 
 > **`git worktree remove --force` DELETES THROUGH A JUNCTION AND EMPTIES ITS TARGET.** This is not
 > a theory: it happened on 2026-09-12, minutes after the section above was written, and it emptied
@@ -273,6 +285,18 @@ git branch -D exp/<task>
 > junction first, then the same command, leaves it **intact**. `rm -rf` on the same tree does NOT
 > follow the junction — so the hazard is git's own removal code, not the shell, and it will not
 > show up if you test the teardown with `rm`.
+>
+> **IT HAPPENED A THIRD TIME ON 2026-09-21 WITH THE `rmdir`-FIRST ORDER ABOVE IN FORCE**, and the
+> agent reported following it. Whether the order was skipped or defeated is unresolved: the
+> primary's `node_modules` is itself a reparse point (tag `0x9000601a`, a Synology Drive cloud
+> placeholder — `fsutil reparsepoint query` shows it), which the 2026-09-12 decoy reproduction did
+> not model. That is why the junction is gone from the setup rather than the order re-emphasised:
+> **a rule that has failed three times with the order written down is the wrong control**, and
+> `NODE_PATH` leaves nothing on disk for git to follow. Recovery, pinned to `gates.yml`'s
+> `PW_VERSION`, in a scratch prefix (the repo root stays manifest-free):
+> `npm init -y && npm install --no-audit --no-fund playwright@1.61.1`, then copy that
+> `node_modules/.` into the primary's; the browser binaries in `~/AppData/Local/ms-playwright`
+> survive the deletion and need no re-download.
 >
 > **The damage is silent and it does not look like itself.** Nothing in `git status` changes;
 > the next browser gate throws at `require('playwright')` (`verify_e2e_ui.js` requires it bare,
@@ -312,9 +336,11 @@ another lane's commit, this mount instead of a junction, `git worktree remove --
 — and the primary tree's `node_modules/playwright` **verified intact** after that deliberate force
 removal. That verification is the whole reason this is in the record rather than a suggestion.
 
-**This does NOT replace the junction for a NATIVE run.** An agent running gates directly on this
-machine still needs real module resolution in its own tree, so the setup above stands for that
-case with its teardown order. Scope the choice to how the run executes, not to which you read first.
+**The native run uses the same idea without the container** — `NODE_PATH` pointed at the primary's
+`node_modules`, as the setup above now says. This paragraph used to claim a native run "still needs
+real module resolution in its own tree" and so kept the junction; that was never measured, and on
+2026-09-21 it was measured false (a browser gate at baseline from a tree with no `node_modules`).
+The junction outlived its container replacement by nine days on the strength of that sentence.
 
 ### `taskkill /F /IM node.exe` REACHES ALL THREE TREES
 

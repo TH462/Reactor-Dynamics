@@ -109,6 +109,54 @@ function quantile(sorted, q) {
   return sorted[i];
 }
 
+/* THE DURATION HISTOGRAM'S BUCKETS (#797 item 6). Chosen to bracket the landmarks
+ * MEASURED on the live store rather than picked for round numbers: p50 ~3.0min falls
+ * inside 2-5m, p75 ~21.8min inside 10-30m, p95 ~125.3min (2.09h) inside 1-3h, and the
+ * observed max (336min, 5.6h) inside 3h+ — so every one of those four figures lands in
+ * a DIFFERENT bucket, which is what "reveals the shape" means operationally: a coarser
+ * grid would flatten two of them into one bar. Finer near the middle of the
+ * distribution (five buckets under 30 minutes, where most sessions are) and coarser in
+ * the tail (three buckets from 30 minutes to 3h+, where few are and precision buys
+ * nothing).
+ *
+ * ZERO IS NOT A BUCKET HERE — it is handled separately by the caller. A session whose
+ * every event landed in one write batch reads back a span of EXACTLY 0, which is a
+ * floor artefact ("all events arrived in the same batch"), not evidence the visit was
+ * instantaneous, and folding it into "<1m" would say something the data does not know.
+ */
+const DURATION_BUCKETS = [
+  { max: 60, label: '<1m' },
+  { max: 120, label: '1-2m' },
+  { max: 300, label: '2-5m' },
+  { max: 600, label: '5-10m' },
+  { max: 1800, label: '10-30m' },
+  { max: 3600, label: '30-60m' },
+  { max: 10800, label: '1-3h' },
+  { max: Infinity, label: '3h+' },
+];
+
+// -1 for the zero-span sentinel (the caller's own bucket, drawn first and separately —
+// see DURATION_BUCKETS' header), otherwise the index of the first bucket whose `max`
+// the value is strictly under.
+function bucketDurationIdx(secs) {
+  if (secs <= 0) return -1;
+  for (let i = 0; i < DURATION_BUCKETS.length; i++) if (secs < DURATION_BUCKETS[i].max) return i;
+  return DURATION_BUCKETS.length - 1;
+}
+
+/* A GENERIC "n of total, as a bar" table row, shared by the duration histogram and the
+ * first-60-seconds touch-count histogram below — one row shape, one place that decides
+ * how a count becomes a percentage, so the two histograms cannot silently disagree on
+ * what they normalise against. `total` is the population (ALL sessions, per HR9's
+ * "denominator is the starters" convention this page already uses for the step funnel),
+ * never the sum of the rows themselves — a bucket table's rows may undercount `total`
+ * (a session with no rows in ANY bucket, e.g. zero touches) and must not be hidden by a
+ * denominator that only ever saw the rows that showed up. */
+function bucketRow(label, n, total) {
+  const pct = total ? (n / total) * 100 : 0;
+  return { bucket: label, sessions: n, bar: pctBar(pct, n + ' / ' + total) };
+}
+
 /* Quotes a value for interpolation into an AE SQL string literal. `cfapi.js` has no
  * parameter binding (its own header says so), so anything built from a URL parameter has
  * to be escaped here rather than trusted — even though a release is normally "Alpha
@@ -244,6 +292,11 @@ export async function usagePage(env, url) {
   } catch (e) { probeErr = e.message; }
 
   const wt = haveWt > 0 ? await walkthroughSections(apiToken, since, versionWhere) : [];
+  // Unconditional, unlike the walkthrough sections above: a first command or panel is
+  // ordinary command/panel_open traffic, not a walkthrough event, so it needs no probe
+  // gated on `haveWt` — see firstMinuteSection's own header for why it names no
+  // walkthrough-only column and is therefore safe on a dataset with none of those rows.
+  const firstMinute = await firstMinuteSection(apiToken, since, versionWhere);
   const migrated = await simSections(apiToken, since, versionWhere);
 
   const noData = '<p class="muted">No walkthrough events in this window'
@@ -282,6 +335,8 @@ export async function usagePage(env, url) {
     + 'for sampling. Durations are <b>wall time</b>, not plant time — a step can burn a '
     + 'minute of someone’s life and an hour of the clock at 600×.</p>'
     + (haveWt > 0 ? wt.join('') : noData)
+    + '<h2>The first 60 seconds <span class="muted">— what a new visitor does before they decide to stay</span></h2>'
+    + firstMinute.join('')
     + '<h2>In the simulator <span class="muted">— everything else the sim reports</span></h2>'
     + '<p class="muted">Moved here from the Analytics page, unchanged.</p>'
     + migrated.join('')
@@ -523,6 +578,145 @@ async function walkthroughSections(apiToken, since, versionWhere) {
   ];
 }
 
+// ============================================================ the first 60 seconds
+/* "THE FIRST 60 SECONDS" (#797 item 7). Half of all sessions are short (item 6's
+ * histogram above), so the opening minute is the closest thing on this page to an
+ * onboarding diagnostic: what a visitor touches first, and how far they get before they
+ * decide whether to stay.
+ *
+ * THE CLOCK: double5 (t_page), not double6 (t_session). The two agree inside the first
+ * minute unless the visitor reloaded within it — rare, and not what this section is
+ * trying to catch. The deciding fact is HISTORY, not correctness: double5/t_page has
+ * been on the wire since COLUMNS_SINCE (2026-08-11); double6/t_session — the
+ * technically better clock, because it survives a reload — has accrued only about a
+ * day of rows as of this writing (2026-09-21; the client-side path that populates it
+ * reliably reached production long after the column itself was added, per index.js's
+ * column map). Built on t_session today, this section would report on one day of
+ * traffic for months. `historyNote` below says so on the page rather than leaving a
+ * reader to assume otherwise.
+ *
+ * Guarded exactly as every other double5/6/7 query on this page already is:
+ * `timestamp >= COLUMNS_SINCE` (a pre-column row reads back 0, not absent — cfapi.js's
+ * header) and `double5 >= 0` (the -1 "not reported" sentinel). Also restricted to
+ * `double5 <= 60`: nothing past the first minute answers "what happens in the first 60
+ * seconds", and narrowing in SQL keeps row volume down without a LIMIT that could
+ * silently truncate a busy window the way the time-on-step query's LIMIT 20000 could.
+ *
+ * SUB-SECOND ORDERING IS NOT AVAILABLE — double5 is stored to the nearest second, so
+ * two events in the same second are unordered here, and "first" among a tie is
+ * whichever row the result happens to return first. Nothing below depends on which. */
+async function firstMinuteSection(apiToken, since, versionWhere) {
+  versionWhere = versionWhere || '';
+  const failed = [];
+  const errRows = (what) => (e) => {
+    failed.push(what + ': ' + String((e && e.message) || e).slice(0, 200));
+    return [];
+  };
+
+  const [totalRows, cmdRows, panelRows] = await Promise.all([
+    sql(apiToken, `SELECT count(DISTINCT blob4) AS sessions
+        FROM ${DATASET} WHERE blob2 <> 'dev' AND ${since}${versionWhere} AND timestamp >= ${COLUMNS_SINCE}`)
+      .catch(errRows('total sessions')),
+    sql(apiToken, `SELECT blob4 AS session, blob5 AS action, double5 AS t
+        FROM ${DATASET} WHERE blob1 = 'command' AND blob2 <> 'dev' AND ${since}${versionWhere}
+          AND timestamp >= ${COLUMNS_SINCE} AND double5 >= 0 AND double5 <= 60
+        LIMIT 20000`)
+      .catch(errRows('first-minute commands')),
+    sql(apiToken, `SELECT blob4 AS session, blob5 AS panel, double5 AS t
+        FROM ${DATASET} WHERE blob1 = 'panel_open' AND blob2 <> 'dev' AND ${since}${versionWhere}
+          AND timestamp >= ${COLUMNS_SINCE} AND double5 >= 0 AND double5 <= 60
+        LIMIT 20000`)
+      .catch(errRows('first-minute panels')),
+  ]);
+
+  const totalSessions = num(totalRows[0] && totalRows[0].sessions);
+
+  // The earliest row per session — "first wins, a same-second tie is whichever the
+  // result returns first", exactly the limit the header above states plainly.
+  function firstBySession(rows, labelKey) {
+    const best = new Map();
+    rows.forEach((r) => {
+      const s = String(r.session || '');
+      const t = num(r.t);
+      const cur = best.get(s);
+      if (!cur || t < cur.t) best.set(s, { t, label: String(r[labelKey] || '(none)') });
+    });
+    return best;
+  }
+  // Same {n of total, as a bar} shape as `bucketRow` above, but the label is the thing
+  // itself (an action/panel name) rather than a span bucket, and kept as a separate
+  // function so renaming one column never reshapes the other's.
+  function namedRow(label, n, total) {
+    const pct = total ? (n / total) * 100 : 0;
+    return { name: label, sessions: n, bar: pctBar(pct, n + ' / ' + total) };
+  }
+  function rankRows(best, total) {
+    const tally = new Map();
+    best.forEach((v) => tally.set(v.label, (tally.get(v.label) || 0) + 1));
+    return [...tally.keys()].sort((a, b) => tally.get(b) - tally.get(a))
+      .map((label) => namedRow(label, tally.get(label), total));
+  }
+
+  const cmdRankRows = rankRows(firstBySession(cmdRows, 'action'), totalSessions);
+  const panelRankRows = rankRows(firstBySession(panelRows, 'panel'), totalSessions);
+
+  /* HOW FAR — touches (commands + panel opens) inside the first 60 seconds, per
+   * session. A session that touched NOTHING is a real category and stays visible as
+   * bucket 0: `totalSessions` (every session in the window, from the COLUMNS_SINCE-
+   * guarded count above) is the denominator throughout, and `touched.size` is
+   * SUBTRACTED from it for bucket 0 rather than the rest of the table assuming a
+   * smaller population — same "denominator is everyone who started" convention the
+   * step funnel above already uses. */
+  const touched = new Map();
+  const addTouch = (s) => touched.set(s, (touched.get(s) || 0) + 1);
+  cmdRows.forEach((r) => addTouch(String(r.session || '')));
+  panelRows.forEach((r) => addTouch(String(r.session || '')));
+  const TOUCH_BUCKETS = [
+    { min: 1, max: 1, label: '1' }, { min: 2, max: 3, label: '2-3' },
+    { min: 4, max: 7, label: '4-7' }, { min: 8, max: Infinity, label: '8+' },
+  ];
+  const touchCounts = TOUCH_BUCKETS.map(() => 0);
+  touched.forEach((n) => {
+    const i = TOUCH_BUCKETS.findIndex((b) => n >= b.min && n <= b.max);
+    if (i >= 0) touchCounts[i]++;
+  });
+  const zeroTouch = Math.max(0, totalSessions - touched.size);
+  const farRows = [bucketRow('0 — touched nothing', zeroTouch, totalSessions)]
+    .concat(TOUCH_BUCKETS.map((b, i) => bucketRow(b.label, touchCounts[i], totalSessions)));
+
+  const errNote = failed.length
+    ? '<p class="err">' + failed.length + ' of the 3 first-minute queries failed: '
+      + failed.map((f) => '<span class="mono">' + esc(f) + '</span>').join(' · ') + '</p>'
+    : '';
+
+  const historyNote = '<p class="muted">Clock: <span class="mono">t_page</span> (seconds '
+    + 'since page load), 1-second resolution, no sub-second ordering, sessions back to '
+    + '2026-08-11. The reload-safe alternative (<span class="mono">t_session</span>) has '
+    + 'only about a day of history behind it as of this writing and would show almost '
+    + 'nothing over the windows above — this section moves to it once that changes.</p>';
+
+  return [
+    errNote,
+    await section('First control touched — the first 60 seconds', async () => table(cmdRankRows,
+      [{ key: 'name', label: 'Action' }, { key: 'sessions', label: 'Sessions', num: true },
+       { key: 'bar', label: 'Share of all sessions in this window', raw: true }])
+      + '<p class="muted">The first <span class="mono">command</span> event each session '
+      + 'sent, inside its first 60 seconds — against everyone in this window, not only '
+      + 'those who touched something.</p>' + historyNote),
+    await section('First panel opened — the first 60 seconds', async () => table(panelRankRows,
+      [{ key: 'name', label: 'Panel' }, { key: 'sessions', label: 'Sessions', num: true },
+       { key: 'bar', label: 'Share of all sessions in this window', raw: true }])
+      + '<p class="muted">The first panel each session opened, inside its first 60 '
+      + 'seconds.</p>'),
+    await section('How far in 60 seconds', async () => table(farRows,
+      [{ key: 'bucket', label: 'Touches' }, { key: 'sessions', label: 'Sessions', num: true },
+       { key: 'bar', label: 'Share of all sessions in this window', raw: true }])
+      + '<p class="muted">Controls pressed plus panels opened, summed, inside the first '
+      + '60 seconds of the session. <b>0 is a real category</b> — a session that never '
+      + 'touched anything in its first minute, not a session this query missed.</p>'),
+  ];
+}
+
 // =============================================== the sections moved from analytics.js
 // Moved VERBATIM (#674, owner: "move some of the feature tracking from the statistics
 // page ... to this new feature tracking page"). Their comments came with them, because
@@ -541,6 +735,15 @@ async function simSections(apiToken, since, versionWhere) {
      * 6 s), and the client clock restarts at 0 on a reload. The larger of the two is
      * the best available lower bound, and it measures a tab being OPEN, not play.
      */
+    /* THE POPULATION IS ALREADY EVERY SESSION, NOT ONLY ENDED ONES (#797 item 6). This
+     * query groups on blob4 over the WHOLE event stream — no `blob1 = 'session_end'`
+     * filter — so a tab left open (which never writes an end row) still contributes its
+     * write span. That matters because `tools/site_report.js`'s separate `usage_length`
+     * query DOES filter to `session_end` only, and reporting THAT figure as "time per
+     * session" is what produced the wrong p50 1.9min the owner had to be corrected on —
+     * the biased-short population is a real, already-happened mistake, just not one that
+     * lived on this page. Named here so the next person does not "fix" this query to
+     * match that one. */
     section('Time per session', async () => {
       const spans = await sql(apiToken, `SELECT blob4 AS session,
               min(timestamp) AS first_seen, max(timestamp) AS last_seen
@@ -571,19 +774,46 @@ async function simSections(apiToken, since, versionWhere) {
         return Math.max(isFinite(write) && write > 0 ? write : 0, lastBy[r.session] || 0);
       }).sort((a, b) => a - b);
 
-      const mid = Math.floor(secs.length / 2);
-      const median = secs.length % 2 ? secs[mid] : (secs[mid - 1] + secs[mid]) / 2;
-      const mean = secs.reduce((a, b) => a + b, 0) / secs.length;
-
-      return '<div class="tiles">'
-        + '<div class="tile"><div class="v">' + esc(dur(median)) + '</div><div class="k">Median</div></div>'
-        + '<div class="tile"><div class="v">' + esc(dur(mean)) + '</div><div class="k">Mean</div></div>'
-        + '<div class="tile"><div class="v">' + esc(dur(secs[secs.length - 1])) + '</div><div class="k">Longest</div></div>'
+      /* PERCENTILES, RESTATED (#797 item 6 defect 1's fix): p50/p75/p95/max off the SAME
+       * `quantile()` this page already uses for time-on-step, over the SAME `secs`
+       * population the histogram below reads — one array, two views of it, so the two
+       * can never silently disagree on what they are counting. Mean is dropped rather
+       * than kept alongside: the comment this replaced already called it "close to
+       * meaningless" (one long-open tab drags it), and the histogram below shows the
+       * shape a single mean could never have. */
+      const p50 = quantile(secs, 0.5), p75 = quantile(secs, 0.75), p95 = quantile(secs, 0.95);
+      const tiles = '<div class="tiles">'
+        + '<div class="tile"><div class="v">' + esc(dur(p50)) + '</div><div class="k">p50</div></div>'
+        + '<div class="tile"><div class="v">' + esc(dur(p75)) + '</div><div class="k">p75</div></div>'
+        + '<div class="tile"><div class="v">' + esc(dur(p95)) + '</div><div class="k">p95</div></div>'
+        + '<div class="tile"><div class="v">' + esc(dur(secs[secs.length - 1])) + '</div><div class="k">Max</div></div>'
         + '<div class="tile"><div class="v">' + secs.length + '</div><div class="k">Sessions</div></div>'
-        + '</div>'
+        + '</div>';
+
+      /* THE HISTOGRAM (#797 item 6 defect 2's fix). Percentiles alone hid a BIMODAL
+       * shape — a cluster of sessions whose every event landed in one write batch
+       * (span exactly 0) sitting beside a long tail out to hours — and p50 over that mix
+       * reads as one typical session when there is no such thing. The zero-span row is
+       * drawn FIRST and separately from DURATION_BUCKETS (see its header): it is a floor
+       * artefact ("all events arrived in one batch"), not proof of an instant visit, and
+       * folding it into "<1m" would claim precision the data does not have. */
+      const zeroCount = secs.filter((s) => s <= 0).length;
+      const bucketCounts = DURATION_BUCKETS.map(() => 0);
+      secs.forEach((s) => { const i = bucketDurationIdx(s); if (i >= 0) bucketCounts[i]++; });
+      const histRows = [bucketRow('0s (single batch)', zeroCount, secs.length)]
+        .concat(DURATION_BUCKETS.map((b, i) => bucketRow(b.label, bucketCounts[i], secs.length)));
+
+      return tiles
+        + table(histRows, [
+          { key: 'bucket', label: 'Span' }, { key: 'sessions', label: 'Sessions', num: true },
+          { key: 'bar', label: 'Share of sessions in this window', raw: true }])
         + '<p class="muted">A FLOOR, and time a TAB WAS OPEN rather than time spent '
-        + 'playing — the longest figure here is usually a tab someone left. Trust the '
-        + 'median; the mean follows whichever tab was abandoned longest.</p>';
+        + 'playing — the tail is usually a tab someone left. <b>A span of 0 means every '
+        + 'event this session sent landed in the same write batch</b> — a gap in what the '
+        + 'floor can measure, not evidence the visit was instantaneous. Trust the shape '
+        + 'over any single figure: this distribution is not one typical session, it is '
+        + 'two populations (a batch-floor cluster and a long tail) that a mean or a '
+        + 'lone median would blend into a number neither describes.</p>';
     }),
     section('Sessions by starting condition', async () => table(
       (await sql(apiToken, `SELECT blob5 AS initial_state, count(DISTINCT blob4) AS sessions

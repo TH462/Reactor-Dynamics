@@ -2,7 +2,7 @@
 
 **Document:** PWR-CI-01  
 **Title:** Control Station Inventory and Operating Instructions  
-**Revision:** 21  
+**Revision:** 22  
 
 ---
 
@@ -133,7 +133,7 @@ The reset is **permissive-gated** — it will not take until both conditions hol
 
 | Permissive | Why | Caption when it is holding |
 |---|---|---|
-| **No trip signal standing** | A breaker will not hold in against a live trip signal. Whatever tripped the plant has to have cleared first. | *TRIP SIGNAL STANDING* |
+| **No trip signal standing** | A breaker will not hold in against a live trip signal. Whatever tripped the plant has to have cleared first. **A latched safety injection counts** — every safety injection trips the reactor, so reset SI at its own panel first (the ECCS securing click; it needs the reactor tripped and its 60 s relay run), then reset the trip. | *TRIP SIGNAL STANDING* |
 | **Rods at bottom** | The physical interlock: the breakers reset with the rods in. | *RODS NOT AT BOTTOM* |
 
 The caption under **SCRAMMED** tells you which one is holding, so you do not have to press
@@ -197,22 +197,23 @@ the heat sink is restored. **Recovery is procedural, not a button.**
 
 | Control | Purpose |
 |---------|---------|
-| *(none)* | **There is no source-range On/Off switch on this plant.** The channel energizes and de-energizes itself on flux alone — see §5 and the handoff below |
+| *(none)* | **There is no separate source-range On/Off switch.** The detector's high voltage goes off with the **SR HIGH FLUX** block at P-6 on the TRIP BLOCKS panel (§4.4), and comes back on by itself below 5e-11 A — see the handoff below |
 
 **Handoff rules (P-6) — what the plant does, and what it does not:**
 
-1. **The source range secures itself at 1e5 cps.** That is the de-energization point, not a trip: the counter switches off and reads zero above it. Nothing for the operator to press, and nothing to press it too early.  
-2. **P-6 — Intermediate Range ≥ 1e-10 A — is the point the INTER RANGE display comes into use**, and the NIS card marks it. Below it, read the source range. On a real plant P-6 is also the permissive that lets the operator block the source-range trip and secure the detector; **this plant has neither the trip nor the switch**, so P-6 here is an indication cue.  
-3. The handoff the plant actually performs is therefore at **1e5 cps**, which is IR ≈ **3.2e-9 A** — about **32×** above P-6. Expect the intermediate range to be well on scale before the source range goes dark.  
+1. **P-6 — Intermediate Range ≥ 1e-10 A — permits the source-range block.** Take **SR HIGH FLUX** on the TRIP BLOCKS panel: it blocks the source-range reactor trip **and** switches the detector off, so SOURCE RANGE reads a dash (no reading) and INTER RANGE carries the indication. One control does both here; a real plant uses two pushbuttons, one per channel. Real procedures want about one decade of overlap between the two ranges before blocking.
+2. **Unblocked, the source range trips the reactor at 1e5 cps** (IR ≈ **3.2e-9 A**). On this plant P-6 is met **before criticality**, at about **3,100 cps**, and the count rate at criticality is already about **2e4 cps** — at a startup rate of 0.5 DPM (decades per minute) that leaves about a minute. Block at P-6.
+3. **On the way down the block clears itself below 5e-11 A** (the P-6 reset) and the detector comes back on. Between 5e-11 and 1e-10 A a block already taken holds.  
 
 ### 4.4 Startup trip blocks
 
 | Block | When allowed |
 |-------|----------------|
+| SR high-flux trip (1e5 cps) block — also switches the source-range detector off | Intermediate range above **P-6** (1e-10 A) |
 | IR high-flux trip (25 %) block — also clears the 20 % rod stop | Power above **P-10** (8 %) |
 | PR low-setpoint (35 %) block | Power above **P-10** |
 
-Blocks **auto-reinstate** when power falls below P-10.
+Blocks **auto-reinstate** when power falls below their permissive — the SR block below the P-6 reset (5e-11 A), the other two below P-10.
 
 ---
 
@@ -587,7 +588,8 @@ Level tells you what already happened; the flow mismatch tells you what is about
 | **▲▼ step** | ±20 gpm per click. **Press and hold** to run continuously; the step coarsens after about 1½ s so a box can be swept across its range without 60 clicks |
 | **Pumps** | **AUTO** and any non-zero **MAN** demand START the main feed pumps; **OFF** secures them. A demand of zero typed into the box is a demand, not a pump stop — only the **OFF** button secures. Mode 4, Hot Shutdown and Mode 5, Cold Shutdown boot with both pumps secured, so the first feed action of a heatup is AUTO or MAN |
 | **Character** | A **fixed-demand** device. It holds the speed you set — it has no level feedback of its own |
-| **NO FLOW marking** | The commanded gpm turns **amber** — and the SG FEED corner reads **NO FLOW** — when the plant is delivering none of it (dead feed train: blackout, isolation). The demand stays where you left it; the colour says the plant is not doing that number. FEED FLOW below has the truth |
+| **In AUTO** | The box stops showing a demand and reads the **measured FEED FLOW** in gpm, the same number as the FEED FLOW readout below, drawn in the grey AUTO colour. The three-element controller's own demand moves every few seconds; the measured flow is what is reaching the generator. Typing a value still takes feed to **MANUAL** at that speed |
+| **NO FLOW marking** | In MANUAL, the commanded gpm turns **amber** — and the SG FEED corner reads **NO FLOW** — when the plant is delivering none of it (dead feed train: blackout, isolation). The demand stays where you left it; the colour says the plant is not doing that number. FEED FLOW below has the truth. In AUTO the box already reads the measured flow, so the amber sits on a reading near 0 gpm: the controller is asking for feed the plant is not delivering |
 
 **WARNING:** in MANUAL the pump does exactly what you asked and nothing else. Set it to match
 steam flow and level holds indefinitely; set it wrong and level ramps to a trip in *whichever*
@@ -654,8 +656,8 @@ heat that is a very small number.
 
 | Control | Effect |
 |---------|--------|
-| **STOP** | Secures the aux feed pumps. **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both. There is **no manual START:** the card is STOP and AUTO |
-| **AUTO** | A **lamp, not a defeat**. The actuation starts the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor — and also on a standing safety injection, loss of main feed, or loss of offsite power. **Nothing you can press disarms it**, so the lamp is lit whenever the pumps are not in your hands, and pressing AUTO cannot make it lit any harder. |
+| **STOP** | Stops the aux feed pumps and **leaves the auto-start armed**: the card reads **STANDBY**, and a low-low SG level starts both pumps again (measured from Mode 3, Hot Standby with no feed: level 36.5 → 16.5 % in 47 plant-minutes, both pumps started, and the reactor tripped on the same signal). **STOP secures BOTH** — the motor-driven and the turbine-driven pump are separate machines with a switch each, and this button works both. There is **no separate START button:** the card is STOP and AUTO, and AUTO is what starts the motor-driven pump (below) |
+| **AUTO** | **Puts aux feed in service: starts the motor-driven pump on the 33 % level hold** (#808) — the normal startup lineup, pressed in the heatup (**PWR-N01** step 4) and still running in Hot Standby until main feed takes over near 1 % power. At power the hold keeps the valve shut above 38 %, so a press there runs the pump into a shut valve and changes no flow (measured at 100 %: aux feed flow 0.000 over 10 plant-minutes, SG level and Tavg unchanged). **Simplification, declared:** on a real board the pump starts from its own START switch and AUTO only arms it; this card's two buttons are the owner's "automatic mode and off" (#591). AUTO is also a **lamp, not a defeat**. The actuation starts the pumps on **low-low SG level, 17 % of narrow range** — the same signal that trips the reactor — and also on a standing safety injection, loss of main feed above 5 % power, or loss of offsite power. **Nothing you can press disarms it**, so the lamp is lit whenever the pumps are not in your hands, and pressing AUTO cannot make it lit any harder. |
 | **Manual action** | Securing the pumps is the one manual action on this card. While an actuation is latched the pumps are held running and a stop is refused — see the securing note below |
 | **Delivery** | Capacity × throttle, and **the throttle is not yours.** Level control lives in the **`afw_level` automation channel**, which holds narrow-range level at **33 ± 5 %** — full flow below 28 %, tapering shut by 38 % |
 
@@ -671,16 +673,17 @@ heat that is a very small number.
 >
 > **What you watch, since you no longer hold the valve:** the steam dumps and the level trend.
 > If the dumps are shut and temperature keeps falling, the channel is overfeeding — secure the
-> pumps with **STOP** and let level recover, then re-arm **AUTO**. That is the whole of the
+> pumps with **STOP** and let level recover, then press **AUTO**, which restarts the motor-driven
+> pump on the level hold and delivers nothing until level falls below 38 %. That is the whole of the
 > operator's authority over aux feed on this plant.
 
 **Procedure — establish AFW (loss of main feed)**
 
 1. Confirm main feed lost / SG level falling.  
 2. SCRAM if not already tripped.  
-3. **Verify the auto-start.** The pumps start themselves on low-low SG level, a standing safety injection, loss of main feed, or loss of offsite power — there is no manual start to press.  
+3. **Verify the auto-start.** The pumps start themselves on low-low SG level, a standing safety injection, loss of main feed above 5 % power, or loss of offsite power — there is no manual start to press.  
 4. Verify the level recovers toward **33 % narrow range** and that the steam dumps are not all shut — the channel throttles, and shut dumps with falling temperature mean it is overfeeding.  
-5. When stable, secure the pumps with **STOP** if the procedure calls for it — the AUTO lamp needs no action from you, and the actuation is standing whether or not you touched the pumps.  
+5. When stable, secure the pumps with **STOP** if the procedure calls for it — the actuation is standing whether or not you touched the pumps. Pressing **AUTO** afterwards restarts the motor-driven pump on the level hold.  
 
 **Securing note:** an aux feed stop is refused while a **safety injection** is standing, because
 the SI signal is itself an aux feed start — secure the injection at its own panel first. Inside
@@ -856,10 +859,10 @@ The **OFF** lamp lights on either condition — breaker open *or* turbine trippe
 
 | Mode | Use |
 |------|-----|
-| **AUTO** | Puts the dump controller in service. **AUTO is two control modes, and which one you get is the turbine's question.** With the turbine **tripped** — heatup, cooldown, hot standby — AUTO selects **steam-pressure mode**: the dumps modulate to hold the **Dump SP** box beside them, and that is the heat sink for the whole of a heatup or a cooldown. With the turbine **on line** it selects **Tavg mode**, the at-power program, which is also the mode that catches a load rejection or a turbine trip (**12** §8.3). The card's **status word tells you which — PRESS or TAVG.** Basis: Westinghouse Technical Manual (WTSM) §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown."* |
+| **AUTO** | Puts the dump controller in service. **AUTO is two control modes, and which one you get is the turbine's question.** With the turbine **tripped** — heatup, cooldown, hot standby — AUTO selects **steam-pressure mode**: the dumps modulate to hold the **Dump SP** box beside them, and that is the heat sink for the whole of a heatup or a cooldown. With the turbine **on line** it selects **Tavg mode**, the at-power program, which is also the mode that catches a load rejection or a turbine trip (**12** §8.3). The card's **status word tells you which — STM PRESS or TAVG** — and reads **RAMPING** while steam-pressure mode is still walking a lowered Dump SP down, back to **STM PRESS** when it arrives. Basis: Westinghouse Technical Manual (WTSM) §11.2 (ML11223A294), *"Tavg mode at power, steam pressure mode at hot standby / startup / cooldown."* |
 | **CLOSE** | Takes the controller out of service and shuts the dumps; status reads **MANUAL**. This is the cold lineup — **PWR-N01** step 5 verifies it, and step 8b is where AUTO goes in. |
 | **OPEN** | **Refused on this plant.** The dump is controller-driven and there is no manual position lever, so a full-open demand is rejected by name (measured 2026-09-05) — the modes are AUTO and CLOSE, and what you move is the setpoint. See the note that closes §18. |
-| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **The controller reads it in steam-pressure mode only**, so on a plant in Tavg mode the box does nothing until the turbine trips and AUTO is pressed again. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. |
+| **Dump SP** | No-load steam-dump **pressure setpoint** (MPa, live readout + numeric box; **29 – 1099 psi (0.2 – 7.58 MPa)** — the box refuses anything above the SG safeties' first lift, because the engine itself does **not** clamp it) the AUTO dump holds. **The controller reads it in steam-pressure mode only**, so on a plant in Tavg mode the box does nothing until the turbine trips and AUTO is pressed again. **Lower** it on a cooldown to vent the SG and cool the primary through the steam generators; **raise** it back toward the no-load point on a heatup. **A lowered value is a TARGET** (since 2026-09-28): the box shows what you typed, and in steam-pressure mode the controller walks the pressure it actually holds down to it so that the saturation temperature falls **60 °F/hr (33.3 °C/hr)** — one entry is a whole cooldown, paced under the 100 °F/hr (55.6 °C/hr) limit. A raised value lands at once. Selecting pressure mode under a target **below the 1020 psi (7.03 MPa) no-load point** starts the walk from the steam header, however small the gap; a target at or above it — the normal post-trip AUTO press — lands at once. While the walk runs the card's status word reads **RAMPING**. On a real plant the operator paces this by hand; the automatic pacing is a declared departure (**DESIGN_COMPANION §8.38**). |
 
 ### 12.4 Indications
 
@@ -1003,7 +1006,7 @@ Not a plant control — **trainer control**.
 Every board instrument, with its indicating range, typical lag, and the annunciators it
 drives (see `06_ALARM_RESPONSE.md` for each alarm's response). A reading pegged at a range
 end may be **over-range, not truth** — the power range reads to 200 % precisely so a pegged
-meter can still cross the 118 % trip.
+meter can still cross the 115 % trip.
 
 | Instrument | Unit | Range | Typical lag | Primary use | Drives alarms |
 |------------|------|-------|-------------|-------------|---------------|
@@ -1055,7 +1058,7 @@ These topics appear as dedicated **campaign** missions; manuals cover them here 
 ### 17.1 1/M and NIS handoff (Mode 3 → Mode 2)
 
 - Source Range counts show subcritical multiplication as rods withdraw (1/M idea: counts rise as you approach criticality).  
-- When Intermediate Range ≥ **1e-10 A** (P-6) the intermediate range is on scale and is the instrument to read. **You do not secure the SR detector — there is no switch**; it de-energizes itself at 1e5 cps, further up. See **PWR-T13** / **PWR-N03**.  
+- When Intermediate Range ≥ **1e-10 A** (P-6), **block SR HIGH FLUX** on the TRIP BLOCKS panel — that also switches the source-range detector off, and the intermediate range becomes the instrument to read. **Unblocked, the source range trips the reactor at 1e5 cps.** See **PWR-T13** / **PWR-N03**.  
 - Campaign mission `pwr_startup` / `pwr_startup_challenge` grade this path; manuals do not auto-grade.
 
 ### 17.2 Holding Tavg by hand (Mode 1)
@@ -1114,7 +1117,8 @@ to make you own.
 
 **The trap.** The refusal counts down in seconds and reads like a malfunction the first time. It
 is not — it is the relay. Read the message: it names *which* permissive you are short of, and the
-two are cleared in different ways (one by waiting, one by tripping the reactor).
+only one you will meet from the board is the relay — every safety injection trips the reactor on
+the same step, so the P-4 condition is always already met.
 
 *Sourced — the reset circuit's time-delay relay "produces an output (energizes) some time after
 it is started (usually 45–60 sec)", with SI reset additionally requiring the P-4 reactor-trip
@@ -1180,7 +1184,7 @@ Listed for cross-reference — normal operation never requires typing a command.
 | HPI/LPI (§11.0) | `set_hpi` | `{active}` |
 | RHR suction valve (§11.2) | `set_rhr` | `{active}` |
 | RHR cooldown rate / HX split (§11.2) | `set_rhr_hx` | `{fraction | pct}` |
-| SR detector on/off (§4.3) | *(no operator lever — the source-range channel energizes itself below the P-6 class point; the button reads dark)* | — |
+| SR detector on/off (§4.3) | *(no separate lever — the detector's high voltage goes with the SR HIGH FLUX block on TRIP BLOCKS, §4.4)* | — |
 | Startup trip blocks (§4.4) | `set_trip_block` | `{trip_id, blocked}` |
 | MSIV open / close (§9.2) | `open_msiv` / `close_msiv` | — |
 | Automation AUTO/MAN (§14) | `set_auto_channel` / `set_auto_setpoint` | `{channel_id, engaged}` / `{channel_id, value}` |

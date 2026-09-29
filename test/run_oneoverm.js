@@ -24,8 +24,19 @@
  * from source and the pwr2 checks must go red. A check born beside its fix is not
  * green until it has been made to fail (house rule).
  *
+ * Section 6 (owner playtest 2026-09-28: "1/m plot points are lost when rewinding steps")
+ * has its own injection, --inject-rewind: RD.OneOverMCore.rewindTo is put back to the old
+ * clear-the-whole-table rule (for BOTH copies, panel and grader) and section 6 must go red.
+ *
  *   node test/run_oneoverm.js
  *   node test/run_oneoverm.js --inject
+ *   node test/run_oneoverm.js --inject-rewind
+ *
+ * Section 7 (2026-09-28 review): a save FILE load, a reset or a new initial condition is a
+ * DIFFERENT history, and the plot clears on it however the clock moved. --inject-history
+ * disables RD.OneOverMCore.newHistory (both copies) and section 7 must go red.
+ *
+ *   node test/run_oneoverm.js --inject-history
  */
 'use strict';
 var fs = require('fs');
@@ -33,6 +44,8 @@ var path = require('path');
 var SRC = path.join(__dirname, '..', 'engines', 'pwr2');
 var PANEL = path.join(__dirname, '..', 'ui', 'panels', 'one_over_m.js');
 var INJECT = process.argv.indexOf('--inject') >= 0;
+var INJECT_RW = process.argv.indexOf('--inject-rewind') >= 0;
+var INJECT_HIST = process.argv.indexOf('--inject-history') >= 0;
 
 /* ---- the DOM stub -------------------------------------------------------------------
  * one_over_m.js touches: createElement + body.appendChild (build), innerHTML on the
@@ -84,6 +97,7 @@ require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_instruments.js'));
 ].forEach(function (f) { require(path.join(SRC, f + '.js')); });
 require(path.join(__dirname, '..', 'layers', 'instructor_layer.js'));
 require(path.join(__dirname, '..', 'layers', 'simulation_service.js'));
+require(path.join(__dirname, '..', 'ui', 'manual_procedures.js'));   // section 2c starts the startup walkthrough
 
 /* the panel itself — loaded from SOURCE so --inject can hand it a reverted copy */
 var panelSrc = fs.readFileSync(PANEL, 'utf8');
@@ -102,6 +116,19 @@ if (INJECT) {
 (new Function('globalThis', panelSrc))(globalThis);
 
 var RD = globalThis.RD;
+if (INJECT_RW) {
+  /* the pre-fix rule: the clock behind the LAST capture cleared the whole table. Patched on the
+   * shared object, so the panel (core().rewindTo) and the grader (OneOverMCore.rewindTo) both
+   * get it — the same single implementation the fix lives in. */
+  RD.OneOverMCore.rewindTo = function (tbl, now) {
+    if (tbl.t == null || !(now < tbl.t - 1e-6)) return null;
+    RD.OneOverMCore.clear(tbl); return 'cleared';
+  };
+}
+if (INJECT_HIST) {
+  /* the pre-fix plant: nothing told a file load from a rewind — only the clock rule ran */
+  RD.OneOverMCore.newHistory = function () { return false; };
+}
 var BOLD = '\x1b[1m', RED = '\x1b[31m', GREEN = '\x1b[32m', RST = '\x1b[0m';
 var nPass = 0, nFail = 0;
 function ck(name, cond, note) {
@@ -193,6 +220,59 @@ var pred = win._q['#oomPred'] ? win._q['#oomPred'].textContent : '';
 ck('two points produce a prediction line (or an honest "insufficient trend")',
    /predicted criticality|insufficient trend/.test(pred), 'pred="' + pred + '"');
 
+/* ---- 2b. THE GRADER HOLDS THE PANEL'S TABLE (2026-09-24, pwr_startup 9a "3 short of the 1/M
+ * prediction"). Each Plot point press sends its sample down with `plot_1m_point`; the instructor
+ * keeps the same table through RD.OneOverMCore, and the snapshot publishes the prediction it
+ * would print. A third point first, so there is a real crossing to compare (not two nulls).
+ * INJECTIONS, proven in place: the instructor's `plot_1m_point` recording removed -> .1 red
+ * (0 points, null against the printed step); the panel's `plot_1m_clear` send removed -> .2 red. */
+w.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: Math.round(0.08 * RD.pwr2.kinetics.RODS.max_steps), speed: 'fast' });
+w.tick(120);
+RD.OneOverM.tick(w.snap());
+press(win, 'plot');
+w.tick(1);
+var predTxt = win._q['#oomPred'] ? win._q['#oomPred'].textContent : '';
+var mStep = /step (\d+)/.exec(predTxt), printed = mStep ? +mStep[1] : null;
+var oomG = w.snap().instructor && w.snap().instructor.one_over_m;
+ck('the grader holds the panel\'s three points and the prediction the panel PRINTS',
+   printed != null && !!oomG && oomG.points === 3 && oomG.pred_steps === printed,
+   'panel "' + predTxt + '"; grader ' + (oomG ? oomG.points + ' points, step ' + oomG.pred_steps : 'none'));
+press(win, 'clear');
+w.tick(1);
+oomG = w.snap().instructor && w.snap().instructor.one_over_m;
+ck('...and the panel\'s Clear clears the grader\'s table too',
+   !!oomG && oomG.points === 0 && oomG.pred_steps == null,
+   'grader ' + (oomG ? oomG.points + ' points, step ' + oomG.pred_steps : 'none'));
+press(win, 'plot');   /* section 3 asserts that a plant change clears a NON-empty plot */
+
+/* ---- 2c. A NEW STARTUP STARTS A NEW PLOT (layman pass 8 S-1, 2026-09-26). The table cleared only
+ * on plant change, clock back or Clear, so a SECOND Mode 3 -> Mode 1 walkthrough kept the first
+ * one's baseline and points (the reviewer's predictions 208 -> 203 -> 205 -> 226, "3 short" at 223
+ * already critical). `pwr_startup` authors `clear_1m`: loading it clears the grader's table and
+ * bumps `one_over_m.gen`, which the panel watches. A walkthrough WITHOUT the flag leaves the plot.
+ * INJECTIONS, proven in place 2026-09-26: the `loadChecklist` clear line removed -> all three
+ * walkthrough checks red (grader keeps its point; the panel, never told, keeps its own); the panel's gen check removed -> .2 red
+ * alone (grader 0 points, panel message unchanged). */
+head('2c. starting the Mode 3 -> Mode 1 walkthrough clears the 1/M plot (layman pass 8 S-1)');
+w.tick(1);
+var oomB = w.snap().instructor.one_over_m;
+ck('precondition: the plot holds a point from before the walkthrough', oomB.points >= 1, oomB.points + ' point(s)');
+w.cmd({ action: 'start_checklist', procedure_id: 'pwr_startup' });
+w.tick(1); RD.OneOverM.tick(w.snap());
+var oomS = w.snap().instructor.one_over_m;
+ck('starting pwr_startup clears the grader\'s table', oomS.points === 0 && oomS.pred_steps == null,
+   'grader ' + oomS.points + ' points, step ' + oomS.pred_steps + ', gen ' + oomB.gen + ' -> ' + oomS.gen);
+ck('...and the panel\'s own copy, with a message that says why', /new startup walkthrough/.test(msgOf(win)),
+   'msg="' + msgOf(win) + '"');
+w.cmd({ action: 'stop_checklist' }); w.tick(1);
+press(win, 'plot'); w.tick(1);
+w.cmd({ action: 'start_checklist', procedure_id: 'pwr_raise_power' });
+w.tick(1); RD.OneOverM.tick(w.snap());
+var oomR = w.snap().instructor.one_over_m;
+ck('...a walkthrough WITHOUT clear_1m leaves the plot alone (it is the flag, not any start)',
+   oomR.points === 1 && !/new startup walkthrough/.test(msgOf(win)), 'grader ' + oomR.points + ' point(s), msg="' + msgOf(win) + '"');
+w.cmd({ action: 'stop_checklist' }); w.tick(1);
+
 /* ============================================================ 3. another supported plant */
 head('3. the guard was NARROWED, not deleted — another supported plant still works');
 
@@ -260,14 +340,166 @@ ck('and on a plant with a source range but no control GROUP to plot it against',
   ck('...and pressing it again closes it', panel.hidden === true, 'hidden ' + panel.hidden);
 })();
 
+/* ============================================================ 6. a rewind keeps earlier points */
+/* OWNER PLAYTEST 2026-09-28 (preview, pwr2:pwr_startup): "1/m plot points are lost when
+ * rewinding steps". tick() cleared the WHOLE table whenever sim time went behind the LAST
+ * capture, so a step rewind past one plot press dropped the baseline and every earlier point.
+ * Driven through a real service REWIND (free-play ring, fake wall clock so the 20 s sandbox
+ * cadence fires on demand): points taken before the checkpoint the rewind lands on must
+ * survive, points after it must go, and a rewind to before the BASELINE still clears all.
+ * BOTH COPIES: the panel's, and the grader's (`instructor.one_over_m`, which `pwr_startup` 9a
+ * grades "3 short of the 1/M prediction" against) — one rule, RD.OneOverMCore.rewindTo. */
+head('6. a rewind drops only the points taken AFTER the checkpoint it lands on');
+(function () {
+  var r = mkWorld('hot_zero_power');
+  var clock = 1e6;
+  r.svc._now = function () { return clock; };
+  r.svc._lastSandboxCpMs = null;
+  function layCheckpoint() {           // one tick to settle, then a tick that lays a mark
+    r.tick(1); clock += 20001; r.tick(1);
+    var cps = r.svc.checkpoints;
+    return cps[cps.length - 1].metadata.sim_time;
+  }
+  function withdraw(frac) {
+    r.cmd({ action: 'rod_nudge', group_id: 'control_rods',
+            steps: Math.round(frac * RD.pwr2.kinetics.RODS.max_steps), speed: 'fast' });
+    r.tick(90);
+  }
+  function rewindTo(t) {
+    var cps = r.svc.checkpoints, idx = -1;
+    for (var i = 0; i < cps.length; i++) if (Math.abs(cps[i].metadata.sim_time - t) < 1e-9) idx = i;
+    var res = r.cmd({ action: 'rewind', steps: cps.length - idx, exact: true });
+    return res && res.metadata ? res : r.svc.assembleSnapshot();
+  }
+  function gPts() { r.tick(1); var o = r.snap().instructor && r.snap().instructor.one_over_m; return o ? o.points : -1; }
+  function nPts(w) {
+    var svg = w.querySelector('svg');
+    return ((svg && svg.innerHTML) || '').split('class="oom-pt"').length - 1;
+  }
+
+  RD.OneOverM.init({ getSnap: function () { return r.snap(); }, cmd: r.cmd });
+  var w = winOf();
+  RD.OneOverM.tick(r.snap());          // a plant change from section 4's relabelled snapshot
+  RD.OneOverM.open();
+  press(w, 'clear');
+
+  var tA = layCheckpoint();            // A: before the baseline
+  r.tick(5);
+  press(w, 'plot');                    // P1 baseline
+  withdraw(0.15);
+  press(w, 'plot');                    // P2
+  var tB = layCheckpoint();            // B: after P1, P2
+  withdraw(0.10);
+  press(w, 'plot');                    // P3
+  withdraw(0.05);
+  press(w, 'plot');                    // P4
+  RD.OneOverM.tick(r.snap());
+  ck('precondition: four points on the plot before the rewind, in both copies', nPts(w) === 4 && gPts() === 4,
+     nPts(w) + ' drawn, grader ' + gPts());
+
+  var rs = rewindTo(tB);
+  ck('precondition: the rewind landed on checkpoint B', Math.abs(rs.metadata.sim_time - tB) < 1e-9,
+     't=' + rs.metadata.sim_time.toFixed(2) + ' s, B=' + tB.toFixed(2) + ' s');
+  RD.OneOverM.tick(rs);
+  ck('rewinding to B KEEPS the two points taken before B (the playtest defect)', nPts(w) === 2,
+     nPts(w) + ' drawn, msg="' + msgOf(w) + '"');
+  ck('...and so does the GRADER\'s copy (what 9a grades)', gPts() === 2, 'grader ' + gPts());
+
+  r.tick(5);
+  press(w, 'plot');
+  var m = msgOf(w);
+  ck('...and the next press extends the SAME curve, not a fresh baseline',
+     /1\/M =/.test(m) && !/baseline/.test(m) && nPts(w) === 3, 'msg="' + m + '", ' + nPts(w) + ' drawn');
+
+  var ra = rewindTo(tA);
+  RD.OneOverM.tick(ra);
+  ck('rewinding to A, before the BASELINE, still clears the whole plot (both copies)', nPts(w) === 0 && gPts() === 0,
+     nPts(w) + ' drawn, msg="' + msgOf(w) + '"');
+})();
+
+/* ============================================================ 7. a different history clears */
+/* 2026-09-28 review: the rewind rule above keeps points when the clock goes back, and nothing
+ * but the clock was read — so a save FILE taken later than every capture (a different plant
+ * entirely) kept the plot, and so would a reset whose baseline sat at t = 0. The service now
+ * publishes metadata.timeline_epoch, bumped by selectPlant and loadState and never by Rewind. */
+head('7. a save-file load or a reset is a new history: the plot clears (both copies)');
+(function () {
+  var r = mkWorld('hot_zero_power');
+  function gPts() { r.tick(1); var o = r.snap().instructor && r.snap().instructor.one_over_m; return o ? o.points : -1; }
+  function nPts(w) {
+    var svg = w.querySelector('svg');
+    return ((svg && svg.innerHTML) || '').split('class="oom-pt"').length - 1;
+  }
+  function withdraw(frac) {
+    r.cmd({ action: 'rod_nudge', group_id: 'control_rods',
+            steps: Math.round(frac * RD.pwr2.kinetics.RODS.max_steps), speed: 'fast' });
+    r.tick(90);
+  }
+  RD.OneOverM.init({ getSnap: function () { return r.snap(); }, cmd: r.cmd });
+  var w = winOf();
+  RD.OneOverM.tick(r.snap());
+  RD.OneOverM.open();
+  press(w, 'clear');
+  press(w, 'plot');
+  withdraw(0.15);
+  press(w, 'plot');
+  RD.OneOverM.tick(r.snap());
+  var tLast = r.snap().metadata.sim_time;
+  ck('precondition: two points on the plot, in both copies', nPts(w) === 2 && gPts() === 2,
+     nPts(w) + ' drawn, grader ' + gPts());
+
+  /* a save taken on ANOTHER plant, later in its own clock than every capture here */
+  var other = mkWorld('hot_zero_power');
+  other.tick(600);
+  var saved = JSON.parse(JSON.stringify(other.svc.saveState()));
+  var e0 = r.snap().metadata.timeline_epoch;
+  r.svc.loadState(saved);
+  r.tick(1);
+  RD.OneOverM.tick(r.snap());
+  ck('precondition: the loaded file is LATER than the last capture (the clock rule alone keeps the plot)',
+     r.snap().metadata.sim_time > tLast && r.snap().metadata.timeline_epoch !== e0,
+     'file t=' + r.snap().metadata.sim_time.toFixed(1) + ' s vs last capture ' + tLast.toFixed(1) +
+     ' s; epoch ' + e0 + ' -> ' + r.snap().metadata.timeline_epoch);
+  ck('a save-FILE load clears the plot (panel)', nPts(w) === 0, nPts(w) + ' drawn, msg="' + msgOf(w) + '"');
+  ck('...and the grader\'s copy (9a cannot grade against a plot of a plant that is gone)', gPts() === 0,
+     'grader ' + gPts());
+
+  /* a reset: same plant, same IC, a new history */
+  r.tick(5);
+  press(w, 'plot');
+  withdraw(0.10);
+  press(w, 'plot');
+  RD.OneOverM.tick(r.snap());
+  var pre = nPts(w), preG = gPts();
+  r.cmd({ action: 'reset', plant_id: 'pwr2', initial_state: 'hot_zero_power' });
+  r.tick(1);
+  RD.OneOverM.tick(r.snap());
+  ck('a reset clears the plot (both copies)', pre === 2 && preG === 2 && nPts(w) === 0 && gPts() === 0,
+     'before ' + pre + '/' + preG + ', after ' + nPts(w) + '/' + gPts());
+
+  /* and Rewind is NOT a new history: the epoch holds across one */
+  var e1 = r.snap().metadata.timeline_epoch;
+  var clock = 1e6;
+  r.svc._now = function () { return clock; };
+  r.svc._lastSandboxCpMs = null;
+  r.tick(1); clock += 20001; r.tick(1); r.tick(5);
+  var tPre = r.snap().metadata.sim_time;
+  var rw = r.cmd({ action: 'rewind', steps: 1, exact: true });
+  var rsn = rw && rw.metadata ? rw : r.svc.assembleSnapshot();
+  var e2 = rsn.metadata.timeline_epoch;
+  ck('a Rewind leaves timeline_epoch where it was (only the clock rule applies to it)',
+     e1 === e2 && rsn.metadata.sim_time < tPre - 1,
+     'epoch ' + e1 + ' -> ' + e2 + ', clock ' + tPre.toFixed(1) + ' -> ' + rsn.metadata.sim_time.toFixed(1) + ' s');
+})();
+
 /* ============================================================ summary */
-var expectRed = INJECT;
+var expectRed = INJECT || INJECT_RW || INJECT_HIST;
 console.log('\n' + BOLD + (nFail === 0 ? GREEN + 'PASS' : RED + 'FAIL') + RST +
   '  ' + nPass + ' passed, ' + nFail + ' failed, ' + (nPass + nFail) + ' checks');
-if (INJECT) {
+if (INJECT || INJECT_RW || INJECT_HIST) {
   var caught = nFail > 0;
   console.log((caught ? GREEN + 'INJECTION CAUGHT' : RED + 'INJECTION MISSED') + RST +
-    ' — the reverted plant-id guards ' + (caught ? 'reddened ' + nFail + ' check(s).' : 'changed NOTHING. The gate is hollow.'));
+    ' — the ' + (INJECT_HIST ? 'disabled new-history clear' : INJECT_RW ? 'reverted clear-on-rewind' : 'reverted plant-id guards') + ' ' + (caught ? 'reddened ' + nFail + ' check(s).' : 'changed NOTHING. The gate is hollow.'));
   process.exit(caught ? 0 : 1);
 }
 process.exit(nFail === 0 ? 0 : 1);

@@ -29,6 +29,1697 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-09-27-develop-h (#808 review + layman pass on pwr_startup: aux feed STOP, the step 13 gpm cutoff, stated times)
+
+All numbers full stack, seed 42, `hot_zero_power` unless named. Scratch harnesses (a copy of `run_walkthrough_routes` with an env-driven step 13 policy; a service + board-driver script) were deleted after use.
+
+- **Aux feed STOP does NOT disarm the auto-start.** After `set_afw {active:false}`: `automation.esf.afw` stays `auto`, card STANDBY, the driver's AUTO lamp `active()` true (also true in a fresh headless browser, class `bd-active`). With no feed, SG level 36.5 → 16.5 % in 47 plant-min, then the low-low start fired BOTH pumps (`sg_lolo_level`) and tripped the reactor; the level hold then held 37–38 %. Main feed secured at hot zero power (after the step 13 lineup): no aux feed start in 40 plant-min — the loss-of-main-feed start is gated above 5 % power (`pwr2_engine.js` `main_feed_lost`). **Fixed:** STOP/AUTO/card scanner text (the STOP line said "disarms the auto-start", the AUTO line "armed and idle"), step 13c note, `Manuals/03` §10.0. **NOT reproduced:** the layman's shot 43 shows AUTO unlit after STOP; node and browser both draw it lit. Open.
+- **Step 13 gpm cutoff is 1.5 %, not 2 %.** Typing time to the 60 % row, arriving by extra SLOW taps: 50 gpm — 1.0 % 9.4 min (power drifts to 2.70 %), 1.5 % 25.5 min, 2 % stalls 44–48 % for 54+ min, 3 % stalls 36.6 %, 4 % stalls 33 %, 5 % falls to an SG low-low trip at ~40 min. 100 gpm — 3.1/3.5/4.0/5.0/6.9/9.3 min at 1/1.5/2/3/4/5 %, no trip. Tavg never below 547.4 °F. Re-typing 100 when power passes 2 % (the layman's case): 9.4 → 5.8 min, not needed. "Level stalled 3 plant-min → type 100" from 50 at 2/3/4/5 %: 60 % in 3.2/4.8/7.2/10.0 min, no trip. The branch moved into the ASK; the note carries the stall way out. Route policy `feed_fill` follows (≥ 1.45).
+- **Stated times:** 13a 9.5 / 9.7 / 8.7 min (typical s42, base route, typical s7), layman 8.7 → "about 9 to 10". 12b (12a tick → 12b) 20.3 min at bank 213, layman 26 at bank 212 → "20 to 26". Step 3 SG level 36.7–37.0 % at boot, 35.2 % at step 13 → "between about 33 and 38 %; about 37 % here".
+- **Measured, not fixed:** SR HIGH FLUX row reads `RELEASE?` with "…Press again to confirm." from step 11 onward with no press — `willTrip = blocked && asserted` (blocked at 9, asserted once the count passes the setpoint at criticality); the caption reads like a pending confirm. Step 5a grades `sr_counts_cps` (instrument `source_range`) as a 30 s trailing MEAN ≥ 695; the tile draws the instantaneous sample, so it ticks while the tile shows 6.7e2 — "stay at 7.0e2 or more" overstates it.
+- Also: step 8 note "step 9" → 10; cooldown prereq names both feed lineups (chain arrival on SG FEED AUTO INHERITED, not re-measured); stale step-number comments (manual_procedures, run_style, 03_raise_power.md).
+
+---
+
+## Session log — 2026-09-27-develop-g (#808: power-range high-flux trip, high setting, 118 → 115 %)
+
+**The trap: the engine header called the UFSAR's 115/118 split an OCR column shift. It is not.**
+Ginna UFSAR ch15 (ML20339A101) §15.4.5 item H: *"A high neutron flux setpoint of 118% is used which
+is conservative compared to the 115% setpoint required by the rod withdrawal at power analysis."*
+118 % is the rod-ejection analysis's deliberately conservative bound; the general accident-analysis
+value is 115 % — Ginna TS Bases B 3.4.4 (ML20339A221): *"The value for the accident analysis
+setpoint of the nuclear overpower (high flux) trip is 115%"*, and UFSAR Table 15.0-8 gives 115 % as
+the maximum overpower trip point over a **108 % nominal** setpoint. The engine uses analysis values
+throughout (2425 / 1775 psia are "safety analysis value" too), so 115 %, not 108 %. Low setting
+stays 35 % (Table 15.0-6 rows 15.4.1 and 15.4.5).
+
+**Reds: none.** 19 runners via `run_all --only` (protection, manual setpoints/units/rev/commands,
+hardrules, style, engine A/B/C, shell, roundtrip, core-damage stack, checklist pwr2 A/B, campaign
+A/B/C, scenarios) all at baseline except protection, +1 by design: a new check at 116 %, the band
+the move opened (the CASES row rides 120 %, which trips under both values). **Injected**: engine
+back at 1.18 reddens it (trip_cause null) and the constant check.
+
+**HR12, full stack, `measure_stack --plant=pwr2`, both trees (1.15 and 1.18) identical:**
+continuous rod withdrawal at `hot_full_power` peaks at **103.1 %** (rods reach 627 / 627 and stop);
+at `50_percent` **54.4 %**; SG overfeed peaks **102.6 %** then trips at 120 s on something else;
+load target 115 MWe peaks **100.2 %**. No normal evolution or casualty measured rides between 115
+and 118 %. The overpower ΔT trip (flat K4 = 1.15) already sat at the same point.
+
+Also moved: the PWR REACTOR POWER gauge's danger band and trend line 118 → 115 (`ui/app.js`), two
+walkthrough Background lines (`pwr_startup` step 17, `pwr_raise_power` step 7), Manuals 03 §16.0,
+06 PWR-A02, 09 §2.0 ×2 and §9.0 (Rev 22 item p).
+
+---
+## Session log — 2026-09-27-develop-f (run_walkthrough_routes split into three parts, CI shard timeout)
+
+**Problem (MEASURED):** CI run 36319512542 (rc7/rc8) timed out in shard 1 at the 30-min step
+budget with only 4 of 42 runners done. `run_walkthrough_routes.js` was still running -- its
+BASELINES `secs` hint (1100) was 1.8x low against a measured 1950 s solo at the old JOBS=4
+default / 1413 s at JOBS=8; a single runner is longer than the shard budget at either
+concurrency, so no shard rebalance fixes it.
+
+- **Split in three**, on the `run_pwr2_engine_b.js` precedent (#637): `run_walkthrough_routes.js`
+  (part A, the default) + `_b.js` + `_c.js`. A global part selector (`globalThis.__WR_PART`) and
+  an `--all` flag (unsplit, for local debugging) mirror the precedent exactly. `--leg=`/`--route=`
+  bypass the partition entirely (same reasoning as the `--grp=` override) so hand-filtered dev
+  runs are unaffected; `--leg=chain` stays whole, owned by part C.
+- **Groups derived from `Object.keys(ROUTES)` + `chain`**, with ONE exception: `pwr_cooldown` is
+  the single leg too big to fit either bin whole (4081 s of job-seconds), so its ROUTES and its
+  own MUTATIONS are split into separate groups at that seam. PART_B/PART_C are checked against
+  the derived list at load, so a stale or double-claimed group name throws rather than silently
+  dropping a job. **Default concurrency raised 4 -> 8** (matches the coordinator's own measured
+  data point).
+- **MEASURED standalone** (this file's own default, now 8-way, uncontended): part A (pwr_startup
+  alone, 30 jobs) 246 s / 114 checks; part B (pwr_cooldown's routes + pwr_raise_power/
+  pwr_lower_power/pwr_heatup/pwr_shutdown whole, 28 jobs) 300 s / 118 checks; part C
+  (pwr_cooldown's mutations + the chain, 10 jobs, the tail) 417 s / 53 checks. All three under
+  the ~450 s target. Sum 114+118+53 = 285 = the unsplit file's 285 passed / 0 failed / 285 checks,
+  unchanged.
+- **Self-check proven by injection**, then restored: a bogus `PART_C` group name throws ("not in
+  GROUPS"); the same real group named in both `PART_B` and `PART_C` throws ("claimed by BOTH").
+- **Updated:** `test/run_all.js` BASELINES (3 entries + a note on the split), `run_ci_shards.js`
+  and `run_all --shard=i/3 --list` re-verified green (est. 2835/2834/2834 s per shard),
+  `CLAUDE.md`'s Definition-of-done walkthrough line, `.claude/skills/layman-playthrough/SKILL.md`
+  (now points at `--all` for the full gate).
+
+## Session log — 2026-09-27-develop-e (#808 item A, part 2: Mode 3 on aux feed, the feed transfer at ~1 %)
+
+Coordinator's calls (2026-09-27, NOT owner rulings): AUX FEED WATER AUTO starts the motor-driven pump (within the
+owner's #591 item 2 wording "automatic mode and off"); the transfer is MAN-then-AUTO at the point of adding heat.
+
+- **Built:** `hot_zero_power` boots main feed secured, MDAFW running, throttle 0.26, SG at mass fraction 0.7338
+  (36.7 % narrow range, the aux hold's own zero-power level; 36.2-36.8 % over 30 plant-min, full stack). Heatup
+  step 5 = AUX FEED WATER AUTO; startup 3a grades RUNNING; new startup step 13 (50 gpm MAN to 60 %, SG FEED AUTO,
+  aux STOP); 13-17 -> 14-18. Manuals 03 §10.0, 04 N01/N03/N04, 09 IC table (SG 65 -> 37 %); Rev 22 row item (o).
+- **Measured side effects of the new AUTO:** at 100 % power AUTO starts the MDAFW and delivers 0.000 over 10
+  plant-min (level 65 % holds the valve shut), SG level 64.7-65.3 %, Tavg 580.4 °F unchanged. Post-trip STOP then
+  AUTO: old AUTO left the pump off, new AUTO runs it; flow 0.000 at level 65 %. No checklist presses AFW AUTO.
+- **Transfer, measured:** MAN 50 gpm from 33 % level at 0.9 %: 60 % in 7.2 plant-min, Tavg >= 547.5 °F, power <= 0.9 %;
+  AUTO then 60.3-66.4 %. 30 gpm: 15.1 min. At 6.5 % (overshot player): 100 gpm, 16.4 min, no trip. 150 gpm at 8 %:
+  power ran to 14.5 % and stranded -- so the card stops at 100.
+- **Trap:** an ENGINE-DIRECT harness has no `afw_level` channel, so a pump booted at the constructor's throttle 1.0
+  overcooled Hot Standby 32 °F/hr; the throttle is seeded at the channel's settled 0.26. Climbing engine probes
+  (IR rod stop, dilution ride) now take `mainFeedLineup()` — the pre-#808 boot — because rods, not feed, are
+  their claim. Overshooting startup routes (bank 235, overpull) now end in a NAMED SG lo-lo trip at step 13.
+
+## Session log — 2026-09-27-develop-d (#808 item A, part 1: the AFW start off the feed pumps is a Mode 1 function; the feed-transfer walkthrough is NOT built)
+
+- **Landed: `pwr2_engine` arms the loss-of-both-feed-pumps AFW start only above 5 % power (Mode 1).** Sourced: Ginna TS
+  Bases B 3.3.2 Function 6.f (ML20339A221) — "must be OPERABLE in MODE 1 ... In MODES 2, 3, 4, 5, and 6 the MFW pumps
+  may not be in operation, and thus pump trip is not indicative of a condition requiring automatic AFW initiation."
+  The turbine half (trip + latch refusal) keeps its #605 off-RHR arming. MEASURED, full stack, `hot_zero_power` with
+  both main feed pumps secured and the motor-driven AFW pump started: AFAS latched `loss_of_main_feed` inside 10
+  plant-minutes before the gate, stays clear for 65 plant-minutes after. `run_pwr2_engine` probe rewritten (the
+  "taking RHR out re-arms AFAS" half pinned the #605 simplification — adjudicated, not refitted) and one mutation
+  added; the #605 "armed in every mode" mutation went BLIND under the gate until the cold probe also asserted the
+  turbine latch is not held on RHR. Group F 7/7 caught.
+- **Why the rest is not built — two findings the proposal did not carry:**
+  1. **The board has no way to START aux feed.** #591 item 2 left the card STOP and AUTO only (owner 2026-08-30), and
+     AUTO only re-arms. The Hot Standby preset can boot on the MDAFW, but the heatup cannot put the plant there.
+  2. **Main feed AUTO at the transfer is a big transient.** MEASURED (`inbox/measure808/run4_*`, full stack, lineup by
+     command, AFW-held level 33.7 %, power 0.89 %, rods still): pressing SG FEED AUTO drives feed to 53 % of rated
+     against a 31-point level error; Tavg 547.7 -> 538.0 °F in 1 plant-minute, power 0.9 -> 3.9 % (STARTUP RATE peak
+     +0.59), level overshoots to 72 %, settles 65 % / 0.9 % in ~25 plant-minutes. No trip. MAN at 1 % instead: no
+     transient, but level then drains 36 -> 28 % in 25 min (a manual lever the player has to trim).
+- **AFW capacity, re-measured:** MDAFW alone holds SG level at ~0.9 % power (throttle ~27-30 %, level 33.5-33.8 %);
+  a climb past ~3.8 % on AFW alone ran level to 20 % and lo-lo tripped the reactor at ~4.9 % (twice). Level on AFW at
+  0 % power settles 36.5-37 %, reached from the 65 % boot after ~65 plant-minutes of boil-off (0.45 %/min).
+- Not verified: the Mode 3 IC change, any walkthrough, the routes gate — none were made.
+
+## Session log — 2026-09-27-develop-c (layman pass 10 verification: raise-power green floors, insertion-limit alarms expected, TRIP BLOCKS header)
+
+Scratch worktree exp/rc8f on 262ea30b. Report: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-27_LAYMAN_PASS10.md`
+(Measured/Verdict under every S-n); #653 comment drafted in `inbox/653_comment_rc8.md`.
+
+- **The trap: "aim for the green, not the tick" does not survive a player who presses Continue when it lights.**
+  The raise-power stages graded 550 / 550 / 558 / 564 °F while the tile's green segment (Tavg program ± 5.04 °F,
+  19 px of a 186 px strip, 3 px tall) starts at 551 / 558 / 565 / 570 °F; pass 10 ticked at 551 / 554 / 560 / 564.
+  Floors moved to the green floor as rendered (551.5 / 557.5 / 565.5 / 569.5 °F, the latch row only; the `cont` rows keep
+  the old floors as hysteresis). Measured after: routes typical seeds 42/7 withdrew 25 / 25 / 30 / 20 / 10 on stages
+  4-8, floor-reader 25 / 20 / 30 / 15-20 / 10-15; browser probe lit Continue at 552.1 / 558.3 / 566.1 °F. The replay's
+  stage-5 pull 15 -> 20 (15 ended at 557.2 °F) and step 9 got `hold: 600` (9b graded 663.22 ppm when stages 6-8 met
+  sooner).
+- **7b at 89.5 MW, the open item from develop-b, no longer flashes** once the floors moved: band_floor seeds 42/7 and the
+  chain clean (31/31 raise-power routes, 48/48 chain).
+- **Insertion-limit alarms are the stages' own evolution:** raised in step 6 on every route (559-565 °F), at the end of
+  step 5 on the reviewer's (bank 238-253 vs the 224-step limit at 50 % + 10). `expect_alarms` on 5 and 6. A drop is
+  NOT permanent: the browser probe saw the next check line re-apply the rung (5b drop 587 s, 5× back 689 s).
+- **S-6 refuted for raise power** (auto 10× then 5× on every stage, no press); startup 11-13 NOT re-measured.
+- **TRIP BLOCKS header:** released rows are a subset of the not-blocked (blocking clears the message); reworded, and
+  `verify_board_cues`' released-count regex follows it.
+- **Not done:** row heights between legs (differ because the text differs; held within an opening). A Pressurizer
+  Pressure Low warning dropped the clock in 5b on the probe's route; not declared (not seen on the gate routes).
+
+## Session log — 2026-09-27-develop-b (rc8 review fixes: the SR row's release warning, a failed IR channel, old saves, the preview startup scenarios)
+
+Scratch worktree exp/rc8f (from exp/rc8 b6aedc70). A read-only reviewer measured seven defects in the rc8 candidate
+(OWNER RULING, 2026-09-26, "B": the P-6 manual source-range block). Each re-measured before the fix
+(scratchpad probe_sr.js, then the gate checks named below).
+
+- **The SR HIGH FLUX row never warned.** Blocked at Hot Full Power it read `{blocked: true, asserted: false}`; one
+  release tripped the reactor on sr_high_flux **0.52 s** later. Blocking removes the detector high voltage, so the
+  source range sits at its 1 cps floor and its own `would_assert` can never be true. **Fix:** the row's would-trip is
+  read off the INTERMEDIATE-RANGE instrument at the SR setpoint's equivalent, 1e5 cps × K_IR / K_SR = **3.205e-9 A**
+  (`pwr2_protection.srTripIrAmps`, K's exported from `pwr2_true_state.NIS`, one copy). After: `asserted: true`, the row
+  reads RELEASE? with the confirm click. `run_pwr2_board`'s "NOTHING warns at power" check was PINNING THE DEFECT —
+  rewritten to "only the SR row warns"; it fails on the old build (HR10).
+- **One failed IR channel tripped the plant.** `intermediate_range` fail low or dead at Hot Full Power: the reading
+  under 5e-11 A revoked the block, the SR re-energized (true 2.59e11 cps) and tripped at **0.54 s**. **Fix (declared
+  simplification):** P-6's reset ignores a FAILED IR channel — the stand-in for the real plant's two-channel
+  coincidence (one failed channel cannot reset P-6). Protection still reads the instrument (HR1). Cost, stated in the
+  code: while the IR is failed the block cannot auto-revoke on a genuine power fall. After: no trip in 30 s, true
+  SR 0. `sr_counts_cps` in true_state was NOT clipped: it is truth, and the fix removes the only route that published
+  it unblocked at power short of a deliberate release (which trips).
+- **Old saves tripped the plant — worse than filed.** Filed as a one-broadcast SR flash; measured, an old-shape save
+  (no `blockSR`) loaded at Hot Full Power, Low Power and 50 % published the SR energized on **50/50** steps and
+  **TRIPPED**. The seed read the SR reading, which a pre-rc8 at-power save carries at its 1 cps floor (the retired
+  plant switched the detector off). **Fix:** the seed reads the IR (≥ 3.205e-9 A → taken), SR fallback only when no IR
+  reading exists. After: 0/50, no trip, block taken, all three ICs.
+- **Preview scenarios.** Premise corrected: in the browser `start_scenario` with plant `pwr` constructs the RETIRED
+  engine (`simulation_service.js` engineCtor; `ui/shell.html` loads `pwr_engine.js`), so these two ran there, not on
+  pwr2. Fixed to work on both anyway: chain reaction drops `set_sr_detector` setup and gains a P-6 beat keyed on the
+  EFFECT (`sr_energized` false) plus a source-range-trip ending; startup challenge's header/briefing no longer claims P-6
+  is met at hot zero power (pwr2: IR **1.64e-11 A**, SR ~530 cps; a held Normal pull meets P-6 at **247 s**, 1.06e-10 A,
+  ~3,100 cps; unblocked it trips at **306 s**), drops the 1.5 DPM interlock and "twenty percent" IR-trip claims (pwr2 has
+  neither; IR trip is 25 %). New gate `run_preview_scenarios_pwr2` (13 checks) runs both on pwr2 through the full
+  stack: setup accepted, block → critical → Mastered, no block → Source Range ending. Injection: the old chain reaction
+  throws on its setup (set_sr_detector REFUSED); the old briefing text matches the claim regex 5 times.
+- **verify_board_cues released-count check** restored to its claim: every counted message is the SR row's P-6 loss.
+- **Text.** Manuals 03 §4.3, 04 PWR-N03 step 6, 12 §10.6: SOURCE RANGE reads a dash once blocked (Rev 22 row (n)).
+  Startup 11b "reads between −0.02 and +0.02"; outcome names three blocks; 12a "Expect 6 or 7 taps" (MEASURED, typical
+  route seed 42: bank 206 → +0.145 at the 6th tap, a 7th after a +0.141 re-read). Raise power 4b, 5b, 6b, 8b and 9a's
+  OUTPUT 100 MW row graded at the OUTPUT tile's render floor (r0: N − 0.5 MW, was N − 2 to N − 3); not latched
+  (run_checklist_pwr2_b 2ak.1 requires a later re-asserting row). **7b (90 MW) NOT moved:** at 89.5, run_walkthrough_routes band_floor lit
+  Continue 3.0 s at 22.7 min then dropped it — the later OUTPUT tick lands inside the AVG COOLANT TEMPERATURE sag.
+  Open; its row still ticks at 87-89 MW on the tile. 1/M refusal: "SOURCE RANGE blocked at P-6 — no more
+  points"; stale self-switch-off comments rewritten; CONTEXT §6.3 `sr_energized`.
+- **Anchors that moved with the K constants.** run_pwr2_true_state's two K mutations and run_checklist_pwr2 2ad.2's
+  K_IR lift (a regex over the source) re-pointed at the exported `NIS` object; both measured red first (anchor not
+  found / "could not lift K_IR").
+
+## Session log — 2026-09-27-develop-a (Mode 3 → Mode 1 rebuilt on the P-6 source-range block: block, approach to +0.3..+1.0, level at 1.0e-8 A)
+
+Scratch worktree exp/rc8w (rc7 + layman 9 + step 9 unlock fix + exp/807j plant side). OWNER RULING, 2026-09-26: he replied
+"B" to "B: A, plus a manual source-range block at P-6"; A = "9b becomes 'tap until STARTUP RATE is steady between +0.3
+and +1.0' (sourced: 0.5 typical, 1.0 limit); a new step levels power at 1×10⁻⁸ A in the intermediate range and records
+the critical rod position and boron." Sources: inbox/sources/startup/EVIDENCE.md rows 12-21; startup_rest/COMPARISON.md.
+
+- **Why the card had to change, MEASURED.** The rc7 card on the 807j plant: typical route tripped on SR HIGH FLUX at
+  bank 208 (0.044 DPM), 19.5 plant-min into the approach. P-6 (1.0e-10 A) is met at control rod ~198, before criticality
+  (~207): step 8 ends at bank 205 with ~21,000 counts a second and INTER RANGE 6.5e-10 A.
+- **New 9-12.** 9 = block SR HIGH FLUX at P-6 (9a INTER RANGE ≥ 1.0e-10 A, 9b the block). 10 = approach: 10a unchanged,
+  10b SLOW hold to +0.5 then trim a plant-minute apart into +0.3..+1.0 (`~` 0.65 ± 0.355, `still_s` 60). 11 = level:
+  11a INTER RANGE 1.0e-8 A, 11b insert about 12 at MED then trim on two-minute reads to −0.02..+0.02 (`still_s` 120), 11c
+  BORON CHEM 709-729 ppm read with CONTROL ROD POSITION. 12 = point of adding heat: 12a taps to +0.15, 12b power 1 %, 12c
+  rate +0.10 or less. Old 10 and 11 gone (their `implied_by` row with them). 13-17 keep their numbers.
+- **10b is "hold, then tap", not the ruling's literal "tap" (declared).** inbox/rc8w/m.js, seed 42: taps a plant-minute
+  apart from bank 205 first read +0.3 at bank 217 after 13.6 plant-min, INTER RANGE already 1.2e-7 A (a decade past the
+  level point). SLOW hold released at +0.4 settles 0.29; at +0.5, bank 219, 0.43 at 7.3e-9 A; at +0.6, 0.53 but past
+  1.0e-8 A inside the minute.
+- **Level cue.** Holding INSERT until the tile first reads negative lets go 7 steps in (bank 212, +36 pcm); taps on
+  two-minute reads then end at 208 (+6 pcm, ~0.04 DPM true) after 12.9 min with INTER RANGE 6.6e-8 A. 12 in from 219
+  lands 207: −0.004 DPM, 9.6e-9 to 1.03e-8 A, level in 4.3 min. So the card names the count.
+- **Routes (run_walkthrough_routes, live runtime, seed 42).** Typical: 9 0.1 min; 10 2.8 min (let go at 218 on a +0.52
+  read, ticks at 0.397); 11 3.0 min (insert at 1.04e-8 A, bank 206, −0.014); 12 28.8 min (7 taps 206→213, ticks at 1.00 %,
+  0.096); 13 4.8; 14 1.8 (14c TAVG ticks with 14b); leg 10.0 % / 10.0 MWe. typical_pass3 within 0.3 min per step.
+  no_sr_block: SR HIGH FLUX trip, named, **2.52 plant-min** after the first rod motion (note: "about 2"; the check reads
+  the note's number ×1.5). overpull (+1.5 release, bank 232): "tap INSERT once" a minute apart cannot beat ~1.3 DPM;
+  10 and 11 are overtaken at 0.5 % and the leg completes. level_short (10 of 12): completes. rewind in the hold: completes.
+- **Checks + injections.** New `sr_trip` (note-read timing) ← `sr_note_too_soon` red; `rate10` (step 10 never ticks
+  above +1.0) ← `overpull_band_10` red on `overpull_notrim` (ticks at 1.44); `no_overtaken_10` now removes 10's and 11's.
+  Retired: `low_floor_9` (its row is gone), `never_tap_11` (the tap is 12a's action now). `tripCause` reads the PWR2
+  RPS's `pt.trip_cause` (was "unreported").
+- **Also.** 1e SHUTDOWN ROD POSITION 627 (WTSM App. 19-1 C.7). Step 2 Background: the one-method rule and the
+  doubling stop (Robinson GP-003 via SOER 07-1); the count "roughly triples" is INHERITED (807j: doubles at 796 ppm,
+  60 min in), not re-measured. 14c STEAM DUMP AUTO again → TAVG (new derived `steam_dump_tavg_mode`); measured on the
+  route: 14c ticks on the press (the word reads TAVG); any dump transient from the switch NOT separately measured. Raise power 4 Background: rods stay
+  manual (OWNER 2026-08-30). The 1/M `overtaken` no longer says the SR "switched itself off".
+- **Trap.** A route policy that acts on the first broadcast a tile reads the target races a debounced row: 11a
+  (≥ 1.0e-8 A) never latched when the insert went in on that broadcast, and 12a's tap landed on the broadcast its
+  rods-still clock completed. Read the tile, then act only if it is still short.
+
+- **Second pass (same lane, the open items).** `run_checklist_pwr2_b`, each red adjudicated alone, each re-aimed check
+  injection-proven:
+  - **2ac.1/2** (the overtaken note delivered, then cleared): the overshoot drove rods until the SR "secured itself",
+    which no longer happens, so it tripped instead. It now blocks SR HIGH FLUX at P-6 (bank 198), the #641 route; the
+    skip lands on step 9 and the note clears on 10-17. Injection: the clear in `_checklistCheckOff` dropped -> 2ac.2 red.
+    (2ac.1's own set-then-check-off injection was not re-run: its code did not change.)
+  - **2ak.5** (a moving rate spike cannot tick the approach): no single SLOW tap crosses the new +0.295 floor below the
+    band (seed 7, 211..215: peaks 0.187-0.278, 215 overtaken at 0.99 %). Re-aimed at the card's held pull, 211 -> 217
+    SLOW: peak 0.401 in travel, 0 of 449 travelling broadcasts awaiting, Continue +60 s after the stop. Injections:
+    10b `still_s` deleted -> red (181 awaiting mid-travel); `still_s` 1 -> red (lit 1 s after the stop).
+  - **2am.4** (3 short, then the card's policy completes 10 on its rows): the five-minute single taps never reach
+    +0.295 before power passes 0.45 % (overtaken). The policy is now the card's: hold SLOW to +0.5, then a tap a
+    plant-minute. Step left +217 s / +221 s (seeds 42 / 7). Injection: 10b `still_s` 1e6 -> red on both.
+  - **2al.1/2** (step 12 grades the real level-off; the leg then completes with both blocks): the fixture tripped on
+    SR HIGH FLUX, and the follow-on `rod_nudge` into the latched trip THREW and ended the runner, so 2ae/2af never ran
+    (the plant agent's "crash at ~3498"). Now: block at P-6, rods to 207, Continue through 10-11, the card's 12a taps;
+    6 taps 207 -> 213, 12a +466 s, step 12 +2250 s at 0.96 %. 2al.2 presses 14c. A tripped fixture now fails 2al.2
+    by name instead of throwing. Injection (probe, same fixture): 12b and 12c removed -> step 12 ticks with 12a.
+  - **2ad.2-5** reinstated on a fixture step carrying the retired carrier's rows (the mechanism still ships in
+    `_gradeAccs`). Injections: fixture `implied_by` dropped -> 2ad.3 red; the `state[ni].met` test dropped -> 2ad.4 red.
+    **2ab.7** stays retired: no step pairs an INTER RANGE row with a REACTOR POWER row any more.
+  - **2ae.1b / 2ae.2 / 2ae.5 / 2af.1** re-pinned (84 / 177 / 103 / 23). Two stranding rows are new: 9a INTER RANGE (a
+    dead IR also stops the plant's own P-6, so the block cannot be taken; the card follows the plant) and 12a STARTUP RATE.
+- **Lower power on the TAVG chain, MEASURED (seed 42).** One cut: step 2 peaks 584.8 °F (walked: 584.7), step 4 576.3
+  (577.3), step 5 567.9 (567.9), **no alarm on any**. A step over 10 % arms C-7 and the loss-of-load dump carries it;
+  the 5 MW-a-minute walk does not arm it. **The notes' "taken in one cut ... climbs to about 595/585/575 °F and brings
+  in the alarms" sentences (2b/4b/5b) were false on this plant and are cut** (pool and `04_lower_power.md`).
+  Injections: `lower_load_step` re-aimed as `lower_no_inserts_2`, the walk with its 3-step inserts left out, which
+  peaks at 589.3 / 589.1 / 589.1 °F on seeds 42/7/123 against "under about 587" (peak red). `lower_load_step4/5`
+  retired: without inserts, step 4 peaks at 580.5 vs 580 (0.5 °F on one seed, an edge rather than a gate) and step 5
+  at 570.8 vs 572 (blind). The `forbid` verdict keeps its proof in `cooldown11_old_watch`.
+- **Chained raise/lower under TAVG vs the card text.** Raise: withdrew 20/20/30/15/25 at stages 4-8, leg 44.9 min,
+  within the cards' ranges except stage 8, where 25 steps is on the edge of "about 20". The standalone route also
+  measures 25, so this predates TAVG; left as is. Lower: inserted 15/9/24/18/12, peaks 584.7/580.5/577.3/567.9/560.8 °F
+  against 587/-/580/572/565, 74.4 % after step 3, 11.8 % at the end, pressure low 2208 psia; step 3's 9 is one under
+  "about 10 to 20" (the standalone route: 18). No other text moved.
+- **Gates** (`run_all --only`): run_walkthrough_routes 280/0, run_checklist_pwr2 254/2 (the tracked TMI-2 pair),
+  run_checklist_pwr2_b 204/1 (TRIP_CAUSE `sr_high_flux`, fixed on exp/807j), run_manual_controls 1152, run_hardrules
+  689, run_style, run_session_labels, run_doc_budget and verify_flags_ui green; BASELINES set to those numbers.
+
+## Session log — 2026-09-26-develop-l (the P-6 manual source-range block and the SR high flux trip)
+
+Scratch worktree exp/807j (from develop dab17d5c). OWNER RULING, 2026-09-26, "B": *"A, plus a manual
+source-range block at P-6"* — reverses the 2026-09-01 #598 item 7 auto-off. Evidence: inbox/startup/EVIDENCE.md
+rows 16-20 (WTSM 9.1 ML11223A263 p.9.1-6/-7; Ginna TS Bases B 3.3.1; McGuire/Robinson procedures; Turkey Point 2020).
+
+**Built.** `pwr2_protection`: `sr_high_flux` row (1e5 cps, delay 0.5 s derived, blockable `'sr'`), `blockSR`
+request, P-6 permit (1e-10 A) and reset revoke (5e-11 A, hysteresis between), report `p6_met`/`sr_blocked`,
+save migration (blockSR seeded from the SR reading; `held_s || 0`). `pwr2_instruments`: `source_range`,
+`intermediate_range` channels (sigma 0, pwr_config ranges/lags) — the RPS reads them (HR1). `pwr2_true_state`:
+`sr_energized = !sr_blocked`. Engine `sr_block` command refused below P-6; at-power ICs boot blocked. Shell:
+`set_trip_block sr_high`, `trip_block_status.sr_high`. Board: SR HIGH FLUX row, LAST on the card (see trap).
+
+**Measured (full stack, `hot_zero_power`, seed 42, harness inbox/807j/m2.js).** Criticality at control rod
+~207.3 of 627 (7.5 pcm/step there); count rate at criticality **~22,600 cps**, IR **7.2e-10 A**. **P-6 is met
+SUBCRITICAL at rod 197.6** (~3,100 cps) — every source orders crit then P-6; this plant's source strength
+puts P-6 first. Stable startup rate vs steps pulled from 207: +2 -> 0.10 DPM, +3 -> 0.12, +5 -> 0.17,
++8 -> 0.27, +10 -> 0.35, +14 -> 0.56, +20 -> ~1.0, +26 -> ~1.8. Unblocked, time from the pull to the SR trip:
+**91 s at 0.35 DPM, 59 s at 0.56, 39 s at 1.0, 33 s at ~1.8** (trip cause `sr_high_flux` every time). IR 1e-8 A
+is **3.1e5 cps equivalent — half a decade ABOVE the SR trip**: overlap P-6 (1e-10 A / 3,121 cps) to SR trip
+(1e5 cps / 3.2e-9 A) is 1.5 decades. Blocked at crit, +14 steps reaches IR 1e-8 A in **113 s** (0.53 DPM).
+Level-off: all 14 steps back in -> rate **-0.01 then 0.00 DPM**, IR 7.6e-9 -> 7.8e-9 A over 9 min (+4 %,
+source-driven); 12 back in (rod 209, +13.5 pcm) -> **0.05 DPM**, IR doubles in ~13 min. So "level at 1e-8"
+means reinserting essentially everything pulled for the rate. Reset: rods to 0 -> block revoked at IR
+**4.9e-11 A** (SR 1,540 cps), detector back on. Stopping at rod 169 left IR at 6.65e-11 A — above the
+reset, block holds (correct hysteresis). Runaway at normal speed from HZP: SUR HI 267 s, SR HI FLUX 298 s,
+**SR trip 304 s** at rod 243 (was IR trip 339 s). All six ICs: no trip in 120 s; migration (block + hold
+timer + channels stripped) seeds correctly on all six.
+
+**Trap.** A row that the PLANT releases on its own (the SR block, after every trip) gains a message line;
+at the top of the card that pushed every row below it by 8.08 px mid-read (verify_board_cues, pass-5 height
+hold). The row sits LAST. And an unblocked ride from HZP now never reaches the IR rung — three fixtures that
+certified the IR trip (engine startup-accident, engine controlled startup, shell group O) had to state the
+P-6 block to keep testing the rung they claim.
+
+**Closing the three reds (2026-09-27, same lane).** (1) `run_pwr2_engine_c` group I: the IR rod-stop fixtures
+(the stop's own regime, held press at slow, held press at normal) take the P-6 block the moment it is
+permitted, assertions unchanged. HR10 check against develop dab17d5c (no SR trip): **identical** — stop at
+19.48 % / 254.0 steps, own regime settles 22.09 % at 254.8, slow press frozen 254.0 settles 22.3 %, normal
+frozen 270.0 trips `ir_high_flux`; 16/16 both trees. (2) `verify_board_cues` S-9 was the GATE's fabrication,
+not the board: `__c.tb()` rebuilt each trip-block row from five fields and dropped `setpoint`, so SI REACTOR
+TRIP re-captioned "1715 psi" -> "LOW PRESSURE", wrapped, and grew 25.04 -> 33.12 px. Harmless while SI was
+the last row; the SR row below it read it as an 8 px shift. Fix: the fabricated row copies the live row's
+fields. 0.08 px after; injection (`holdTripPopHeights` returns early) -> 18.62 px, red. (3)
+`run_checklist_pwr2_b`: one real defect — `TRIP_CAUSE` in ui/app.js had no `sr_high_flux` ("MISSING" red ->
+green with 'Source Range Hi Flux'; the only trip-cause name map in ui/layers). The other 11 reds + a crash
+(`rod_nudge` into a latched trip, run_checklist_pwr2.js:3498) are the startup walkthrough and its fixtures
+riding unblocked into the SR trip or waiting for the retired auto-off ("source range never secured"): with
+the SR setpoint moved to 1e30 the trip-reds become "never secured" reds. Left for the walkthrough rewrite.
+BASELINES: run_pwr2_protection 137 -> 150, run_hardrules 683 -> 685, run_manual_notmodelled 12 -> 11 checks.
+
+---
+## Session log — 2026-09-26-develop-k (release blocker: Mode 3 → Mode 1 step 9, 9a late, 9b dark and re-locked)
+
+Scratch worktree exp/807i (from develop dab17d5c, 1.8.0-rc7). Owner, verbatim: "9a doesnt reliably check
+off when i put the rods to 3 steps away from the prediction ... i think it should check right away when i
+hit 3.9 steps away ... 9b just doesnt unlock"; then "suggest 60x speed for step 9b ... the step doesnt
+unlock until 5 minuts pass and then lockes again when i hit withdaraw".
+
+- **Root cause, measured** (run_walkthrough_routes typical route, live runtime, seeds 42 / 7 / 123).
+  (1) 9a was a `stopped` 60 s row + `below_1m: 3`: it ticked 59.5 / 64.1 / 64.1 plant-s (595-641
+  broadcasts at 1×) after CONTROL ROD POSITION reached prediction minus 3 — a real minute at 1×, with
+  nothing on the card moving. (2) 9b sat behind a HIDDEN ordered `stopped` 300 s row; ui/app.js mutes
+  every row after the first unmet row (`ordWait`), so 9b drew dark for 2066-2682 plant-s of the step
+  (244 s after 9a on seed 42) and every tap re-locked it (the hidden row re-grades).
+- **Fix.** `accs[].reach_1m: 3.9` (instructor `applyReach1m`): with a prediction printed, 9a is met the
+  broadcast the bank reads prediction minus 3 or more — moving or not, past the prediction too — with no
+  debounce (the step counter is exact). No prediction keeps the 60 s stop and the "no prediction" line.
+  `accs[].still_s: 300` (`applyStill`): 9b's own grading needs the bank unmoved 300 s, so the wait delays
+  the TICK only; the hidden row is gone. 9b rung 10× → 60× (owner). Replay harness mirrors both.
+- **After** (same routes): 9a 0 broadcasts after the mark on every seed at 1×, 10× and 60×; 9b unlock
+  lag 0 s, 0 re-locks, 0 s hidden-locked; 9b ticks 300.5 s (1×) / 304 s (10×) / 324 s (60×) after the
+  last rod motion, on reads 0.166-0.182 (before: 0.161-0.174); step 9 36.4-46.4 plant-min (before
+  35.9-45.8). Mistakes, all complete, 9a +0 bc: past the prediction by 2 (new `past_pred_9`), overshoot
+  to 235 (overtaken), undershoot 10 (9a at +35.7-36.0 min when the taps reach the mark), fast tap,
+  Rewind mid-step (new `rewind_mid_9`: the rewind empties the 1/M table, 9a ticks on the 60 s fallback).
+- **60× tap, measured** (hot zero power, SLOW): a tap is exactly one step at 1× / 10× / 60×; a press held
+  0.5 s of wall is 2 steps at 60× (0 at 1×), 1.0 s is 7 — so "1× before every tap" and `act_first` stay.
+- **Trap:** a hidden ordered row is not invisible to the player — it mutes every drawn row behind it.
+  A wait that should only delay a tick belongs in that row's own grading (`still_s`).
+- **Checks.** Routes gate: new `unlock` verdict (9a within 1 broadcast; no hidden lock, no re-lock) with
+  injections `still_minute_9a` (old 9a → 595 bc, red) and `hidden_still_9` (old hidden row → 2775 s
+  hidden-locked, red); `no_latch_9a` went BLIND on typical_pass3 (a tap moves the bank further past the
+  mark) and was re-aimed to `rewind_mid_9`, the no-prediction fallback (red, 10 un-ticks).
+  run_checklist_pwr2 §2am rewritten (4 short never ticks; a slow pull through the mark ticks within one
+  broadcast, bank moving; 3 short ticked by the stop); §2ak.1 accepts `still_s` as the re-assertion.
+- **Not verified:** a browser session at 1× with the real WITHDRAW button (the card's live/muted draw
+  is inferred from the snapshot the card reads, not screenshotted); seed 7 step 10's pre-existing hollow
+  tick at +3 s (present before this change too, measurement seed only).
+## Session log — 2026-09-26-develop-j (layman pass 9 verification: raise-power conditional before the sag, valve and boron-box locations, 1/M wording)
+
+Scratch worktree exp/807h (from develop dab17d5c, Alpha 1.8.0-rc7). Record:
+`Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS9.md`. Text and row order only; no physics.
+
+- **Raise power 4b ticked before the sag it is conditional on (S-2).** MEASURED, live checklist,
+  `low_power`, seed 42, LOAD 30 and no pull: the latching `~` row ticked 25 s after LOAD at 549.6 °F
+  (floor 549.5), held through 536.6 °F, Continue dark 1100 s. The trap: pass 7 moved the temperature
+  row to `b`, straight after LOAD, and the source comment "met at entry on no stage" (written when it
+  sat after OUTPUT) was never re-measured. Stages 4 to 8 now read OUTPUT first, then the conditional;
+  the same run keeps it unmet from OUTPUT > 28 MW (225 s, 537 °F); one 5-step pull lights Continue at 1005 s.
+- **Source range jitter (S-3).** Still bank 0 / 65 / 75: σ 5.5 / 4.7 / 4.9 %, single readings −12 / +15 %.
+  The reviewer's ±20 % included the count climbing while the rods moved. At bank 190 the mean climbs
+  2937 → 3754 cps over 2.5 min after the stop. 5a now says "jumps about 15 % either way".
+- **1/M "always too high" is false (S-4).** Fresh IC, reviewer's stops, seeds 42 / 7 / 11: second-point
+  predictions 245 / 372 / 265 (high), fifth 213. But the lowest measured bank-0 reading (434 cps) as
+  the baseline puts the two-point crossing at 195, the reviewer's 194. Now "usually".
+- Wording confirmed and fixed: heatup 10 valve location (cooldown 7's sentence), boron target box
+  ("captioned 0-2500 ppm", four steps), cooldown 11 32/30 °F roles, cooldown 6 order, cooldown 4 TAVG,
+  cooldown 11 rate sign, raise power 1 Mode 1 (> 5 %), heatup 3 PRESS TO ARM, heatup 7 labels.
+- Not changed: heatup 11's 552 °F (route runner finishes at 545.7 °F; the check is "542 or higher"),
+  suggested warp before the first LOAD / WITHDRAW (by design, code read only), heatup 2's conditional note.
+
+## Session log — 2026-09-26-develop-i (#807 review fixes: count-row flicker, windows, 13a, cooldown 11 spray, boron line, mean dedupe)
+
+Scratch worktree exp/807g (from exp/807int 850a92e1). Route runner `--job` runs, full stack, seed 42
+(and 7 where stated). Six findings from a read-only review of the #807 walkthrough work.
+
+- **Startup 5a-8a flicker (item 1).** The count rows grade a 30 s mean; the notes now say the check-off
+  waits for the count to STAY at the target, and "tap WITHDRAW one step and wait half a plant-minute".
+  Route `flicker_release_5` (let go at bank 69, 660 cps) re-based on that line: 5 taps, ticks at bank 74
+  on a 695 cps mean, 4.8 plant-min in step 5 (the old unguided route held again after 10 min: 12.1).
+- **Windows (item 2).** Fallback tops now the measured landing range: 80 / 155 / 192 / 205 (were 110 /
+  175 / 194 / 205). Typical route unchanged (lands 77 / 153 / 191 / 205). After a release, every way back
+  is a tap now (the route used to resume the hold, which no card line asks for).
+- **13a (item 3).** "Tap WITHDRAW twice (2 steps). STARTUP RATE rises for a while after the taps: wait
+  for it to peak and fall back to +0.10 or less." Route pulls only after the rate comes off its post-tap
+  peak: MEASURED identical (5 pulls, 4.7 plant-min, peak 0.25 DPM) — at SLOW the rate is already over
+  +0.10 when the rods stop, so the wording fixes the reading, not the route.
+- **Cooldown 11 (item 4).** Ordered 11a HX / 11b watch to 32 °F / 11c press OFF below 30 °F / 11d wait;
+  OFF pulses only while 11c is active (`accs[].hl_active`, ui/app.js `cklHlActiveSplit`). **A 30 °F 11b
+  stranded** (465 plant-min: the press on the first tile reading under 30 °F turns the margin up before
+  five readings agree); 32 °F does not. New mistake route `spray_off_at_entry` (spray OFF at entry, 11b's
+  "If OFF is already lit ... MANUAL at 50 %" two minutes later): completes, ends 176-178 psia (seeds 42/7).
+  **The inherited "an early shut strands step 15" did NOT reproduce**: the old one-row form on the same
+  press completes too, but ends at 453.7 psia, over the RHR suction interlock (400 psia). New route check
+  `end_press` (leg ends under 400 psia; typical 174-193) is what injection `spray_row_old_11` reddens.
+- **Raise power boron line (item 5).** 9b ticks on 662.8 / 661.9 ppm (seeds 42/7), drawn 663 / 662 on
+  the whole-ppm tile. Step 9's goal "at or below 660" -> "663 ppm or below"; step 3's "BORON reads 660"
+  -> "BORON target reads 660" (step 3 sets the box). Grading unchanged.
+- **gradeMean (item 6).** A sample at the sim time of the last one replaces it, so a paused instant
+  counts once however many command broadcasts grade it. Check `run_checklist_pwr2` 2mn.1: 30 s at 700,
+  ten paused grades at 600 -> mean 696.8, met; injection (always push) -> 675, not met. The comment's
+  "the replay only ever ticks it SOONER" was not strictly true and now says "usually".
+- **Replay latches an ordered milestone row.** `procedures_harness` graded 11b at the step's END (margin
+  106.55 degC then, red); a `>`/`<` row on an `accs_ordered` step now passes if it was met IN ORDER
+  (`ordMet`), as the live runtime latches it. `~` bands and bag ops still grade at the end.
+- **verify_flags_ui 65/67 -> 67/67 (coordinator add).** Both reds were stale checks, not code: step 5
+  read 1× / 10× / 10×, which IS #807 item 9 ("steps 5, 6 7 should be at 10x") — re-stated, and the
+  pre-807 rungs (5a 5×, 5b 1×) red it "5×, then 5b 1×". 9b read 1× on entry and 10× after the tap,
+  correct; the check hard-coded cmd_head 3, but #807 item 10 removed 9's settle row so 9b's head is 2 —
+  now read off the pool's `act_first` row.
+
+## Session log — 2026-09-26-develop-h (#807 item 2: raise and lower power re-walked on the boron-holdup plant)
+
+Scratch worktree exp/807e1 (from exp/807int 061f37d9). Route runner `--job` runs, full stack, seeds
+42/7/123 plus the chain (seeds 42 and 7) unless stated. The merge agent's severed A/B had already
+attributed the reds to the boron makeup-path holdup; each was re-adjudicated here, one at a time.
+
+- **Dilution is slower, and the card said 25 plant-minutes.** `measure_stack --plant=pwr2 --ic=low_power`,
+  target 660 at t=0: 718.5 → 716.7 (5 min, the holdup) → 675.0 (30) → 663.0 (45) → 660.8 (60) ppm. A
+  10 ppm trim: 718.5 → 709.7 in 30 min, within 1 ppm at ~20. Raise 3 now says "about 45", Background
+  "about fifteen" for the trim. Step 9 (BORON ≤ 663) waits 21.4-27.5 plant-min on every route → its
+  suggested warp 1× → 5×.
+- **The stage temperature tick flickered during the load ramp (raise `rods_before_load` s42 step 5,
+  `band_floor` s7 step 7, chain s42 step 4, the 5b injection route s123 steps 6-7).** A transient, not
+  noise: the tick lands while LOAD is still coming on and the tile sags back out (held 3-6 s, past the
+  band debounce). Fix: 4b-8b `latch: true`, and 4c-8c carry a `cont` re-assert of the same band, so the
+  step still cannot complete off-band. Re-measured: 0 flags on typical, rods_before_load, hot_stage4,
+  band_floor, overpull_60 × 3 seeds, and on both chains. The `raise_old_settle_band` injection now
+  widens the re-assert row too (it would have gone blind).
+- **Raise rod counts, measured** (typical / chain / mistake routes): stage 4 20 / 20 / 20; stage 5 20 /
+  15-20 / 15; stage 6 25 / 30-35 / 25-30; stage 7 15 / 15 / 15-25; stage 8 20 / 20 / 20. Card: "15 to
+  20", "25 to 35", "about 20" (was "about 10", "20 to 25", "15 to 25"). The insertion-limit alarms
+  (approach, then limit) come in at STAGE 6 on every route, not 5; stage 5's PRIMARY PRESSURE low is
+  2228-2229 psia, no Pressurizer Pressure Low — that sentence came out, the alarm sentence (with its
+  xenon clause, unchanged) moved to 6.
+- **Lower 2 peak: 585.9 °F standalone (all routes, all seeds), 585.4-585.5 chain** vs "under about 585"
+  → "under about 587". Steps 4/5/6 peaks 578.4/568.5/562.6 standalone, 576.5/568.0/560.5 chain: inside
+  580/572/565, unchanged. Rod counts: 3: 18 / 12 (card "5 to 75" → "10 to 20"); 4: 27 / 21-24 ("15 to
+  25" → "20 to 30"); 5: 18-21 / 18 ("about 20"); 6: 12-15 / 12 ("10 to 15"). Step 3 PRIMARY PRESSURE low
+  2211 standalone, 2199 chain, no alarm: the "2140 psi after raise power, Pressurizer Pressure Low"
+  claim came out. End of leg REACTOR POWER 10.7 % standalone, 11.6-12.0 % chain at 15 MWe: "about 15 %"
+  → "about 12 %" (title, target, outcome, 6 aim/Background/note).
+- **Replay (run_checklist_pwr2) lower 4/5 ended hot** (569.0 °F vs < 568.5, 563.0 vs < 561.5): the load
+  stair alone, no insert, on a slower boration — same cause as above. `replay_then` now inserts 10 steps
+  once OUTPUT reaches each step's last tread: 566.1 / 554.2 °F, 27/27.
+- **Injections.** `rods_row_5b` was blind: the hot_stage4 route's stage 5 now dips to 556.8-556.9 °F,
+  under the 557 band edge, so its reader pulls and satisfies the press row; a 40-step stage 4 still dips
+  (556.9). Re-armed on typical with overrides — LOAD then a 60-step pull, stage 5 read 562 ± 5/7: stage
+  5 sits 562-568 °F, no rod press, `cmdwait` on seeds 42/7/123. `lower_output_tol4` RETIRED: a noise
+  bifurcation on this plant (±5: red 2 of 6 seeds, blind on 42; ±4.9 on 4a-6a: 4 of 6, then blind on
+  42 in the gate after an unrelated step-1 grading change; ±4.8: 0 of 6). The ±2 rows stand.
+- **Highlights.** Pulse on what the step presses, steady ring on the card: `Load Setpoint` replaces
+  `Turbine Load` in every `hl` (raise 2, 4-8; lower 2, 4-6), `Turbine Load` moves to `hl_watch`; raise 2
+  adds `Turbine — Latch`, raise 3 / lower 1 `Boron ON`, raise 9 `Insert` (press_expected: 9c's
+  conditional insert). No new board keys were needed.
+- **Not verified:** the "about 595 °F" / "about 585 °F" one-cut figures (the gate's injections still go
+  red on them, not re-read here); "clears as xenon builds and you walk the bank up"; the tile "keeps
+  rising for about a minute" after a pull; any browser paint of the new highlight lists beyond
+  verify_board_cues / verify_e2e_ui.
+## Session log — 2026-09-26-develop-g (#807 item 2: shutdown and cooldown to the Mode 3 → Mode 1 template; button pulses on shutdown, cooldown and TMI-2)
+
+*Owner, #807 item 2: "using the mode 3-1 walkthrough as a template, adjust the steps of the other
+walkthroughs."* Scratch lane `exp/807e2`. Records: `05_shutdown.md`, `06_cooldown.md` (Template pass).
+
+- **Whole-card pulses gone** on shutdown 1 and 3, cooldown 3, 6, 9, 10, 11, 12 and TMI-2 11, 14, 15,
+  19, 20: each now pulses the button or box the step presses and rings its card steady. Nine new
+  board keys, `<Card> — <Button>`: ECCS — Stop/Start, RCP — Off, Pressurizer Heater — Off, Pressurizer
+  Spray — Manual/Off, RHR — Align, RHR — HX Split, AFW — Block Valve (each card checked with
+  `PwrBoardInspect.parentOf`). TMI-2 text untouched.
+- **No step text names the ring** (cooldown 7a was the only one; grep over all three legs' strings).
+- **Cooldown 4's stair is three substeps** (4b to 720 psi, 4c to 270, 4d to 120 and 347 °F), graded on
+  DUMP SETPOINT's render floor; **11a split** into the HX SPLIT raise (graded `>= 0.085`) and the
+  spray watch; 3c one line. Shutdown's text already met the template: highlights only.
+- **Boron re-measured with the makeup-path holdup** (cooldown 1): Enter -> BORATING +1 s -> 880 ppm row
+  +55.5 plant-min, seeds 42 and 7 (was "about 54" on the card; now "about 55"). The route gate's
+  typical step 1 reads 63.0 plant-min end to end.
+- **Gates**: run_manual_controls 1073 -> 1105 (+32, the new keys and rings); run_checklist_pwr2 232/4/236 -> 235/4/239 (+3 green replay rows; the four reds are on HEAD too: TMI-2 18/19 tracked, lower-power 4/5 the raise/lower lane's); run_checklist_pwr2_b 205/0 (2ae.1b re-pinned 162 -> 165 predicate rows); verify_board_cues 49/49, verify_ckl_relevance 51/51, verify_e2e_ui PASS; style, units, hardrules 683, session labels, doc budget green. run_walkthrough_routes 204/9/213: all 9 reds are raise/lower (lower-power 585 °F note, raise-power 4/5 un-tick, two injections); shutdown 17/17 and cooldown 26/26 incl. chain, cooldown typical 421.9 plant-min (was 424.3), step 4 200.0 min, tile peak -89.0 °F/hr. Grading injection-checked on the live checklist: 4b unmet at 725 psi, met at 720; 4c unmet at 275, met at 270; 11a unmet at 7 and 8 %, met at 9. **Not verified**: no headless render of the new rings (verify_e2e_ui's paint sweep covers the heatup only), no layman pass.
+
+## Session log — 2026-09-26-develop-f (#807 item 11, the count leads steps 5-8, the 1/M plot clears on a new startup)
+
+Scratch worktree exp/807f. Full stack, `run_walkthrough_routes` live-checklist routes, seed 42 unless
+stated; seeds 42/7/1/123 plus the chained plant (heatup → startup) where marked.
+
+- **Steps 12-13 (#807 item 11, coordinator's call on the owner's question).** Step 12 is now "Let power
+  climb to the point of adding heat, about 1 %": 12a REACTOR POWER ≥ 0.95 (the "1.0" floor), then 12b
+  STARTUP RATE < 0.105 ("+0.10 or less"), ordered. Step 13: "Press SLOW. Withdraw CONTROL 2 steps, then
+  wait for STARTUP RATE to fall back to +0.10 or less. Repeat until REACTOR POWER reads above 5 %."
+  MEASURED, from step 12 entry (0.46-0.47 %) to REACTOR POWER above 5 %: old route 19.9 plant-min (12:
+  18.4 level-off to 2.95 %; 13: one 13-step pull, peak STARTUP RATE 0.25 DPM); new 7.5 (12: 2.7-3.3,
+  13: 4.7-4.8, 5 pulls, bank 213 → 223, peak 0.24-0.25 DPM) on four seeds + chain. Grid (seed 42, pull
+  size × rate): 2/+0.10 7.5 min peak 0.25; 3/+0.10 7.2 min 0.28; 5/+0.10 6.5 min 0.34; +0.05 waits
+  add 3-3.4 min at peak 0.20-0.27. Leg 90.1 → 77.6-81.4 plant-min. Downstream: step 15 blocks at
+  9.63 %, step 17 at 10.05-10.10 %; the chained raise-power leg completes. Declared departure: NRC
+  HRTD ch. 19 (ML11223A342 p. 19-8) holds ~2 % while the main feed pump is started; this plant has
+  no such step there (SG FEED in AUTO from step 3). The replay keeps its single 13-step `cmd`.
+- **Count is the target, steps 5-8** *(OWNER, workbench session 2026-09-26, selected "Guide, count is
+  the target"; relayed, confirmed in the develop session)*. Each `a` asks "Hold CONTROL WITHDRAW until
+  SOURCE RANGE reads X"; the window moved to the note as where it lands at 719 ppm, re-measured on the
+  count-led route (4 seeds + chain): 77-79, 153-154, 191-192, and 205 (the count reaches 7.0e3 as the
+  rods reach 205, every run). The owner's 90-110 window was 12+ steps above where 7.0e2 lands on a
+  fresh core. 6b "a minute and a half" → "half a plant-minute" (measured ~0.4-0.5); 8's settle "3 to
+  3½" → "5½ to 6½ plant-minutes" (the last point is now at 205, not 198-202); step 9 from 3 short:
+  6-8 taps, 36-46 plant-min (card: "6 to 8 taps … 35 to 45"); +0.15 at 3-5 past the prediction
+  (208-210).
+- **Noise early tick → `mean_s: 30` on the four count rows.** MEASURED (900 s at a fixed bank, 10×,
+  seeds 42/7): the tile's sigma is 31-33 cps at 7.0e2 (4.5 %) and 400 at 6.6e3; 7.0e2 settles at bank
+  73 (mean 695-696, half the readings ≥ 7.0e2 — layman pass 3's "about half the time" is the TARGET
+  bank on this core, not an early one). The five-sample debounce still latched at bank 67 (mean 672)
+  after 354 s and 71 (688) after 183-593 s. A 30 s trailing mean (`InstructorLayer.gradeMean`, still a
+  latch) closes it: route `flicker_release_5` (let go at bank 69 at 1×, wait 10 plant-min) ticks at
+  75 (30 s tile mean 693); mutation `no_mean_counts` ticks at 69 (mean 674) and goes red on the new
+  `early` verdict (tile's 30 s mean < 99 % of the row at the tick).
+- **1/M plot clears when `pwr_startup` starts** (layman pass 8 S-1, UNVERIFIED as filed; the mechanism
+  reproduced: before the fix the grader's table kept its point across `start_checklist`). Procedure
+  flag `clear_1m`; `loadChecklist` clears the grader's table and bumps `one_over_m.gen`, the panel
+  clears its copy on the change ("new startup walkthrough — plot cleared"). Chosen over a "press Clear"
+  step: a step can be skipped, and 9a's "3 short" grades off the grader's table either way.
+  `run_oneoverm` §2c, injection-proven both halves.
+
+## Session log — 2026-09-26-develop-e (#807 review fixes: the makeup-path boron tail, re-anchor double dose, MIXING, warp toggle OFF)
+
+Quality review of the merged #807 work (exp/807int). All plant numbers full stack, pwr2, seed 7
+unless stated; route numbers `run_walkthrough_routes` seed 42.
+
+- **Retarget double-dose (HIGH).** `control_kernel._stepConc` re-anchored the dose books to the BARE
+  analyzer when a new target found them >15 ppm apart (`reAnchorPpm`); since #807 the analyzer
+  trails the books by what is still in the VCT / charging line (~19 ppm on a long dilution), so the
+  pipe was metered twice. Measured from hot shutdown (894 ppm): 820 retargeted to 815 at +20 min
+  landed **795.7** (19.3 past); 840 set 30 s after an 850 dose landed **821.1** (18.9 past). Fix: the
+  plant publishes `control_state.boron_in_transit_ppm` (actuator bookkeeping, like
+  `boron_rate_delivered` — HR1: the makeup integrator knows what it metered, not a plant measurement);
+  `pwr_control` `boron_conc.inTransit` reads it and the kernel compares/re-anchors to analyzer +
+  transit. After: **815.3** and **840.3**. Gate `run_checklist_pwr2` 2l2(a)/(b), injection (bare `pv`)
+  reads 800.0 / 821.9 at +45 min, red.
+- **Trap found on the way: the confirmatory lab sample re-typed the operator's target on ROUNDING.**
+  The result is whole ppm; a dose landing at 719.3-719.7 posts 720 and the kernel snapped the box
+  719 -> 720, which un-met Mode 3 to Mode 1 step 2's "BORON target reads 719" row (ordered) and
+  stranded the chain at step 2 for 181 plant-min once that step waited for the tail. `sampleDeadband: 1`
+  — a result within 1 ppm of the books confirms, it does not correct. Gate 2l row 3; injection reads 720.
+  A `lab + transit` re-baseline was tried and DROPPED: the lab turnaround is ~30 min, so at posting the
+  tail is 0.6-2 ppm and no fixture could red it (setpoint 842.0 vs 840.6) — an ungated line.
+- **BORON STATUS reads MIXING** while |transit| >= 1 ppm with the blender stopped (board word, and the
+  checklist's `boron_status_hold` derived param now requires it too — one threshold in two files,
+  `run_checklist_pwr2` 2l2(c)/(d) lifts the board's `boronMixing` and asserts they agree on every
+  broadcast; injection reds both). Tail measured: boration +56 ppm leaves 2.9 ppm in transit at stop,
+  under 1 ppm in 1.2 plant-min; an 850 dilution dose's 18.4 ppm takes **33.0** plant-min.
+- **Mode 3 to Mode 1 step 2 waits for HOLD (2d).** Chain A/B (seed 42): step 2 103.0 -> 124.0 plant-min;
+  steps 6/7 taps 2/4 -> 1/2; step 9 pred 213 goal 210 -> pred 211 goal 208, end bank 213 both, 9 took
+  21.8 -> 31.8 min (reads 210..213 -> 208..213). Before, the approach ran with ~10 ppm still arriving:
+  the 1/M prediction matched criticality exactly (213) because the boron tail was doing the last steps'
+  work; after, criticality is 2 steps past the prediction on settled boron.
+- **Heatup 16d**: unchanged on the typical route (1.6 plant-min, chain). Route gate 128/0.
+- **Warp toggle OFF** (`ui/app.js syncCklAutoSpeed`): the OFF gate sat below the no-walkthrough
+  hand-back, so OFF still dropped the clock to 1x at the walkthrough's end; re-checking ON on the same
+  step matched a stale latch. `verify_e2e_ui` testWalkthroughWarpTogglePref +2 checks; HEAD's app.js
+  reds the latch one, the gate moved back below the hand-back reds the no-drop one.
+- **2ak.5 re-aimed** to a 211 -> 212 tap 330 s after a 208 -> 211 pull (spike 0.188 over the 0.145
+  floor). `rodMoving` alone no longer reddens it — the rounded position flips before the lagged rate
+  crosses; the hidden row's 300 s -> 1 s does (the step completes on the pull's spike).
+
+## Session log — 2026-09-26-develop-d (#807 items 8-11: the startup ladder's window and warp, and 9b's target rate)
+
+Owner playtest of 1.8.0-rc6, `pwr_startup` (Mode 3 → Mode 1). All numbers full stack, pwr2
+`hot_zero_power`, `run_walkthrough_routes` typical route unless stated; seeds 42 / 7 / 1.
+
+- **Item 8, step 5 window 80-100 → 90-110.** SOURCE RANGE settled vs bank (3 plant-min settle, seeds
+  42 and 7 identical to the count): at 719 ppm, 646 cps at 60, 683 at 70, 724 at 80, 772 at 90, 830 at
+  100, 899 at 110; 700 is met from about bank 74. Boron is the lever: at 729 ppm 633 at 80, 712 at
+  100, 763 at 110; at 739 ppm 624 at 100; at 759 ppm (the old 2c band top) 500 at 100 — the owner's
+  "barely 7.0e2 at 100" is a 729 ppm plant. 90-110 meets the row with 10 % margin at 719 ppm and
+  still at the top at 729 ppm. Typical route: step 5 clears at bank 90, 748-753 cps (was bank 80,
+  711). Steps 6-8 unchanged: at 719 ppm 1.4e3 is met from ~147, 3.0e3 from ~181, 7.0e3 from ~196.
+  At 729 ppm steps 7 and 8 are never met inside their windows (2,686 at 194; 4,370 at 205) — the
+  ladder needs the dilution finished, which the 2c band (record t) already enforces.
+- **Item 9, steps 5-7 at 10× for both substeps.** The per-substep rungs (pull 5×, plot 1×) were the
+  "jump out of warp": auto keyed the plot substep's 1× the moment the count row ticked. Now one
+  step-level `wait_speed: 10` (like step 8); auto still holds 1× until the rods move. Supersedes
+  the 2026-09-24 "7a 5×" selection. Overshoot risk: MED is 48 steps/plant-min (ROD_SPEEDS), 8 steps
+  per wall-second at 10×; step 7's 14-step window passes in 1.75 s of holding, and its note now
+  says so. Not measured with a human hand — no harness models release latency.
+- **Item 10, 9b's root cause.** Near critical the rate keeps FALLING for 20-30 plant-min after the
+  rods stop (single pull, bank 209: 0.080 at 5 min, 0.060 at 10, 0.049 at 20, 0.045 at 30). The
+  hidden `steady` row (5 % relative, 240 s) met while the rate was still falling (record g: 209 at
+  +13.2 min, 0.062) and the drawn band's 0.055 floor sat between that read and where the rate went
+  next: lit, then dark. At 208 (settles 0.02-0.03) the relative test flickered met/unmet 20 times in
+  25 plant-min (seed 42, rows logged per broadcast). **Fix:** one target, "+0.15 or more five
+  plant-minutes after a tap", graded by a latching `>=` 0.145 row behind the existing hidden 300 s
+  `stopped` row; the `steady` row is gone. Asymptotes by bank (single pull): 209 0.045, 210 0.07,
+  211 0.10, 212 0.13, 213 0.165, 214 0.19; 5-minute reads 0.080 / 0.103 / 0.122 / 0.149 / 0.176 /
+  0.207. So the row first latches at 212-213, whose settled rate is 0.13-0.165. Typical route, three
+  seeds: 9a stops at 206-207 (prediction 209-210), 7-8 taps, 9b ticks at 213 (read 0.150-0.169),
+  step 9 36.7 / 37.1 / 41.7 min, step 10 1.8 / 5.5 / 2.6, step 11 6.0 / 7.1 / 6.3, step 12 18.7 /
+  19.2 / 19.1; the leg 85.8 / 93.7 / 93.8 plant-min (was 115.2 on seed 42). No flash, no un-tick.
+  Steps 8, 10, 11 notes re-stated from these numbers. 9b cut to one action line and a
+  three-sentence note. Route injection `low_floor_9` (the old 0.055 floor on the latching row)
+  replaces `no_settle_9`. **The target is UNSOURCED:** no startup-rate target in the three lanes'
+  corpus (`find_source` "decades? per minute", "[0-9.]+ ?(dpm|DPM)"); HRTD 2.1 (ML11223A207) only
+  gives the worth of a 1 DPM rate (175 pcm) as an example.
+- **Item 10, IR question — MEASURE ONLY.** PWR2 has NO operator action at the source → intermediate
+  hand-over: `set_sr_detector` is refused and SOURCE RANGE de-energizes itself at 1.0e5 cps (IR
+  3.21e-9 A; owner directive 2026-09-01, #598 item 7). P-6 (1.0e-10 A, sourced) is met at bank 184 /
+  3,121 cps — subcritical, mid-ladder — and permits nothing (`pwr2_protection.js` P6, a declared
+  departure). Real plant: USNRC HRTD 19.0 Plant Operations (ML11223A342) p. 19-8: "After criticality
+  is achieved, the control rods are positioned to increase nuclear power to 10-8 amps in the
+  intermediate range. When power exceeds the source range block permissive (P-6) setpoint, the
+  source range trip is manually blocked and the source range high voltage supply is de-energized.
+  Power is stabilized at 10-8 amps to record actual critical conditions." NUREG-1431 Rev 4 Bases
+  (ML12100A228) B 3.3.1: P-6 "allows the manual block of the NIS Source Range, Neutron Flux reactor
+  trip ... allows the operator to ensure that the intermediate range is OPERABLE prior to leaving
+  the source range. When the source range trip is blocked, the high voltage to the detectors is
+  also removed". So in a real startup the IR hand-over comes AFTER criticality, as an operator block.
+- **Item 11, prototype (scratch only, not committed).** Seed 42, bank 210, from 0.45 % power, a
+  13-step SLOW pull: (A) current — wait for power level (flat within 0.02 % over 300 s): pull at
+  +34.3 min (1.35 %), 5 % at +36.9 min; (B) pull once power ≥ 0.9 % and STARTUP RATE < 0.05: pull at
+  +9.1 min, 5 % at +12.1 min; (C) pull at 0.45 %: 5 % at +3.6 min. Peak STARTUP RATE 0.36 / 0.44 /
+  0.55; peak power 8.03 / 8.05 / 8.05 %, all settling at 7.9 %. B saves about 25 plant-min with no
+  extra overshoot. Source: HRTD 19.0 p. 19-8 — "the control rods are positioned to increase power
+  to the point of adding heat, approximately one percent power as indicated on the power range
+  instruments, and then to stabilize power at about two percent", with the 2 % hold used for
+  secondary work (procedure steps 13-17: steam dump check, start a main feed pump "at 2% power").
+  Awaiting the owner's ruling.
+- Gates: see the commit message.
+## Session log — 2026-09-26-develop-c (#807 items 3–6: Mode 5 to Mode 3 highlights, step 16 in 1.6 plant-minutes, wording pass)
+
+Scratch lane `exp/807a`. Traps only; the diff carries the rest.
+
+- **A STEADINESS ROW SHORT ENOUGH TO TICK IN A MINUTE CANNOT SEE A SLOW APPROACH — no tolerance
+  fixes it.** Measured from step 16's own arrival (states saved off the typical route, seeds
+  42/7/123, IL.gradeSteady swept over window 30–600 s × drift 0.2–2 %): a 918 → 719 ppm dilution
+  started there moves SOURCE RANGE 168 → 174 cps in 4 min, and every 60 s window ticks it at
+  1.0–2.3 min even at 0.2 %; a one-step-per-6-s pull ticks at 1.0–1.7 min. So the step now reads the
+  two things that can add reactivity directly: CONTROL ROD POSITION (moved from 15c) and BORON
+  STATUS HOLD (new derived param `boron_status_hold`, the tile's own `boron_adjust === 0` test).
+  Result on the live route runtime: typical (seeds 42/7/123), all four mistake routes and the
+  round-trip heatup (chain, 3 seeds) tick step 16 at 1.63 plant-min (was 10.1), no flash or row
+  un-tick; a dilution or a 200-step pull started at step 16 never ticks (30 min bound).
+- **A STEADY ROW'S TOLERANCE IS SET BY HOLDING IT, NOT BY TICKING IT.** 60 s / 2 % met at 1.0 min
+  and then un-ticked 9–17 times in 30 held plant-minutes at 10x (half-mean drift noise up to 4.5 %
+  on a 168 cps count; 10 % at 60x) — invisible to the route gate, whose player presses Continue
+  3 s after it lights. 90 s / 8 %: zero un-ticks in 30 min at 1x, 10x and 60x, three seeds.
+- **A `<` / `>` ROW LATCHES ON ENTRY; `~` RE-GRADES.** The first cut graded the two new rows with
+  `<`/`>`: both were met on arrival, latched, and the step completed mid-dilution at 1.1–1.8 min and
+  with the bank at 200 at 5.1 min. A row whose job is "nothing moves during this step" must be `~`.
+- **Highlights: pulse the button, ring the card.** Four press targets had no board key, so their
+  steps pulsed the whole card. Rendered in headless Chromium: each pulse now sits inside its steady
+  card ring (step 7: button 81×25 at 1074,702 inside card 92×178 at 1069,580). Same class OUTSIDE
+  heatup, not fixed (another lane): 28 `hl` entries resolve to a card — `pwr_raise_power`/
+  `pwr_lower_power`/`pwr_shutdown` `Turbine Load` (11), `pwr_cooldown` 3/6/9/10/11/12, `pwr_tmi2_incident`
+  11/14/15/19/20, `pwr_shutdown` 3, `pwr_raise_power` 10; and `pwr_cooldown` 7's ask still says
+  "inside the pulsing ring".
+## Session log — 2026-09-26-develop-b (#807 item 1: boron reached the loop the instant it was asked for)
+
+Owner, 1.8.0-rc6 playtest: "When setting boron the changes start immediately which makes it not seem
+realistic." Full stack, `measure_stack --plant=pwr2`, `boron_conc` setpoint:
+- **Before: the RCS concentration itself, and so reactivity and power, moved from the first step.**
+  +10 ppm at full power: reactivity −1.0 pcm and power −0.26 % within 4 s; loop +1.0 ppm at 20 s.
+  −20 ppm in Mode 3: −3.9 ppm in 2 min. The blend was applied to charging AT the cold leg.
+- **Sourced (WTSM §4.1.3.2, ML11223A214):** boration goes to the charging pump SUCTION; dilution goes to
+  the VCT and must "drain from the top of the VCT to the charging pump suction". NUREG/CR-2798 in
+  ML082911010 (St. Lucie 1, LER 335/80-71): "dilution via the VCT is a slow process". Ginna VCT
+  1,500 gal (UFSAR §15.7.1.2, ML20339A101). Ginna's own dilution analysis assumes INSTANT mixing —
+  conservative for an accident, not a description of normal ops.
+- **Built:** two holdups in series (VCT for dilution only, then the charging line), draining at
+  charging + seal flow; the dose is conserved and the totalizer still counts at the blender.
+  **UNSOURCED, `[tune]`: VCT liquid fraction 0.5, charging path 80 Ginna-gallons.** After: +0.1 ppm at
+  20 s, target reached ~8 min; Mode 3 −0.1 ppm in 2 min, ~30 min tail after the blender stops.
+- **Trap: four `run_pwr2_cvcs` checks measured "metered" as the RCS change over 1–120 s** — true only
+  while transit was zero. Re-stated as RCS change + in-transit (conservation); passes on both plants.
+  A "bit-identical after idling" check read the holdup as actuator residue — equalized as plant state.
+- **Residual:** the post-dose lab sample posts 30 min after the dose ends and can still see
+  ≤ ~1 ppm in transit; the kernel snaps the target to it (rounded). Not fixed.
+- **Walkthroughs:** chained Mode 3 → 1 step 2 (918 → 719 ppm) 93.0 → 103.0 plant-min; its note
+  "about 1½" → "about 1¾ plant-hours" (the only text changed). Standalone startup unchanged (115.2 →
+  115.6 min). `run_walkthrough_routes` 128/0 → 126/2, TRACKED, both seed-42 knife edges: the
+  `no_settle_9` injection is ALSO blind on the pre-#807 tree at seeds 7 and 123; the heatup#2 step-16
+  SOURCE RANGE `steady` flash (met 1.0 s) is on a leg with no boron action and neither tree flashes at
+  seed 7. **Trap: an injection that catches at one seed only is pinning a bifurcation** — re-aim it.
+
+---
+
+## Session log — 2026-09-26-develop-a (#807 item 7: "Walkthrough sets time warp" toggle)
+
+`ui/shell.html` (`#cklWarpPrefRow`/`#cklWarpPrefBox`, hidden by default), `ui/shell.css`
+(`.ckl-warp-pref`), `ui/app.js` (`cklAutoWarpOn` + `syncCklAutoSpeed`'s new gate + `syncWarpInfo`'s
+visibility toggle), `test/verify_e2e_ui.js` (`testWalkthroughWarpTogglePref`), `test/run_all.js`
+(BASELINES note), `CHANGELOG.md`.
+
+A checkbox directly under the speed bar, visible iff `cklActiveStep(s)` is non-null (same truth
+`syncCklAutoSpeed` already uses). Default ON is #796's existing behaviour unchanged; OFF adds one
+early return in `syncCklAutoSpeed` (`if (!cklAutoWarpOn) return;`), placed AFTER the "no walkthrough"
+hand-back branch so leaving a walkthrough with the box off still returns the clock to whoever it
+belongs to. Persisted per viewer via `localStorage['rd_ckl_auto_warp']`, try/caught.
+
+**Kept, deliberately: `true_state.speed_hold`** (#619 item 13, the accumulator arming window,
+`engines/pwr2/pwr2_engine.js` `_accHold`). That is a genuine plant refusal the ENGINE raises with
+no walkthrough running at all — `simulation_service.js`'s own comment says it is "not reachable
+from the board… so a player can never disarm" it — not a pacing courtesy, so this toggle never
+touches it either way.
+
+**Trap found writing the browser gate**: jumping the checklist index the way #743's own fixture
+does can land on a step whose criterion the plant's default free-play IC (hot, at power — Tavg
+304.7 °C / 580 °F) ALREADY satisfies (an "AVG COOLANT TEMPERATURE 542 °F or higher" observation),
+so `cklStepSpeed`'s first line hands the clock straight back to 1× and both the ON and the OFF
+assertion read 1× for the same wrong reason — reused #743's `_instructorBlock` override
+(`acc_met`/`awaiting_ack` forced false) to keep the step "still waiting". Runs the OFF half on a
+SECOND checklist instance rather than toggling mid-step on the first: `cklAuto.key`'s "already
+acted" latch is untouched while the new gate returns early, so OFF-then-back-ON on the *same*
+step after ON had already fired would read as "no change" for a reason that is the latch, not the
+feature — measured directly (a same-instance replay stuck at 1× after re-checking the box, for
+that reason, before the two-instance form was written). Also measured: the WARP tier can sit on
+PLAY for ~2 s after a `set_speed(3600)` before the courant/quiet checks let it through (`achieved`
+read 10 then 410 across two otherwise-identical 2000 ms waits) — the test waits 3000 ms, matching
+`testSpeedRungGlowRendered`'s own margin.
+
+Injection-proven twice, each restored immediately: neutering `if (!cklAutoWarpOn) return;` reds
+the OFF assertion (clock rose to 3600× anyway); neutering `syncWarpInfo`'s `wpRow.hidden = !actv;`
+to an unconditional `true` reds the "visible while running" assertion first.
+
+Gate: `node test/run_all.js --only verify_e2e_ui.js` — PASS, 4screenshots (score unchanged, +1
+check function; baseline note updated).
+## Session log — 2026-09-26-workbench-e (raise power ends at step 9: the xenon steps left)
+
+Record: `Blueprint/walkthrough_steps/03_raise_power.md` §"Xenon steps removed". Traps only:
+
+- **REMOVING A STEP SHORTENS THE CHAIN, AND THE NEXT LAP SAMPLES DIFFERENT NOISE.** The round-trip
+  chain's second heatup (step 16, SOURCE RANGE `steady`) flickered 2.0 s on gate seed 42 once the
+  raise leg lost its three steps, with no grading change anywhere. Measured 0 of 7 other seeds after,
+  0 of 5 at HEAD: seed-sensitive, not caused. Before calling a downstream chain red a regression, run
+  the chain job at several `WR_SEED`s on BOTH trees (a detached `git worktree add` at HEAD, 1 s).
+- **A prepared removal checklist misses the keyed pins.** The pre-ruling script named the route gate
+  and `manual_ui_map`; `run_checklist_pwr2` also pins `pwr_raise_power:<n>` in two maps and a pool-count
+  check. Grep `<leg>:<n>` across `test/` before trusting any list of what to edit.
+- **A heading that says `OWNER DIRECTIVE` is an HR11 site.** `run_hardrules` read the section title as
+  an undeclared ruling; name the ruling in the quoted line under it, not in the heading.
+
+---
+
+## Session log — 2026-09-26-workbench-d (layman pass 8 verified: the non-startup findings)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS8.md`. Startup findings (S-1..S-3) are develop's lane. Traps only:
+
+- **"THE SPEED WAS NOT SET FOR ME" CAN BE THE DESIGN WORKING, UNANNOUNCED.** Cooldown 4 and 11 hold
+  1× until the step's own command lands, then go to 60× (measured in the browser, 2.5 s after one
+  typed entry). The reviewer pressed 60× first because `wait_hint: false` hides the line that says
+  so. Measure the driver before touching the matcher; the fix was one sentence per Note.
+- **"BELOW X" MUST GRADE THE RENDER FLOOR, NOT X.** A `< X` threshold on a `toFixed(0)` tile ticks
+  while the tile still prints X (561.9 °F reads "562" against "below 562"). Grade X - 0.5. The mirror
+  of #749's floor rule: there the box was dark at the target, here it was lit at the limit.
+  `run_checklist_pwr2`'s #739 tie asserted threshold == band top and so PINNED the defect; it now
+  derives the render floor of the band top and ties the label too.
+- **A FIXTURE THAT JUMPS TO A STEP MUST REPRODUCE THE ROUTE'S LINEUP.** The standalone
+  `pwr_cooldown` boots with the dump in TAVG and the turbine latched, so 4a never met and the probe
+  read 1× after the entry — a false "defect" until the turbine was tripped, as the chain has it.
+- **A PRESS-ONLY ROW CANNOT BE REWORDED TO "CHECK IT IS LIT".** Cooldown 3c has no predicate (#741);
+  "check STOP is lit; if not, press it" would strand every player who only checks.
+
+## Session log — 2026-09-26-workbench-c (lower power 4-6 walked; the trip-block reason clears with its cause)
+
+Owner rulings 2026-09-26 (selected options): lower power 4-6 "Walk them too"; TRIP BLOCKS "Clear it". Traps only:
+
+- **A WALKED CARD IS NOT COOLER ON EVERY ENTRY.** Chained (the leg's intended entry) the walk took
+  step 4 from 585.4 to 576.5 °F and two alarms to none, step 5 from 574.6 to 568.0 °F. On the
+  `hot_full_power` preset it runs HOTTER: 576.6 -> 578.2, 567.8 -> 570.0, 561.1 -> 563.2 °F, because
+  the one cut drops power at once and the inserts wait for the tile to pass the band top. A peak
+  claim ("under about N °F") has to hold on both; `peak_check` now grades it on every route.
+- **AT 15 MWe THE ONE CUT DOES NO MEASURED HARM** (chain 563.8 against 561.5 °F, no alarm), so step
+  6 has no old-card injection. Do not tune a claim until an injection goes red. The +/-5 OUTPUT
+  mutation stayed GREEN on step 6 too (its tread noise never crossed 20.0 in time): a flash
+  injection that rides on gauge noise is proven only where it was measured red (step 4).
+- **A `~` ROW'S TOLERANCE MUST BE SMALLER THAN THE STAIR TREAD.** At +/-5 around 50 MWe the 55 MWe
+  tread met the row (54.8 on the gauge) and the next reading (55.07) un-ticked it, a flash at
+  12.7 plant-min. +/-2, as step 2.
+- **A MESSAGE THAT NAMES A CONDITION MUST GO WHEN THE CONDITION DOES.** "Pressure rose above P-11"
+  stood at 1930 psi on a cooldown. It now clears when the row's `permissive` returns. The browser
+  gate's fabricated revoke drew EVERY row `permissive: true`, a revoke the engine cannot make
+  (it revokes only on a lost permissive) and one the new rule retires on the same render: a fixture
+  must model the event, not just the flag.
+
+## Session log — 2026-09-26-workbench-b (layman pass 7 verified: the gate pressed a button the player never would)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS7.md`. Traps only:
+
+- **A ROUTE THAT PRESSES EVERY LIVE ROW'S `cmd` CANNOT SEE A PRESS-ONLY SOFT LOCK.** Raise-power
+  5b ("Rods withdrawn", a `rod_nudge` row) stranded a player whose gauge never left its band. Every
+  route passed because `pressRows` sent a bare `rod_nudge` on a gauge-following step: a free tap.
+  Now `to_band` skips rod rows, and CMDWAIT flags a step waiting 120 plant-s on a rod row while
+  every graded row READS met (`obs`, not the latch; `accs_ordered` blocks the latches behind the
+  unpressed row). **Grade the effect; a route must not press what the text did not ask for.**
+- **"LET GO N SHORT" IS A HELD-PULL NUMBER, AND THE TILE'S LAG DECIDES IT.** Held at MED the tile
+  rose 5.0-7.5 °F after release (reviewer 13 °F); 5-step pulls a minute apart rose 2.1-2.6 °F in the
+  same stage time. Measure the rise after the LAST withdraw, not the step's peak.
+- **A LOAD REDUCTION LANDS AT ONCE ON PWR2 BY DESIGN** (raises only are rate-limited, `pwr2_shell`).
+  A card that says "about five plant-minutes" has to make the ramp itself. Walking it 5 MWe a minute with the rods held still still peaked 590.8 °F on the chain; only rods
+  following each cut (3 steps above 577 °F) held 581.8 °F. The chained plant is the hot one: the
+  preset peaked 584 °F even on the one-cut card.
+- **A RECLASSIFIED ALARM NEVER CLEARED, SO ITS STAMP NEVER MOVED.** Cold-plant alarms sit as
+  `status` for hours; at 350 °F they come back critical, stamped T+00:00:00. Re-stamp on a
+  priority change (`ui/app.js` `renderAlarms`).
+
+## Session log — 2026-09-26-workbench-a (layman pass 6 verified: the seam is set by a spray valve, and a wall-clock pacing)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-26_LAYMAN_PASS6.md`. Traps only:
+
+- **THE ROUND TRIP'S SEAM PRESSURE IS DECIDED BY ONE PRESS AT A SPEED THE PLAYER CANNOT FOLLOW.**
+  The second heatup ran its pumps at 17 psi (margin 25 °F) because cooldown 11's spray-off sat in a
+  note at 600×: one read per 40 plant-min. The seam moved 19 → 50 → 241 psia with the spray-off
+  alone. A route that presses on the exact tick hides this; `when` triggers now poll at 4 s of wall
+  x the card's speed. **Grade the press you need, at a speed a reader catches it.**
+- **"6 seconds at 60×" IS A WALL FIGURE, AND THE REVIEWER'S PLANT GOT 4.1 MINUTES.** 34 entries in
+  139 plant-min; the stair at 246 s reproduces 139.0 min and -117 °F/hr. Holding on the COOLDOWN
+  RATE tile does not rescue it (60-85 °F/hr holds: -99 to -111) — the tile lags 600 s. Pace on the
+  plant clock.
+- **"ITS BAND" MEANT TWO BANDS.** Steps 8-9 name 563-592 °F; step 10 grades the tile's 575-585. A
+  literal reader stops at the floor the card names; the route policies now parse the number from
+  the text (`tref_from_text`, `cond_pull`), so the route follows the card as it is.
+- **ECCS STOP IS THE IDLE LAMP ON PWR2, NOT A DISARM.** No ESF arm is published; SI started the pump
+  with STOP pressed (148 s / 17.5 s, flow identical). The card text claimed otherwise.
+
+## Session log — 2026-09-25-workbench-j (pwr_heatup step 16 tracked flake: the fixed replay's single sample, not a plant defect)
+
+Record: `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` §"16's replay `hold` re-measured". Trap only:
+- **A `hold`-bounded replay samples a re-grading predicate ONCE, at the end; a live player keeps
+  trying.** `pwr_heatup` step 16's SOURCE RANGE `steady` row (1.2 % / 600 s) failed 2 of 11 REPLAY
+  seeds at `hold`=720 s with 1.51-2.00 % drift — a single noisy instant sampled at exactly `hold`'s
+  end. MEASURED on the LIVE checklist runtime (`run_walkthrough_routes --job=pwr_heatup:typical`,
+  30 seeds, re-grading every ~5 s): the row ticked on every seed, no strand — 24 of 30 within 8 s of
+  the window closing, worst (seed 8) 769 s, 169 s past it. `hold` raised 720 -> 1200 s (56 % margin
+  over the worst seed measured); `v` and `window` untouched — the tolerance was never the problem,
+  the fixed sample point was. `run_checklist_pwr2.js` BASELINES note removed as a tracked flake,
+  2 failed (the pre-existing TMI-2 pair) restored.
+
+## Session log — 2026-09-25-workbench-i (cooldown re-paced under the 100 °F/hr alarm; the raise-power rod worth re-measured)
+
+Record: `Blueprint/walkthrough_steps/06_cooldown.md`, re-pace record. Traps only:
+- **A longer wait cannot fix a step that is too big.** The rate alarm reads a 600 s lagged
+  derivative, so one fast drop of ΔT °F lifts the tile by about 6·ΔT °F/hr whatever follows it. Near
+  the bottom of the saturation curve 50 psi is ~22 °F: 5, 8, 10 and 15 minute waits ALL raised
+  Cooldown Rate High (tile −240 → −141 °F/hr). Only a smaller step at low pressure got under.
+- **A card's pacing was never graded against the alarm it teaches.** Step 11's note told the player
+  what to do when Cooldown Rate High came in, on a route the card's own numbers drove into it. The
+  route gate now fails a leg with `rate_max_F_hr` if any step raises the rate alarm or its tile
+  channel passes the margin; a chained leg counts the tile only after it has read inside the limit,
+  so the shutdown's scram seam is not charged to the cooldown.
+- **The margin is a ruling, not a measurement.** 9 % peaked −83 to −87 standalone and −90 chained;
+  a 10 °F/hr margin forced 8 % and a 42-entry stair (leg about 8 h). The owner took a 5 °F/hr margin
+  ("Middle ground"): 9 %, 34 entries, leg about 7 h. The fastest stair measured (15 psi from 320,
+  5 min) peaked −97 — under the alarm, outside the margin; one seed would not have shown which.
+- **A per-step worth quoted at the top of the bank is not the bank's worth.** Raise-power 10's
+  "about 290 steps, roughly 110 °F" was challenged with the top-of-bank 0.22 °F/step (≈ 64 °F).
+  Measured A/B on the xenon-free preset (typical route end, bank 306): a 20-step pull is +10.4 °F at
+  +10 min against the unpulled twin, 0.52 °F/step at mid-bank; on the engine's own S-curve that is
+  17.0 pcm/°F and 306 → 606 is ≈ 118 °F (318 → 606 ≈ 112). The text stands.
+## Session log — 2026-09-25-workbench-h (lower-power pressure sag: the heaters are the right size, and not what is short)
+
+OWNER RULING (2026-09-25), selected option "Evidence pass" — option text (a selection, not his
+words): "Check the pressurizer heater capacity against sourced plant data, and correct the physics
+if it is undersized." Record: layman pass 5, S-4. Probe: `inbox/ev/probe_routes.js` (a tracing
+copy of `run_walkthrough_routes --job=chain:chain`, env knobs `EV_MANUAL/EV_HTRX/EV_DWELL/EV_PULL/
+EV_NOCMD/EV_TAU`). **No physics moved.** Traps only:
+- **The heater bank is sourced and not undersized.** WTSM 3.2 (ML11223A213, p. 3.2-8): "78 heaters
+  installed for a total capacity of 1794 kW ... proportional ... 414 kW and the backup ... 1380 kW";
+  the same section gives "The volume of the pressurizer (1800 ft3)". This plant: 157.8 kW in
+  147.5 ft3 = 1.07 kW/ft3 against the reference's 1.00 — and, with the loop 4.82x the pressurizer
+  against Ginna's 6.86, about 1.5x the reference per cubic foot of loop the outsurge comes from.
+- **The sag's SIGN is the textbook one.** WTSM 10.3 (ML11223A290, pp. 10.3-4/-5): "An insurge into the
+  pressurizer is observed during a step load decrease ... over time the cooler water that has
+  entered the pressurizer would cause a pressure reduction. This insurge is followed by a larger
+  outsurge as the rod control system brings Tavg to program for the lower power level; this control
+  response also tends to reduce pressure." Design basis (Ginna UFSAR ch7, ML20339A027 §7.7.1.1.4): "a
+  generation step load increase of 10% and a ramp increase of 5% per minute ... without reactor
+  trip ... Similar step and ramp load reductions are possible". The card asks for 25 % steps.
+- **THE SAG IS NOT HEATER-LIMITED — a latent stratified layer takes the heat.** Chained, the
+  raise-power leg leaves **893 kg** (54 % of the liquid) of insurge water in the bottom layer at
+  1391 kJ/kg, **63.5 °F (35.3 °C) subcooled**, and it never relaxes: nothing in
+  `pwr2_pressurizer.js` mixes `m_sub` into the pool, and at steady 100 % the heaters sit at 0 kW
+  (pressure 2254 psia (15.54 MPa), above setpoint). In the outsurge the heaters heat that layer
+  (priority `m_sub`) and the surge line drains it first, handing up to 376 kW back to the hot leg.
+  MANUAL FIRST: heaters fixed 0 % vs 100 % move the step-6 floor **8 psi** (1907 vs 1915 psia).
+  Heaters x3 (473 kW) buy +109 psi. The standalone leg (fresh preset, `m_sub` 0) holds **2202 psia**.
+- **The card's pace is 4.5x the design ramp.** Card-literal (5 steps per 30 s, the step's 40-step
+  command not sent), floors per step 3/4/5/6: **2032 / 1949 / 1885 / 1848 psia** (Tavg falling
+  ~7 °F/min (3.9 °C/min); the program's 5 %/min is ~1.55 °F/min). 5 per 60 s: 2012 / 1922 / 1883 /
+  1882. 3 per 60 s: 2001 / 1938 / 1936 / 1941. The route gate's `to_band` also SENDS the step's
+  `rod_nudge -40` (the live player never does), which at bank ~250 (~0.6 °F/step vs ~0.18 at
+  bank ~510) drives 18–19 °F/min — that is why the gate's floors (2059/1992/1934/1889) sit where
+  they do; the layman's 1819 psi is the card-literal route plus reading lag.
+- **A mixing relaxation is what moves it, and it is UNSOURCED** — prototype only, not shipped:
+  `m_sub` into the pool at tau 600 s gives card-literal 2113 / 2088 / 2059 / 2040 psia, and
+  3 per 60 s 2145 / 2157 / 2148 / 2147. No corpus document gives a stratified-layer mixing time
+  (`find_source.js "thermocline|pressurizer.{0,40}mixing|mixing.{0,40}pressurizer"`: no pressurizer hit),
+  and the layer is load-bearing for the loss-of-load spike and TMI — owner ruling, not an agent's call.
+- **BUILT the same session** *(OWNER RULING (2026-09-25), selected "C: both, B first" — selection,
+  not verbatim)*: pace "about 3 steps, one plant-minute apart"; the route gate's `to_band` no longer
+  sends the step's `rod_nudge -40`; `STRATIFY.tau_mix_s` 600 s. Chain floors 2145/2158/2147/2140 psia.
+  `perturb_sweep` cannot reach a pwr2 constant (its suites are the retired engine's); the tau sweep
+  above is the substitute. Two reds, adjudicated one at a time:
+  - **`run_pwr2_engine_b` null self-test, group C** — a CLIFF, not the claim. The rods-IN plant on
+    the quiet ride's 30 s settle tripped OTdT +19.3 s after onset with the term; settles 20/25/35/40/
+    50/60/70/90 s do not trip in 240 s, and without the term no settle trips. Fixture moved to 60 s
+    on both rides; the check is unchanged and green (engine 80/80, _b 67/67, _c 16/16).
+  - **`run_checklist_pwr2` heatup 16, SR steady 1.2 %/600 s** — a SEED REALIZATION. True SR sits at
+    168.04 cps on both trees through the step-16 window; over 11 seeds the row fails 2/11 with the
+    term and 2/11 without (seeds 4, 6 on the old tree). Tracked in BASELINES (2 -> 3), not re-banded.
+    **A replay that grades a noisy `steady` row at one fixed hold pins one noise realization.**
+
+## Session log — 2026-09-25-workbench-g (layman pass 5 verified: the round trip's seam, and a harness that crashed on the refusal it was looking for)
+
+Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-25_LAYMAN_PASS5.md`. Traps only:
+- **A chain that stops at the last leg's end card cannot see the seam back to the first.** The route
+  gate drove heatup → cooldown as one plant and was green while the round trip stranded: the
+  shutdown's scram was still latched at the cooldown's end, and the next heatup's WITHDRAW was
+  refused at step 3. The chain now runs the heatup a second time (`pwr_heatup#2`), and
+  `round_trip_no_reset` proves the seam reddens without cooldown 16d.
+- **A refusal the engine THROWS crashes a harness that expects an error object.** `rodDriveDoor`
+  throws on a latched trip; the first chain run died as `error` with no step table, which reads as
+  a harness bug, not the strand the player met. `send()` now records a refused command on the step
+  (`REFUSED`) and the run goes on to the bound.
+- **A list hidden "while a walkthrough runs" outlived the pane it shared.** Since #660 the running
+  card lives in the Instructor tab, but the Walkthroughs list still hid itself whenever a checklist
+  was in the snapshot — so "← All walkthroughs" on EVERY running card opened an empty tab, not just
+  the finished one the layman reported. `verify_ckl_relevance` 5b reads the painted list.
+- **A scanner keyed on a param's NAME reads a reset as a scram.** Cooldown 16d grades `scrammed < 1`;
+  `legScriptsScram` exempted any leg naming `scrammed`, so the cooldown silently lost its trip
+  notice and the route gate's `pressure_sp_ramped` stranded at step 8 instead of ending on its SI
+  trip at step 4. It now counts only a predicate that ASSERTS the trip (`run_checklist_pwr2` 2ai.1
+  went red on the scanner/replay mismatch — that check is the witness).
+- **An instrument the tile draws is not a `paramValue`.** `tavg_rate` and `subcooling_margin` are
+  `instruments.*`; `IL.paramValue` resolves only true_state and control params, so a trigger on
+  them returned undefined and never fired. The route's `when` policy takes `ins: true`.
+
+## Session log — 2026-09-25-workbench-f (cross-leg quality pass on the six walkthroughs; W12 reads the substeps)
+
+Records: each step file's Notes, "Cross-leg quality pass — 2026-09-25, workbench-f". Traps only:
+- **A style scan that reads named fields misses a new nested field.** W12 read the step `note` and
+  never `accs[].note`; three substep notes shipped "a few" / "as soon as" under a green run. The
+  same blind spot `checklist_no_si` closed at #741. Each harvested field now carries its own
+  injection; dropping any one of the four from the harvest turns the check INERT.
+- **A contingency inside a substep can undo the substep before it.** Cooldown 1 put the 920 ppm
+  target first and "If ON is not lit, press ON" second, and pressing ON re-captures the target.
+  Order substeps so a recovery press never lands after the value it resets.
+- **`act_first` only waits for the STEP's `cmd` family.** Lower power 4c/5c/6c open on their first
+  rod press at 5×, but the step's cmd is the LOAD set that 4a already sent; `act_first` there
+  would hold 1× until a second LOAD press that never comes. Not authored; reported.
+- **`wait_hint` omitted on a long step prints two speed lines** once the substep format adds its
+  own. The heatup was the one leg left doing it (5 steps). Removing it reddened `verify_e2e_ui`
+  (#743): the fixture's jumped heatup step 3 had been drawing its speed-bar rung FROM the hint
+  (0 rungs without it). The fixture now picks a step with its own `wait_speed` (step 11, 3600×).
+
+## Session log — 2026-09-25-workbench-e (cooldown brought down to the what / why / how shape; a closing lineup step; two grading traps)
+
+Record and every number: `Blueprint/walkthrough_steps/06_cooldown.md` Notes, bring-down record
+2026-09-25. Traps only here:
+- **A row `cmd` latches the row on the PRESS.** Step 16a carried the shutdown-bank INSERT as a row
+  `cmd` and ticked with the bank at 577 of 627 — the wait it names was never graded. A "wait for
+  X" row gets no `cmd`; put the press on the step.
+- **A `~` band can tick on a plant passing through it with nothing pressed.** Cooldown 6 enters
+  with the spray still in AUTO and delivering 55 % → 39 % in 1.2 plant-s; the unordered "SPRAY at
+  50 %" row ticked on the way through and let go. `accs_ordered` behind the heater row fixed it.
+- **Pressing ON on the boron channel re-captures the target** (lit or not): 920 → 718 ppm. A
+  latching `>=` target row would stay ticked over a 719 ppm box. Graded as a re-grading band.
+## Session log — 2026-09-25-workbench-d (Shutdown to Mode 3 brought down to the what / why / how file: a band that is approached from ABOVE)
+
+Record: `Blueprint/walkthrough_steps/05_shutdown.md`, "Bring-down record — 2026-09-25".
+
+- **A "HOLDING NEAR" BAND IS SIZED BY THE SIDE THE PLANT ARRIVES FROM.** After the scram STEAM
+  PRESS comes DOWN to 1020 psi (1113 psi at step 3 entry standalone, 1043 on the chain), so the
+  band's UPPER edge decides the tick. The heatup's "near 1020" band (±0.15 MPa, 1000-1042 psi,
+  sized for a plant rising into it) first ticks at 1037.7 psi here, still falling. 1015-1025 psi
+  ticks at 1023.7-1025 psi and never strands (the dump in PRESS holds 1019-1024). **Reuse a
+  sibling leg's band only after checking which way the plant crosses it.**
+- **A NEW ROW CAN MAKE AN OLD INJECTION PASS FOR THE WRONG REASON.** The #697 lamp injection
+  asserted "step 3 completes with no press"; 3c's band independently refuses the TAVG mode
+  (1026-1029 psi), so the step stopped completing and the injection went RED with the lamp still
+  ticking. Re-pointed at the row. **When you add a sibling row, re-read every injection that
+  asserts the STEP.**
+- **A step that was met on arrival stops being met when a row joins it.** The route table's
+  `chain_entry_met: ['#3']` (step 3 true 0.3 s into the chain) was a pardon for the old grading;
+  with 3c the step holds 34 s, so the pardon came out and the hollow check binds again.
+## Session log — 2026-09-25-workbench-c (Lower power brought down to the what / why / how step file: a Note's home decides which style scan reads it)
+
+Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes, bring-down record 2026-09-25. Traps only:
+
+- **Moving a Note from a substep to the step moves it under a different scan.** `run_style` W12
+  (vague quantifier) scans the step `note` but not `accs[].note`, so step 2's "as soon as this step
+  ticks" — shipped for a day as a substep note — reddened the moment it became the step Note
+  (`soon`). The words did not change; the harvester did. Authored back on 2b (same draw order).
+- **A step-level rung is also the rung once every row is met.** Adding `wait_speed` to the step
+  so substep a can fall back to it changes the clock for the done-but-not-continued window too:
+  steps 4-6 went from the 30 s rule's 60× to 10× there. Harmless here; say it when you do it.
+## Session log — 2026-09-25-workbench-b (Mode 5 to Mode 3 brought down to the what / why / how step file: the verify rows a route cannot reach)
+
+Traps only; the per-row numbers are in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md` Notes.
+
+- **A mistake scripted AT a verify step is hollow.** The first `dump_auto_early` pressed AUTO at
+  step 6; step 6 is met on entry, Continue goes at 3 s and the route's first press waits for the
+  5 s read, so nothing was ever pressed and the route passed. Script the mistake on the step
+  BEFORE, so the verify step opens with its row unmet.
+- **A band on a verify step turns a harmless overshoot into a strand.** `plant_mode ~ 3` passed a
+  plant at 2306 psi; "2200 to 2270 psi" did not, and with no instruction the route sat 30 plant-min
+  on step 15. A new band on a check-off owes an inline recovery for every route that lands outside it.
+- **The cooldown hands the heatup a plant its step 1 does not describe.** Measured at the seam:
+  197.0 °F, 14.3 psi, pumps off, but the shutdown bank at 627 and the steam dump in AUTO. Step 1's
+  `past` (shutdown bank at 98 % or more) skips the whole cold-state check, step 3 ticks on entry,
+  and 6a needs CLOSE. The chain route gate starts at the heatup's preset, so it cannot see it.
+- **"RCP FLOW reads OFF" is a lamp, not the number.** With the pumps stopped the RCP FLOW tile
+  reads natural circulation, 3.9 %; OFF is the card's lamp (`!rcp_running`). Grade the lamp's source
+  — and it is a STATUS word, not a transmitter: put in `PARAM_INSTRUMENT` it crashed
+  `run_checklist_pwr2_b` 2ae ("no channel rcp_running"), which fails every mapped channel in turn.
+  It now resolves through `STATUS_PARAMS` in the instructor layer.
+## Session log — 2026-09-25-workbench-a (raise power on a xenon-free preset: the seam was not the preset)
+
+Traps only; the numbers are in `Blueprint/walkthrough_steps/03_raise_power.md` Notes (2026-09-25).
+
+- **An at-power IC seeded at its OWN equilibrium carries a history the route never had.**
+  `createKinetics` puts iodine and xenon at the IC's power equilibrium — a plant run at 10 % for
+  days — so `low_power` held 17 % xenon and 684 ppm while the startup hands over none and 719.
+  Seeding I = X = 0 and the bank at 222 makes the preset and chained raise routes end identically
+  (589.7 °F, bank 318). The handover itself is a transient (Tavg 547.6 °F, +0.05 DPM): take the
+  boron and bank from it and let the programme Tavg fall out of the trim (718.5 ppm, 0.2 off).
+- **Fixing the fixture exposed the procedure.** With both routes on the real plant, steps 10–11
+  (pull 6, dose 10 ppm with no xenon yet) take the plant to 601.6 °F and a turbine runback to
+  80.7 MW within 20 plant-min of the leg's end; with them deleted it holds 579.7 °F. The chain
+  seam was never the preset's fault alone.
+- **Ordering a text list does not order the grading.** 4c checked OUTPUT after the pull while
+  `accs_ordered` graded OUTPUT before the temperature row: the fix is a row per substep in text
+  order (a rod-press row for the pull), not a reworded note. An injection built on a head row went
+  green once the row became a `cont` graded after OUTPUT — re-aim or retire it, never re-band it.
+- **A rod-worth total built from the top-of-bank per-step worth is 40 % light.** "250 steps,
+  roughly 56 °F" was 0.22 °F × steps; the static integral 353 → 606 is 1600 pcm = 91 °F.
+
+## Session log — 2026-09-24-workbench-l (layman pass 4, the six legs as one plant: the route gate reloaded every leg's own starting condition)
+
+Traps only; the per-step numbers are in each step file's Notes and `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_CHAIN.md`.
+
+- **A leg's `from` preset is a fixture, and "Next ▸" does not hand the player that fixture.** The
+  raise-power preset (`low_power`) carries the xenon of a plant that has run at 10 %; the startup
+  hands over a xenon-free plant at 719 ppm, not 684. So step 3's dilution is 59 ppm, not 24, it is
+  still arriving at full power 35 plant-minutes later, and the leg's fixed pull counts trip the
+  reactor on overtemperature-delta-T at step 9 (`chain_count_pulls`). Every route gate reloaded the
+  preset, so none of it showed until a player pressed Next. `run_walkthrough_routes --leg=chain`
+  now drives all six legs on one plant.
+- **A graded rod POSITION is a route claim.** Raise step 10's "above 351" was arrival + 4 on the
+  preset; the chained plant arrives near 306 and reaches 351 only as xenon builds, about 5
+  plant-hours (the reviewer's 16 pulls, and 349 plant-min measured). Grade the action (the pull)
+  and the gauge, not a bank number another route cannot reach.
+- **"Wait until X stops falling" on a whole-degree tile is not a wait a player can finish.** Read
+  twice five plant-minutes apart, the cooldown's 18-entry stair took 231 plant-min against a
+  stated 45 min–2.5 h; a fixed 5-minute wait takes 91. The route gate now fails a step that
+  overruns its card's stated time (`stated_max_min`).
+- **A route that copies the replay's counts cannot find a count defect.** The typical routes pulled
+  the card's 20/20/35/25/20 because the replay does; the reviewer followed the gauge, and so does
+  the card now. A typical route encodes what the TEXT says to do, not what the replay issues.
+- **Where the insert method is not the cause, no text fixes the peak.** Lowering power from the
+  chained plant peaks at 600.3 °F whether the player holds INSERT, pulses it, or holds then pulses:
+  the leg starts at 589.8 °F because raise steps 10–11 pull and dose a xenon-free plant. The peak
+  belongs to the chain seam, not to the lower-power card.
+
+## Session log — 2026-09-24-workbench-k (layman pass 4 runtime: speed the wait, not the action; drop notes that outlived their drop)
+
+Traps only.
+
+- **A rung on the substep that holds the ACTION warps the reading time.** Entering cooldown 11,
+  heatup 14, startup 2 or cooldown 1 with no input ran 75–77 plant-min per 10 s wall at 600×.
+  Auto now holds 1× until the step's `cmd` family is seen (`cmd_seen`); a step whose wait comes
+  first needs `wait_first: true` (startup 11, TMI-2 15). A measurement that presses 1× itself
+  latches auto's key and reads 1× on the unfixed build — measure with no speed input.
+- **A synthetic fixture with a field the real object lacks hides the real path.** run_m5's alarm
+  probe carried `label`; kernel alarms carry only `tile_label`, so every real drop printed the id.
+- **A note retired only by a PLAYER act outlives an AUTO act.** The walkthrough raising the clock
+  is not a press, so "Held at real time" stood under 3600×.
+- **An alarm label can claim a predicate its gate never tests.** PWR-A33 said "below the RHR entry
+  pressure"; it is gated on mode only and came in at 665 psi on the heatup.
+- **Mirroring the gate in `run_walkthrough_routes` blinds mutation `no_settle_9`** (typical
+  completes at 117.8 plant-min instead of stranding). The harness still paces the read at the rung;
+  mirroring it needs that injection re-aimed first.
+
+## Session log — 2026-09-24-workbench-j (round-4 walkthrough rulings: load first, dump mode, settled rate, board-graded step 16)
+
+Traps only; the per-step numbers are in each step file's Notes and the merge commit.
+
+- **A threshold set as arrival + N breaks when an upstream route changes where the plant arrives.**
+  Raise power step 10's `> 355` (arrival 351 + 4) stranded every route once load first ended the
+  climb at bank 347. Re-derive arrival-relative bounds after any reorder upstream.
+- **A dwell is a clock, not a settle.** Five minutes of rods-still passed Mode 3 → Mode 1 step 9 on
+  STARTUP RATE 0.069 while it was still falling to 0.024; the climb then took 127 plant-min against
+  the card's 45–60. Grade the settle with a `steady` row; 240 s was the shortest window that refused
+  bank 208 (120 s passed it at 0.057).
+- **A rate band cannot see a slow approach.** STARTUP RATE read +0.004 to +0.009 through a dilution
+  toward critical, inside a still plant's ±0.013 noise; heatup step 16's approach test has to come
+  from SOURCE RANGE over 600 s (a 300 s window ticked every approach case).
+- **A lamp lit in both modes cannot grade a status word.** `steam_dump_auto` is `mode !== 'off'`, so
+  "status PRESS" ticked on a card reading TAVG. Grade the word's own test.
+- **A lagged rate tile and the true rate are different numbers.** Cooldown step 11's true 5-minute
+  rate peaks at −158 °F/hr where the COOLDOWN RATE tile (600 s lag) peaks at −106. Word a step on
+  the channel the tile draws, measured on the player's route.
+- **Load first's lower peak comes from pulling to the gauge, not from the order.** Pulling the card's
+  literal 35 steps after LOAD peaks at 581.7 °F, above rods-first with the same 35 (579.9 °F); the
+  player route that pulls until the tile is in band peaks at 572.0 °F.
+
+## Session log — 2026-09-24-workbench-i (route-harness reds: two grading flickers, one honest re-grade)
+
+Measured on `test/run_walkthrough_routes.js` (full stack, seed 42). Traps only:
+
+- **A slow statistic crossing its limit flickers like noise.** `pwr_startup` 12's `steady` drift
+  fell 0.0306 -> 0.0293 with +/-0.0005 jitter; met, un-met, met — Continue lit 1-2 s and went
+  dark (135.4 and 67.3 plant-min). A sample debounce cannot fix it (the drift sat over 0.03 for
+  5-10 s); hysteresis does: release at 1.25 x `v`. Largest drift after first meet: 0.0303.
+- **A debounce on un-tick must not protect a tick the grading never gave.** A `cmd`-kind `~` row
+  is set met by the PRESS; the first cut of the band debounce kept cooldown 6's "SPRAY at 50 %"
+  ticked 0.4 s while flow was still ramping — a new flicker the old instant un-tick had hidden.
+  The debounce now covers only a band its own grading ticked (`bandHeld`).
+- **A band row that ticks on arrival and un-ticks after the step's own pull is the #683 design,
+  not a defect.** Raise power 6: 577.5 °F on entry (in band), the card's 35-step pull peaks at
+  590.0 °F (4.5 °F over), back in after 3.7 plant-min. The harness now counts a `~` un-tick only
+  when the row was met under 10 s (transient pass or noise); the narrowed-band injection proves
+  it still fires (met 7.5 s).
+- **A route policy is a reading of the card, and the owner can rule it wrong.** *(OWNER RULING,
+  2026-09-24: "The way I see it the range means that the source range target will be within that
+  range not that hitting the lower part of the range will put you over the target. So let's leave
+  then")*. Read that way (pull to the window bottom, settle, keep withdrawing inside it until the
+  SOURCE RANGE row), Mode 3 to Mode 1 step 8 completes at bank 198, 7,244 cps (3 taps). The
+  literal route then strands at step 10 instead: step 9 passed on ONE read of 0.069 DPM at bank
+  208 taken 5 plant-min after the pull, still falling (to 0.024), and the climb to 0.05 % took
+  127.3 plant-min against the card's "45 to 60". Clearing one strand moves the route onto ground
+  no gate had walked.
+
+---
+
+## Session log — 2026-09-24-workbench-h (Raise power ported to the owner's step format: two traps)
+
+The port itself changed no predicate; the record is `Blueprint/walkthrough_steps/03_raise_power.md`
+Notes. Two traps, measured 2026-09-24 on the full stack (`low_power`, seeds 42 and 7, tile channels):
+
+- **`glance_rung` cannot rate a step whose second action is an `accs` command.** It traces only
+  the step's own `cmd`. On the stage steps that is the rod pull, never the LOAD, so its power
+  columns describe a rods-only plant: 65 % at the end of step 8 against 98.7 % on a player's
+  route. Its rod-pull table is still right. Measure a pull-then-LOAD step with a probe that
+  issues both.
+- **A wide trim band plus the previous stage's trim make every stage's trim substep tick at
+  entry.** The tile read 550.2-584.0 °F at step entry, inside the band on every stage. The step
+  still grades, because every row must be true together after LOAD, but a `b` substep draws done
+  before the player acts. The owner's order (rods first) also peaks stage 6 at **591.2-591.8 °F**,
+  over his own 590 °F caution; LOAD first peaked at 589.7 °F. There was no trip on any route.
+
+---
+## Session log — 2026-09-24-workbench-g (Shutdown to Mode 3 in the per-substep format: a status-word check-off that grades a lamp)
+
+Record: `Blueprint/walkthrough_steps/05_shutdown.md` Notes.
+
+- **A CHECK-OFF LABEL CAN NAME A STATE ITS ROW CANNOT READ.** `pwr_shutdown` step 3's row is
+  labelled "STEAM DUMP AUTO lit, status PRESS" and grades `steam_dump_auto > 0`, true from the
+  preset lineup. The status word is a STRING (`control_state.steam_dump_mode`) the grader cannot
+  compare. Measured on the chained route (seeds 42 and 7): the whole step completes 0.3 s after
+  entry with the status reading TAVG; it reads PRESS only after the AUTO press. **Before you
+  keep a label, read which field the row grades and whether it can be false on arrival.**
+- **#697'S PREMISE IS PER-ROW.** It made the AUTO press optional because the plant already
+  produced the press's EFFECT (dump open, power low). That holds for the valve rows and not for the
+  status word: the plant never selects pressure mode by itself.
+## Session log — 2026-09-24-workbench-f (Mode 5 to Mode 3 ported to the step format: a one-row step's rung covers its presses; a stated time from another engine)
+
+Record and every number: the 2026-09-24 reconcile record in `Blueprint/walkthrough_steps/01_mode5_to_mode3.md`.
+
+- **A ONE-ROW WAIT STEP PLAYS ITS PRESSES AT THE WAIT'S RUNG.** The 30 s rule keys on the step's
+  `hold`, so `pwr_heatup` 3 ran FAST + WITHDRAW at 60× and 9 ran the HEATER press at 600× from step
+  entry. Splitting press from wait needs a gradeable row for the press: 3a grades SHUTDOWN ROD
+  POSITION above 0 (unmet at entry, ticks 5 s after the click on both routes). Step 14 could not
+  split — `pressure_setpoint` is not a `CTL_PARAMS` channel, so the typed SET PZR PRESSURE is
+  ungradeable without a runtime change.
+- **A LEG'S STATED TIME CAN BELONG TO ANOTHER ENGINE.** The purpose said "About 12 plant-hours";
+  the leg completes in **6.35 / 6.37 plant-hours** (replay / player route). 12 matches the retired
+  engine's full settle (~12.3 h to 567 °F (297.2 °C), INHERITED from its pool comment), which this leg never waits for.
+- **`run_style` N6 SCANS `target` BUT NOT `accs`.** A board-literal "0 MW" moved into `target`
+  reddened; the same string in `ask`/`label` passes unseen. The card draws `target` only on an
+  observe step, so the target kept "MWe".
+- **A TEST THAT FINDS A STEP BY REGEX ON `text` GOES BLIND WHEN THE ACTION MOVES INTO `ask`.**
+  `run_checklist_pwr2` 2j's `/press AUTO under HEATER/` now reads text + asks. Grep every leg's
+  tests for `.test(st.text)` before porting.
+- **IN A FAST HARNESS, ROW LATENCY IS BROADCAST RESOLUTION.** At 600× a broadcast is 60 plant-s, so
+  the 5-broadcast debounce reads as "+300 s" on 9a — the player at 1× sees ~5 s.
+## Session log — 2026-09-24-workbench-e (the cooldown leg ported to the per-substep format: every stated time was off on the player's route)
+
+Full record, tables and speed provenance: `Blueprint/walkthrough_steps/06_cooldown.md` Notes.
+
+- **A TILE-PRINTED NUMBER AT THE CENTRE OF A `<` EDGE TICKS ON THE WRONG READING.** Six of the leg's
+  thresholds sat inside the band their own tile prints (`P < 11.14` MPa is 1615.7 psi, drawn
+  "1616", under a label "below 1615"). Moved to the floor of the next reading down; the replay's
+  step 11 now meets `Tavg < 92.5 °C` 91 s before its 7200 s hold ends — the leg's thinnest margin.
+- **THE REPLAY'S HOLD IS NOT THE PLAYER'S DWELL, SO THE 30 s RULE ON IT PICKS THE WRONG RUNG.** Steps
+  2 and 5 hold 1500 s (a ramp) and would run at 60×; a player typing the setpoint once ticks in
+  15-20 s. Derive a rung from the measured player dwell.
+- **STATED TIMES ROT ON THE ROUTE NOBODY REPLAYS.** The accumulator window "about 5 plant-minutes"
+  measures 7.9-8.5 on every route; the dump walk "about two plant-hours" is 44 min when the player
+  waits for Tavg to settle, as told.
+- **A GATE FIXTURE CHOSEN BY "FIRST MATCHING STEP 1" MOVES WITH THE POOL.** `verify_flags_ui` #686
+  picked `pwr_cooldown` step 1 for its generated speed line; the format sets `wait_hint: false`
+  there, and after this port no pwr2 step 1 draws that line. The fixture now forces it in-page.
+- **`glance_rung.js` is blind on a shutdown leg** — its yardstick is REACTOR POWER, 0 % throughout.
+## Session log — 2026-09-24-workbench-d (Lower power brought down to the owner's per-substep format; a rod count that depends on the route)
+
+Record: `Blueprint/walkthrough_steps/04_lower_power.md` Notes. Traps only:
+
+- **A rod count in a note is a function of how long the player waited.** The boration does the
+  rods' job given time: the replay (full holds) inserts 40 / 0 / 0 / 0 steps in steps 3-6, a
+  player who inserts the moment the load check-offs tick needs 72-74 / 60-64 / 45-46 / 36-38
+  (seeds 42, 7, 99). His "about 6" was wrong by 6x on the fast route. Measure both ends.
+- **A band's span is not the stopping window when the tile lags.** Top-to-floor of the green
+  band is 37-50 rod steps at MED, but a stop at the floor crossing went on to read 14.9 °F
+  (8.3 °C) under the floor. At 10x the span alone is 4.6-6.2 s of wall clock; 5x is the rung.
+- **The 30 s rule plays a long-`hold` load step at 60x.** Steps 4-6 (`hold` 720/600/900) had no
+  `wait_speed`; a substep rung now wins while it is active.
+- **An injection probe keyed on a leg moves branch when the leg is ported.** `run_checklist_pwr2`'s
+  ask-sweep probe was "the first ask in `pwr_lower_power`"; once every ask there carried a
+  `wait_speed`, the 15-word injection sat under the 30-word owner cap. It now takes the first
+  LEGACY ask in the pool — and goes null once every leg is ported.
+- **Parallel agents share one session scratchpad.** A `glance_rung` output written to a generic
+  filename was overwritten mid-read by another leg's run. Use a per-leg directory.
+
+## Session log — 2026-09-24-workbench-c (third layman pass on Mode 3 to Mode 1: a Continue lit below the fold; `paramValue` is not the tile)
+
+Report and per-finding numbers: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS3.md`.
+
+- **`InstructorLayer.paramValue` READS TRUTH, NOT THE TILE.** The grader's own `readParam` maps
+  `sr_counts_cps` to `instruments.source_range`; `paramValue` does not, so a measurement script
+  that samples through it sees a noise-free count. The first cut measured SOURCE RANGE at bank 73 as
+  690 to 695 and would have refuted the reviewer's "7.4e2 spike"; the tile's own channel reads 601
+  to 797 there, half the time at or above 7.0e2. **Sample `s.instruments.<channel>` for anything a
+  player reads.**
+- **A STEP TALLER THAN ITS LOG CAN NEVER BE "VISIBLE" UNDER A WHOLE-STEP TEST.** The #612
+  reader-scrolled guard asked for the entire active step on screen; step 9 (785 px in a 728 px
+  log) never is, so the app's OWN open-at-its-top scroll armed `userScrolled` and disarmed every
+  later scroll on the step. A guard built for fitting steps must say what it means for the other
+  kind. Fixed together with the missing scroll when Continue lights.
+
+## Session log — 2026-09-24-workbench-b (9a grades "3 short of the 1/M prediction": the replay route stood AT its own prediction; a same-instant restore is not a rewind)
+
+Design and numbers: `pwr_startup` step 9's comment, the step file's "THE 9a GAP — RESOLVED" note.
+
+- **THE AUTHORED REPLAY STOOD EXACTLY ON ITS OWN PREDICTION.** The replay presses Plot point the
+  tick a count target is met, mid-burst (banks 0/79/155/188/202), and that ladder predicts 213 on
+  seeds 1, 7, 42 and 123 (214 on seed 1) — the bank its single +11 pull stopped at. The old 9a
+  ticked it because it graded the stop only. Split into +8 then a replay-only +3 once 9a latches;
+  a stop at 210 alone was measured and left REACTOR POWER at 0.003 % at the end of step 10's hold.
+- **A RESTORE TO THE PRESS'S OWN INSTANT DOES NOT CLEAR THE PLOT.** The panel clears on
+  `sim_time < lastCapture`, strictly; a save taken the same tick as the press restores to equal
+  time and keeps the points. The first draft of the rewind check saved there and passed only
+  because an earlier case had pressed Clear — injection (clock rule deleted) came back 0 red.
+- **THE TABLE IS NOT IN THE SAVE, SO A CHECK THAT EMPTIES IT POISONS EVERY LATER FORK.** Restoring
+  a later save does not bring points back (the panel's design). Cases that clear (Clear, rewind)
+  need a fresh build or must run last.
+
+## Session log — 2026-09-24-workbench-a (second layman pass on Mode 3 to Mode 1: a `stopped` row blind to a rod in travel; "just critical" passes the rate floor on noise)
+
+Report and every number: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-24_LAYMAN_PASS2.md`.
+
+- **`op: 'stopped'` ON A ROD PARAM READ THE ROUNDED COUNTER.** `control_rods.steps` flips at the
+  half-step; one SLOW step is ~8 plant-s of travel with `moving: true` throughout. So for ~4 s after
+  a tap the bank was moving and "stopped for 300 s" was still met — with the pull's rate spike
+  (peak 0.115 against a 0.055 floor) `pwr_startup` 9b sat awaiting Continue from +0.6 s after the
+  tap. Only visible at 1× (0.1 s broadcasts beat the 5-broadcast debounce inside the travel); at
+  10× the flip lands first. Fixed in `gradeStopped` off the group's `moving` flag.
+- **ONE TO TWO STEPS PAST CRITICAL, THE RATE TILE STRADDLES THE 0.055 FLOOR.** Critical is bank 207
+  on the reviewer's route (−0.2 to +0.5 pcm); 208 / 209 are +7.6 / +15.3 pcm and read 0.049 to
+  0.064 at the five-minute mark, so whether a step passes there is noise. Three taps to 210
+  (+23 pcm, 0.085) is the typical player result, still ~3 steps short of the text's "0.15, as
+  written" (213). The text's times and levels downstream assume the deeper approach.
+- **POWER BEFORE THE TURBINE DEPENDS ON THE APPROACH TOO.** Stop, level off, +13 SLOW, no load:
+  210 → 223 settles 7.7 to 8.1 %, 213 → 226 at 9.3 to 9.7 %. "Settles near 10 %" (step 13) is
+  the authored route only; near P-10's 8 % on the shallow one.
+
+## Session log — 2026-09-23-workbench-d (four owner rulings on the Mode 3 to Mode 1 layman pass: a `steady` row across an insert; a `<` row that guarded nothing; power at a fixed LOAD depends on the bank)
+
+Rulings and per-change numbers: the reconcile record (d) at the end of `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`.
+
+- **A `steady` ROW TICKS AT A TURNOVER.** It compares the two half-window means, and a rise-then-fall
+  (withdraw overshoot, then INSERT) makes them equal at the peak: `pwr_startup` 12 after a 14-step
+  insert ticked at +468 s with power 2.41 % and FALLING (bank 219 → 205), and at the 300 s floor on
+  225 → 211. Not a level-off check across a reversal. Adding the old rate row back would have
+  LOCKED the 219 case instead (subcritical decay holds the rate at −0.05, inside ±0.10, for ever).
+- **A `<` ROW LATCHES, SO "power below 5 %" NEVER GUARDED STEP 12.** It is met at ~0.46 % when the
+  step opens and stays met; measured, bank 225 with a short insert completed step 12 level at 6.6 %.
+- **"POWER FOLLOWS THE TURBINE, NOT THE ROD APPROACH" (inherited, S-4) IS HALF TRUE.** At LOAD 10 MWe,
+  1200–2400 s after LOAD: bank 222–226 → 9.67–9.84 %, 228 → 10.14–10.66 %, 229 → 11.05–11.19 %,
+  233 → 13.1 %. Same load, 3.5 points apart on where the rods ended. Any "near N %" on a step after a
+  free-length pull is a range, not a number.
+
+## Session log — 2026-09-23-workbench-c (layman pass on the Mode 3 to Mode 1 per-substep port: a re-grading row moved the clock; a rate floor inside its render band)
+
+Report and per-finding verdicts: `Diagnostic/CHECKLIST_PLAYTEST_2026-09-23_LAYMAN.md`.
+
+- **A PER-SUBSTEP RUNG TURNS A RE-GRADING ROW INTO A PACING ROW.** `pwr_startup` 9a (`stopped 60`)
+  un-ticked on every tap 9b asks for; the active substep fell back to 9a and auto forced 1× for 60
+  plant-s AFTER the tap — the port's comment called that "his back to 1× before every tap". Measured
+  verdicts `100 -> 000` within 4 s of each tap. New `accs[].latch` (legal only where a later
+  unlatched row re-asserts the hold; `run_checklist_pwr2` §2ak.1) keeps 9a ticked; completion is
+  unchanged (bank 211, +1554 s both ways). Injection-proven in §2ak.3 and `verify_flags_ui`.
+- **A RATE READ AT A FIXED DWELL READS THE PULL'S TRANSIENT, NOT THE PERIOD.** At the five-minute
+  read every sub-critical bank reads POSITIVE: 205 +0.02, 206 +0.03, 207 +0.046 (−0.2 pcm) /
+  +0.042 (−5.3 pcm); critical-by-+2.3 pcm bank 208 reads 0.056 then 0.009 an hour later. So the
+  owner's "repeat until it reads positive" cannot be graded as written. **And 0.05 sat inside the
+  tile's `toFixed(2)` "+0.05" band** — moved to 0.055 (0.045, the other edge, completed bank 207 at +0.3 pcm in the port's table — inherited).
+- **A "verify" row graded on an OVERSHOOT strands the slow player.** Step 17 grades REACTOR POWER
+  ≥ 10.05 %; at LOAD 10 MWe power settles 9.5–10.0 % and passes 10.05 only on the load pick-up
+  (+112 to +183 s). No tick in 1200–2400 s reached it on four runs. Power ≈ 1 % per MWe of LOAD
+  (11 MWe: 10.5–11.0 %). Owner's text; not fixed here.
+- **A dwell exactly as long as the note's "wait five minutes, then read" loses the race to its own
+  debounce**: the harness, reading at 300 s, tapped at bank 209 (+0.068) one second before the step
+  would have ticked.
+
+## Session log — 2026-09-23-develop-b (#800: every safety injection trips the reactor, and a latched SI holds the RPS reset)
+
+- **Wire:** `pwr2_protection.js`, after the SI latch: `pr.si && !pr.reactor_trip` → trip, cause
+  `safety_injection`. Sourced WTSM 12.3.2.2 (ML11223A310) item 1. Reads the LATCH (the source's
+  "retentive memory", §12.3.2.3), placed after the credited RPS rows so a same-step setpoint trip
+  keeps its cause.
+- **Measured** (full stack, `hot_full_power`, `rcp_seal_leak` severity 1, 60×, 6 s samples): SI
+  latches 369 s on both builds; the trip goes **447 s `sg_lolo_level` → 369 s `safety_injection`**.
+- **THE TRAP, and it was caught by two existing gates:** the wire re-opened #571's defect. The
+  "not a wedge" fixtures in `run_pwr2_shell` and `run_pwr2_board` block the low-pressure trip and
+  reset the RPS under a LOCA with SI still latched; the reset was accepted, then re-latched off the
+  SI latch within seconds. Fix: `pwr2_shell.js:standingTrip` counts a latched SI as a standing trip
+  signal, with its own refusal text. No deadlock: the SI reset needs P-4 (reactor tripped), which
+  is exactly the state the refusal holds. **Any new input to the reactor-trip latch must also be
+  asked of `standingTrip`**, or the reset permissive goes blind to it.
+- **Fixtures moved, and why it is not a refit (HR10):** the exit now resets SI before the RPS; a
+  new check asserts the refusal while SI is latched. Run against the OLD build: board's exit check
+  passes and its #800 refusal fails. In shell, the old build's accepted reset clears P-4, so the
+  SI reset in the exit path throws. It used to crash the runner and is now caught as that
+  check's FAIL (192/2 on old).
+- **Quality pass (fresh reviewer), what it changed:**
+  - The containment SI now decides the trip cause on EVERY at-power leak and break. Engine-direct:
+    100 % leak 0.05 trips at 47.3 s `safety_injection`, where it was 68.0 s overtemperature ΔT.
+    The TMI sequence, tube rupture and loss of feed are unchanged.
+  - **The default seal leak (40 %) now trips the reactor at 15 min**, measured full stack on
+    seeds 1, 7, 99 and default. Manual 07 PWR-E23 said "no trip, no ESF" and is rewritten.
+  - **The latch is NOISE, but deterministic:** all four seeds latch at 15m00s with TRUE
+    containment at 17.78 psia (0.1226 MPa), 0.3 psi (2.9 sigma) under the 18.1 psia (0.1254 MPa)
+    setpoint. The instrument PRNG is seeded from the CHANNEL ID, not the run seed
+    (`pwr2_instruments.js:55`), so `--seed` cannot move it. Do not read seed agreement on an
+    instrument-noise effect as proof the effect is not noise. After the trip,
+    true pressure creeps to only 18.16 psia by 39 min. Recorded on #800.
+  - The board's refusal text (the kernel permissive row, which refuses before the shell) now
+    names the SI latch.
+  - `run_checklist_pwr2`'s label check read a hand list of literal causes. It now scans every
+    `trip_cause = '...'` literal, and was injection-proved on the label.
+- **Second half, RULED and built:** OWNER RULING (2026-09-23): "A" — the containment SI
+  channel holds **2.0 s [derived]**, carried from the other SI channels. Engine-direct, full power:
+  - large break 1.0: SI 3.76 → 5.74 s, and the trip goes back to overtemperature ΔT at 4.56 s;
+  - leak 0.2: SI 12.50 → 16.82 s, trip on overtemperature ΔT at 15.80 s;
+  - leak 0.05: SI and trip 45.30 → 58.44 s;
+  - tube rupture unchanged.
+  Full stack: the full-severity seal leak trips at 7m30s on SI (true containment 18.33 psia,
+  above the setpoint), and the default leak at 18m39s. **Most of the #800 "78 s at power" was the
+  noise latch**: with the hold, SI arrives about when the old build's low-low level trip did.
+- **Fallout, adjudicated one by one:**
+  - `run_pwr2_ctmt_esf`: two fixtures pinned the 0.0 hold. One was a single 0.02 s protection
+    step; the other allowed a 1.5 s latch window. Both were widened by the 2.0 s hold.
+  - `run_pwr2_endurance` shed-order: the fixture's recovery wait ran BEFORE the post-trip shrink,
+    so it exited at 0.0 s on every build. It was masked while noise latched SI at 23.5 s; at
+    31.5 s the shrink crosses the 17 % cut. The wait now runs after a 60 s settle.
+  - All three rewritten fixtures pass on the pre-hold build too.
+- (superseded) The issue's second half was left open pending that ruling. The containment SI channel latches ~88 s early on noise
+  (`DELAY.si_hi_ctmt_press` 0.0 s, `[open]`). A confirmation delay needs its own evidence pass,
+  and the source is silent on coincidence for this channel. Left open on #800.
+
+## Session log — 2026-09-23-develop-a (the limiter's bound is computed only where it can bind; the checklist runner outgrew a CI shard)
+
+- **CI run 35810480463 timed out shard 1 on `run_checklist_pwr2`**: 1,553 s on the last green run, 1,986 s solo now. The PWR2 step was **100.3 → 137.5 µs (+37 %)** against `ebf7bc53`, and the limiters (#588) were the cause. Split at the replay / live-runtime line (`f9ea1181`, 1,047 s + 933 s). The name union equals the unsplit run, 352. CI then went green (run 35837085210).
+- *(OWNER RULING, 2026-09-23: "Let's do option 2 so it doesn't slow it down during normal operations.")* **`8f9e614c` + `5ff51c01`**: `hAtTarget` (an 80-iteration saturation bisection, 11× a step, ~29 µs) now runs only when `dt*(qIn+gUp) > m`. **~132 → ~100 µs/step.** Bit-identical: 0 of 11,070 fields on healthy plants, and on the core-damage casualty where the limiter binds 150 node-steps. The milestones are unchanged to 0.1 s.
+- **THE TRAP: a factor-2 over-skip went GREEN on every PWR2 runner, `coredamage_stack` included**, because the chain's invariants hold while its milestones drift ~9 s. Pinning the milestones was declined: they are a bifurcation (#543). What catches it is an **A/B exactness check**, skip vs forced-full on a fixture that binds 68 node-steps, with a floor on the bind count so it cannot pass vacuously. **For an optimisation claimed exact, assert the exactness, not the downstream behaviour.**
+- The inherited "11,430 fields" does not reproduce; the rig counts 11,070.
+- The owner will test casualty-time fast-forward on slower machines.
+
+## Session log — 2026-09-23-workbench-b (quality pass on the Mode 3 to Mode 1 port: a soft lock on step 9, and an auto-speed key regression)
+
+- **A DWELL CHECK-OFF CAN BE UNREACHABLE ONCE FEEDBACK OWNS THE RATE.** Step 9 (rods still five
+  minutes, then STARTUP RATE 0.05 to 1.00 per minute) never completes for a player who pulls into
+  the heating range: MEASURED, full stack, one slow pull from bank 202 to 235 then the note's
+  one-tap-per-five-minutes policy, seeds 42 and 7: rate 0.023 after the first dwell, ten taps,
+  REACTOR POWER 18.7 %, never met in 3,600 s. Pulls to 213/216/220/225/230 complete (+404 to
+  +532 s). Fixed with an `overtaken` on REACTOR POWER 0.5 %; the authored route reads 0.000 % at
+  completion so it never fires there. Gate: `run_checklist_pwr2` §2aj, injection-proven.
+- **"Never completes on seed 7" (the port's report) was its 1,800 s cap, not a lock**: tapping one
+  step per five minutes from 205 completes at +2,010 s (seed 42) and +2,349 s (seed 7).
+- **Text/grading gap, not fixed (owner's wording):** a CRITICAL core reads STARTUP RATE 0.006 to
+  0.036 for two hours (bank 208, true reactivity +2.7 to +7.4 pcm) — "positive and steady with the
+  rods stopped", as the card says, yet under the 0.05 floor. The note covers 0.01 and 0.15, not
+  0.02-0.05; one more tap always resolves it.
+- **An auto-speed KEY change is a behaviour change for every leg.** The substep index went into
+  auto's key on every `accs` step, so a legacy multi-row step re-forced its rung over the
+  player's override when a row ticked. Now only when an entry authors `wait_speed`
+  (`verify_flags_ui`, injection-proven: pre-fix reds at 10×).
+
+## Session log — 2026-09-23-workbench-a (Mode 3 to Mode 1 walkthrough brought down to the owner's per-substep format; three traps)
+
+`pwr_startup` now carries `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` (reconcile record at
+the end of that file). Traps worth keeping:
+
+- **A "wait, then read the rate" check-off needs a DWELL, and four minutes was too short.** A
+  STARTUP RATE band on its own ticks the post-tap transient; a `steady` row on the rate latched on
+  subcritical banks 205-207 (a slowly decaying rate is "steady"). Rods still 240 s + rate ≥ 0.05
+  DPM ticked bank 207 at −5.1 pcm (seed 7) — SUBCRITICAL; 300 s + 0.05 never did (banks 202-207,
+  seeds 42 and 7), and ticks bank 208 (+2.8 pcm) and the authored 213 at +383 s. The dwell is
+  what makes the reading honest, not the band.
+- **A check that iterates `ckl.accs` is blind to every `acc` step** — `run_checklist_pwr2` 2ah.4's
+  "STILL BLOCKS" read the snapshot from BEFORE its own injection for as long as its only step-1
+  target was an `acc`. Converting that step to `accs` exposed it. Converting acc → accs anywhere
+  can surface a hollow check like this; read what the check inspects before calling it a regression.
+- **An injection must pick a target with nothing to restore.** 2y's one-row-ask injection chose
+  the first single-row step, set `ask`, then `delete`d it — which, once a real ask sat there,
+  deleted the owner's text for the rest of the run and reddened its own cleanup check.
+
+## Session log — 2026-09-22-develop-a (the endgame's wall limiter cost 290 µs a step through a side door around #514's table; the plant already reached core damage)
+
+Covers `1a684bed`, `373ddf42`, `ee0ddd72`, `5bd1372d`, `148c9384`, `ad583f86`, `79236d93`. The
+resume record is issue #804. The #588 and #802 comment threads hold the per-commit adjudications.
+
+- **#802: this plant already reached core damage on the shipped engine, and nothing had to be
+  built.** On large break + station blackout + auxiliary feedwater loss, `fuel_damaged` latches
+  at ~5,093 s (85 min). Six branches agree within 21 s. Every measurement for months stopped at
+  1,200–1,800 s, but the secondary does not dry until 2,619 s. **The ride was too short.**
+  `run_pwr2_coredamage_stack` now asserts the chain link by link as invariants, never timestamps
+  (#543).
+- **`run_pwr2_perf` was 18.2× against its 8× budget**: 385 µs/step against the retired engine's
+  21 µs. Attributed per commit in scratch worktrees: `a33a9685` (Courant limiter) and `ee0ddd72`
+  (steam-generator film) cost nothing, and **`1a684bed`'s wall limiter accounts for the entire
+  +290 µs**. The cause: `cpLocal` called `W.T_from_h`, the raw correlation inverse
+  (34.201 µs against the vtable's 0.203 µs), **11.89 times a step instead of 1.00** — 62 % of
+  step time. **This is #514's defect coming back**: the new code reached around the table #514
+  built. The fix passes the temperature the caller already holds, which removes the inversion
+  instead of making it cheaper. **6.7× (134.1 µs vs 20.1) — PASS.** At 60× fast-forward the step
+  goes from 111.8 ms to 40.8 ms of the 100 ms broadcast, so 60× is sustainable in real time again.
+- **Bit-identity was proved in its strong form, and that is the trap worth keeping.** Three
+  initial conditions, 600 s: 11,430 fields, 0 differing. Multiplying `cp` by TEN also moves 0 of
+  11,430, while a 1-in-10,000 nudge to the wall duty moves 3,439. On a healthy plant `cp` is not
+  consumed at all, because the bound never binds. **That is why this swap was safe and the
+  same move on `hAtTarget` is not**: `hAtTarget` produces the bound itself. The residual
+  47 µs/step lives there and was deliberately left alone.
+- The damage chain's milestones did not move by even 0.1 s: dry 2619.3 → sink 2781.5 → on-ramp
+  4749.8 → ignition 4902.1 → latch 5092.6 s. Contrast leg: mass fraction 0.7273, clad peak
+  1541.0 °F (838.3 °C). The ulp-sensitive branch did not switch.
+- **Do not re-band `run_pwr2_perf`.** 8× → 19× would put it back in the 51× defect class it exists
+  to catch.
+- The pre-push aggregate: 121 runners, 4 drifts. All four are closed (`ad583f86` and `79236d93`).
+  Then the release-candidate bump to `Alpha 1.8.0-rc1` *(OWNER RULING, 2026-09-22: "Alpha 1.8.0-rc1")*.
+
+**Still open:** #799 (containment wall heat sink), #800 (safety injection does not trip the
+reactor), #801 (235 psi in one step), #803 (`h_hi` clip on a dry generator), and
+`run_checklist_pwr2`'s tracked red (TMI-2 steps 18/19). That red is attributed to #588's film term
+and the mechanism is undiagnosed.
+
+## Session log — 2026-09-21-develop-b (eight rulings cleared; the null self-test finds eight blind mutations and voids two coverage figures)
+
+*(OWNER, 2026-09-21: "Let's try to clear some of the open issues. What do I need to rule on and
+what's your recommendation?")* Eight rulings put and taken, seven issues closed, two filed.
+
+**Closed on the ruling alone.** #594 — the pump-less normal-spray departure STAYS
+*(OWNER RULING, 2026-09-21: "Keep it, close the issue")*; its premise had flipped back when the AUX SPRAY box was removed by
+#596, so the stand-in is again the only pump-less path other than the power-operated relief valve.
+#578 — no rod-stop or runback lamps *(OWNER RULING, 2026-09-21: "Neither — close it")*; the refusal half was
+already built and measured, so the player is told when it matters. #410 — no site provenance
+paragraph *(OWNER RULING, 2026-09-21: "Keep holding — close as declined")*.
+
+**#706** *(OWNER RULING, 2026-09-21: "Declare it but don't add a checklist caution")* — a NARROWING of the
+recommendation, recorded as such so a later pass does not "complete" it. `Manuals/12` §12.23
+declares the pressurizer level excursion (+20.4 / +43.07 / +21.19 points on heatup / cooldown /
+shutdown; 82.6 % and climbing with charging secured) against the 585 psig residual-heat-removal
+cross-connect autoclose. No engine constant moved. `f8d3f88d`.
+
+**#721** *(OWNER RULING, 2026-09-21: "Widen to anywhere + Escape + focus")* — `536cd3ca`. **The check took two
+passes and the first one was HOLLOW, which is the entry worth keeping.** Its cases chained on one
+panel, so with the pre-#721 code restored the Instructor-tab and alarms-strip sub-checks read
+"closed" — not because dismissal worked but because the previous case had left the panel open and
+the opening press hit the toggle-close branch. The aggregate went red, so it "passed its
+injection" while two of its six claims could not have caught their own regression. **An aggregate
+red does not make a sub-check sound.** Each case now force-closes through the opener's own
+unconditional toggle, opens fresh, asserts open, and fails BY NAME if its precondition cannot be
+established.
+
+**#657** *(OWNER RULING, 2026-09-21: "Null mutation per group")* — `7db3d2e7`, then `9a001d3f`. `MUT.nullSelfTest`
+in `test/mut_flags.js`: a no-op "mutation" per group that must report BLIND. A RED names a check
+red on the replay's own shortened ride and on NO mutation, so every mutant in the group reads as
+caught for the wrong reason. **In the HELPER on purpose** — #644 fixed ten hand-copied instances
+without fixing what produced the eight broken ones.
+
+- run_pwr2_engine: **17 of 17 groups BLIND.** Its positive control took THREE tries: shortening
+  `SETTLE` stayed green (that check rides both sides, so it is ride-length-insensitive) and group
+  N's heatup stayed green (rate-normalised by its own divisor). **A control that does not go red
+  proves nothing.** The issue named six `quiet ?` sites; the file has **53**.
+- Group O records 7 checks clean and 5 in the replay — O4 is inside `if (!quiet)` by cost, so two
+  checks run in NO replay at all and a mutation only they could catch reports BLIND. Deliberate and
+  pre-existing; the null line is the first place the gate says it out loud.
+- Adopted across nine more runners. **Five all-BLIND. FOUR RED**: reactor 5 checks, loadfollow 4,
+  kinetics 1, pressurizer 1.
+- **TWO OF THE ELEVEN COULD NOT BE FIXED BY LENGTHENING.** `run_pwr2_reactor`'s `SETTLE` 1500 → 4200
+  **blinded five mutations**, and 6000 blinded the same five: at 1500 steps each blind mutant reads
+  rho 5.91–8.55 pcm against a clean 8.52 and a heat residual 2014–2583 kW against 2571 —
+  indistinguishable. **The short ride is where those defects are VISIBLE.** The hold ride stays at
+  1500 and the settling claims moved to their own `SETTLE_LONG`. A ride length is not a free
+  parameter.
+- `run_pwr2_loadfollow`'s quiet SCHEDULE was the defect, not its length: `[100, 84, 68]` is 16 MWe
+  per move against the criterion's 8 — a load rejection, not a dispatch sweep. The dump latched
+  armed at 8.28 % of rated steam, power stalled at 91.4 % and never recovered. **No ride length
+  could have cleared it.**
+- **THEN EIGHT BLIND MUTATIONS APPEARED.** reactor's "25/25 caught" was really **20/25**,
+  pressurizer's "50/50" was **47/50** — their `code: 0` baselines were green BECAUSE OF the defect
+  #657 detects. Closed: **superheat was an IDENTITY in every fixture the file had** (all subcooled
+  or two-phase, `superheat_c` exactly 0 — the #362 incidence trap); the clad initial-condition
+  defect **equilibrates by 30 s** (step one pulls −2,728,910 kW, 9.1× rated and backwards, then
+  reads clean, which is why every settled check was blind); the insurge enthalpy check is
+  deliberately NOT on `h_sub`, because that field also reads wrong when the stratified layer is
+  never created, so the energy-per-kg form is placement-blind and unique to its own break.
+- **A KNIFE-EDGE BAR ON THE SHIPPING GATE**, found with them: loadfollow's "restoring demand brings
+  power back up" cleared its `cut.power + 10` bar by at most **0.059 of ten points** across every
+  horizon 80–180 s and went NEGATIVE at the short end. Physical span 10.09, so the bar demanded the
+  entire recovery to within 0.09. Re-pointed to **+9** with the drop asserted alongside the climb.
+  **Red set identical at 9 and at 10**, so verified rather than loosened. A proportional bar was
+  tried and rejected — "90 % of the drop" goes blind exactly where the first mutation lives.
+
+**#784** *(OWNER RULING, 2026-09-21: "Authorise it — auto-only")* — `a186df09`. Containment spray, the
+recirculation fan coolers and the steam-line isolation, auto-only in the PWR2 engine. Containment
+peak on a large loss-of-coolant accident **78.5 psig (0.6427 MPa) still climbing → 57.8 psig
+(0.4998 MPa), turning over at 403 s**; four-way decomposition because each half is separately
+sufficient.
+
+- **THE "NO CAPACITY EXISTS IN THE CORPUS" DECLARATION WAS AN EXPIRED PREMISE.** The module's own
+  header and the retired engine's config both said so; `find_source` found both the same day in the
+  anchor plant's documents — 1800 gpm per pump and 50 °F refuelling water (ML20339A101 Table
+  15.6-18a), 28.5 s and 44 s responses, fans on the safety-injection signal, one train and two units
+  credited (ML20339A221). **The #460 trap standing in the header of the file it was written in.**
+  Exactly ONE fitted constant survives: the fan heat-transfer coefficient.
+- **Spray is a MASS STREAM, not a sink time constant** — the retired engine needs `1/tau` because
+  its containment is a one-state gain model with nowhere to put water. Nothing about the knockdown
+  is fitted.
+- **THE MARGIN IS THIN AND WAS NOT PAPERED OVER**: 57.8 psig against the sourced 59.7 psig
+  design-basis peak, **1.9 psi**. The fitted fan coefficient was deliberately NOT retuned — this
+  module already declares it models no structural heat sink and that this OVERSTATES peak pressure,
+  so tuning until the number looked comfortable would hide a declared-missing term behind a fitted
+  one AND invert the sourced spray-outruns-fans ordering (GEND-061; 9.2 MWt against 3.9 MWt). Filed
+  as **#799**.
+- **FOUR GATES HAD TO TURN AROUND, each RECORDING the gap this closed**: an orphaned mutation anchor
+  reporting a BLIND SPOT rather than passing; a check asserting these fields were registered statics
+  (pinning the absence of a system that now exists); two kernel checks that were #778's and #783's
+  record of a plant that could not mitigate; and a blowdown PRECONDITION sampling the END of a
+  1200 s ride, which was the peak only while containment could only climb.
+- Two manual gates carried the same staleness in **hand-maintained maps**: `run_manual_setpoints`
+  held `absent: true` for four rows (a marker assertion, never a plant assertion — #624 item 14),
+  and `run_manual_notmodelled`'s BRIDGE held four entries that **its own direction-2 check caught**.
+  Its `>= 10` parse floor was retired too: that was a claim about how much of the plant is UNBUILT,
+  so it reddened every time a system got built.
+- The manual set said the opposite of what the plant does and **nothing gates its prose** — five
+  chapters rewritten.
+
+**#783 caption override RETIRED** *(OWNER RULING, 2026-09-21: "Drop the override")* — and **its own
+comment named the condition that would retire it**: *"If #784 models spray and the fan coolers
+inside this engine the parenthetical is earned back."* The earlier ruling's stated condition being
+met, not a reversal of it. What guards those rows now is STRONGER: with no entry in `OVERRIDDEN`
+they fall to the `a === baseAlarms[i]` IDENTITY clause, so a per-plant copy reds even if
+byte-identical. Its mutation was RETIRED rather than re-anchored — dropping the override is now the
+correct state, so re-anchoring would pin a non-event.
+
+**#588 first half** *(OWNER RULING, 2026-09-21: "Extend the physics to core damage")* — `a33a9685`, and it does
+NOT satisfy the ruling.
+
+- **TWO PREMISES IN THE BRIEF WERE STALE AND I WROTE ONE OF THEM.** `P_MIN` has been **0.002 MPa
+  (0.29 psia) since #524**, not 0.1 MPa — `pwr2_water.js:82` says so in its own comment. The plant
+  latches **380× ABOVE** the floor. Owed item 2 of the ruling was written against a wall that moved
+  three weeks earlier; I took it from the issue body. Corrected on the issue.
+- **The plant was stopped by an UNSTABLE ADVECTION SCHEME, not by the property library.** The ring
+  wants **98 sub-steps at 168.4 s** and gets `NSUB_MAX = 16`; junction flows reach 6.3e+4 kg/s
+  against an `mdot_loop` of 2.6 kg/s (the loop momentum state is FINE at rated — the first
+  hypothesis was REFUTED); enthalpies leave the envelope at −174,434 kJ/kg on a 1.55 kg hot leg; a
+  hot leg plus crossover holding 0.54 kg hand `F(P)` **2,070 kg of INVENTED liquid**, so no root
+  exists at any pressure.
+- The limiter clamps the approach factor at 1 — the **exact asymptote** of
+  `hbar + (h − hbar)·exp(−C)`, not a chosen cap. The exponential form was deliberately not used: it
+  differs from forward Euler at the `C ≈ 0.05` a healthy plant runs at. **Bit-identical: 3,844
+  fields × 3 initial conditions, 0 differing.**
+- **A SECOND FIX WAS BUILT, MEASURED AND REMOVED, and this is #588's own historical error nearly
+  shipped again.** A phase-preserving enthalpy floor took the casualty from held to four hours
+  clean. It binds 57 times in 1,200 s and **every time by less than 11 kJ/kg**, and it CANNOT catch
+  the thousands-of-kJ/kg case: a vapour node cannot reach the liquid floor by compression, since
+  `dh = v·dP` is bounded by ~0.46T while its own enthalpy is ~2T. Ulp sweep: limiter alone 6 of 8
+  branches off the hold, limiter plus floor 5 of 6 — indistinguishable. **Those 57 nudges were
+  SELECTING A BRANCH, not fixing anything.** 22 lines of reasoning at the removal site.
+- The gate asserts the INVARIANT and never the trajectory: 0 of 6 branches cleared the hold before
+  and 6 of 8 clear it now, **but the nominal branch still holds**, so "it no longer latches" is a
+  bifurcation (#543) and is asserted nowhere.
+- `run_pwr2_engine_b`'s `held WHOLE` check was a **STALE FIXTURE WITH TWO EXITS AND ONLY ONE
+  NAMED** — `while (tH < 300) { …; if (model_held) break; }` falls out at its horizon as happily as
+  at the latch, so with the plant no longer latching it read 153.3 kg of correctly-booked break
+  discharge as the hold failing.
+
+**#784 fallout: the seal-leak red, adjudicated as a STALE FIXTURE** — and **the alternative was
+MEASURED, not argued**. #799's missing structural heat sink would reach the setpoint early, so a
+lumped wall sink was wrapped around `stepContainment` offline and swept: 3.5 psig at 425 s as
+built, 517 s at 40 kW/K, 735 s at 100 kW/K, **1,329 s at a generous 210 kW/K and 200 MJ/K** — every
+one inside the 1,800 s horizon. **#799 changes WHEN, never WHETHER.** The actuation is the sourced
+design intent (ML11223A310 §12.3, verbatim). The row's teaching point survives on BOTH plants:
+charging carries the leak either way, level bottoms near 17.5 % and turns over, so `level > 15 %`
+was never in danger. One check became two.
+
+**Filed: #800** — safety injection does not trip the reactor. **78.2 s at power with injection
+running** (safety injection 337.8 s, trip 416.1 s), and the trip that comes is `sg_lolo_level`, a
+knock-on of feedwater isolation. Sourced to ML11223A310 §12.3.2.2 item 1. **INVISIBLE UNTIL #784**:
+every other route to safety injection on this plant sits at or below a condition that has already
+tripped the reactor, so the missing wire was an IDENTITY until a new signal moved the regime.
+Second observation folded in: the containment channel latches **88 s early on noise** (337.8 s
+shipped against 426.2 s with noise off) — zero delay, no coincidence, 0.145 psi sigma.
+
+**The `run_hardrules` trap.** 605 → **608**, and the BASELINES edit that should have carried it did
+not. **The check count IS the HR11 citation-site count**, so a ruling quoted into a docs or header
+commit moves it while touching no test file. Bisected one commit at a time: `f8d3f88d` (#706) **+2**,
+`a186df09` (#784) **+1**, the other three commits 0. After any commit that quotes a ruling, re-run
+`run_hardrules`.
+
+**I emptied the shared `node_modules`** — see `2026-09-21-develop-a` for the fix and the retired
+junction. The part that belongs here: **I followed LANES §9's teardown order and it still went
+through, because the PRIMARY tree's own `node_modules` is a reparse point** (tag `0x9000601a`, a
+Synology cloud placeholder) that all three lanes junction INTO. §9 assumed the primary held a real
+directory. `fsutil reparsepoint query` before linking is the check that would have caught it.
+
+### Open at the end of this session
+
+- **`run_pwr2_engine_b` 66/1 — a REAL invariant violation**, not a stale precondition: 6
+  adverse-flow steps of 60000, worst +47.8 psi, coolant climbing the pressure gradient. Caused or
+  exposed by #588's wall/heat-exchange limiter. **Blocks that commit.** Under diagnosis.
+- **The steam generator's primary-side void/flow term** *(OWNER RULING, 2026-09-22: "Ship it and
+  build the SG term now")*. `pwr2_sg.js:225` is `Q = U·wet·area·(primaryT − T_sec)` with a
+  leg-average temperature and a rated-geometry `U` — **no void term and no flow term**, while
+  `pwr2_fuel.filmCoefficient` and `pwr2_core`'s `WALL_FILM` both scale with flow AND phase. Measured
+  at 1,800 s with the core 100 % uncovered: the exchanger removes **7,808 kW against a 5,116 kW
+  decay load**, a WORSE ratio than the 5,301/5,258 that prompted the first ruling, and the cladding
+  peak turns back DOWN from 3,357 °F (1,847 °C) to 1,357 °F. Engine-wide retune behind it.
+- **The wall limiter withholds 485 GJ** over that ride, binding 2,210 node-steps — the whole steam
+  generator duty cancelled at the node most of the time. **A bound doing the model's job**, which is
+  why "the damage chain runs" is not presented as physics until the void term exists.
+- #799 (containment wall heat sink), #800 (safety injection → reactor trip). Neither started.
+- **Nothing pushed.** Eight commits on `develop`; no aggregate run, per the standing rule.
+
+
+## Session log — 2026-09-21-develop-a (the shared `node_modules` emptied a THIRD time — the junction is retired from scratch worktrees)
+
+*(OWNER, 2026-09-21: "The worker in develop just screwed up. Ask it what happened. Do not fix it
+yourself. Evaluate the best course of action to fix it." — then "A", choosing the reinstall +
+`NODE_PATH` fix over a Synology restore.)*
+
+**What happened.** The develop session bisected a red `run_pwr2_endurance` (24/1) in a scratch
+worktree with its `node_modules` junctioned to the primary's, and the teardown emptied
+`C:\grok_build\Reactor_Dynamics\node_modules` — 0 entries; `RD_workbench` and `RD_backshop`
+junction into it, so every browser gate in all three lanes died. Git untouched: no stash, reset or
+checkout in the reflog; its four uncommitted files are its own #588 work; five gated commits,
+none pushed. The agent reported following `LANES.md` §9's `rmdir`-first order. Same accident as
+the two on 2026-09-12 (entries below), so the order is not the control.
+
+**Recovery, measured.** Pinned to `gates.yml`'s `PW_VERSION` in a scratch prefix (no manifest in
+the repo root): `npm init -y && npm install playwright@1.61.1`, copied into the primary's
+`node_modules` — 2 packages, 2 s, browser binaries in `~/AppData/Local/ms-playwright` intact so
+no download. `require.resolve('playwright')` resolves from all three lanes; `verify_board_check`
+**282** at baseline.
+
+**The structural fix.** A detached scratch tree with NO `node_modules` ran
+`run_all --only verify_board_check` at baseline under
+`NODE_PATH='C:\grok_build\Reactor_Dynamics\node_modules'`, and threw without it; then
+`git worktree remove --force` on that tree left the primary at 1.61.1. `LANES.md` §9 now sets up
+scratch trees with `NODE_PATH` and no junction, and the paragraph that kept the junction for
+native runs ("still needs real module resolution in its own tree") is corrected — it was never
+measured and is false. Standing lanes keep their junctions; they are never force-removed.
+
+**Unverified, recorded as such.** The agent's theory for why `rmdir`-first did not protect the
+primary: the primary's `node_modules` is itself a reparse point (tag `0x9000601a`, a Synology
+Drive cloud placeholder), which the 2026-09-12 decoy reproduction did not model. Not reproduced.
+Two consequences the owner may want to act on: the folder is being synced to the NAS (the
+placeholder tag proves it), and a deletion there replicates; and the reinstall re-uploads it.
+
+**Left with the develop session:** the `run_pwr2_endurance` red is #784's (green at `7db3d2e7`,
+red at HEAD — the unblockable 3.5 psig safety-injection backup fires on a seal leak into
+containment) and still needs adjudication, and its #588 limiter is uncommitted and gated pre-damage
+on Node-only runners, so unaffected.
+
+---
+
 ## Session log — 2026-09-20-develop-a (#796 — the walkthrough drives the speed control)
 
 *(OWNER, 2026-09-20: "Make the walkthrough text a little bigger. The fast forward should drop down

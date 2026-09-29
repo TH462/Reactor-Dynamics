@@ -522,6 +522,24 @@ function sig(rows) {
                      : (si.bad.length ? si.bad.length + ' offending line(s): ' + si.bad.join(' | ').slice(0, 200)
                                       : 'clean over ' + si.len + ' chars' + (si.hasBanner ? ', precondition banner drawn' : ', NO banner — fixture may have stopped covering the banner path')));
 
+    /* ---- 5b. "← All walkthroughs" LANDS ON A LIST, WITH A WALKTHROUGH LOADED (layman pass 5
+     * S-2, 2026-09-25). The card's own back button switched to the Walkthroughs tab and the tab
+     * was EMPTY until Close: the list was hidden whenever a checklist was in the snapshot, a
+     * #607 rule from when the list and the card shared one pane. Read on the PAINTED list — the
+     * picker row visible AND at least one start button inside it visible. */
+    await page.click('#cklRun [data-ckl-list]');
+    await page.waitForTimeout(500);
+    var back = await page.evaluate(function () {
+      function vis(el) { if (!el) return false; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+      var on = document.querySelector('#tabbar button.on');
+      var btns = [].filter.call(document.querySelectorAll('#instrCklRow [data-ckl-start]'), vis);
+      return { tab: on && on.getAttribute('data-tab'), row: vis(document.getElementById('instrCklRow')), starts: btns.length };
+    });
+    ck('"← All walkthroughs" on a running card opens the Walkthroughs tab WITH its list drawn (layman pass 5 S-2)',
+       back.tab === 'checklists' && back.row && back.starts > 0, JSON.stringify(back));
+    await page.click('#tabbar [data-tab="instructor"]');
+    await page.waitForTimeout(300);
+
     /* ---- 6. THE LETTERED SUBSTEP ROWS, ON THE RENDERED PANEL (#741) --------------------
      * *(OWNER RULING, 2026-09-13: "1:A, 2:A, 3:a now." — option A being: extend the browser gate
      * to assert the rows actually draw.)*
@@ -736,6 +754,82 @@ function sig(rows) {
              : 'no geometry');
     })();
 
+    /* ---- 7b. CONTINUE LIGHTING BELOW THE FOLD IS BROUGHT INTO VIEW (#653, layman pass 3) --
+     *
+     * Measured 2026-09-24 at 1600x1000 on `pwr_startup` step 9 with the 1/M window open: a
+     * 785 px step in a 728 px log opens at its own top (section 7), so its Continue row sits
+     * below the log floor (y 954 against 931), and when 9b lit it nothing scrolled — the player
+     * was told to press a button that was not on screen. Two defects, both in renderChecklist:
+     * no scroll on the READY event, and the reader-scrolled test (`userScrolled`) demanding the
+     * whole active step be visible, which a tall step never is — so any scroll, the app's own
+     * included, disarmed every later auto-scroll on that step.
+     *
+     * Same synthetic-leg reason as section 7. Step 2 is tall and turns ready LATER, on a
+     * command (a `cmd` row), sent through the dev service handle so the pointer stays OFF the
+     * log, as a player's does. The first assertion is the anti-vacuity one: the row must start
+     * below the fold, or the second passes on any renderer.
+     *
+     * INJECTION-PROVEN: deleting the ready-event block reds the second check (row still below
+     * the floor); restoring the full-visibility-only `visible` test reds it too (userScrolled
+     * arms on the open scroll). Nothing else in this runner moves. */
+    await (async function () {
+      await page.goto(url + '&dev=1', { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_tall_ready'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        var note = [];
+        for (var i = 0; i < 40; i++) note.push('Sentence ' + i + ' of a deliberately long note, written to make this step taller than the panel that draws it.');
+        P.push({ id: 'zz_tall_ready', category: 'control', manual_ref: 'ZZ-03',
+                 title: 'Tall ready probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'A step that is met the moment it starts.', control: '(observe)',
+                           accs: [{ p: 'power_pct', op: '>', v: -1, label: 'Already met' }] },
+                         { text: 'THE TALL STEP — it turns ready on a command.', why: 'Fixture.',
+                           control: '(observe)', note: note.join(' '),
+                           accs: [{ cmd: 'set_pressure_setpoint', ask: 'Send the setpoint.', label: 'Setpoint sent' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(2600);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_tall_ready"]', { timeout: 4000 });
+      await page.waitForTimeout(2200);
+      await page.mouse.move(300, 500);
+      await page.waitForSelector('.ckl-step.ckl-active .ckl-ack:not([disabled])', { timeout: 15000 }).catch(function () {});
+      await page.evaluate(function () {
+        var b = document.querySelector('.ckl-step.ckl-active .ckl-ack');
+        if (b) b.click();
+      });
+      await page.waitForTimeout(1800);
+      function geoFn() {
+        var log = document.querySelector('#cklRun .ckl-log') || document.querySelector('.ckl-log');
+        var act = log ? log.querySelector('.ckl-active') : null;
+        var row = act ? act.querySelector('.ckl-ack-row') : null;
+        var cont = act ? act.querySelector('.wt-continue') : null;
+        if (!log || !act || !row) return null;
+        var L = log.getBoundingClientRect(), R = row.getBoundingClientRect();
+        return { logTop: Math.round(L.top), logBot: Math.round(L.bottom), rowTop: Math.round(R.top),
+                 rowBot: Math.round(R.bottom), actH: act.offsetHeight, clientH: log.clientHeight,
+                 ready: !!cont && /\bready\b/.test(cont.className),
+                 head: ((act.querySelector('.ckl-txt') || {}).textContent || '').trim().slice(0, 30) };
+      }
+      var g0 = await page.evaluate(geoFn);
+      await page.evaluate(function () {
+        window.RD.__dev.service().handleCommand({ action: 'set_pressure_setpoint', mpa: 15.51 });
+      });
+      await page.waitForSelector('.ckl-step.ckl-active .wt-continue.ready', { timeout: 15000 }).catch(function () {});
+      await page.waitForTimeout(1200);
+      var g1 = await page.evaluate(geoFn);
+      ck('#653 pass 3: the tall step opens NOT ready, with its Continue row below the log floor (anti-vacuity)',
+         !!g0 && /^2\./.test(g0.head) && !g0.ready && g0.actH > g0.clientH + 40 && g0.rowBot > g0.logBot,
+         g0 ? JSON.stringify(g0) : 'the fixture did not advance to step 2');
+      ck('...and when Continue lights, the row is scrolled into the log without the pointer in it',
+         !!g1 && g1.ready && g1.rowBot <= g1.logBot + 1 && g1.rowTop >= g1.logTop - 1,
+         g1 ? JSON.stringify(g1) : 'no geometry');
+    })();
+
     /* ---- 8. AN OUT-OF-TURN PRESS SAYS WHY (#759) ---------------------------------------
      * *(OWNER RULING, 2026-09-15: "Fix the text AND say why")*.
      *
@@ -798,6 +892,229 @@ function sig(rows) {
          out.line.indexOf('Wait for the counts to pass the target.') > 0 &&
          out.line.indexOf('Plot point') < 0,
          out ? JSON.stringify(out.line) : 'no .ckl-oot line');
+    })();
+
+    /* ---- 9. A LETTERED SUBSTEP CAN OWN MORE THAN ONE CHECK-OFF, ITS OWN NOTE AND ITS OWN
+     * "Suggested time warp" LINE (the walkthrough-step-format project, `Blueprint/
+     * walkthrough_steps/02_mode3_to_mode1.md`). Written before any pool step authored `accs[].cont` /
+     * `.note` / `.wait_speed` / `.speed_text`; `pwr_startup` has carried all four since
+     * 2026-09-23, but the fixture stays SYNTHETIC on purpose — it pins the letter math on one of
+     * everything, which no single shipped step happens to hold. Same idiom as section 6.
+     *
+     * THREE THINGS THE LETTER MATH MUST GET RIGHT AT ONCE: a `cont` row draws (still graded,
+     * still its own ✓/○) but consumes NO letter, so the substep after it is `1b`, not `1c` — the
+     * defect this proves is real: a naive `visN`/`visSeen` that still counted `cont` rows would
+     * print `1c` here. And a step that is ONE substep wide, even with a `cont` check-off under
+     * it, still suppresses letters altogether (the `single` variant), because the `visN > 1`
+     * test has to count HEADS, not `accs` rows.
+     *
+     * READ OFF THE RENDERED DOM, not a hook — same reason section 6 gives. */
+    await (async function () {
+      async function paint(mode) {
+        await page.goto(url, { waitUntil: 'load' });
+        await page.waitForTimeout(1200);
+        await page.evaluate(function (mode) {
+          var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_substep_probe'; });
+          window.RD.MANUAL_PROCEDURES.pwr2 = P;
+          // head A (met) + its `cont` check-off (met) + head B (unmet) — one of everything.
+          var accs = [
+            { p: 'power_pct', op: '>', v: -1, ask: 'Do thing A.', label: 'A done-when',
+              note: 'Note for substep A.', wait_speed: 5 },
+            { p: 'power_pct', op: '>', v: -1, label: 'A confirmed a second way', cont: true },
+            { p: 'power_pct', op: '<', v: -1, ask: 'Do thing B.', label: 'B done-when',
+              speed_text: 'Custom prose for B, not a bare rung.' }
+          ];
+          if (mode === 'single') accs = accs.slice(0, 2);   // head A + its cont row, nothing else
+          P.push({ id: 'zz_substep_probe', category: 'control', manual_ref: 'ZZ-04',
+                   title: 'Substep probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                   steps: [{ text: 'A step with a cont row and a per-substep speed line.',
+                             control: '(observe)', accs: accs }] });
+        }, mode);
+        await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(200);
+        await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(2600);
+        await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+        await page.waitForTimeout(700);
+        await page.click('button[data-ckl-start="zz_substep_probe"]', { timeout: 4000 });
+        await page.waitForTimeout(2200);
+        return page.evaluate(function () {
+          var card = document.querySelector('.ckl-step.ckl-active');
+          if (!card) return null;
+          /* In DOM order, rows AND the `.ckl-crit-tail` a head with a `cont` row defers its note and
+           * speed into (layman pass 2, 2026-09-24): the tail is folded back onto its head (the
+           * nearest lettered row, or row 0 on an unlettered step) and `order` records where it
+           * drew, so the placement is asserted as well as the text. */
+          var out = [], order = [];
+          [].forEach.call(card.querySelectorAll('.ckl-crit, .ckl-crit-tail'), function (r) {
+            var tail = r.classList.contains('ckl-crit-tail');
+            var n = r.querySelector('.ckl-crit-n');
+            var note = r.querySelector('.ckl-crit-note');
+            var speed = r.querySelector('.ckl-crit-speed');
+            order.push(tail ? 'tail' : 'row');
+            var rec = { tag: n ? n.textContent.trim() : null,
+                        met: r.classList.contains('ckl-crit-met'),
+                        note: note ? note.textContent.trim() : null,
+                        speed: speed ? speed.textContent.trim() : null };
+            if (!tail) { out.push(rec); return; }
+            for (var k = out.length - 1; k >= 0; k--) {
+              if (out[k].tag !== null || k === 0) { out[k].note = rec.note; out[k].speed = rec.speed; out[k].tailMet = rec.met; break; }
+            }
+          });
+          return { rows: out, order: order.join(',') };
+        }).then(function (r) { if (!r) return null; r.rows.order = r.order; return r.rows; });
+      }
+
+      var base = await paint(null);
+      ck('#substep render: three rows for a head + its cont row + a second head',
+         !!base && base.length === 3,
+         base ? base.length + ' rows' : 'the probe leg did not render');
+      ck('...the `cont` row draws — still graded — but consumes no letter',
+         !!base && base.length === 3 && base[1].tag === null && base[1].met === true,
+         base ? 'tags ' + JSON.stringify(base.map(function (r) { return r.tag; })) +
+                ' met ' + JSON.stringify(base.map(function (r) { return r.met; })) : 'no rows');
+      ck('...and the SECOND HEAD is lettered `1b`, not `1c` — the letter skips the cont row',
+         !!base && base[0].tag === '1a' && base[2].tag === '1b',
+         base ? 'tags ' + JSON.stringify(base.map(function (r) { return r.tag; })) : 'no rows');
+      ck('...head A draws its own note and its wait_speed as a snapped N× line',
+         !!base && base[0].note === 'Note for substep A.' &&
+         base[0].speed === 'Suggested time warp: 5×.',
+         base ? 'note ' + JSON.stringify(base[0].note) + ' speed ' + JSON.stringify(base[0].speed) : 'no rows');
+      ck('...the cont row draws NEITHER note NOR speed line — the head already carries them',
+         !!base && base[1].note === null && base[1].speed === null,
+         base ? 'cont note ' + JSON.stringify(base[1].note) + ' speed ' + JSON.stringify(base[1].speed) : 'no rows');
+      ck('...head B\'s authored speed_text REPLACES the bare rung, verbatim (its own punctuation, not doubled)',
+         !!base && base[2].speed === 'Suggested time warp: Custom prose for B, not a bare rung.',
+         base ? 'B speed ' + JSON.stringify(base[2].speed) : 'no rows');
+      ck('...and the head\'s note + speed draw AFTER its cont check-off, not between the two (layman pass 2, 2026-09-24)',
+         !!base && base.order === 'row,row,tail,row' && base[0].tailMet === base[0].met,
+         base ? 'DOM order ' + base.order + ' (want row,row,tail,row)' : 'no rows');
+
+      var single = await paint('single');
+      ck('...VARIANT: a head + its cont row is still ONE substep — no letters at all',
+         !!single && single.length === 2 && single[0].tag === null && single[1].tag === null &&
+         single.order === 'row,row,tail' && single[0].note === 'Note for substep A.',
+         single ? 'order ' + single.order + ' tags ' + JSON.stringify(single.map(function (r) { return r.tag; })) : 'no rows');
+    })();
+
+    /* ---- 11. THE STEP'S ONE-LINE WHY, AND ONE WARP FOR THE WHOLE STEP (2026-09-25, the what /
+     * why / how format — OWNER RULING, 2026-09-24: "I like putting the why where you put it. i
+     * choose a."). `aim` draws directly under the step's first line and ABOVE the first substep
+     * row, in its own class — not `.ckl-crit-note`, which is a substep's tip. A step-level
+     * `speed_text` draws ONE "Suggested time warp" line after the rows, and a head without its own
+     * `wait_speed` draws none of its own. SYNTHETIC, like section 9, and READ OFF THE DOM.
+     * INJECTIONS, proven in place 2026-09-25: the `.ckl-aim` line removed from ui/app.js -> .1 red;
+     * the step-level speed block removed -> .3 red. */
+    await (async function () {
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_aim_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        P.push({ id: 'zz_aim_probe', category: 'control', manual_ref: 'ZZ-05',
+                 title: 'Aim probe', purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'Verify the probe state.', aim: 'Why this step exists, in one line.',
+                           control: '(observe)', wait_speed: 1, speed_text: true,
+                           note: 'The step note.',
+                           accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Check thing A.', label: 'A' },
+                                  { p: 'power_pct', op: '<', v: -1, ask: 'Check thing B.', label: 'B' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(2600);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_aim_probe"]', { timeout: 4000 });
+      await page.waitForTimeout(2200);
+      var r = await page.evaluate(function () {
+        var card = document.querySelector('.ckl-step.ckl-active');
+        if (!card) return null;
+        var txt = card.querySelector('.ckl-txt'), aim = card.querySelector('.ckl-aim');
+        var rows = card.querySelectorAll('.ckl-crit');
+        var speeds = [].map.call(card.querySelectorAll('.ckl-crit-speed'), function (e) { return e.textContent.trim(); });
+        var note = card.querySelector('.ckl-step-note');
+        function before(a, b) { return !!(a && b) && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }
+        /* "directly under": the aim is the next element after the step line */
+        return { aim: aim ? aim.textContent.trim() : null, next: !!txt && txt.nextElementSibling === aim,
+                 aboveRows: rows.length === 2 && before(aim, rows[0]),
+                 italic: aim ? getComputedStyle(aim).fontStyle : null, isNote: !!aim && aim.classList.contains('ckl-crit-note'),
+                 speeds: speeds, speedAfterRows: speeds.length === 1 && before(rows[1], card.querySelector('.ckl-step-speed')),
+                 speedBeforeNote: before(card.querySelector('.ckl-step-speed'), note) };
+      });
+      ck('#aim: the one-line WHY draws directly under the step line and ABOVE the first substep row',
+         !!r && r.aim === 'Why this step exists, in one line.' && r.next && r.aboveRows,
+         r ? JSON.stringify({ aim: r.aim, next: r.next, aboveRows: r.aboveRows }) : 'the probe leg did not render');
+      ck('...italic, and its own class, not a substep note',
+         !!r && r.italic === 'italic' && !r.isNote, r ? 'font-style ' + r.italic + ', ckl-crit-note ' + r.isNote : 'no card');
+      ck('...a step-level warp draws ONCE, after the substep rows and before the step Note; the heads draw none',
+         !!r && r.speeds.length === 1 && r.speeds[0] === 'Suggested time warp: 1×.' && r.speedAfterRows && r.speedBeforeNote,
+         r ? JSON.stringify(r.speeds) + ' after rows ' + r.speedAfterRows + ' before note ' + r.speedBeforeNote : 'no card');
+    })();
+
+    /* ---- 10. A `below_1m` ROW PAST THE MARK SAYS WHERE THE MARK IS (quality pass, 2026-09-24,
+     * `pwr_startup` 9a). Measured in headless Edge, seed 42, prediction 211: a stop at 209 or 211
+     * never ticks 9a and the card said only "It ticks after the rods have been still for a
+     * plant-minute". The line draws only once the reading is already past prediction-minus-N.
+     * SYNTHETIC row, and the instructor's 1/M table is planted through RD.OneOverMCore itself so
+     * the printed prediction is exactly bank+d: first d = +5 (mark = bank+2, not past: no line),
+     * then d = +1 on the SAME card (mark = bank-2, past: the line). The second read is also the
+     * render-key proof — `met` and `no_1m` do not move between the two, so a key that ignores
+     * `pred_1m`/`obs` leaves the first paint standing. */
+    await (async function () {
+      await page.goto(url + '&dev=1', { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_1m_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        P.push({ id: 'zz_1m_probe', category: 'control', manual_ref: 'ZZ-05', title: '1/M mark probe',
+                 purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'Stop short of the prediction.', control: '(observe)', accs_ordered: true,
+                           accs: [{ p: 'control_bank_steps', op: 'stopped', v: 600, below_1m: 3,
+                                    ask: 'Stop 3 short.', label: 'Rods stopped 3 short' },
+                                  { p: 'power_pct', op: '<', v: -1, ask: 'Never.', label: 'never' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-minit="hot_full_power"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(2600);
+      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
+      await page.waitForTimeout(700);
+      await page.click('button[data-ckl-start="zz_1m_probe"]', { timeout: 4000 });
+      await page.waitForTimeout(1500);
+      async function plant(d) {
+        var bank = await page.evaluate(function (d) {
+          var C = RD.OneOverMCore, svc = RD.__dev.service(), s = svc.assembleSnapshot();
+          var M = C.fullScale(s), b = C.controlGroup(s).steps, xp = (b + d) / M, tb = svc.instructor.oneOverM;
+          C.clear(tb);
+          C.add(tb, 0, 1000, s.metadata.sim_time);
+          C.add(tb, 0.5, 1000 / (1 - 0.5 / xp), s.metadata.sim_time);
+          return b;
+        }, d);
+        await page.waitForTimeout(1500);
+        var r = await page.evaluate(function () {
+          var card = document.querySelector('.ckl-step.ckl-active');
+          var row = card ? card.querySelector('.ckl-crit') : null;
+          var ws = row ? [].map.call(row.querySelectorAll('.ckl-crit-when'), function (e) { return e.textContent.trim(); }) : [];
+          var svc = RD.__dev.service(), c = svc.instructor.getSnapshotBlock().checklist || {};
+          return { past: ws.filter(function (t) { return /^Past the mark/.test(t); })[0] || null,
+                   acc: (c.accs || [])[0] || null };
+        });
+        r.bank = bank;
+        return r;
+      }
+      var far = await plant(5), near = await plant(1);
+      ck('#1/M mark: the fixture row really is graded against the planted prediction (anti-vacuity)',
+         !!far.acc && far.acc.pred_1m === far.bank + 5 && !!near.acc && near.acc.pred_1m === near.bank + 1 && !near.acc.met,
+         'pred ' + (far.acc && far.acc.pred_1m) + ' / ' + (near.acc && near.acc.pred_1m) + ' bank ' + far.bank + ' / ' + near.bank);
+      ck('...a reading NOT past prediction-minus-3 draws no "Past the mark" line',
+         !far.past, JSON.stringify(far.past));
+      ck('...a reading past it names the prediction, the tick position and the reading — on the SAME card (render key)',
+         !!near.past && near.past.indexOf('predicts step ' + (near.bank + 1)) !== -1 &&
+         near.past.indexOf('at ' + (near.bank - 2) + ' or below') !== -1 && near.past.indexOf('reads ' + near.bank) !== -1,
+         JSON.stringify(near.past));
     })();
 
   } catch (err) {

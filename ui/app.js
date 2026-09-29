@@ -456,6 +456,10 @@
     pwr2:      { plant: 'pwr', engine: 'pwr2', dv: null, init: 'hot_full_power',
                  initStates: [['hot_full_power', 'Hot Full Power (Mode 1)'],
                               ['50_percent', '50 % Power (Mode 1)'],
+                              /* OWNER, 2026-09-28: "Add the power ascensions starting point to the list of
+                               * starting points." — the startup's hand-off state the power-ascension
+                               * walkthrough starts from; same label as the retired plant's entry. */
+                              ['low_power', 'At Power — power ascension (Mode 1)'],
                               ['hot_zero_power', 'Hot Standby (Mode 3)'],
                               ['cold_shutdown', 'Cold Shutdown (Mode 5)']],
                  freePlayOnly: true,
@@ -559,7 +563,7 @@
       // generated manual reference (RD.MANUAL indications) that the inspection
       // block quotes range, lag and driven alarms from (#96).
       gauges: [
-        { id: 'power',   label: 'Reactor Power', lead: true, instr: 'power_range', raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 118, dp: 1 },
+        { id: 'power',   label: 'Reactor Power', lead: true, instr: 'power_range', raw: function (s) { return s.instruments.power_range; }, units: '%', min: 0, max: 120, caution: 108, danger: 115, dp: 1 },
         { id: 'press',   label: 'Primary Pressure', instr: 'primary_pressure', raw: function (s) { return s.instruments.primary_pressure; }, dim: 'pressure', min: 0, max: 20.7, caution: 16.2, danger: 16.44, dp: 0 },
         /* caution_lo 278 (°C, the LO TAVG / P-12 annunciator's own absolute setpoint) is the
          * FALLBACK, not the edge — see tavgGaugeCautionLo (#703): on a plant publishing a
@@ -613,7 +617,7 @@
       // feed → turbine and output → and finally the controls that drive all of it.
       series: [
         // ---------------------------------------------------------------- reactor core
-        { id: 'power',    instr: 'power_range', grp: 'Reactor core', label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, tru: function (t) { return t.power_pct; }, range: [0, 120], dHi: 118, fmt: function (v) { return v.toFixed(0) + '%'; } },
+        { id: 'power',    instr: 'power_range', grp: 'Reactor core', label: 'Power %',  c: '#6a90b0', get: function (i) { return i.power_range; }, tru: function (t) { return t.power_pct; }, range: [0, 120], dHi: 115, fmt: function (v) { return v.toFixed(0) + '%'; } },
         { id: 'sur',      instr: 'startup_rate', grp: 'Reactor core', label: 'Startup Rate', c: '#c0913e', get: function (i) { return i.startup_rate; }, tru: function (t) { return t.startup_rate_dpm; }, range: [-2, 3], fmt: function (v) { return v.toFixed(1) + ' DPM'; } },
         // Net reactivity has no instrument — the board shows it as a true-state teaching
         // quantity beside the period, and this is the same number over time.
@@ -3008,13 +3012,15 @@
     'op_delta_t':              'Overpower Delta-T (OPΔT)',
     'hi_pzr_press':            'Hi Pressurizer Pressure',
     'lo_pzr_press':            'Lo Pressurizer Pressure',
+    'sr_high_flux':            'Source Range Hi Flux',
     'ir_high_flux':            'Intermediate Range Hi Flux',
-    'hi_flux_lo':              'Power-Range Hi Flux (Low Setting)',
+    'hi_flux_lo':             'Power-Range Hi Flux (Low Setting)',
     'hi_flux_hi':              'Power-Range Hi Flux (High Setting)',
     'lo_flow':                 'Lo Reactor Coolant Loop Flow',
     'hi_pzr_level':            'Hi Pressurizer Level',
     'sg_lolo_level':           'Lo-Lo Steam Generator Level',
     'turbine_trip':            'Turbine Trip (P-9)',
+    'safety_injection':        'Safety Injection',
     'manual':                  'Manual Trip'
   };
   function tripCauseLabel(reason) {
@@ -3029,7 +3035,7 @@
   // trip?") needs the sequence — so the UI stamps first-seen sim time per alarm.
   // Re-annunciation re-stamps (the entry clears when the alarm does), and a rewind
   // that lands before a stamp discards it (a stamp from the abandoned future).
-  var alarmSeen = {};
+  var alarmSeen = {}, alarmPrio = {};
   // Last rendered tile set, as a key. The stack is a wholesale `innerHTML` rebuild, and
   // rebuilding it on an UNCHANGED alarm list is what produced the transient flicker the
   // owner reported (2026-08-06): `.alarm-tile.unack.crit` carries a 0.9 s
@@ -3056,9 +3062,15 @@
     var liveIds = {};
     active.forEach(function (a) {
       liveIds[a.id] = true;
-      if (alarmSeen[a.id] == null || alarmSeen[a.id] > now + 1e-9) alarmSeen[a.id] = now;
+      /* A RECLASSIFICATION RE-ANNUNCIATES (layman pass 7, 2026-09-26, S-6). An alarm reclassified
+       * to `status` on a cold plant stays active, so leaving Mode 4 brought Pressurizer Pressure Very
+       * Low back as a critical tile stamped T+00:00:00 -- the moment the cold plant booted -- and
+       * the second heatup's as the cooldown hour it went quiet. A change of priority is the moment
+       * the operator is told of it, so it re-stamps. */
+      if (alarmSeen[a.id] == null || alarmSeen[a.id] > now + 1e-9 || alarmPrio[a.id] !== a.priority) alarmSeen[a.id] = now;
+      alarmPrio[a.id] = a.priority;
     });
-    Object.keys(alarmSeen).forEach(function (id) { if (!liveIds[id]) delete alarmSeen[id]; });
+    Object.keys(alarmSeen).forEach(function (id) { if (!liveIds[id]) { delete alarmSeen[id]; delete alarmPrio[id]; } });
     // Severity keeps the triage order; WITHIN a severity, newest first — the
     // stamps carry the exact sequence either way.
     var prio = { critical: 0, warning: 1, caution: 2, status: 3 };
@@ -3181,6 +3193,10 @@
    * refusing. `latest` (the last-rendered snapshot, assigned synchronously at the top of
    * `render()`) is read rather than re-deriving anything: if the hold is still live, the note
    * survives; once it has genuinely lifted, the next player act clears it exactly as before. */
+  function cklNoteStepKey(s) {
+    var ck = s && s.instructor && s.instructor.checklist;
+    return ck && !ck.complete ? ck.procedure_id + '#' + ck.step_index : '';
+  }
   function retireWarpNote() {
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
@@ -3200,6 +3216,11 @@
      * formatter. WHAT QUALIFIES IS UNCHANGED (`hold >= 180`, `wait_hint !== false`), and
      * "nothing on other steps" is still the #686 ruling's own words. */
     if (actv && cklIsWaitStep(actv.st)) advice = cklWaitAdvice(s, actv, true);
+    // THE BOX ITSELF (#807 item 7): visible iff a walkthrough is loaded and not yet complete —
+    // the same `cklActiveStep` truth `syncCklAutoSpeed` gates on, so the two can never disagree
+    // about whether one is running. Hidden in free play, missions, and after the last step.
+    var wpRow = $('cklWarpPrefRow');
+    if (wpRow) wpRow.hidden = !actv;
     /* EVERY DROP STATES ITS OWN REASON, not just the held-at-real-time one (2026-09-15 layman
      * pass, #653). This branch read `warpNote.reason === 'hold'` and fell through for the other
      * reasons — alarm, scram and failure (and, until 2026-09-17, step) — printing the step's
@@ -3221,6 +3242,22 @@
      * facts are wanted at once: why it stopped, and what to press now. Not under `hold` — the
      * service REFUSES `set_speed` above 1× while that stands, so offering the rung there is the
      * same contradiction one level down (the speed-rung glow already stands down for it). */
+    /* A DROP NOTE IS ONLY TRUE WHILE THE CLOCK IS STILL WHERE THE DROP PUT IT (layman pass 4,
+     * 2026-09-24). MEASURED on a9eae479: "Held at real time — the plant needs you here" stood
+     * under a lit 3600× for the whole of pwr_heatup step 11 (the walkthrough raised the clock
+     * itself, which is not a player act, so nothing retired the note), and "Dropped to real time —
+     * new alarm: …" from the lower-power leg stood through every step of the cooldown leg. Two
+     * retirements, both of which leave a STANDING accumulator hold alone (#710):
+     *   1. the clock is above the rate the note names — 1× for a drop to real time or a hold,
+     *      60× for a WARP drop or refusal. `set_speed` above 1× is refused while a hold stands,
+     *      so a clock above 1× already proves the hold has lifted;
+     *   2. the walkthrough step it was raised on is no longer the active step (retireWarpNote,
+     *      which keeps a hold that is still standing). */
+    if (warpNote) {
+      var noteRate = (warpNote.reason === 'transient' || warpNote.reason === 'warp_locked') ? 60 : 1;
+      if (((s.metadata && s.metadata.time_acceleration) || 1) > noteRate) warpNote = null;
+      else if (warpNote.step !== cklNoteStepKey(s)) retireWarpNote();
+    }
     if (warpNote) {
       cls = 'dropped';
       text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
@@ -3296,7 +3333,7 @@
        * speed buttons until the player next acts — the other reasons rely on the toast +
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
-      warpNote = { text: speedSnapText(snap), reason: snap.reason };
+      warpNote = { text: speedSnapText(snap), reason: snap.reason, step: cklNoteStepKey(s) };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -3533,12 +3570,60 @@
       'that check themselves off the instruments as you operate.">' +
       'Try the walkthroughs</button></div>';
   }
+  /* THE OPENER OFFER (#811). A short instructor chat for the starting condition the player is
+   * sitting at, offered above the walkthroughs bar. One per starting condition: the opener whose
+   * plant_id + initial_state match the running plant (RD.OPENERS, scenarios/opener_*.js). One
+   * click starts it; "Not now" hides it for this browser SESSION (sessionStorage — OWNER RULING
+   * 2026-09-28: "Make it appear in every session instead of being hidden for good."). Ignoring it
+   * changes nothing about free play. Behind the 'openers' area flag (site/flags.js). */
+  var openerHidden = {};
+  function openerDismissed(id) {
+    if (openerHidden[id]) return true;
+    try { return sessionStorage.getItem('rd_opener_hide_' + id) === '1'; } catch (e) { return false; }
+  }
+  /* THE OFFER STANDS WHENEVER THE TAB IS IDLE (#811, OWNER 2026-09-28: "keep the button for the
+   * full power opener on the instructor tab unless it's showing other content"). Replaces the
+   * fresh-plant-only gate. What that gate protected — a long free-play session wiped by one click —
+   * is now a one-line CONFIRM when the plant is not fresh (SimulationService.isFreshPlant); a fresh
+   * plant starts at once. `openerConfirm` is the id awaiting that confirm. */
+  var openerConfirm = null;
+  function openerFor() {
+    if (!flagOn('openers') || !service) return null;
+    var all = RD.OPENERS || {};
+    for (var k in all) {
+      var o = all[k];
+      if (o.plant_id === service.activePlantId && o.initial_state === service.activeInitialState && !openerDismissed(o.id)) return o;
+    }
+    return null;
+  }
+  function openerOfferHtml(o) {
+    if (!o) return '';
+    if (openerConfirm === o.id) {
+      return '<div class="instr-launch instr-opener instr-opener-confirm">' +
+        '<div class="instr-opener-sub">This restarts the plant at full power. Your current plant will be lost.</div>' +
+        '<button type="button" class="btn instr-launch-bar" data-opener-confirm="' + mesc(o.id) + '">Restart at full power</button> ' +
+        '<button type="button" class="btn linkish" data-opener-cancel="' + mesc(o.id) + '">Cancel</button></div>';
+    }
+    return '<div class="instr-launch instr-opener"><button type="button" class="btn instr-launch-bar" ' +
+      'data-opener-start="' + mesc(o.id) + '" data-scanner-hint="' + mesc(o.offer || '') + '">' +
+      mesc(o.title) + ' — 5 min, guided</button>' +
+      '<div class="instr-opener-sub">' + mesc(o.offer || '') +
+      ' <button type="button" class="btn linkish" data-opener-dismiss="' + mesc(o.id) + '">Not now</button></div></div>';
+  }
+  function idleKey() {
+    var o = openerFor();
+    // A confirm left standing over a plant that is now FRESH (a new load) or has no opener (another
+    // IC) is stale: its "Your current plant will be lost" is false. Drop it; the offer comes back.
+    if (openerConfirm && (!o || (service.isFreshPlant && service.isFreshPlant()))) openerConfirm = null;
+    return (o ? o.id : '-') + '|' + (openerConfirm || '') + '|' + flagOn('checklists');
+  }
   function showIdleInstructor() {
     setInstrRole('Instructor');
     var cur = $('instrCurrent');
     if (!cur) return;
     cur.classList.add('instr-standby');
-    cur.innerHTML = (idleLauncherHtml() + IDLE_INSTR_HTML);
+    cur.setAttribute('data-idle-key', idleKey());
+    cur.innerHTML = (openerOfferHtml(openerFor()) + idleLauncherHtml() + IDLE_INSTR_HTML);
   }
   /* WRAPPED, NOT APPENDED TO. renderInstructor dispatches to renderFollow / renderChat /
    * renderChecklist / renderLevelComplete and RETURNS from each — five early returns — so
@@ -3561,6 +3646,8 @@
     syncSpeedUI(s);
     syncPacingUI(s);
     renderHighlight(s);
+    renderScope(s);
+    applyInstrTrend(s);   // after the highlight: it adds its own glow, which that pass would clear
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -3575,7 +3662,13 @@
     var runningCkl = !!(s.instructor && s.instructor.checklist);
     if (!runningCkl && cklState.view === 'run') cklState.view = 'list';
     if (cklRow) {
-      var showList = flagOn('checklists') && (!runningCkl || cklState.view === 'list');
+      /* THE LIST SHOWS WHILE A WALKTHROUGH RUNS (layman pass 5, S-2, 2026-09-25). The
+       * `!runningCkl || view === 'list'` clause dates from #607, when the list and the running
+       * card shared ONE pane. Since #660 the card lives in the Instructor pane, so hiding the
+       * list here left the Walkthroughs tab EMPTY for as long as a walkthrough — finished or
+       * not — was loaded: measured, "← All walkthroughs" on a finished card switched to a blank
+       * tab and the list came back only after Close. Nothing sets `view` to 'list' any more. */
+      var showList = flagOn('checklists');
       cklRow.hidden = !showList;
       if (showList) toggleCklMenu();
     }
@@ -3648,7 +3741,7 @@
       // one-line ellipsized — cue the header and let the player expand.
       instrAttention();
     } else if (!msg && !msgHold.queue.length && dwellMet) {
-      if (msgHold.shown !== null || !cur.querySelector('.instr-idle')) {
+      if (msgHold.shown !== null || !cur.querySelector('.instr-idle') || cur.getAttribute('data-idle-key') !== idleKey()) {
         msgHold.shown = null;
         showIdleInstructor();
       }
@@ -3670,8 +3763,19 @@
   }
   var CHAT_SPEAKERS = {
     sup: 'Shift Supervisor', supx: 'Shift Supervisor', aux: 'Aux Operator',
-    chief: 'Chief', sys: 'ANNUNCIATOR', player: 'You',
+    chief: 'Chief', sys: 'ANNUNCIATOR', player: 'You', instr: 'Instructor',
   };
+  // A chat transcript's content: a scenario, or an opener (#811) — both run as instructor scenarios.
+  function chatDef(sid) {
+    return (sid && ((RD.SCENARIOS && RD.SCENARIOS[sid]) || (RD.OPENERS && RD.OPENERS[sid]))) || null;
+  }
+  // `chat_clock: 'elapsed'` (openers): stamp lines with time since the chat began, not the
+  // TMI-2 night-shift wall clock.
+  function chatElapsed(t) {
+    if (chatState.t0 == null) chatState.t0 = t;
+    var sec = Math.max(0, Math.round(t - chatState.t0));
+    return Math.floor(sec / 60) + ':' + (sec % 60 < 10 ? '0' : '') + (sec % 60);
+  }
   // In-fiction wall clock: the shift picks up at 03:53 — the real TMI-2 turbine
   // trip landed at 04:00:37, seven minutes into anyone's coffee. The clock runs
   // on the authored STORY timeline (beat `story_min` anchors) so the historical
@@ -3713,20 +3817,27 @@
     if (e.skip && prevStory != null && (story - prevStory) > 90) {
       h += '<div class="chat-gap">⏱ ' + mesc(chatGapText(story - prevStory)) + '</div>';
     }
-    h += '<div class="chat-line chat-' + mesc(e.speaker) + '">' +
-      '<span class="chat-meta">' + chatClock(story) + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
+    var def = chatDef(chatState.sid);
+    var stamp = (def && def.chat_clock === 'elapsed') ? chatElapsed(e.t) : chatClock(story);
+    var pt = e.point && e.point.length ? ' data-point="' + mesc(e.point.join('|')) + '" data-scanner-hint="Click to show it on the board again."' : '';
+    h += '<div class="chat-line chat-' + mesc(e.speaker) + (pt ? ' chat-has-point' : '') + '"' + pt + '>' +
+      '<span class="chat-meta">' + stamp + ' · ' + mesc(CHAT_SPEAKERS[e.speaker] || e.speaker) + '</span>' +
       '<span class="chat-txt">' + mesc(txt) + '</span></div>';
     return h;
   }
   // Reading cadence for the one-at-a-time reveal (~220 wpm), clamped so short
   // annunciator callouts don't flash past and long lines don't stall the flow.
   function chatDwellS(e) {
+    // A `pace: 'reading'` scenario (the openers, #811) reveals on the instructor's own reading
+    // clock — the flow waits the same time before its next beat, so line and board stay together.
+    var d = chatDef(chatState.sid);
+    if (d && d.pace === 'reading' && RD.InstructorLayer && RD.InstructorLayer.readingSeconds) return RD.InstructorLayer.readingSeconds(e);
     var w = String(e.learning || '').trim().split(/\s+/).length;
     return Math.min(7, Math.max(1.0, w / 3.7 + 0.4));
   }
   function chatPendingBeat(s) {
     var sid = s.instructor.scenario_id, bid = s.instructor.current_beat_id;
-    var sc = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+    var sc = chatDef(sid);
     if (!sc || bid == null) return null;
     var beats = sc.beats || [];
     for (var i = 0; i < beats.length; i++) if (beats[i].id === bid) return beats[i];
@@ -3748,14 +3859,17 @@
       // a genuinely new conversation paces from its first line.
       chatState.instantThrough = freshConversation ? 0 : Math.max(0, chat.log.length - 1);
       cur.classList.remove('instr-standby');
-      cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>';
+      var isOpener = !!(sid && RD.OPENERS && RD.OPENERS[sid]);
+      cur.innerHTML = '<div class="chat-log" id="chatLog"></div><div class="chat-btns" id="chatBtns"></div>' +
+        (isOpener ? '<div class="chat-end"><button type="button" class="btn ghost" data-opener-end="1" ' +
+          'data-scanner-hint="End the guided opener and keep the plant as it is, clock at 1×.">End</button></div>' : '');
       if (card) card.classList.add('chat-mode');
       // The persona header stays visible in chat mode now (#237) — it is the
       // collapse affordance and the mid-scenario orientation line. It shows the
       // SCENE (scenario title), never a speaker: the transcript's per-line
       // headers carry who is talking, and a fixed speaker up top would lie
       // whenever anyone else speaks (instructor-vs-supervisor register rule).
-      var sc0 = sid && RD.SCENARIOS ? RD.SCENARIOS[sid] : null;
+      var sc0 = chatDef(sid);
       setInstrRole((sc0 && sc0.title) ? sc0.title : 'Scenario');
     }
     var logEl = $('chatLog');
@@ -3770,6 +3884,7 @@
       if (!instant && now < chatState.nextAt) break;
       logEl.insertAdjacentHTML('beforeend', chatLineHtml(e));
       chatState.shown++;
+      if (!instant && e.point) chatPoint(e.point);   // the line appears -> its pointer (#811); backlog does not flash
       chatState.nextAt = now + (instant ? 0.8 : chatDwellS(e));
       revealed = true;
     }
@@ -3791,7 +3906,7 @@
       // of the pending lines instantly. Display-only: the engine log is untouched.
       if (chatState.btnKey !== '__revealing__') {
         chatState.btnKey = '__revealing__';
-        btns.innerHTML = '<button class="btn ghost chat-reveal-all" data-chatrevealall="1" ' +
+        btns.innerHTML = '<button class="btn ghost chat-reveal-all" data-chatrevealall="1" title="Show the instructor&#39;s pending messages now — skips nothing." ' +
           'data-scanner-hint="Reveal all — show the rest of this conversation at once instead of line-by-line.">⏩ reveal all</button>';
       }
       return;
@@ -4004,6 +4119,29 @@
    * latch deliberately does not. `set` — the rate auto last asked for, so the hand-back can
    * tell a speed it is holding from one the player chose afterwards. */
   var cklAuto = { key: null, over: null, set: 0 };
+  /* THE PLAYER'S OWN CHOICE, NOT THE WALKTHROUGH'S (#807 item 7, 2026-09-26, OWNER: "Add a
+   * setting that shows up under the time warp bar that toggles the walkthrough automatically
+   * setting time warp. this setting only shows up when playing a walkthrough otherwise its not
+   * visible."). Default ON is today's behaviour, unchanged for anyone who never finds the box.
+   * OFF stops `syncCklAutoSpeed` from EVER calling `set_speed` — the card's own "Suggested time
+   * warp" line (`cklWaitAdvice`) is untouched, since that is prose, not a command.
+   *
+   * DOES NOT TOUCH `true_state.speed_hold` (#619 item 13, the accumulator arming window). That
+   * hold is a GENUINE PLANT REFUSAL the engine raises regardless of any walkthrough — it is not
+   * reachable from the board at all (simulation_service.js: "No command sets this… so a player
+   * can never disarm the hold that stops them getting stuck") — never a pacing courtesy, so it
+   * stays exactly as it is whichever way this box is set.
+   *
+   * Read once at startup and cached (same shape as `ui.inspectExpanded` below): this is read
+   * every broadcast, and a synchronous localStorage hit on that cadence is unnecessary. */
+  var cklAutoWarpOn = true;
+  function loadCklAutoWarpPref() {
+    try { var v = localStorage.getItem('rd_ckl_auto_warp'); return v === null ? true : v === '1'; }
+    catch (e) { return true; }
+  }
+  function saveCklAutoWarpPref(on) {
+    try { localStorage.setItem('rd_ckl_auto_warp', on ? '1' : '0'); } catch (e) { /* private mode */ }
+  }
   /* The active walkthrough step, or null — the same lookup `syncWarpInfo` does, named once so the
    * clock and the words cannot read different steps. */
   function cklActiveStep(s) {
@@ -4041,23 +4179,102 @@
    * or a typo'd `wait_speed: 30` becomes a rung the player cannot see, at a rate they cannot
    * reach by hand. The largest rung AT OR BELOW the authored value — rounding DOWN, because the
    * number is a ceiling on how fast this step may be watched. */
-  function cklRungFor(st) {
-    if (!st) return null;
-    var want = +st.wait_speed || 0;
-    if (want > 0) {
-      var lad = speedLadder(), best = lad[0];
-      for (var i = 0; i < lad.length; i++) if (lad[i].speed <= want) best = lad[i];
-      return best;
+  function cklSnapRung(want) {
+    var lad = speedLadder(), best = lad[0];
+    for (var i = 0; i < lad.length; i++) if (lad[i].speed <= want) best = lad[i];
+    return best;
+  }
+  /* A LETTERED SUBSTEP CAN OWN ITS OWN RUNG (the walkthrough-step-format project). `accs[i].cont`
+   * marks a row as another check-off of the PRECEDING (HEAD) entry — no letter, no `ask` — so the
+   * "substep containing row i" is found by walking back from i to the nearest entry that is not
+   * `cont`. THE ACTIVE SUBSTEP is the one holding the first unmet VISIBLE row, scanned in array
+   * order: on an `accs_ordered` step that is exactly the blocking row (position is the sequence),
+   * and on an unordered step it is simply the earliest row still open — there is no other notion
+   * of "the substep the player is on" without one. Returns null once every visible row is met (the
+   * hand-back to the step-level/real-time logic happens in `cklRungFor`), so a finished step never
+   * pins the clock to its last substep's rung. */
+  /* THE HEAD-ENTRY INDEX of the active substep, or -1 (no `accs`, or every visible row already
+   * met). Split out of `cklAccsHeadRung` because `cklAutoKey` needs the SAME index, not just the
+   * rung it resolves to: two substeps that happen to want the same numeric speed must still be
+   * different KEYS, or auto never re-acts crossing the boundary and a player's override on the
+   * first substep silently keeps suppressing auto on the second. */
+  function cklActiveAccsHead(st, ck) {
+    if (!st || !st.accs || !st.accs.length || !ck) return -1;
+    var fu = -1;
+    for (var i = 0; i < st.accs.length; i++) {
+      if (st.accs[i].hidden) continue;
+      if (!((ck.accs && ck.accs[i]) || {}).met) { fu = i; break; }
     }
+    if (fu < 0) return -1;
+    var head = fu;
+    while (head > 0 && st.accs[head].cont) head--;
+    return head;
+  }
+  function cklAccsHeadRung(st, ck) {
+    var head = cklActiveAccsHead(st, ck);
+    if (head < 0) return null;
+    var want = +st.accs[head].wait_speed || 0;
+    return want > 0 ? cklSnapRung(want) : null;
+  }
+  /* The fastest rung any of the step's own substeps (or the step itself) authors — the speed a
+   * step at a 1× action substep will move to next. 1 when nothing faster is authored. */
+  function cklStepTopRung(st) {
+    var top = +st.wait_speed || 1;
+    (st.accs || []).forEach(function (e) { if (e && !e.hidden && +e.wait_speed > top) top = +e.wait_speed; });
+    return top > 1 ? cklSnapRung(top).speed : 1;
+  }
+  function cklRungFor(st, ck) {
+    if (!st) return null;
+    var subRung = cklAccsHeadRung(st, ck);   // WINS over the step's own wait_speed when present
+    if (subRung) return subRung;
+    var want = +st.wait_speed || 0;
+    if (want > 0) return cklSnapRung(want);
     return cklIsWaitStep(st) ? RD.CklSpeedHint(+st.hold || 0) : null;
+  }
+  /* SPEED THE WAIT, NOT THE ACTION (2026-09-24 layman pass 4, S-1; owner #796's own design).
+   * A step whose `cmd` is a press or a typed value used to open straight onto its substep's rung:
+   * MEASURED on a9eae479, entering pwr_cooldown step 11, pwr_heatup step 14, pwr_startup step 2
+   * or pwr_cooldown step 1 and touching NOTHING put the clock at 600× at once and ran 75 to 77
+   * plant-minutes in 10 s of wall — the player's reading time, spent on the old lineup (the
+   * reviewer arrived at 13 psi and a 14 °F subcooling margin on cooldown 11). So auto holds
+   * real time until the instructor has SEEN the step's own `cmd` family descend (`cmd_seen`,
+   * the same evidence that grades a command-only step), then applies the rung.
+   *
+   * A RUNTIME RULE, NOT PER-STEP AUTHORING, so a step written tomorrow is safe by default. The
+   * one shape it would break is a step whose wait comes BEFORE its action ("wait for the margin
+   * to bottom, THEN secure the pumps"); such a step says so with `wait_first: true` and is
+   * paced from entry as before. It never HOLDS the clock down: a player who presses a speed
+   * button during the gate keeps it (the override latch below), and `set_speed` is not refused.
+   *
+   * …AND PER SUBSTEP WHERE THE STEP-LEVEL EVIDENCE IS ALREADY SPENT (2026-09-25, layman pass 5
+   * S-1, #653). `cmd_seen` is per STEP, so a later substep whose action is a press of the SAME
+   * family an earlier substep already sent opened straight onto its rung: startup 9b ("Tap
+   * WITHDRAW one step, wait…", 10×) after 9a's hold. Such a head authors `act_first: true`, and
+   * auto holds 1× until the instructor reports a press of the step's `cmd` family landing WHILE
+   * THAT HEAD WAS ACTIVE (`cmd_head`). Opt-in: a later substep that is a pure wait must not be
+   * held, and the runtime cannot tell the two apart. */
+  function cklActionPending(a) {
+    if (!(a && a.st && a.st.cmd && a.ck)) return false;
+    var head = cklActiveAccsHead(a.st, a.ck);
+    if (head >= 0 && a.st.accs[head].act_first) return a.ck.cmd_head !== head;
+    return !a.st.wait_first && a.ck.cmd_seen === false;
+  }
+  function cklRodsMoving(s) {
+    var gs = (s && s.control_state && s.control_state.rod_groups) || [];
+    return gs.some(function (g) { return g && g.function === 'control' && g.moving; });
   }
   /* What speed should the plant be running at for the step on screen — null when no walkthrough
    * is running, in which case the clock is nobody's business but the player's. */
   function cklStepSpeed(s, a) {
     if (!a) return null;
-    var rung = cklRungFor(a.st);
+    var rung = cklRungFor(a.st, a.ck);
     if (!rung) return 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) return 1;      // the wait is over — hand it back
+    if (rung.speed > 1 && cklActionPending(a)) return 1;  // the action first, then the wait (S-1)
+    /* `moving_speed` (startup 8 only) — the rung while the control bank is moving NOW, not merely
+     * once it has moved *(OWNER RULING, 2026-09-28, option D: "In step 8 5x while the rods move.")*.
+     * `moving` is the rod group's own live flag; the instant it drops, the step's rung returns. */
+    if (+a.st.moving_speed > 0 && rung.speed > +a.st.moving_speed && cklRodsMoving(s)) return +a.st.moving_speed;
     if (!rung.warp) return rung.speed;
     var p = s.metadata && s.metadata.pacing;
     if (!p || p.warp_available !== false) return rung.speed;
@@ -4067,19 +4284,43 @@
   }
   /* THE KEY — what "auto has already had its act" is scoped to. Named because TWO places need the
    * same string: this driver, and the speed-button handler that records an override against it.
-   * A second copy computed by hand is how the two would drift. */
+   * A second copy computed by hand is how the two would drift.
+   *
+   * CARRIES THE ACTIVE SUBSTEP INDEX (`|s<n>`) when `st.accs` has one. Two substeps of the same
+   * step can resolve to the same numeric `want` (both 10×, say) yet still be different moments —
+   * without the index in the key, crossing from one to the other looks like no change at all, so
+   * auto never re-acts and a player's override on the first substep goes on silently suppressing
+   * auto on the second. Omitted entirely when there is no `accs` head to name, so a step that
+   * authors none of the new fields gets the exact key it always did. */
+  function cklAutoKeyStr(a, s, want) {
+    /* ONLY on a step that authors a per-substep rung (quality pass, 2026-09-23): keyed on every
+     * `accs` step, a LEGACY multi-row step whose rows share the step's one rung changed key each
+     * time a row ticked, so auto re-forced that same rung over a player's override mid-step —
+     * the "exact key it always did" claim above was false for every other walkthrough. */
+    var subRungs = !!a.st.accs && a.st.accs.some(function (e) { return e && +e.wait_speed > 0; });
+    var head = subRungs ? cklActiveAccsHead(a.st, a.ck) : -1;
+    return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
+           (head >= 0 ? '|s' + head : '') +
+           ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+  }
   function cklAutoKey(s) {
     var a = cklActiveStep(s);
     var want = cklStepSpeed(s, a);
     if (want == null) return null;
-    return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
-           ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+    return cklAutoKeyStr(a, s, want);
   }
   function syncCklAutoSpeed(s) {
     var a = cklActiveStep(s);
     var want = cklStepSpeed(s, a);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
     var idle = !service || !service.running || Object.keys(pauseWhy).length > 0;
+    /* ---- THE BOX OFF MEANS NO AUTOMATIC RAISE *OR DROP*, ANYWHERE (#807 review, 2026-09-26) ----
+     * This test used to sit below the hand-back branch, so with the box off a rung-less step or
+     * the walkthrough's end still dropped the clock to 1x. It also forgets what auto last set:
+     * a speed the player kept after switching the box off is theirs, and must not be handed back
+     * later as "still ours". The change handler clears the latch so ticking it back ON takes
+     * effect on the current step. */
+    if (!cklAutoWarpOn) { cklAuto.key = null; cklAuto.set = 0; return; }
     /* ---- NO WALKTHROUGH: HAND THE CLOCK BACK IF IT IS STILL OURS (quality pass, 2026-09-20) ----
      * `stop_checklist` tears the checklist down and never touches `timeAcceleration`, so ending a
      * walkthrough mid-wait — or finishing one — left the plant running at a rung AUTO chose, with
@@ -4102,8 +4343,7 @@
       }
       return;
     }
-    var key = a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
-              ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
+    var key = cklAutoKeyStr(a, s, want);
     /* ---- A STOPPED CLOCK DROPS THE LATCH, AND THAT IS A FIX, NOT A STYLE (quality pass,
      * 2026-09-20) ---- This read `if (!running) return;` with the key ALREADY LATCHED, under a
      * comment claiming "a pause never eats the step's speed change". It ate it in the COMMON
@@ -4141,7 +4381,7 @@
   function cklWaitAdvice(s, a, forBar) {
     var holdS = +a.st.hold || 0;
     var span = cklWaitSpan(a.st, holdS);
-    var rung = cklRungFor(a.st) || RD.CklSpeedHint(holdS);
+    var rung = cklRungFor(a.st, a.ck) || RD.CklSpeedHint(holdS);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) {
       return 'Wait complete — back at ' + cur + '× (this step fast-forwards at ' + rung.speed + '×).';
@@ -4149,6 +4389,14 @@
     var lead = span ? 'About ' + span + (forBar ? ' left' : '') + ' at 1× — '
                     : 'A wait whose length depends on the plant — ';
     var want = cklStepSpeed(s, a);
+    /* NEVER "fast-forwarding at 1×" (layman pass 4): that sentence contradicts itself, and it is
+     * what the line printed on an action substep authored at 1× (pwr_heatup 3a) and would have
+     * printed under the action gate above. Say what is actually true: real time now, and the rung
+     * this step moves to once the player has acted. */
+    if (want === 1 && cur === 1) {
+      var next = rung.speed > 1 ? rung.speed : cklStepTopRung(a.st);
+      return lead + (next > 1 ? 'real time until you make this change, then ' + next + '×.' : 'at real time.');
+    }
     if (cur !== want) return lead + 'set the speed control to ' + rung.speed + '×.';
     /* The WARP clamp says so rather than printing the rung it is not on: `want` is 60× here and
      * `rung.speed` is 600×, and a line reading "fast-forwarding at 600×" over a 60× clock is the
@@ -4212,6 +4460,12 @@
     var btns = $('cklBtns'); if (btns) { btns.hidden = true; btns.innerHTML = ''; }
     var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
+    /* …AND THE PRESS MEMORY WITH IT (#809 pass-13 review, 2026-09-28). `cklLastGlow` is what every
+     * pointer release re-applies; left standing, the first click after End walkthrough / All
+     * walkthroughs / an engine swap re-lit the last step's pulse on a board with no walkthrough,
+     * and nothing ever cleared it again. */
+    cklLastGlow = null; cklPressStep = null; cklOpenerLabs = []; cklWhenLatch = Object.create(null);
+    cklPressed = Object.create(null); cklHeld = Object.create(null);
     clearCklWatchGlow();                      /* #685 — the watch ring has the same owner */
     clearCklSpeedGlow();                      /* #735 — and so does the speed rung */
     var card = $('instructorCard'); if (card) card.classList.remove('chat-mode');
@@ -4259,6 +4513,7 @@
     sg_level_pct:           { label: 'STEAM GENERATOR LEVEL', u: '%' },
     pzr_level_pct:          { label: 'PRESSURIZER LEVEL', u: '%' },
     pump_flow_pct:          { label: 'RCP FLOW', u: '%' },
+    rcp_running:            { bool: 'ON is lit on the RCP FLOW card' },   // pwr_heatup 1c grades its OFF lamp (2026-09-25)
     /* ROD POSITION (#605). Resolved out of `control_state.rod_groups` by the instructor layer,
      * not out of `true_state` — see ROD_PARAMS there. The `_pct` forms are what a step should
      * normally check: "fully withdrawn" is 100 % on any bank scale, where a step count is only
@@ -4269,22 +4524,37 @@
     shutdown_bank_pct:      { label: 'SHUTDOWN ROD POSITION', u: '%' },
     shutdown_bank_steps:    { label: 'SHUTDOWN ROD POSITION', u: 'steps' },
     feed_coupled:           { bool: 'SG FEED is in AUTO' },
+    afw_pump_running:       { bool: 'AUX FEED WATER reads RUNNING' },   // #808: heatup 5, startup 3a/13c (13c grades it off)
     /* THE TRIP BLOCKS (#731). Resolved out of `rps_state.trip_blocks` by the instructor layer
      * (RPS_BLOCK_PARAMS there) — an operator lineup the board draws as a lit row, not an
      * instrument. The labels are the panel's own row captions, so the done-when line names what
      * the player is looking at. */
+    sr_high_blocked:         { bool: 'SR HIGH FLUX is blocked on the TRIP BLOCKS panel' },
     ir_high_blocked:         { bool: 'IR HIGH FLUX is blocked on the TRIP BLOCKS panel' },
     pr_low_setpoint_blocked: { bool: 'PR HIGH (LOW SETPT) is blocked on the TRIP BLOCKS panel' },
     lo_press_blocked:        { bool: 'PZR PRESS LO-LO is blocked on the TRIP BLOCKS panel' },
     si_trip_blocked:         { bool: 'SI REACTOR TRIP is blocked on the TRIP BLOCKS panel' },
     steam_dump_setpoint:    { label: 'DUMP SETPOINT', dim: 'pressure' },
+    pressure_setpoint:      { label: 'SET PZR PRESSURE', dim: 'pressure' },   // #809: pwr_heatup 14a
+    letdown_orifices_ab:    { bool: 'A+B 7 % is lit on the LETDOWN card' },   // #809: pwr_heatup 7a, derived by the instructor layer
     accumulator_volume_pct: { label: 'ACCUMULATORS', u: '%' },
     steam_dump_valve_pct:   { label: 'STEAM DUMP opening', u: '%' },
     /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3
      * confirmation reads both, because "the dumps are in service" and "the ADV is shut" are
      * the two halves of the claim that the condenser, not the atmosphere, is the heat sink */
     steam_dump_auto:        { bool: 'AUTO is lit on the STEAM DUMP card' },
-    adv_valve_pct:          { label: 'ATMOS DUMP opening', u: '%' },
+    /* the dump's MODE, as the card's status word reads it (OWNER RULING 2026-09-24, "Grade the
+     * mode") — derived by the instructor layer from `control_state.steam_dump_mode` */
+    steam_dump_press_mode:  { bool: 'STEAM DUMP status reads STM PRESS or RAMPING' },
+    steam_dump_tavg_mode:   { bool: 'STEAM DUMP status reads TAVG' },
+    /* the BORON card's status word (#807 item 5, pwr_heatup 16d) — derived by the instructor layer
+     * from `control_state.boron_adjust` with the tile's own test */
+    boron_status_hold:      { bool: 'BORON STATUS reads HOLD' },
+    /* the BORON card's ON lamp and target box (2026-09-25, pwr_startup 2a/2b) — read off the
+     * `boron_conc` automation channel by the instructor layer (AUTO_CHAN_PARAMS there) */
+    boron_auto_on:          { bool: 'ON is lit on the BORON card' },
+    boron_target_ppm:       { label: 'BORON target', u: 'ppm' },
+    adv_valve_pct:         { label: 'ATMOS DUMP opening', u: '%' },
     vessel_level_pct:       { label: 'Vessel level', u: '%' },
     drum_level_pct:         { label: 'Drum level', u: '%' },
     plant_mode:             { mode: true },
@@ -4386,6 +4656,7 @@
       var mant = vv, exp = 0;
       while (Math.abs(mant) >= 10) { mant /= 10; exp++; }
       while (mant !== 0 && Math.abs(mant) < 1) { mant *= 10; exp--; }
+      if (Math.abs(+mant.toFixed(1)) >= 10) { mant /= 10; exp++; }   // 9.96e2 draws 1.0e3, never 10.0e2 (#653, 2026-09-25)
       /* THE BRACKET IS AN AID, AND BELOW 1 IT STOPS BEING ONE (#749 item 2, 2026-09-18). The
        * owner's form is "7.0e2 (700 counts per second)" — the meter's notation with the plain
        * number beside it — and the plain number is what makes it an aid. `Math.round` on a
@@ -4496,16 +4767,19 @@
    * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
    * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
   function impliedSay(st, en, stepNo) {
+    // `cont` rows are skipped from the letter count here too (walkthrough-step-format project) —
+    // the same non-letter, non-group-starting entries the render loop above excludes, so this
+    // function's `j`-th letter cannot drift from the one actually printed on the card.
     var accs = st.accs || [], j = -1, visN = 0, i;
     for (i = 0; i < accs.length; i++) {
-      if (!accs[i].hidden) visN++;
+      if (!accs[i].hidden && !accs[i].cont) visN++;
       if (j === -1 && accs[i] !== en && accs[i].p === en.implied_by) j = i;
     }
     if (j === -1) return 'another line on this step';
     var lbl = accs[j].label || (accs[j].p ? fmtPredicate(accs[j]) : String(accs[j].cmd || ''));
-    if (visN > 1 && !accs[j].hidden) {
+    if (visN > 1 && !accs[j].hidden && !accs[j].cont) {
       var seen = 0;
-      for (i = 0; i < j; i++) if (!accs[i].hidden) seen++;
+      for (i = 0; i < j; i++) if (!accs[i].hidden && !accs[i].cont) seen++;
       return String(stepNo) + String.fromCharCode(97 + seen) + ': ' + lbl;
     }
     return lbl;
@@ -4522,6 +4796,7 @@
   };
 
   function renderChecklist(s, ck) {
+    cklSnap = s;
     var cur = $('cklRun');
     if (!cur) return;
     var pr = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
@@ -4556,7 +4831,13 @@
       /* `voided` is a FOURTH state for the same reason (#773/#788): the player's own
        * casualty stood the row down, which draws a different extra line, and on a SOLE
        * row `acc_met` flips to true with nothing else in the key moving at all. */
-      (ck.accs || []).map(function (a) { return a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0); }).join(''),
+      /* `no_1m` joins it too (2026-09-24): pwr_startup 9a's "no prediction" line comes and goes
+       * with the 1/M table (a Clear, a rewind) while `met` need not move. */
+      /* ...and so does a `below_1m` row's prediction and reading (quality pass, 2026-09-24): the
+       * "past the mark" line below appears when the rods step past prediction-minus-N while
+       * `met` stays 0. Only a `below_1m` row carries a non-null `pred_1m`. */
+      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
+        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : ''); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
@@ -4573,6 +4854,12 @@
        * ring cleared reported rewind_ready false in the snapshot while the button on the board
        * stayed enabled, because nothing in the key had moved. */
       ck.awaiting_ack ? 1 : 0, ck.rewind_ready ? 1 : 0,
+      /* the active substep's `hl_when` (#809 layman pass 14 S-3): the pulse it gates moves while
+       * nothing else here does, so it joins the key (latched, so it moves once per substep) */
+      cklHlWhenKey(pr, ck),
+      /* …and, on the one step that authors `moving_speed`, whether the bank is moving (the speed
+       * rung it marks follows the rods, OWNER 2026-09-28) */
+      (pr && pr.steps[ck.step_index] && pr.steps[ck.step_index].moving_speed) ? (cklRodsMoving(s) ? 'm1' : 'm0') : '',
       /* the two fold-state components left the key with the fold itself (#737) */
       ui.units,
       /* the leg-caution block's open/shut state (#653 defect 1) — outside the key it would
@@ -4798,6 +5085,15 @@
        * sentence to a student and to an operator. */
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) +
         (st.crew ? ' <span class="ckl-crew">the crew\'s action, as taken — not a recommendation</span>' : '') + '</div>';
+      /* THE ONE-LINE WHY, DIRECTLY UNDER THE STEP'S FIRST LINE *(OWNER RULING, 2026-09-24: "I like
+       * putting the why where you put it. i choose a.")* — the what / why / how format
+       * (`Blueprint/CHECKLIST_WRITING_GUIDE.md` §16): line one says WHAT, this italic line says WHY,
+       * the lettered substeps below say HOW. Its own class (`.ckl-aim`), not `.ckl-crit-note`: a
+       * substep's note is a contingency the player may have to act on, this is the reason for the
+       * whole step, and it sits ABOVE every substep row. Drawn on every step that authors it,
+       * active or not, because it belongs to the step line it explains. `verify_ckl_relevance`
+       * §10 reads it off the rendered card. */
+      if (st.aim) h += '<div class="ckl-aim">' + mesc(st.aim) + '</div>';
       if (done && ck.done_by && ck.done_by[i] === 'manual') h += '<div class="ckl-sub">checked by hand</div>';
       /* a step the plant moved past (#641) says so on the card, with the authored reason, so a
        * tick the player never earned is not read as one they did */
@@ -4827,9 +5123,17 @@
            * drawing, so indexing the letter off `ai` would print 3a, 3c on a step whose middle
            * entry is a hidden cmd twin — `pwr_heatup` 8 is exactly that shape.
            * AND IT IS SUPPRESSED ON A ONE-ROW STEP: a solitary "5a" is noise, since the letters
-           * exist to say "these are parts of one step", which needs at least two parts. */
+           * exist to say "these are parts of one step", which needs at least two parts.
+           *
+           * `cont: true` (the walkthrough-step-format project) IS ANOTHER CHECK-OFF OF THE
+           * PRECEDING SUBSTEP, NOT A SUBSTEP OF ITS OWN — the 1/M leg's "plot the point, THEN
+           * read the printed prediction" shape, two rows the player watches for under one
+           * instruction. It draws (still graded, still gets its own ✓/○ and done-when), but it
+           * consumes no letter and starts no new group: `visN`/`visSeen` count only the HEAD
+           * entries (the non-`cont` ones), which is also what a one-substep step with two `cont`
+           * check-offs needs — that is still ONE part, so the suppression above must still fire. */
           var visN = 0;
-          for (var vi = 0; vi < st.accs.length; vi++) if (!st.accs[vi].hidden) visN++;
+          for (var vi = 0; vi < st.accs.length; vi++) if (!st.accs[vi].hidden && !st.accs[vi].cont) visN++;
           var visSeen = 0;
           /* AN `accs_ordered` STEP'S ROWS ARE A SEQUENCE AND THE CARD HAS TO SAY SO (#756).
            * `ordBlock` is the index of the first row not yet met — the one the player is on.
@@ -4845,16 +5149,58 @@
               if (!((ck.accs && ck.accs[ob]) || {}).met) { ordBlock = ob; break; }
             }
           }
+          /* A HEAD'S NOTE AND SPEED LINE DRAW AFTER ITS `cont` CHECK-OFFS, NOT BETWEEN THEM (layman
+           * pass 2, 2026-09-24, #653). Drawn inside the head row, they put "✓ PRIMARY PRESSURE 2200
+           * to 2270 psi" (step 1's second check-off) BELOW the note and the "Suggested time warp"
+           * line, where the reviewer read it as another instruction rather than the second half of
+           * the first one's done-when. So a head with a visible `cont` row after it holds its note
+           * and speed back (`pendTail`) and they are flushed, in a `.ckl-crit-tail` wearing the
+           * head's own state classes, once the last of its `cont` rows has drawn. A head with no
+           * `cont` row draws exactly as before. */
+          var pendTail = '';
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
             /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
              * the button) whose twin predicate entry already draws the lamp; drawing both put
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
             if (en.hidden) continue;
+            if (pendTail && !en.cont) { h += pendTail; pendTail = ''; }
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
-            var tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : '';
-            visSeen++;
+            var tag = '';
+            if (!en.cont) { tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : ''; visSeen++; }
             var ordWait = st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
+            /* THE SUBSTEP'S OWN NOTE AND SPEED, ON ITS HEAD ENTRY (the walkthrough-step-format
+             * project — the owner's per-substep Note + "Suggested time warp" line). Neither is
+             * drawn on a `cont` row: it is the same substep as its head, so the head already
+             * carries them. NO EXPLICIT COLOUR on either div — they inherit whatever this row's
+             * own state set (cobalt live, --running met, --muted `ckl-crit-wait`), the same "one
+             * treatment, not two" idiom `ckl-crit-wait` already uses for the ask text, so a
+             * substep the sequencer has not reached yet reads as coming, quietly, rather than
+             * being hidden outright (#756's principle) or needing a second waiting-state style. */
+            var subNote = (!en.cont && en.note) ? mesc(en.note) : '';
+            /* `speed_text` carries its OWN trailing punctuation (same trust as `wait_hint`'s
+             * authored string, above) — only the bare-rung fallback gets one appended here, so an
+             * authored sentence is never printed with a mechanically doubled full stop. */
+            var subSpeed = '';
+            if (!en.cont) {
+              if (en.speed_text) subSpeed = mesc(en.speed_text);
+              else if (+en.wait_speed > 0) subSpeed = cklSnapRung(+en.wait_speed).speed + '×.';
+            }
+            var hasCont = false;
+            if (!en.cont) {
+              for (var cj = ai + 1; cj < st.accs.length && (st.accs[cj].cont || st.accs[cj].hidden); cj++) {
+                if (st.accs[cj].cont && !st.accs[cj].hidden) { hasCont = true; break; }
+              }
+            }
+            /* SPEED BEFORE NOTE (2026-09-25): the step format puts "Suggested time warp" first and
+             * "A Note follows the warp it belongs to" (the step file's header). Order only. */
+            if (hasCont && (subNote || subSpeed)) {
+              pendTail = '<div class="ckl-crit-tail' + (av.met ? ' ckl-crit-met' : '') +
+                (ordWait ? ' ckl-crit-wait' : '') + '">' +
+                (subSpeed ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
+                (subNote ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
+                '</div>';
+            }
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') +
               (ordWait ? ' ckl-crit-wait' : '') + '">' +
               (tag ? '<span class="ckl-crit-n">' + tag + '</span>' : '') +
@@ -4867,6 +5213,8 @@
                * its own line, so the imperative is what the eye lands on. Not on a row that is
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
               (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+              (subSpeed && !hasCont ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
+              (subNote && !hasCont ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
               /* A ROW TICKED BY A SIBLING SAYS SO (`implied_by`, #749 follow-up, OWNER RULING
                * 2026-09-18). Without this the card draws "INTER RANGE reads 1.0e-7 A or more
                * ✓" beside a tile bottomed out at 1.0e-11 — a tick standing for a reading the
@@ -4886,7 +5234,39 @@
                * (`voided` carries the casualty's display string), never re-derived here. */
               (av.voided ? '<div class="ckl-crit-when">Not verified — you injected ' +
                  mesc(av.voided) + ', and this reading comes off that gauge.</div>' : '') +
+              /* A `below_1m` ROW WITH NO PREDICTION TO GRADE AGAINST SAYS SO (2026-09-24, pwr_startup
+               * 9a). The 1/M plot prints no prediction (too few points, a Clear, a rewind past the
+               * last point), so the "3 short" half cannot be checked and the row ticks on the rods
+               * being still alone — rather than stranding a player who never plotted. `no_1m` is
+               * the runtime's verdict, never re-derived here. */
+              (av.no_1m ? '<div class="ckl-crit-when">The 1/M plot shows no prediction, so this ticks ' +
+                 'once the rods have been still a plant-minute.</div>' : '') +
+              /* ...AND ONE PAST THE MARK SAYS WHERE THE MARK IS (quality pass, 2026-09-24). Measured in
+               * headless Edge, seed 42, prediction 211: a stop at 209 or 211 never ticks, and the
+               * card said only "It ticks after the rods have been still for a plant-minute" -- true
+               * of 208, silent on why 209 waits for ever (9b is blocked behind it, so the leg sits
+               * until power overtakes the step). Drawn only once CONTROL ROD POSITION is already
+               * past prediction-minus-N, so the player still reads the prediction and does the
+               * subtraction on the way out; `pred_1m` and `obs` are the runtime's, not re-derived. */
+              (!av.met && !ordWait && en.below_1m != null && av.pred_1m != null && typeof av.obs === 'number' &&
+               av.obs > av.pred_1m - en.below_1m
+                ? '<div class="ckl-crit-when">Past the mark: the 1/M plot predicts step ' + av.pred_1m +
+                  ', so this ticks with CONTROL ROD POSITION at ' + (av.pred_1m - en.below_1m) +
+                  ' or below. It reads ' + av.obs + '.</div>' : '') +
               '</div>';
+          }
+          if (pendTail) { h += pendTail; pendTail = ''; }
+          /* ONE TIME WARP FOR THE WHOLE STEP (2026-09-25, the step format: "Suggested time warp
+           * appears once per step, or under a substep only when the substeps differ"). A step whose
+           * substeps share a rung authors it ONCE, on the step: `wait_speed` is the clock (a head
+           * without its own `wait_speed` falls back to it in `cklRungFor`) and `speed_text` opts
+           * in to this line — a string verbatim, or `true` for the snapped rung as "N×.". Opt-in,
+           * so a leg that never authored the field draws exactly what it did. Drawn once, after
+           * every substep row and before the step's Note, which is where the format puts it. */
+          if (st.speed_text) {
+            var stSpeed = typeof st.speed_text === 'string' ? mesc(st.speed_text)
+              : (+st.wait_speed > 0 ? cklSnapRung(+st.wait_speed).speed + '×.' : '');
+            if (stSpeed) h += '<div class="ckl-crit-speed ckl-step-speed">Suggested time warp: ' + stSpeed + '</div>';
           }
           /* A PRESS THAT LANDED OUT OF TURN GETS A REASON ON THE CARD (#759, OWNER RULING
            * 2026-09-15: "Fix the text AND say why"). The sim ACCEPTS the press — measured, the
@@ -4905,9 +5285,9 @@
           var bEn = oot ? st.accs[oot.blocked_by] : null;
           if (bEn) {
             var bTag = '';
-            if (visN > 1 && !bEn.hidden) {
+            if (visN > 1 && !bEn.hidden && !bEn.cont) {
               var bSeen = 0;
-              for (var bi = 0; bi < oot.blocked_by; bi++) if (!st.accs[bi].hidden) bSeen++;
+              for (var bi = 0; bi < oot.blocked_by; bi++) if (!st.accs[bi].hidden && !st.accs[bi].cont) bSeen++;
               bTag = (i + 1) + String.fromCharCode(97 + bSeen);
             }
             var bTxt = bEn.ask || (bEn.label ? bEn.label
@@ -5011,7 +5391,7 @@
            * that was removed). */
           /* The rung keeps its <b>: the sentence is built as text by the shared formatter, so the
            * emphasis is put back on the one token the eye is hunting for, once. */
-          var rungTxt = (cklRungFor(st) || RD.CklSpeedHint(holdS)).speed + '×';
+          var rungTxt = (cklRungFor(st, ck) || RD.CklSpeedHint(holdS)).speed + '×';
           h += '<div class="ckl-sub ckl-wait">⏩ ' +
             mesc(cklWaitAdvice(s, { ck: ck, pr: pr, st: st }, false)).replace(rungTxt, '<b>' + rungTxt + '</b>') +
             (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
@@ -5061,7 +5441,7 @@
         h += '</div>';
       }
       var det = '';
-      if (st.note) det += '<div class="ckl-sub muted">' + mesc(st.note) + '</div>';
+      if (st.note) det += '<div class="ckl-sub muted ckl-step-note">' + mesc(st.note) + '</div>';
       if (st.wait_hint && !waitLineShown) {
         det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
@@ -5178,9 +5558,21 @@
     /* THE STEP KEY IS WHAT SCOPES THE "already pressed" SET (#755 item 19) — procedure plus step
      * index, so advancing a step, rewinding, or starting another leg all drop it and the next
      * step's controls pulse again from scratch. */
-    applyCklStepGlow(actSt ? stepHlLabels(actSt) : null,
-                     actSt ? (pr.id + '#' + ck.step_index) : null);
-    applyCklWatchGlow(actSt ? stepWatchLabels(actSt) : null);   /* #685 */
+    var actPress = actSt ? stepHlLabels(actSt, ck) : null;
+    /* …AND BY THE SUBSTEP WHOSE LISTS ARE LIT (#809 quality pass): cooldown 4b/4c/4d each ask for
+     * a new DUMP SETPOINT press, and a step-wide key left the box steady after the first. */
+    var subHl = actSt ? cklSubstepHl(actSt, ck) : null;
+    applyCklStepGlow(actPress, actSt ? (pr.id + '#' + ck.step_index + (subHl ? '/' + subHl.head : '')) : null);
+    applyCklWatchGlow(actSt ? stepWatchLabels(actSt, ck) : null, actPress);   /* #685; per substep + roles (#809) */
+    /* Which substep's lists are lit (-1 = the step's own, -2 = every row met: pulse nothing), for
+     * `verify_e2e_ui` to recompute them. */
+    var actEl = actSt ? cur.querySelector('.ckl-step[data-ckl-step]') : null;
+    if (actEl) actEl.setAttribute('data-ckl-hl-head', subHl ? subHl.head : -1);
+    /* …and WHICH LEG this panel was drawn for. The step index alone is not an identity: two legs
+     * share every index, and a gate that proves "the glow pass for step N has run" off the index
+     * reads the PREVIOUS leg's panel until the next broadcast lands (verify_e2e_ui #685, 2026-09-28:
+     * startup 17 was counted against heatup 17's three rings). */
+    if (actEl) actEl.setAttribute('data-ckl-proc', pr.id);
     applyCklSpeedGlow(s, ck, actSt);                            /* #735 — #724 item 2; #796 */
     // Step hover → glow the controls/indications the step names (its `hl` list) on
     // the plant display, reusing the Instructor highlight vocabulary (revealControl).
@@ -5224,8 +5616,13 @@
           if (!act) { cklState.userScrolled = true; return; }
           /* Back at the active step = back in step with the checklist; let it drive again. */
           var top = act.offsetTop - log.offsetTop;
-          var visible = top >= log.scrollTop - 4 &&
-                        top + act.offsetHeight <= log.scrollTop + log.clientHeight + 4;
+          /* A step TALLER than the log can never be wholly on screen, so for one of those "at the
+           * active step" means the view lies inside it (#653 pass 3: the full-visibility test
+           * alone read every scroll of step 9 — the app's own included — as the reader leaving,
+           * which disarmed the Continue scroll below). */
+          var visible = act.offsetHeight > log.clientHeight
+            ? top <= log.scrollTop + 4 && top + act.offsetHeight >= log.scrollTop + log.clientHeight - 4
+            : top >= log.scrollTop - 4 && top + act.offsetHeight <= log.scrollTop + log.clientHeight + 4;
           cklState.userScrolled = !visible;
         }, { passive: true });
       }
@@ -5275,7 +5672,26 @@
             else if (bot > log.scrollTop + log.clientHeight) log.scrollTop = bot - log.clientHeight;
           }
         }
+        /* CONTINUE LIGHTING BELOW THE FOLD IS AN EVENT TOO (#653, layman pass 3, 2026-09-24).
+         * A step taller than the log opens at its own top (above), which leaves its Continue row
+         * below the fold — MEASURED at 1600x1000 on `pwr_startup` step 9: a 785 px step in a
+         * 728 px log, Continue at y 954 against a log floor of 931. When the step's own check-offs
+         * later light Continue, nothing brought it into view, and headless Edge draws no
+         * scrollbar to hint at it. So the moment the ACTIVE step turns ready (not a repaint, and
+         * not the advance itself — a step that opens ready keeps the open-at-its-top rule), scroll
+         * the least distance that shows the Continue row. Same guards as the advance scroll: a
+         * reader who scrolled away, or whose pointer is in the log, is left where they are. */
+        var readyNow = !!ck.awaiting_ack && !ck.complete;
+        if (readyNow && !advanced && !firstBuild && cklState.readyStep !== ck.step_index &&
+            !cklState.userScrolled) {
+          var ackRow = log.querySelector('.ckl-active .ckl-ack-row');
+          if (ackRow) {
+            var over = ackRow.getBoundingClientRect().bottom - log.getBoundingClientRect().bottom;
+            if (over > 0) log.scrollTop = log.scrollTop + Math.ceil(over) + 4;
+          }
+        }
       }
+      cklState.readyStep = (!!ck.awaiting_ack && !ck.complete) ? ck.step_index : null;
       /* The scroll event is asynchronous, so the guard has to outlive this frame. */
       setTimeout(function () { cklAutoScroll = false; }, 0);
     }
@@ -5303,7 +5719,8 @@
    * the step can tell a conditional press from a lamp the player is only meant to read. MEASURED
    * on the built pools 2026-09-20: exactly THREE steps in the shipped pwr2 pool carry `hl` with
    * no command behind it — `pwr_startup` 3, 11 and 12 — and all three are real contingency
-   * presses, so all three declare it. `run_manual_controls` gates the claim from the other side:
+   * presses, so all three declare it. (2026-09-23: old step 11, the close-the-1/M-window press,
+   * was folded into step 11's note, so the shipped pair is now `pwr_startup` 3 and 12.) `run_manual_controls` gates the claim from the other side:
    * a pwr2 step with any pulsing label must ask for a press. */
   function stepAsksForPress(st) {
     if (!st) return false;
@@ -5342,7 +5759,63 @@
    * 4, `pwr_sgtr` 5, `pwr_seal_leak` 3-5) and exactly one in the live pool — `pwr_raise_power` 9,
    * which is the step the ruling is about. The ten retired-pool steps do not go dark: they have no
    * `hl_watch`, so `stepWatchLabels` below picks their `control` up as a steady ring. */
-  function stepHlLabels(st) {
+  /* HIGHLIGHTS ARE PER SUBSTEP (#809 item 14, OWNER 2026-09-27: "some buttons are highlighted for
+   * the whole step when it should just be highlighted for one substep. highlighs should be per
+   * substep, not the whole step."). A HEAD entry of `accs` may author its own `hl` / `hl_watch`;
+   * while that substep is the active one (`cklActiveAccsHead` — the first unmet visible row, walked
+   * back to its head) and it authors EITHER list, the board lights only that substep's lists. A
+   * substep that authors neither, or no active substep (every row met), falls back to the step's
+   * own lists. `ck` absent (the hover preview) = the step's lists, which the gate keeps a superset.
+   * Replaces `accs[].hl_active` (#807 review item 4), which gated one pulse the same way. */
+  /* ⚠ EVERY ROW MET ON A STEP THAT AUTHORS SUBSTEP LISTS = PULSE NOTHING (#809 quality pass,
+   * 2026-09-27). The old fallback to the step's own `hl` re-pulsed every control the step had
+   * ever asked for once its rows were done — measured on the built pwr2 pool, 36 steps did it,
+   * among them `pwr_lower_power` 1, which then pulsed Boron ON beside a note saying pressing ON
+   * resets the target. The step's WATCH list stays up (steady); `head: -2` tells `verify_e2e_ui`
+   * which of the three cases it is looking at. */
+  /* …ON EVERY `accs` STEP, NOT ONLY THOSE THAT AUTHOR SUBSTEP LISTS (#809 layman pass 14 S-2,
+   * 2026-09-28). The rule above was scoped to steps with per-substep `hl`, so a step whose lists are
+   * step-level fell back to them once its rows were met: startup 10 and 14 (`hl` Withdraw) kept
+   * WITHDRAW pulsing beside a lit Continue, and in 10 that reads "tap once more" with STARTUP RATE
+   * already at +0.38 of a 1.0 limit. Every row met = nothing to press, whatever authored the list. */
+  function cklSubstepHl(st, ck) {
+    if (!ck || !st || !st.accs || !st.accs.length) return null;
+    var head = cklActiveAccsHead(st, ck);
+    var e = head >= 0 ? st.accs[head] : null;
+    if (!e) return { head: -2, hl: [], hl_watch: st.hl_watch || [] };
+    if (!(e.hl || e.hl_watch)) return null;
+    /* `hl_when` (#809 layman pass 14 S-3): the substep's PRESS list stays dark until its own
+     * condition reads true on the board — startup 5b-8b's "Wait for STARTUP RATE to read +0.03 or
+     * less, then press 1/M PLOT" lit the opener the moment the pull row ticked, at +0.05 to +0.11
+     * (MEASURED, typical route: 7b 1.5 and 8b 6 plant-minutes early). The watch list stays up. */
+    var hl = e.hl || [];
+    if (e.hl_when && !cklHlWhenMet(st, ck, head)) hl = [];
+    return { head: head, hl: hl, hl_watch: e.hl_watch || [] };
+  }
+  /* Graded the way the ROW would be (`_grade`: the instrument first, HR1 — what the tile shows),
+   * and LATCHED per step + substep so a reading hovering on the line does not flicker the pulse. */
+  var cklSnap = null;
+  var cklWhenLatch = Object.create(null);
+  function cklHlWhenMet(st, ck, head) {
+    var e = st.accs[head], k = ck.procedure_id + '#' + ck.step_index + '/' + head;
+    if (cklWhenLatch[k]) return true;
+    var IL = RD.InstructorLayer;
+    if (!cklSnap || !IL || !IL.prototype._grade) return true;   // cannot tell: never hide a press
+    var met = false;
+    try { met = !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, cklSnap, e.hl_when).met; }
+    catch (x) { return true; }
+    if (met) cklWhenLatch[k] = true;
+    return met;
+  }
+  function cklHlWhenKey(pr, ck) {
+    var st = pr && !ck.complete ? pr.steps[ck.step_index] : null;
+    var head = st ? cklActiveAccsHead(st, ck) : -1;
+    if (head < 0 || !st.accs[head].hl_when) return '';
+    return cklHlWhenMet(st, ck, head) ? 'w1' : 'w0';
+  }
+  function stepHlLabels(st, ck) {
+    var sub = cklSubstepHl(st, ck);
+    if (sub) return sub.hl.length ? sub.hl : null;
     if (st.hl && st.hl.length) return st.hl;
     var c = stepControlLabel(st);
     if (c && stepAsksForPress(st)) return [c];
@@ -5359,7 +5832,9 @@
    * and a step that authored `hl` has already said what it is about, so its `control` stays a
    * pill. Without this the ten retired-pool verify steps above would lose their ring AND their
    * hover affordance (`hoverable` is `stepHlLabels || stepWatchLabels`) — a regression, not a fix. */
-  function stepWatchLabels(st) {
+  function stepWatchLabels(st, ck) {
+    var sub = cklSubstepHl(st, ck);
+    if (sub) return sub.hl_watch.length ? sub.hl_watch : null;
     if (st.hl_watch && st.hl_watch.length) return st.hl_watch;
     if (st.hl && st.hl.length) return null;
     var c = stepControlLabel(st);
@@ -5420,8 +5895,8 @@
    * while others ride `click`, and capture means a handler that stops propagation cannot hide the
    * press from this. It reads state and adds a class — it issues no command, grades nothing and
    * never consumes the event (HR5). */
-  var cklPressStep = null;                      // "<procedure id>#<step index>" the set below belongs to
-  var cklPressed = Object.create(null);         // label -> the player has pressed it on THIS step
+  var cklPressStep = null;                      // "<procedure id>#<step index>[/<substep head>]" the set below belongs to
+  var cklPressed = Object.create(null);         // label -> the player has pressed it on THIS step (or substep)
   var cklPressArmed = false;
   /* ⚠ THE PRESS IS MATCHED BY GEOMETRY, NOT BY THE DOM, AND TWO DOM VERSIONS WERE MEASURED FAILING
    * BEFORE THIS ONE. The obvious `e.target.closest('.ckl-step-glow')` cannot work: on the board the
@@ -5450,33 +5925,121 @@
   function cklNotePress(e) {
     var x = e.clientX, y = e.clientY;
     if (!isFinite(x) || !isFinite(y)) return;
+    var held = !!(e.target && e.target.closest && e.target.closest('[data-momentary]'));
     document.querySelectorAll('.ckl-step-glow').forEach(function (g) {
       var r = g.getBoundingClientRect();
       if (!r.width || !r.height) return;
       if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
       var lab = g.getAttribute('data-ckl-hl');
-      if (lab) cklPressed[lab] = true;
+      if (lab) { if (held) cklHeld[lab] = true; else cklPressed[lab] = true; }
       g.classList.add('ckl-step-done');
     });
   }
+  /* ⚠ A HELD (MOMENTARY) BUTTON IS STEADY ONLY WHILE IT IS HELD (#809 layman pass 13 S-3,
+   * 2026-09-28). The rod WITHDRAW/INSERT buttons are press-and-hold: one press is a burst or a
+   * one-step tap, not the action — 5a asks for "tap WITHDRAW one step and wait … repeat until it
+   * stays there", 10b for a second hold after 10a's. MEASURED before this: WITHDRAW went steady on
+   * the FIRST pointerdown of 5a and stayed steady with 5a unmet at bank 40 of the ~72 it needs,
+   * and through all of 10b. So a momentary press is remembered in `cklHeld`, which the release
+   * clears: steady while the finger is down (#755 item 19's "after press: steady glow, no pulse"),
+   * pulsing again after it while the row asking for it is unmet. Latching controls (SLOW, MED,
+   * AUTO, a typed box) keep the old rule. `data-momentary` is set by the board's own buildButton
+   * on exactly the buttons it wires as press-and-hold. */
+  var cklHeld = Object.create(null);
+  /* THE LAST APPLIED SET, re-applied on every pointer release (below). Two things change what the
+   * pulse should be without changing the checklist render key: a held button being let go, and
+   * the 1/M window being opened or closed (the Plot point fallback in applyCklStepGlow). */
+  var cklLastGlow = null;
+  /* NO WALKTHROUGH, NO RE-APPLY (#809 pass-13 review): `resetCkl` nulls `cklLastGlow`, and the
+   * `cklState.key` test covers a release already queued when the run ended. */
+  function cklRefreshStepGlow() {
+    if (cklLastGlow && cklState.key) applyCklStepGlow(cklLastGlow.labels, cklLastGlow.key);
+  }
+  function cklReapplyStepGlow() {
+    cklHeld = Object.create(null);
+    setTimeout(cklRefreshStepGlow, 0);
+  }
+  /* THE 1/M WINDOW CAN OPEN OR SHUT WITHOUT A POINTER (#809 pass-13 review item 6): the panel's own
+   * `close`, its unsupported-plant hide, a keyboard press. Its `hidden` attribute is the one fact
+   * every path writes, so the opener fallback below is re-evaluated off that, not off a click. */
+  var cklOomObs = null;
+  function cklWatchOomWin() {
+    if (cklOomObs || typeof MutationObserver === 'undefined') return;
+    var win = document.getElementById('oomWin');
+    if (!win) return;
+    cklOomObs = new MutationObserver(function () { setTimeout(cklRefreshStepGlow, 0); });
+    cklOomObs.observe(win, { attributes: true, attributeFilter: ['hidden'] });
+  }
+  /* EVERY LIT CONTROL LIGHTS ITS CARD — THE OPENER TOO (#809 item 3 rule; pass-13 review item 6).
+   * `Plot point` is a shell target, so `applyCklWatchGlow` finds no card for it; while its opener
+   * (1/M PLOT, on ROD CONTROL) carries the pulse, the opener's card is lit here and tagged
+   * `data-ckl-op`, so the step-glow clear can take back exactly what it added. */
+  var cklOpenerLabs = [];
+  function cklLightOpenerPanels() {
+    var board = RD.PwrBoard && RD.PwrBoard.haloElement ? RD.PwrBoard : null;
+    if (!board || ui.plant !== 'pwr' || !RD.PwrBoardInspect || !RD.PwrBoardInspect.glowRole) return;
+    cklOpenerLabs.forEach(function (lab) {
+      var r = RD.PwrBoardInspect.glowRole(lab);
+      var el = r && r.panel ? board.haloElement(r.panel) : null;
+      if (el && !cklHasGlow(el)) { el.classList.add('ckl-panel-glow'); el.setAttribute('data-ckl-op', lab); }
+    });
+  }
+  /* ⚠ A SHELL TARGET THAT IS NOT ON SCREEN PULSES ITS OPENER (#809 layman pass 13 S-2).
+   * `Plot point` lives in the 1/M window, which step 4's note tells the player to close between
+   * points (it covers STEAM GENERATOR LEVEL). MEASURED before this on 5b, 6b and 7b with the window
+   * shut: the pulse sat on the 0x0 hidden button and NOTHING on screen glowed. When the resolved
+   * element has no layout box, the board's own entry for the same label — `bdOneOverM`, the 1/M
+   * PLOT button that opens the window — takes the pulse instead. It is never recorded as pressed
+   * (no `data-ckl-hl`): it pulses for exactly as long as the window is shut, and the pointer
+   * release that opens the window re-applies, moving the pulse onto Plot point. `RD.Highlight.
+   * resolve` is unchanged, so hover and the watch glows, and the gates that model it, are too. */
+  function cklVisibleOrOpener(lab, el) {
+    if (!el || el.getClientRects().length) return null;
+    if (!(RD.Highlight && RD.Highlight.SHELL_TARGETS && RD.Highlight.SHELL_TARGETS[lab])) return null;
+    var board = (RD.PwrBoard && RD.PwrBoard.isMounted && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+    var op = board && board.revealControl ? board.revealControl(lab) : null;
+    return (op && op !== el) ? op : null;
+  }
   function applyCklStepGlow(labels, stepKey) {
     var key = stepKey || null;
-    if (key !== cklPressStep) { cklPressStep = key; cklPressed = Object.create(null); }
-    if (!cklPressArmed) { document.addEventListener('pointerdown', cklNotePress, true); cklPressArmed = true; }
+    if (key !== cklPressStep) { cklPressStep = key; cklPressed = Object.create(null); cklHeld = Object.create(null); }
+    if (!cklPressArmed) {
+      document.addEventListener('pointerdown', cklNotePress, true);
+      document.addEventListener('pointerup', cklReapplyStepGlow, true);
+      document.addEventListener('pointercancel', cklReapplyStepGlow, true);
+      document.addEventListener('click', cklReapplyStepGlow, true);   // a keyboard or synthetic click opens/shuts the 1/M window too
+      /* A HOLD THE PAGE NEVER SEES RELEASED (#809 pass-13 review item 5): focus leaving the window
+       * mid-hold (alt-tab, a dialog) drops the pointerup, and the held button stayed steady. */
+      window.addEventListener('blur', cklReapplyStepGlow);
+      cklPressArmed = true;
+    }
+    cklWatchOomWin();
+    cklLastGlow = { labels: labels, key: key };
     clearCklStepGlow();
+    cklOpenerLabs = [];
     if (!labels || !labels.length) return;
+    var openers = [];
     labels.forEach(function (lab) {
       var el = hlTarget(lab);
       if (!el) return;
+      var op = cklVisibleOrOpener(lab, el);
+      if (op) { openers.push(op); cklOpenerLabs.push(lab); return; }
       el.classList.add('ckl-step-glow');
       el.setAttribute('data-ckl-hl', lab);
-      if (cklPressed[lab]) el.classList.add('ckl-step-done');
+      if (cklPressed[lab] || cklHeld[lab]) el.classList.add('ckl-step-done');
     });
+    /* last, so an opener the step also names (startup 4's `1/M Plot Tool`, pressed and then the
+     * window shut again) pulses rather than sitting steady on a window that is closed */
+    openers.forEach(function (op) { op.classList.add('ckl-step-glow'); op.classList.remove('ckl-step-done'); });
+    cklLightOpenerPanels();
   }
   function clearCklStepGlow() {
     document.querySelectorAll('.ckl-step-glow').forEach(function (el) {
       el.classList.remove('ckl-step-glow'); el.classList.remove('ckl-step-done');
       el.removeAttribute('data-ckl-hl');
+    });
+    document.querySelectorAll('[data-ckl-op]').forEach(function (el) {
+      el.classList.remove('ckl-panel-glow'); el.removeAttribute('data-ckl-op');
     });
   }
   /* THE WATCH GLOW (#685) — same apply/clear lifecycle as the step glow above and applied in
@@ -5485,16 +6048,49 @@
    * names the same label in both lists the pulse wins the element rather than being replaced
    * by a quieter ring — `run_manual_controls` reddens on that overlap, this is the behaviour
    * while the red is being fixed. */
-  function applyCklWatchGlow(labels) {
+  /* THE SHAPE FOLLOWS WHAT THE ELEMENT IS (#809 items 3/4, OWNER 2026-09-27: "Lets make a dimmer
+   * glow thats for the panel that contains the control. keep the brighter solid glow for
+   * indications." / "in steps that have you check a button the button should have a dashed glow.").
+   * A watch label that is an INDICATION keeps `.ckl-watch-glow` (bright, solid, steady); a CONTROL
+   * the step only asks the player to check wears `.ckl-check-glow` (dashed, still); a CARD wears
+   * `.ckl-panel-glow` (dim). And every lit control — pulsing or checked — lights the card that holds
+   * it with `.ckl-panel-glow`, derived from the board's containment (`PwrBoardInspect.glowRole`),
+   * never authored, so the player finds the card first. What the element IS comes from the board's
+   * item kinds; a label outside the board map (a shell target) keeps the indication ring. Authored
+   * watch labels carry `data-ckl-w` so a gate can count them apart from the derived cards. */
+  var CKL_WATCH_CLASSES = ['ckl-watch-glow', 'ckl-check-glow', 'ckl-panel-glow'];
+  function cklGlowRole(lab) {
+    if (ui.plant !== 'pwr' || !RD.PwrBoardInspect || !RD.PwrBoardInspect.glowRole) return null;
+    if (RD.Highlight && RD.Highlight.SHELL_TARGETS && RD.Highlight.SHELL_TARGETS[lab]) return null;
+    return RD.PwrBoardInspect.glowRole(lab);
+  }
+  function cklHasGlow(el) {
+    return el.classList.contains('ckl-step-glow') ||
+           CKL_WATCH_CLASSES.some(function (c) { return el.classList.contains(c); });
+  }
+  function applyCklWatchGlow(labels, pressLabels) {
     clearCklWatchGlow();
-    if (!labels || !labels.length) return;
-    labels.forEach(function (lab) {
+    (labels || []).forEach(function (lab) {
       var el = hlTarget(lab);
-      if (el && !el.classList.contains('ckl-step-glow')) el.classList.add('ckl-watch-glow');
+      if (!el || el.classList.contains('ckl-step-glow')) return;
+      var r = cklGlowRole(lab), role = r ? r.role : 'indication';
+      el.classList.add(role === 'control' ? 'ckl-check-glow' : role === 'panel' ? 'ckl-panel-glow' : 'ckl-watch-glow');
+      el.setAttribute('data-ckl-w', lab);
     });
+    var board = RD.PwrBoard && RD.PwrBoard.haloElement ? RD.PwrBoard : null;
+    if (!board) return;
+    (pressLabels || []).concat(labels || []).forEach(function (lab) {
+      var r = cklGlowRole(lab);
+      if (!r || !r.panel) return;
+      var el = board.haloElement(r.panel);
+      if (el && !cklHasGlow(el)) el.classList.add('ckl-panel-glow');
+    });
+    cklLightOpenerPanels();
   }
   function clearCklWatchGlow() {
-    document.querySelectorAll('.ckl-watch-glow').forEach(function (el) { el.classList.remove('ckl-watch-glow'); });
+    CKL_WATCH_CLASSES.forEach(function (c) {
+      document.querySelectorAll('.' + c).forEach(function (el) { el.classList.remove(c); el.removeAttribute('data-ckl-w'); el.removeAttribute('data-ckl-op'); });
+    });
   }
   /* THE SPEED BAR GLOWS WHEN THE STEP RECOMMENDS A SPEED (#735, owner playtest #724 item 2:
    * "when a speed control is recommended the speed control button should glow").
@@ -5543,9 +6139,12 @@
    * be overshoot — the same reason auto drops the clock there. */
   function applyCklSpeedGlow(s, ck, st) {
     clearCklSpeedGlow();
-    var rung0 = cklRungFor(st);
+    var rung0 = cklRungFor(st, ck);
     if (!rung0) return;
     if (ck && (ck.acc_met || ck.awaiting_ack)) return;
+    /* the ruled 5× while the bank moves (startup 8, OWNER 2026-09-28) marks the 5× rung, not the
+     * 10× one a player would otherwise be invited to press mid-pull */
+    if (st && +st.moving_speed > 0 && rung0.speed > +st.moving_speed && cklRodsMoving(s)) rung0 = cklSnapRung(+st.moving_speed);
     if (warpNote && warpNote.reason === 'hold') return;   // the clock is held; the press would refuse
     var bar = document.getElementById('speed');
     if (!bar) return;
@@ -5716,6 +6315,50 @@
     selectTab('instructor');   // the walkthrough runs in the Instructor tab (#660 item 15)
   }
 
+  /* ---- INSTRUCTOR TRENDS (#811, owner 2026-09-28: "It could change the lines to show what it's
+   * teaching."). A beat's `trend: [series ids]` arrives as instructor.trend {rev, series}; each
+   * new rev replaces the chart's traces and glows the strip chart, and the beat's own text names what
+   * it put there. Whatever the chart is showing the moment the FIRST trend lands is saved and put
+   * back the moment the content actually stops — End, Continue, Retry, any other stop — so the
+   * chart is only ever borrowed. It stays borrowed while the finish card is up (level_complete
+   * still carries a scenario_id): the last beat's trace is the point of the card, so restoring
+   * early would blank it under a dark chart. Note the saved baseline is usually the PLANT'S
+   * DEFAULTS, not the player's own layout — start_opener's afterPlantChange() resets ui.series to
+   * prof().defaultSeries before the first beat's trend ever lands, so there is nothing of the
+   * player's left to capture by the time this code runs. */
+  var instrTrend = { saved: null, rev: null };
+  function instrTrendRedraw() {
+    chartRange = {};
+    syncIndCells();
+    syncChartSettings();
+    drawChart();
+  }
+  function restoreInstrTrend() {
+    if (!instrTrend.saved) { instrTrend.rev = null; return; }
+    ui.series = instrTrend.saved.series;
+    ui.seriesSide = instrTrend.saved.side;
+    instrTrend = { saved: null, rev: null };
+    var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.remove('instr-glow');
+    instrTrendRedraw();
+  }
+  function applyInstrTrend(s) {
+    var ins = s && s.instructor, t = ins && ins.trend;
+    var live = !!(ins && ins.scenario_id);
+    if (!live) { if (instrTrend.saved) restoreInstrTrend(); return; }
+    // Finish card: keep the last beat's chart up rather than snapping back to defaults under it;
+    // restored once Continue/Retry/End actually stops the content (scenario_id then goes away).
+    if (ins.level_complete) return;
+    if (!t || t.rev === instrTrend.rev) return;
+    if (!instrTrend.saved) instrTrend.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide) };
+    instrTrend.rev = t.rev;
+    var next = {};
+    (t.series || []).forEach(function (id) { if (seriesById(id)) next[id] = true; });
+    ui.series = next;
+    ui.seriesSide = {};
+    instrTrendRedraw();
+    var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.add('instr-glow');   // cleared with the beat's highlight
+  }
+
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
   // follow step points at, auto-revealing the tab or view that hides it (F8 fix).
   var lastHighlightKey = null;
@@ -5735,6 +6378,32 @@
     }
     if (!el && hl.instrument_id) el = $('gauge-' + hl.instrument_id);
     if (el) el.classList.add('instr-glow');
+  }
+  /* ---- Instructor SCOPE + POINTER (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the
+   * part of the board we are focusing on and only use the outline as a pointer to briefly show what
+   * the instructor is describing"). A beat's `scope` (snapshot `instructor.scope.names`) dims the
+   * PWR board outside those regions; the beat's own highlighted control is always lit, so dimming
+   * never swallows the control the line asks for. A chat line's `point` outlines components for one
+   * brief cue when the line appears (renderChat) and again when the player clicks the line.
+   * Live instructed content only: free play never scopes, and the finish card, End, Retry and any
+   * stop clear both (the snapshot's scope is null outside a running scenario). */
+  function scopeBoard() {
+    return (ui.plant === 'pwr' && RD.PwrBoard && RD.PwrBoard.isMounted && RD.PwrBoard.isMounted()) ? RD.PwrBoard : null;
+  }
+  function renderScope(s) {
+    var B = scopeBoard();
+    if (!B || !B.setScope) return;
+    var ins = s && s.instructor;
+    var live = !!(ins && ins.scenario_id && !ins.level_complete);
+    if (!live) B.clearPointers();
+    var f = live ? ins.scope : null;
+    if (!f) { B.setScope(null); return; }
+    var hl = ins.highlight && ins.highlight.control_label;
+    B.setScope({ names: f.names || [], lit: hl ? [hl] : [] });
+  }
+  function chatPoint(names) {
+    var B = scopeBoard();
+    if (B && B.pointAt && names && names.length) B.pointAt(names);
   }
   // Locate a control group on the RBMK/BWR plant display by its .cg-l label,
   // switching to the owning view tab when it is not on the active one.
@@ -5795,6 +6464,7 @@
       lastLcKey = null;
       if (ui.follow) { followRetry(); return; }
       if (ui.scenario) { startScenario(ui.scenario); return; }
+      if (ui.opener) { startOpener(ui.opener); return; }
       return;
     }
     // continue — if this was a campaign mission, chain straight into the next
@@ -5802,7 +6472,7 @@
     lastLcKey = null;
     var finished = ui.scenario || (ui.follow && ui.follow.id);
     if (ui.follow) { ui.follow = null; cmd({ action: 'stop_follow' }); }
-    else { ui.scenario = null; cmd({ action: 'stop_scenario' }); }
+    else { ui.scenario = null; ui.opener = null; cmd({ action: 'stop_scenario' }); }
     var c = campaign();
     if (c && finished && campaignMissions(c).some(function (m) { return m.id === finished; })) {
       var nxt = campaignFrontier();
@@ -6106,8 +6776,13 @@
     // it on every tab switch, and tripped verify_flags_ui's "public: campaign offers
     // nothing to start", which counts buttons in #mpContent as things you can start. That
     // check was right and reads correctly again with the footer where it belongs.
+    /* The preset's DISPLAY name, never its id (layman pass 2026-09-28 S-7: "Reset returns the
+     * plant to hot_full_power" under "Hot Full Power (Mode 1)"). Same lookup as the walkthrough
+     * list's `ics`; the id is only the fallback for a preset with no label. */
+    var rsEng = ENGINES[ui.engineKey] || {}, rsName = ui.initState;
+    (rsEng.initStates || (PROFILES[rsEng.plant] || {}).initStates || []).forEach(function (r) { if (r[0] === ui.initState) rsName = r[1]; });
     setHTML($('mpSession'),
-      '<div class="m-note">Reset returns the plant to ' + mesc(ui.initState) +
+      '<div class="m-note">Reset returns the plant to ' + mesc(rsName) +
       ' and ends anything the Instructor is running.</div>' +
       '<button class="btn mp-reset" data-mreset="arm">↺ Reset the plant</button>');
   }
@@ -6196,13 +6871,48 @@
      * pool; picking one loads its starting condition (`from`) and starts it in the Instructor
      * tab. The old Follow-in-Instructor buttons are gone. */
     var ics = {}; (ENGINES[msel.engine].initStates || []).forEach(function (r) { ics[r[0]] = r[1]; });
-    var h = '<div class="m-note">Pick a walkthrough. The plant loads at its starting condition and the walkthrough runs in the Instructor tab, one step at a time.</div>';
-    return h + (procs.map(function (x) {
+    /* A leg can start at a preset free play does not offer (pwr2's `low_power`, the startup's hand-off
+     * state), which left its row with no "starts at". Name it from the plant family's list instead. */
+    (((PROFILES[ENGINES[msel.engine].plant] || {}).initStates) || []).forEach(function (r) { if (!ics[r[0]]) ics[r[0]] = r[1]; });
+    /* WHERE TO START, AND IN GROUPS (OWNER, 2026-09-28: "the walkthrough menu should explain where
+     * to start to perform a startup. The 'pick a walkthrough' line should be replaced." then "Maybe
+     * start grouping the walkthroughs. Ie startup, shutdown, TMI"). The pool is in plant order;
+     * GROUPS names each leg's group by id, in display order. A leg no group names (another plant's
+     * pool, or a leg added later and not placed yet) falls into a trailing unheaded group, so
+     * nothing can drop off the list. */
+    var GROUPS = msel.engine === 'pwr2' ? [
+      { title: 'Startup', note: 'Cold Shutdown to full power. Start here, at the first one.',
+        ids: ['pwr_heatup', 'pwr_startup', 'pwr_raise_power'] },
+      { title: 'Shutdown', note: 'Full power back to Cold Shutdown.',
+        ids: ['pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown'] },
+      { title: 'Incidents', note: 'Real events, replayed on this plant.',
+        ids: ['pwr_tmi2_incident'] }
+    ] : [];
+    function row(x) {
       var from = x.from && ics[x.from] ? ics[x.from] : null;
       return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) +
         (from ? '<span class="m-note"> · starts at ' + mesc(from) + '</span>' : '') + '</span>' +
         '<button class="btn" data-wtstart="' + mesc(x.id) + '">▶ Start</button></div>';
-    }).join('') || '<div class="m-note">No walkthroughs for this plant.</div>');
+    }
+    var placed = {}, h;
+    if (GROUPS.length) {
+      h = '<div class="m-note"><b>To start up the plant, begin with the first Startup walkthrough</b> and take them in order. ' +
+        'Each one offers the next when it finishes, and each loads its own starting condition, so you can also begin at any of them. ' +
+        'A running walkthrough is shown in the Instructor tab, one step at a time.</div>';
+      GROUPS.forEach(function (g) {
+        var rows = procs.filter(function (x) { return g.ids.indexOf(x.id) !== -1; });
+        rows.forEach(function (x) { placed[x.id] = 1; });
+        if (rows.length) h += '<div class="wt-group"><span class="wt-group-t">' + mesc(g.title) + '</span>' +
+          '<span class="m-note"> · ' + mesc(g.note) + '</span></div>' + rows.map(row).join('');
+      });
+    } else {
+      h = '<div class="m-note"><b>To start up the plant, begin with the first walkthrough</b> and work down the list. ' +
+        'Each one offers the next when it finishes, and each loads its own starting condition, so you can also begin at any of them. ' +
+        'A running walkthrough is shown in the Instructor tab, one step at a time.</div>';
+    }
+    var rest = procs.filter(function (x) { return !placed[x.id]; });
+    if (GROUPS.length && rest.length) h += '<div class="wt-group"><span class="wt-group-t">More</span></div>';
+    return procs.length ? h + rest.map(row).join('') : h + '<div class="m-note">No walkthroughs for this plant.</div>';
   }
 
   // THE SELECTION SCREEN IS GONE *(OWNER DIRECTIVE, 2026-08-11: "The plant and mission menu
@@ -6433,6 +7143,43 @@
     setFocus('instructor', true);
     service.handleCommand({ action: 'play' });
     resumeSim();                 // the scenario runs it: clears the 'content' hold above
+  }
+
+  /* ---- Openers (#811): the idle Instructor tab's guided chat for this starting condition.
+   * Same lifecycle as startScenario, but through `start_opener`, which resets to the opener's IC
+   * WITH the free-play lineup. Telemetry reuses the mission_* rows (diagReset 'scenario' files
+   * mission_start; the level_complete files mission_complete; End files mission_abandon with the
+   * beat reached) — the id (`opener_*`) keeps them apart from campaign missions. */
+  function startOpener(id) {
+    var op = RD.OPENERS && RD.OPENERS[id];
+    if (!op) return;
+    ui.follow = null; ui.scenario = null; ui.opener = id;
+    inspectClear();              // the offer's Scanner hint described a button that is now gone
+    restoreInstrTrend();         // clear any trend still borrowed from a PRIOR opener/beat — the
+                                  // afterPlantChange() below is what actually restores the chart,
+                                  // and it restores the plant's DEFAULTS, not the player's own pick
+    pauseSim('content');
+    service.handleCommand({ action: 'start_opener', opener_id: id });
+    afterPlantChange();
+    diagReset('scenario', { scenario_id: id });
+    resetInstrFlow();
+    resetChat();
+    setFocus('instructor', true);
+    service.handleCommand({ action: 'play' });
+    resumeSim();
+  }
+  function endOpener() {
+    var s = latest, sid = s && s.instructor && s.instructor.scenario_id;
+    var op = sid && RD.OPENERS && RD.OPENERS[sid];
+    if (op && !(s.instructor.level_complete)) {
+      var ids = op.beats.map(function (b) { return b.id; });
+      TEL.missionAbandon(sid, Math.max(0, ids.indexOf(s.instructor.current_beat_id)));
+    }
+    ui.opener = null;
+    restoreInstrTrend();                      // the chart was borrowed; hand it back too
+    cmd({ action: 'stop_scenario' });
+    cmd({ action: 'set_speed', value: 1 });   // the opener owned the clock; hand it back at 1×
+    if (latest) renderInstructor(latest);
   }
 
   // ---- "Follow in Instructor" (Path 2): the Instructor (M6) runs the procedure —
@@ -6746,7 +7493,7 @@
     var i = (s && s.instructor) || {};
     if (i.checklist && i.checklist.procedure_id) return 'ckl:' + i.checklist.procedure_id;
     if (i.follow && i.follow.procedure_id) return 'flw:' + i.follow.procedure_id;
-    if (i.chat && (i.chat.sid || i.chat.id)) return 'cht:' + (i.chat.sid || i.chat.id);
+    if (i.chat) return 'cht:' + (i.scenario_id || '');   /* the chat block carries no id of its own (#811) */
     if (ui.scenario) return 'scn:' + (ui.scenario.id || ui.scenario);
     return 'idle';
   }
@@ -6777,13 +7524,27 @@
      * guidance, scenario commentary, and walkthrough steps — each a discrete message that
      * used to be overwritten by the next one. */
     if (cklState.key) { instrLog.key = null; instrLog.html = ''; return; }
+    /* A CHAT TRANSCRIPT IS ALSO ALREADY PERSISTENT (#811). Its first 160 characters change every
+     * time a line shorter than that is followed by the next one, so folding here froze a copy of
+     * the whole transcript into the log per line — measured in headless Edge on the opener, whose
+     * lines are ~20 words: the conversation appeared twice, "End" and "reveal all" included. */
+    if (s && s.instructor && s.instructor.chat) { instrLog.key = null; instrLog.html = ''; return; }
     var first = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     if (!first) return;
     if (first === instrLog.key) { instrLog.html = cur.innerHTML; return; }  // same message, live
-    if (instrLog.key) {
+    // Idle panel -> idle panel (the opener offer came or went, #811) is the same panel redrawn,
+    // not a new message: folding it drew the whole idle help twice.
+    var idleToIdle = cur.classList.contains('instr-standby') && instrLog.html.indexOf('instr-idle') !== -1;
+    if (instrLog.key && !idleToIdle) {
       var d = document.createElement('div');
       d.className = 'instr-msg';
       d.innerHTML = instrLog.html;
+      /* THE OPENER OFFER IS A LIVE CONTROL, NOT A MESSAGE (#811 QA pass). Measured in headless
+       * Edge: pressing "Not now" re-renders the idle panel, which folded the OLD panel — offer,
+       * Start and Not now buttons all still live — into the log, so the dismissed offer stayed
+       * on screen and still started the opener until the page was reloaded. */
+      var stale = d.querySelectorAll('.instr-opener');
+      for (var si = 0; si < stale.length; si++) stale[si].parentNode.removeChild(stale[si]);
       log.insertBefore(d, cur);
     }
     instrLog.key = first; instrLog.html = cur.innerHTML;
@@ -8214,6 +8975,22 @@
         }
 
         this.walkthrough(s.instructor && s.instructor.checklist);
+        this.openerBeat(s.instructor);
+      },
+
+      /* THE OPENERS, BEAT BY BEAT (#811 follow-up). mission_start / _complete / _abandon say
+       * whether they finished; this says WHERE THEY STOPPED. One row each time the opener's
+       * current beat changes, `beat` its index in the authored list — the same meaning
+       * mission_abandon.beat already carries (the beat pending or being watched), so the two
+       * read on one axis. Ids and an index only. A beat entered and left inside one broadcast
+       * (a delay(0) hop) is not seen; the funnel is the pending asks, which is the question. */
+      openerBeat: function (ins) {
+        var sid = ins && ins.scenario_id, op = sid && RD.OPENERS && RD.OPENERS[sid];
+        if (!op || !mission || mission.id !== sid || !ins.current_beat_id) return;
+        if (mission.openerBeat === ins.current_beat_id) return;
+        mission.openerBeat = ins.current_beat_id;
+        var idx = op.beats.map(function (b) { return b.id; }).indexOf(ins.current_beat_id);
+        if (idx >= 0) ev('opener_beat', { id: sid, beat: idx });
       },
 
       /* THE WALKTHROUGHS (#674). Driven off the snapshot, from inside tick, because
@@ -8271,6 +9048,14 @@
         if (idx !== wt.step) { wt.step = idx; wt.stepAt = Date.now(); }
 
         if (ck.complete) this.walkthroughEnd('complete');
+      },
+
+      // An opener closed with End before its level_complete (#811) — the beat index is how far
+      // they got. Same row a pagehide files for a mission, with a real beat instead of 0.
+      missionAbandon: function (id, beat) {
+        if (!mission || mission.id !== id) return;
+        ev('mission_abandon', { id: id, seconds: since(mission.at), beat: beat });
+        mission = null;
       },
 
       // The walkthrough's own Rewind button, not the checkpoint picker: a general rewind
@@ -8827,6 +9612,18 @@
       cklAuto.over = cklAutoKey(latest);
       cmd({ action: 'set_speed', value: +b.getAttribute('data-speed') });
     });
+    // "Walkthrough sets time warp" (#807 item 7) — a UI preference only, never routed through
+    // cmd()/handleCommand: it decides whether THIS BROWSER'S walkthrough pacing is allowed to
+    // touch the speed bar at all, which is not a plant act and has no SOE/telemetry business
+    // (same reasoning as `cklAuto.over` above, one comment block up).
+    var cwBox = $('cklWarpPrefBox');
+    if (cwBox) cwBox.addEventListener('change', function () {
+      cklAutoWarpOn = cwBox.checked;
+      saveCklAutoWarpPref(cklAutoWarpOn);
+      // back ON = the walkthrough may pace THIS step again: forget the stale latch and any
+      // override of it, or the step's rung would wait for the next step to apply
+      if (cklAutoWarpOn) { cklAuto.key = null; cklAuto.over = null; }
+    });
     // Settings: Units only under Display (#277 removed Values / Terminology /
     // Physics Overlay). RBMK/BWR All-view Instruments/True/Both still lives on
     // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
@@ -9053,6 +9850,8 @@
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
       if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      var pl = e.target.closest('.chat-line[data-point]');
+      if (pl) { chatPoint(pl.getAttribute('data-point').split('|')); return; }   // re-show the line's pointer (#811)
       var ra = e.target.closest('[data-chatrevealall]');
       if (ra) {
         chatState.instantThrough = Number.MAX_SAFE_INTEGER;   // everything pending reveals as backlog
@@ -9321,6 +10120,28 @@
         markSeen('checklists');
         return;
       }
+      var os = e.target.closest('[data-opener-start]');
+      if (os) {
+        e.preventDefault();
+        var osid = os.getAttribute('data-opener-start');
+        // a fresh plant costs nothing to restart; anything else asks first (#811, owner 2026-09-28)
+        if (service.isFreshPlant && service.isFreshPlant()) startOpener(osid);
+        else { openerConfirm = osid; showIdleInstructor(); }
+        return;
+      }
+      var ocf = e.target.closest('[data-opener-confirm]');
+      if (ocf) { e.preventDefault(); openerConfirm = null; startOpener(ocf.getAttribute('data-opener-confirm')); return; }
+      if (e.target.closest('[data-opener-cancel]')) { e.preventDefault(); openerConfirm = null; showIdleInstructor(); return; }
+      var od = e.target.closest('[data-opener-dismiss]');
+      if (od) {
+        e.preventDefault();
+        var oid = od.getAttribute('data-opener-dismiss');
+        openerHidden[oid] = true;
+        try { sessionStorage.setItem('rd_opener_hide_' + oid, '1'); } catch (err) { /* hidden for this page only */ }
+        showIdleInstructor();
+        return;
+      }
+      if (e.target.closest('[data-opener-end]')) { e.preventDefault(); endOpener(); return; }
       if (e.target.closest('[data-open-help]')) { e.preventDefault(); $('helpOverlay').hidden = false; return; }
       if (e.target.closest('[data-open-tour]')) { e.preventDefault(); openTour(0); return; }
     });
@@ -9551,6 +10372,8 @@
       if (e.target.closest('#scannerToggle')) inspectExpand();
     });
     inspectExpand(loadInspectExpanded());        // restore the operator's last choice
+    cklAutoWarpOn = loadCklAutoWarpPref();        // restore the walkthrough-warp preference
+    if (cwBox) cwBox.checked = cklAutoWarpOn;
   }
 
   // ============================================ System Scanner / inspection (#96)
@@ -9634,14 +10457,24 @@
    * hover clears it") — preserved rather than reinvented. A stamp rather than a boolean so a
    * flash raised by an EARLIER click cannot suppress a later, unrelated one. */
   var inspectClickSeq = 0;              /* bumped once per body-level click dispatch */
+  var inspectClearedAt = -1;            /* the dispatch that blanked the line (inspectClear) */
+  /* BLANK THE LINE (#811 follow-up): a press that REMOVES the thing it describes — the opener
+   * offer — left its hint standing until the next hover. Same dispatch rule as the flash: the
+   * body-level listener that runs after this press must not write the gone button back. */
+  function inspectClear() {
+    inspectCur = null;
+    inspectClearedAt = inspectClickSeq;
+    inspectRender();
+  }
   function inspectAt(e, fromClick) {
     if (fromClick) {
       /* A flash stamped with the CURRENT count was raised after the previous body click and
        * therefore by THIS one — the button's own handler runs first, then this listener. It
        * is the answer to the press, so it stands; a flash from an earlier click does not. */
       var fresh = !!(inspectCur && inspectCur.flashAt === inspectClickSeq);
+      var cleared = inspectClearedAt === inspectClickSeq;
       inspectClickSeq++;
-      if (fresh) return;
+      if (fresh || cleared) return;
     }
     var res = inspectResolve(e);
     // Persistence (§11): pointing at nothing keeps the last description on screen
@@ -10519,6 +11352,10 @@
     ui.engineKey = pid === 'rbmk' ? (dv === 'post_chernobyl' ? 'rbmk_post' : 'rbmk_pre') : pid;
     ui.series = Object.assign({}, prof().defaultSeries);
     ui.seriesSide = {};                    // sides follow the selections they refine (#454)
+    /* The defaults above just replaced any trend a beat put on the chart; forget which one was
+     * applied so the next render puts it back. Measured (#811 QA2): loading a save made on the
+     * same beat in the same page left the chart on the defaults under a line naming its traces. */
+    if (instrTrend) instrTrend.rev = null;
     rebuildPlantUI();
   }
 

@@ -84,6 +84,9 @@ docs.
 > that appears every turn stops being read, which is the failure mode the First Principles rule
 > already names. It is a *status report*: it never substitutes for asking when a decision
 > genuinely blocks (SOP §5), and it never turns an unmeasured claim into a plan (HR12).
+>
+> **Show it only when it CHANGED since your last reply, or carries a decision for him** *(OWNER,
+> 2026-09-25: "Do it")*. Unchanged, it is one status line.
 
 > **When you ask the owner something, bring the recommendation with it** *(OWNER RULING,
 > 2026-07-29: "I think we should add to SOP to have you automatically give your recommendation
@@ -378,19 +381,6 @@ ONE line, drop the rest. **A bullet is ~80 words.**
   at 5.5 s and the reseat near 25 s, so armed at 0–20 s the accident follows, at 30–60 s the valve
   reseats at 1985 psia (13.69 MPa) and nothing happens. A step's `inject` must fire before the
   event its failure waits for — **measure the window.**
-- **A COMMAND-KIND CHECK-OFF IS ONLY SATISFIABLE WHILE THE PLANT STILL LETS THE PLAYER PRODUCE
-  THE COMMAND** (2026-09-05, #641). Six 1/M steps waited for `plot_1m_point`; the tool refuses the
-  press once the source range secures (1e5 cps, flux alone, no lever) and sends nothing, and the
-  manual tick was removed by directive — a soft lock **20 s** past the last step's 20,000 cps
-  target, the authored route peaking at 9.91e4. Steps now author `overtaken: {p,op,v,text}`, the
-  condition under which they no longer apply. **Grep every `{cmd:…}` acceptance for the plant state
-  that makes its control refuse.**
-- **TWO CORRECT MECHANISMS TWO DAYS APART CAN DISAGREE BY 17 psi — AND A HOLD RE-DECIDED EVERY
-  STEP CHATTERS AT 1×** (2026-09-04, #627). #608 ticked the Pressure SP step at 682 psia to clear the
-  cover gas; #622 held the clock AT the 665 psia cover gas. Between them the checklist waited on a
-  number while the plant asked for the valve — and the hold, "pressure rose since the last 0.02 s
-  step", rose, cleared and re-rose **three times over 24 psi**; its gate SAMPLED the first rise and
-  passed. Assert the span, and grep the checklist for the step that is active when a cue fires.
 - **A FRESH-READER REVIEW REPORTS WHAT THE RENDERER SHOWS, AND WHAT YOUR EXTRACT LEFT OUT**
   (2026-09-06, #653). Two minimal-context reviewers both filed "30 of 67 steps have no
   acceptance"; the panel draws the done-when on the ACTIVE step only and the extract had dropped
@@ -622,7 +612,7 @@ Four things about it that are procedure, not history:
   CI run and a release before `verify_board_check.js` wrapped it.
 - **Per-runner times in a parallel run are CONTENTION times, not costs** (`run_pwr` reads 54 s
   where it takes 22 s alone). The `secs:` hints only nudge scheduling — never maintain them.
-- **CI is a 3-WAY MATRIX of `run_all --shard=i/3`; the fan-in job is named exactly
+- **CI is a 4-WAY MATRIX of `run_all --shard=i/4`** (3 -> 4, 2026-09-29: three shards hit the 30-min step budget); the fan-in job is named exactly
   `aggregate-gate`** because `main`'s ruleset requires that context and a matrix job's `(1)`
   suffix would leave it unreported for ever (`run_ci_shards.js` gates the shape, #637). **On CI the
   wall is TOTAL CPU ÷ LANES, not the longest runner** (4 cores → 3 lanes; 5189 s / 3 = 28.8 min vs
@@ -755,10 +745,10 @@ consequences: **#209** (`run_behavior`/`run_ops` certify on a lineup that never 
 scheduled commands, US-first units, and it stamps the LAYER into its own output so a
 wrong-layer figure is visible in the artifact (#266). **Never drive a measurement with
 `svc.start()`**: it arms `setTimeout(broadcastMs)` and advances in WALL time — measured, 5.0 s
-of wall bought 48.0 s of sim at 10×, which is why #266 believed a long full-stack ride was
-impossible and published two engine-direct numbers instead (one 13× wrong). Driving `tick()`
-directly, 12 plant-hours is **~35 s** and cost is linear in sim duration; per cycle it is
-**87.9 % `engine.step`**, so there is no per-cycle overhead worth optimising.
+of wall bought 48.0 s of sim at 10×, which is why #266 published two engine-direct numbers
+instead (one 13× wrong). Driving `tick()` directly, cost is linear in sim duration. **BUDGET A LONG RIDE OFF
+A MEASUREMENT**: 12 plant-hours is ~35 s on the RETIRED engine QUIET, but **~100 s per plant-hour
+on a PWR2 endgame** — an uncovered core sub-steps (#802).
 
 ## Definition of done
 
@@ -828,7 +818,14 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 >   coordinator half stands, the model does not. **Well-scoped = the brief already names the files,
 >   the interface and the checks.** Opus buys an open diagnosis or per-probe adjudication. Guessing
 >   low is cheap — re-dispatch on Opus.
+>   **OPUS WRITES PROSE** *(OWNER DIRECTIVE, 2026-09-24: "I'm thinking of changing the policy to
+>   have you use opus to write prose." — then "Record it")*: anything a player or the owner reads
+>   that is being DRAFTED — step and card text, notes, changelog entries, write-ups. Applying
+>   wording he already ruled on is transcription, and stays Sonnet.
 > - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
+> - **"Gate X forces Y" is a claim — grep for a RULING on Y first** *(OWNER, 2026-09-25: "Do
+>   it")*: a bring-down overrode his "use the board's" MW on a misread N6. **Kill processes by
+>   PID, never by filter.**
 > - **One doc-budget pass**: compute what the block costs, cut that much in the same edit, measure
 >   once.
 
@@ -841,6 +838,11 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
   **51/51**), `run_m6.js`, `run_procedures.js`.
 - **UI change** → `run` the app and drive the affected flow (see `/run` and the
   headless Edge workflow); `verify_e2e_ui.js` must stay **PASS**.
+- **Walkthrough change** *(OWNER DIRECTIVE, 2026-09-24: "Make the adjustments to your process as you
+  recommend")* → `run_walkthrough_routes.js` + parts (`--all` unsplit; typical-player and
+  scripted-mistake routes: no silent strand, no tick on entry, no Continue flash); every number
+  in step text measured on BOTH routes;
+  then a layman pass before done: it confirms, never discovers.
 - **Snapshot/contract or save-format change** → old saves must still migrate (see the
   migration-note pattern in `CHANGELOG.md`); re-run `run_m7.js`. **A new/renamed/removed
   `true_state` field also needs its §6.3 line in `Blueprint/CONTEXT.md`** — `run_contract.js`

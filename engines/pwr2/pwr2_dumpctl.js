@@ -138,6 +138,35 @@
     kp_per_mpa: 2.0,
     ki_per_mpa_s: 1 / 60
   };
+  /* ⚠ THE COOLDOWN RATE LIMIT ON A LOWERED SETPOINT — A DECLARED DEPARTURE *(OWNER RULING,
+   * 2026-09-28: "I ask for the automatic ramp because manually ramping down is tedious and people
+   * get bored with it. Watching the slow ramp down in AUTO will still teach what it needs to
+   * without being monotonous." — then, on a proposed manual-rate control: "It's very similar to
+   * just having auto (or manual) just automatically limit the cooldown rate.")*,
+   * DESIGN_COMPANION §8.
+   *
+   * THE SOURCE HAS NO SUCH LIMITER. WTSM 11.2.2.1 (ML11223A294): "With the steam pressure
+   * controller in automatic, the control room operator can lower the steam pressure setpoint to
+   * cause the steam dump valves to open ... With the controller in manual, the operator inputs a
+   * signal to modulate the steam dump valves open to maintain the desired cooldown rate." The
+   * RATE is the operator's job in the source; here the controller does it, so a typed setpoint
+   * is a TARGET and the setpoint the PI actually controls to (`pressure_setpoint_mpa`, the
+   * WORKING setpoint) walks down to it.
+   *
+   * LIMITED IN TEMPERATURE, NOT PRESSURE: the working setpoint's SATURATION TEMPERATURE falls at
+   * `cooldown_f_per_hr`. The saturation curve is steep at the bottom — the same 50 psi is ~4x the
+   * temperature near 120 psi as near 1000 — so a psi/min limit would be either too slow at the
+   * top or past the Cooldown Rate High alarm (100 degF/hr) at the bottom. Tavg follows the SG's
+   * boiling temperature, so this IS a Tavg rate limit, feed-forward: no rate instrument in the
+   * loop, and nothing for its lag to overshoot on. Rate chosen by measurement — see the
+   * DESIGN_COMPANION entry. UPWARD moves, TAVG mode and OFF are unchanged: the working setpoint
+   * IS the target whenever the dump is not in pressure mode or the target is not below it. */
+  var RAMP = {
+    kind: '[declared departure — the rate is this plant\'s, measured]',
+    cooldown_f_per_hr: 60,
+    anchor_mpa: 7.03                      /* the no-load anchor (1020 psia): selecting pressure
+                                           * mode walks from the header only to a target BELOW it */
+  };
   var C7DET = {
     kind: "[derived from the thresholds' mutual consistency]",
     ref_tau_s: 10,                       /* step detector: load vs a ~10 s lowpass reference */
@@ -162,7 +191,10 @@
     return {
       mode: opts.mode === undefined ? 'tavg' : opts.mode,   /* 'tavg' | 'pressure' | 'off' */
       pressure_setpoint_mpa: opts.pressure_setpoint_mpa === undefined
-        ? 7.03 : opts.pressure_setpoint_mpa,   /* Ginna 1005 psig no-load — the plant's anchor */
+        ? 7.03 : opts.pressure_setpoint_mpa,   /* Ginna 1005 psig no-load — the plant's anchor;
+                                                * the WORKING setpoint the PI controls to (RAMP) */
+      pressure_target_mpa: opts.pressure_setpoint_mpa === undefined
+        ? 7.03 : opts.pressure_setpoint_mpa,   /* the operator's typed TARGET */
       loadRef: opts.load_frac === undefined ? 1.0 : opts.load_frac,   /* C-7 step reference */
       loadRate: 0,                                                    /* C-7 filtered %/s */
       lastLoad: opts.load_frac === undefined ? 1.0 : opts.load_frac,
@@ -181,9 +213,42 @@
    */
   function stepDumpCtl(dc, dt, drivers) {
     drivers = drivers || {};
+    var wasPressure = dc.mode === 'pressure';
     if (drivers.mode !== undefined) dc.mode = drivers.mode;
+    /* THE TYPED TARGET, and the WORKING setpoint walked down to it (RAMP above). A save from
+     * before the limiter carries no target: it lands on its own working setpoint, which is
+     * exactly the plant it saved (the CHANGELOG migration-note pattern). */
     if (drivers.pressure_setpoint_mpa !== undefined) {
-      dc.pressure_setpoint_mpa = drivers.pressure_setpoint_mpa;
+      dc.pressure_target_mpa = drivers.pressure_setpoint_mpa;
+    }
+    if (dc.pressure_target_mpa === undefined) dc.pressure_target_mpa = dc.pressure_setpoint_mpa;
+    var tgt = dc.pressure_target_mpa;
+    /* SELECTING pressure mode with a target already below the steam header starts the walk from
+     * where the plant IS — otherwise "type 120 psi, then notice the status reads TAVG and press
+     * AUTO" would open the dumps on the whole step at once, the jump the limit exists to stop.
+     * ONLY FOR A TARGET BELOW THE NO-LOAD ANCHOR. The post-trip AUTO press lands on a header
+     * ABOVE the 1020 psi anchor with the anchor as its target — MEASURED, pwr_shutdown's own route
+     * (hot_full_power, unload, scram, AUTO 9 s later): 7.50 MPa (1088 psia), and walking that at
+     * the limit held the header within ~10 psi of the 1099 psi (7.58 MPa) safety-valve lift for
+     * minutes (7.28 MPa still at +270 s) — so a target AT or ABOVE the anchor lands at once, as
+     * before the ruling. A target BELOW the anchor is a lowered target whatever the gap: the rule
+     * this replaced exempted any gap under 15 degF of Tsat, and MEASURED 2026-09-28 (full stack,
+     * hot_zero_power, dump CLOSED, 908.6 psia typed, AUTO at 1027 psia — a 14 degF gap) that
+     * landed in one step: Tavg 548.0 -> 534.5 degF in 33 s, about -1470 degF/hr. */
+    if (dc.mode === 'pressure' && !wasPressure && drivers.steam_pressure_mpa !== undefined &&
+        tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {
+      dc.pressure_setpoint_mpa = drivers.steam_pressure_mpa;
+    }
+    if (dc.mode !== 'pressure' || !(tgt < dc.pressure_setpoint_mpa)) {
+      dc.pressure_setpoint_mpa = tgt;
+    } else if (dt > 0) {
+      var W = RD.water;
+      /* a DIFFERENCE of one P_sat fit — P_sat(T_sat(P)) is not P to the step's precision
+       * (two separate fits), and a round trip each step would drift the setpoint by that bias */
+      var tS = W.T_sat(dc.pressure_setpoint_mpa);
+      var pW = dc.pressure_setpoint_mpa +
+               W.P_sat(tS - RAMP.cooldown_f_per_hr / 1.8 / 3600 * dt) - W.P_sat(tS);
+      dc.pressure_setpoint_mpa = pW > tgt ? pW : tgt;
     }
     var load = drivers.load_frac === undefined ? dc.lastLoad : drivers.load_frac;
     var c8 = !!drivers.turbine_tripped;
@@ -259,14 +324,15 @@
       c9: c9,
       mode: dc.mode,
       tref_c: tr,
-      pressure_setpoint_mpa: dc.pressure_setpoint_mpa
+      pressure_setpoint_mpa: dc.pressure_setpoint_mpa,     /* working (ramped) */
+      pressure_target_mpa: dc.pressure_target_mpa          /* typed */
     };
   }
 
   function clip(x, a, b) { return x < a ? a : (x > b ? b : x); }
 
   root.RD.pwr2.dumpctl = {
-    DUMP: DUMP, PI_PRESS: PI_PRESS, C7DET: C7DET,
+    DUMP: DUMP, PI_PRESS: PI_PRESS, C7DET: C7DET, RAMP: RAMP,
     createDumpCtl: createDumpCtl,
     stepDumpCtl: stepDumpCtl,
     tref: tref

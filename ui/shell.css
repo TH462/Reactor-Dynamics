@@ -932,6 +932,12 @@ html[data-channel="dev"] .logo-test {
   color: var(--text-2); background: var(--bg-elevated, var(--bg-right)); border: 1px solid var(--border);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .warp-info.dropped { color: var(--danger, #ef4444); }
+/* "Walkthrough sets time warp" (#807 item 7) — directly under .warp-info, same small-print
+   register as the strip above it. [hidden] is toggled by app.js's syncWarpInfo; there is no
+   [hidden] rule here on purpose, the attribute alone suffices. */
+.ckl-warp-pref { display: flex; align-items: center; gap: 5px; margin: 0 0 4px; padding: 1px 6px;
+  font-size: 10.5px; line-height: 1.3; color: var(--text-2); cursor: pointer; user-select: none; }
+.ckl-warp-pref input { margin: 0; }
 /* SELECTED SPEED: GREEN FILL, LIGHT-GREY RING *(OWNER, 2026-09-14, #755 item 14: "The time
    controls are confusing when they are cyan since the highlight is cyan as well. lets make the
    background of the selected time rate green and the boarder a light grey.")*.
@@ -2226,6 +2232,30 @@ select.num-input { width: auto; }
   animation: none;
   box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.62), 0 0 10px 2px rgba(90, 240, 255, 0.30);
 }
+/* A BUTTON THE STEP ONLY ASKS YOU TO CHECK *(OWNER, 2026-09-27, #809 item 4: "in steps that have you
+   check a button the button should have a dashed glow.")*. Dashed and still: the dash says "this is
+   a control", the stillness says "you are not being asked to press it" — `pwr_heatup` 4's TRIP lamp,
+   which a layman nearly pressed when it pulsed (#653 S-3b). The dash lives in the OUTLINE so the
+   bloom can stay a glow; 1.5 px, half the reduced-motion pulse's 3 px dashed fallback, so the two
+   stay a width apart when the motion is gone (the same two-widths vocabulary as that block).
+   Which elements get it is decided by what the element IS (`PwrBoardInspect.glowRole`), not
+   authored per step — see `applyCklWatchGlow` in ui/app.js. */
+.ckl-check-glow {
+  outline: 1.5px dashed rgba(90, 240, 255, 0.95);
+  outline-offset: 2px;
+  box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.30);
+  border-radius: 6px; position: relative; z-index: 4;
+}
+/* THE CARD THAT HOLDS A LIT CONTROL *(OWNER, 2026-09-27, #809 item 3: "Lets make a dimmer glow thats
+   for the panel that contains the control. keep the brighter solid glow for indications.")*. So the
+   player finds the card first, then the button on it. DIMMER than the watch ring on every channel
+   (ring 1 px / 0.40 against 2 px / 0.90; bloom 12px 2px / 0.16 against 16px 4px / 0.42), and steady.
+   Derived from the board's containment, never authored — a card named in a step's `hl_watch` wears
+   it too, since a card is where you look, not the reading. */
+.ckl-panel-glow {
+  box-shadow: 0 0 0 1px rgba(90, 240, 255, 0.40), 0 0 12px 2px rgba(90, 240, 255, 0.16);
+  border-radius: 8px; position: relative; z-index: 3;
+}
 /* ============================================ the highlight bus (#444, spec §7)
    A soft CYAN halo — an outer GLOW, never a fill, tint or recolor. Cyan is the only
    board colour that is not a plant state: green, amber and red all carry condition
@@ -2284,6 +2314,9 @@ select.num-input { width: auto; }
   padding: 4px 2px; border-bottom: 1px dotted var(--border);
 }
 .tr-ptitle { font-size: 12px; color: var(--text); }
+/* Walkthrough groups in the Main Menu (OWNER 2026-09-28: "Maybe start grouping the walkthroughs"). */
+.wt-group { margin: 12px 0 2px; padding-bottom: 3px; border-bottom: 1px solid var(--border); }
+.wt-group-t { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
 
 /* ---- Campaign (Plant & Mission window): acts, mission rows, progress ---- */
 .camp-head {
@@ -2362,6 +2395,9 @@ select.num-input { width: auto; }
   max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px;
 }
 .chat-line { display: flex; flex-direction: column; gap: 2px; max-width: 94%; }
+/* A line that points at the board (#811): clicking it shows the outline again. */
+.chat-has-point .chat-txt { cursor: pointer; }
+.chat-has-point .chat-txt::after { content: ' \25CE'; color: #8cc4ff; opacity: 0.8; }
 .chat-meta { font-size: 10px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; }
 .chat-txt {
   font-size: 13px; line-height: 1.45; color: var(--text);
@@ -2418,6 +2454,14 @@ select.num-input { width: auto; }
 .ckl-ico { font-weight: 700; width: 16px; text-align: center; flex: none; }
 .ckl-body { flex: 1; min-width: 0; }
 .ckl-txt { font-size: 14px; line-height: 1.4; color: var(--text); }
+/* THE STEP'S ONE-LINE WHY (OWNER RULING 2026-09-24, the what / why / how format): directly under
+   .ckl-txt, above the substep rows. Italic like a note but its own class, full width (no 20 px
+   substep indent) and the secondary text token, so it reads as the reason for the whole step and
+   not as a substep's tip. */
+.ckl-aim { font-size: 12.5px; font-style: italic; line-height: 1.4; color: var(--text-2); margin: 2px 0 4px; }
+/* An authored line break in a note or Background is a line break on the card (2026-09-25, the
+   pwr_startup 9b reading list, one reading per line). No shipped string carried a newline. */
+.ckl-crit-note, .ckl-step-note, .ckl-why { white-space: pre-line; }
 /* THE INCIDENT WALKTHROUGH'S NARRATIVE BLOCK (#670 Phase 1) — clock, what the crew saw, what
    they knew, what they did — ABOVE the numbered instruction. Quieter than the instruction and
    louder than a .ckl-sub: it is the reason the step exists, but the step is still the thing to
@@ -2468,6 +2512,9 @@ select.num-input { width: auto; }
   font-size: 12.5px; font-weight: 700; color: #7fa8dd; line-height: 1.45;
   margin-bottom: 2px;
 }
+/* A head's note + speed line drawn AFTER its `cont` check-offs (layman pass 2, 2026-09-24): the
+   same colour rules as the .ckl-crit it belongs to, so the met/wait modifiers below still win. */
+.ckl-crit-tail { font-size: 12.5px; color: #7fa8dd; line-height: 1.45; margin-bottom: 2px; }
 .ckl-crit-met { color: var(--running); }
 /* THE LETTERED SUBSTEP PREFIX (#741) — `3a`, `3b`. A quiet fixed-width gutter, not a second
    headline: the row's own text is the thing to read and the letter only says "this is part of
@@ -2497,6 +2544,17 @@ select.num-input { width: auto; }
    move .ckl-sub.muted makes for a note, rather than a new colour on a card that already carries
    three (DESIGN_CRITERIA question 4). */
 .ckl-crit-wait { color: var(--muted); font-weight: 600; }
+/* A SUBSTEP'S OWN NOTE, AND ITS OWN "Suggested time warp" LINE (walkthrough-step-format project,
+   `accs[].note` / `accs[].wait_speed` / `accs[].speed_text`). Same box as `.ckl-crit-when` — size,
+   weight, indent — but NEITHER SETS ITS OWN COLOUR, on purpose: undeclared, they inherit whatever
+   this row's enclosing `.ckl-crit` is wearing (cobalt live, --running met, --muted
+   `.ckl-crit-wait`), which is the SAME "one treatment, not two" move the comment above makes for
+   the waiting row's ask text — a substep the sequencer has not reached yet goes quiet along with
+   everything else in its row, with nothing new to teach the renderer. `.ckl-crit-note` is
+   additionally italic, the `.ckl-sub.muted` idiom for a tip in the player's own voice rather than
+   the step's imperative one. */
+.ckl-crit-note { font-weight: 400; font-size: 11px; font-style: italic; margin-left: 20px; line-height: 1.4; }
+.ckl-crit-speed { font-weight: 400; font-size: 11px; margin-left: 20px; line-height: 1.4; }
 /* THE OUT-OF-TURN REASON (#759, owner ruling 2026-09-15). Amber, not red: the press was not an
    error — the plant accepted it and the point really was plotted — it simply does not count
    toward a rung whose turn has not come. Red would say "you broke something", which is the
@@ -2713,6 +2771,11 @@ select.num-input { width: auto; }
   background: color-mix(in srgb, var(--accent, #7fd1c0) 18%, transparent);
   border-color: var(--accent, #7fd1c0);
 }
+/* The opener offer (#811): the bar plus one line saying what it is and a one-click "Not now". */
+.instr-opener-sub { font-size: 11.5px; color: var(--muted, #9aa); line-height: 1.35; margin: 2px 2px 0; }
+.instr-opener-sub .btn.linkish { display: inline; width: auto; margin: 0 0 0 4px; font-size: 11.5px; }
+.chat-end { display: flex; justify-content: flex-end; margin-top: 4px; }
+.chat-end .btn { font-size: 11.5px; padding: 3px 12px; }
 
 .start-overlay { z-index: 215; }
 .start-modal { height: auto; max-height: min(84vh, 620px); width: min(720px, 96vw); }

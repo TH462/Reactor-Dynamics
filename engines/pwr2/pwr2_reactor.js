@@ -174,9 +174,14 @@
       flowFrac:   reg.flowFrac,
       superheat_c: reg.superheat_c,          /* #517 — the fuel REFUSES these at void 1 */
       P_MPa:      reg.P_MPa,
-      /* Oxidation heat, when a damage model is supplying it. Absent today: pwr2_damage.js is
-       * not built, and passing 0 explicitly would be indistinguishable from a built model
-       * reporting no reaction. */
+      /* Oxidation heat, when a damage model is supplying it. `pwr2_damage.js` IS built and the
+       * loop IS closed on the shipped plant: `pwr2_engine.js` steps damage right after this
+       * reactor call and hands the heat it reports back in here on the NEXT step (the one-step
+       * lag is the house convention) -- engine :1574-1576 -> here -> `pwr2_fuel.js` :562, :578,
+       * :592, where it is deposited in the CLAD. Still UNDEFINED rather than 0 by default,
+       * because a library-level caller that runs no damage model must stay distinguishable from
+       * a built model reporting no reaction. (This comment read "Absent today: pwr2_damage.js is
+       * not built" until #802 -- an inherited claim that had aged past its own module.) */
       Q_ox_kW:    drivers.Q_ox_kW
     });
 

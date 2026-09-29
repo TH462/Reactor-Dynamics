@@ -133,6 +133,7 @@
   // consecutive broadcast evaluations before the step completes, so a parameter
   // sweeping through its target band doesn't advance the procedure in passing.
   var ACC_STABLE_N = 5;
+  var BAND_RELEASE_S = 2;             // a met `~` row's longest noise tolerance, plant-s (see _gradeAccs)
   // Seconds of SIM time an observation step stands before it checks itself off. Long
   // enough to read a line and look at the board, short enough not to feel stuck.
   var OBSERVE_DWELL_S = 12;
@@ -176,6 +177,15 @@
    * per-step state bag. `run_checklist_pwr2` §2w reddens on a `steady` authored anywhere else —
    * `saw`, `overtaken`, `precond`, a `when` gate — rather than letting it read false for ever. */
   var STEADY_WINDOW_S = 120;        // default trailing window when a step authors none
+  /* ONCE MET, A `steady` ROW LETS GO ONLY AT 1.25 x ITS `v` (2026-09-24, run_walkthrough_routes).
+   * The drift is a slow statistic of a noisy gauge, so it crosses `v` with the noise riding on
+   * it: MEASURED on `pwr_startup` 12 (v 0.03, 300 s), the drift fell through 0.0306 -> 0.0293
+   * with +/-0.0005 of jitter, the row met, went back off, met again, and Continue lit for 1-2 s
+   * and went dark twice (routes `window_overshoot` at 135.4 plant-min, `plot_early` at 67.3).
+   * After the first meet the largest drift seen was 0.0303 — 1.01 x `v`. 1.25 x is 8x that
+   * margin, and a plant that starts climbing again is far past it (0.2 %/s over a 120 s window
+   * is ~0.12, 4 x `v`). The TICK threshold is untouched, so the row still cannot tick on entry. */
+  var STEADY_RELEASE_K = 1.25;
 
   /* HAS THE CONTROL STOPPED MOVING — `op: 'stopped'` *(OWNER RULING, 2026-09-17: selected
    * "Gate on rods stopped + startup rate" from three options put to him — gate on rod-stop plus
@@ -236,6 +246,148 @@
   var OUTCOME_UNVERIFIED_TEXT = "Steps checked off, but the board does not match this leg's " +
     'expected finish. Read the board, not this banner.';
 
+  /* ================================================================ the 1/M table (RD.OneOverMCore)
+   * ONE implementation of the inverse-count-rate plot's arithmetic, read by TWO callers: the
+   * panel that draws it (ui/panels/one_over_m.js) and the grader that checks `pwr_startup` 9a
+   * "Rods stopped 3 steps short of the 1/M prediction" against it (`below_1m` on an accs row,
+   * `applyBelow1m` below). The owner's option, selected 2026-09-24: "Build a way for the sim to
+   * read the 1/M prediction so '3 short' can be checked (new work); keep the cap."
+   *
+   * WHY ONE COPY. The row grades the number the panel PRINTS (Hard Rule 1: the prediction is the
+   * instrument here, not true critical). A second fit, or a second rounding, is free to disagree
+   * with the panel by a step — and one step is a third of the margin being graded.
+   *
+   * WHY IT LIVES IN THIS FILE and not a file of its own: every runner that grades a checklist
+   * already loads this one, and ui/shell.html loads it before the panel. A new file would be one
+   * more line in 30 loader lists, each free to be missed.
+   *
+   * THE TABLE IS SESSION SCRATCH, NOT PLANT STATE, and is deliberately NOT in save files — the
+   * panel's own design (its header). The grader's copy therefore follows the panel's three
+   * clearing rules exactly, so the two cannot drift: plant change, a NEW HISTORY (a save-file
+   * load, a reset, a new initial condition — `newHistory` below), the clock going back on a
+   * Rewind (`rewindTo` below), and the Clear button (`plot_1m_clear`).
+   *
+   * The fit window (3, the trailing points) is an OWNER RULING recorded beside FIT_WINDOW in
+   * ui/panels/one_over_m.js, with the measurement that settled it. Do not re-open it here. */
+  var OneOverMCore = (function () {
+    var FIT_WINDOW = 3;
+    function controlGroup(s) {
+      var gs = (s && s.control_state && s.control_state.rod_groups) || [];
+      for (var i = 0; i < gs.length; i++) if (gs[i].function === 'control') return gs[i];
+      return null;
+    }
+    function supported(s) {
+      var ins = (s && s.instruments) || {};
+      return ins.source_range !== undefined && !!controlGroup(s);
+    }
+    /* The bank's full travel, read LIVE off the snapshot (#746). typeof FIRST: isFinite(null) is
+     * true (#555). The literal fallbacks fire only with no snapshot and no plant module. */
+    function fullScale(s) {
+      var g = s ? controlGroup(s) : null, n = g && g.max_steps;
+      if (typeof n === 'number' && isFinite(n) && n > 0) return n;
+      var k = RD && RD.pwr2 && RD.pwr2.kinetics && RD.pwr2.kinetics.RODS;
+      if (k && typeof k.max_steps === 'number' && k.max_steps > 0) return k.max_steps;
+      var c = RD && RD.PWR_CONFIG && RD.PWR_CONFIG.rods;
+      if (c && typeof c.max_steps === 'number' && c.max_steps > 0) return c.max_steps;
+      return 627;
+    }
+    /* What a Plot-point press would capture off this snapshot, or why it is refused. The panel's
+     * refusals, in the panel's order: {ok:false, why:'unsupported'|'sr_off'|'no_reading'|
+     * 'pegged'|'no_group'} or {ok:true, x (fraction withdrawn), counts}. */
+    function sample(s) {
+      if (!s) return { ok: false, why: 'no_snapshot' };
+      if (!supported(s)) return { ok: false, why: 'unsupported' };
+      var ins = s.instruments || {};
+      if (!ins.sr_energized) return { ok: false, why: 'sr_off' };
+      var counts = ins.source_range;
+      if (typeof counts !== 'number' || !isFinite(counts) || counts < 1) return { ok: false, why: 'no_reading' };
+      if (counts > 9e5) return { ok: false, why: 'pegged' };
+      var g = controlGroup(s);
+      if (!g) return { ok: false, why: 'no_group' };
+      return { ok: true, x: (g.position_pct || 0) / 100, counts: counts };
+    }
+    /* `gen` counts the clears a WALKTHROUGH made (a procedure authoring `clear_1m`, layman pass 8
+     * S-1): the panel cannot see `loadChecklist`, so it watches this number in the snapshot and
+     * clears its own copy when it moves. The panel's own Clear does not bump it (it cleared itself). */
+    function newTable() { return { points: [], c0: null, t: null, plant: null, gen: 0 }; }
+    function clear(tbl) { tbl.points = []; tbl.c0 = null; tbl.t = null; }
+    /* First point is the baseline C0 (1/M = 1.0); later ones are C0/C, kept sorted by rod
+     * position. `t` is the sim time of the capture, which the rewind rule compares against. */
+    function add(tbl, x, counts, t) {
+      var p;
+      if (!tbl.points.length) { tbl.c0 = counts; p = { x: x, counts: counts, y: 1.0, t: t, base: true }; tbl.points.push(p); }
+      else {
+        p = { x: x, counts: counts, y: tbl.c0 / counts, t: t };
+        tbl.points.push(p);
+        tbl.points.sort(function (a, b) { return a.x - b.x; });
+      }
+      tbl.t = (tbl.t == null || !(t <= tbl.t)) ? t : tbl.t;   // the LATEST capture
+      return p;
+    }
+    /* THE CLOCK WENT BACK TO `now` (Rewind, a restored save, a reset). Owner playtest 2026-09-28,
+     * preview, the startup walkthrough: "1/m plot points are lost when rewinding steps". This
+     * used to CLEAR the table whenever the clock went behind the LAST capture, so rewinding one
+     * step past a plot press threw away the baseline and every earlier point — and the next press
+     * took a fresh baseline at a withdrawn rod position, a different and wrong curve. The plant up
+     * to `now` is exactly the plant those earlier points were read from, so they still stand; only
+     * captures stamped AFTER `now` describe a history that no longer happened. Drop those; clear
+     * the whole table (C0 with it) only when the BASELINE is among them. A capture AT `now` stays:
+     * a walkthrough step's checkpoint is laid at the same sim time as the plot press that ticks
+     * the step, so rewinding to the next step keeps that step's point.
+     * Returns null (nothing to do), 'cleared', or the number of points dropped. */
+    function rewindTo(tbl, now) {
+      if (tbl.t == null || !(now < tbl.t - 1e-6)) return null;
+      var kept = tbl.points.filter(function (p) { return !(p.t > now + 1e-6); });
+      if (!kept.some(function (p) { return p.base; })) { clear(tbl); return 'cleared'; }
+      var dropped = tbl.points.length - kept.length;
+      tbl.points = kept;
+      tbl.t = kept.reduce(function (m, p) { return Math.max(m, p.t); }, -Infinity);
+      return dropped;
+    }
+    /* A DIFFERENT HISTORY, not the same one rewound (2026-09-28 review): a save FILE loaded, a
+     * reset, a new initial condition — `metadata.timeline_epoch` moves on those and never on
+     * Rewind. `rewindTo` alone cannot see it: a file saved LATER than every capture reads as
+     * "the clock went forward" and kept a plot of a plant that is gone. Records the epoch; true
+     * when it moved since the last look (never on the first look, which has nothing to clear). */
+    function newHistory(tbl, meta) {
+      var ep = meta ? meta.timeline_epoch : undefined;
+      if (ep === undefined) return false;
+      var moved = tbl.epoch !== undefined && tbl.epoch !== null && ep !== tbl.epoch;
+      tbl.epoch = ep;
+      return moved;
+    }
+    /* Least squares over the TRAILING window -> { a, b, x0 } for y = a + b·x. */
+    function fit(points) {
+      if (!points || points.length < 2) return null;
+      var pts = points.slice(Math.max(0, points.length - FIT_WINDOW));
+      var n = pts.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
+      pts.forEach(function (p) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; });
+      var mx = sx / n, my = sy / n;
+      var den = sxx - n * mx * mx;
+      if (Math.abs(den) < 1e-9) return null;
+      var b = (sxy - n * mx * my) / den;
+      return { a: my - b * mx, b: b, x0: pts[0].x };
+    }
+    /* The zero crossing the panel prints, as a fraction withdrawn, or null ("insufficient
+     * trend"): a falling line, crossing at or past the furthest-out point, inside 1.2. */
+    function predict(points) {
+      var f = fit(points);
+      if (!f || !(f.b < -1e-6)) return null;
+      var xc = -f.a / f.b;
+      return (xc > points[points.length - 1].x - 1e-9 && xc <= 1.2) ? xc : null;
+    }
+    /* The printed step number: `Math.round(pred * fullScale)`, the panel's readout exactly. */
+    function predictSteps(points, maxSteps) {
+      var p = predict(points);
+      return p == null ? null : Math.round(p * maxSteps);
+    }
+    return { FIT_WINDOW: FIT_WINDOW, controlGroup: controlGroup, supported: supported,
+             fullScale: fullScale, sample: sample, newTable: newTable, clear: clear, add: add, rewindTo: rewindTo,
+             newHistory: newHistory,
+             fit: fit, predict: predict, predictSteps: predictSteps };
+  })();
+  RD.OneOverMCore = OneOverMCore;
+
   // ================================================================ constructor
   // Signature and connect() must match the placeholder — M5 constructs with null
   // and re-points `below` on every plant rebuild.
@@ -243,6 +395,10 @@
     this.below = controlFailureLayer || null;
     this.register = 'learning';
     this._clear();
+    /* The 1/M table the player plotted (RD.OneOverMCore). Outside `_clear` ON PURPOSE: a
+     * loadState (Rewind, a file load) must not wipe it any more than it wipes the panel's — the
+     * clock rule and the new-history rule (`_oneOverMTick`) do, exactly when the panel's do. */
+    this.oneOverM = OneOverMCore.newTable();
   }
 
   InstructorLayer.prototype._clear = function () {
@@ -260,6 +416,14 @@
     this.highlight = null;
     this.levelComplete = null;
     this._actionsSinceBeat = [];      // forwarded operator commands since last beat fire
+    this._beatBaseline = {};          // rod_travel: each group's steps when the beat fired (#811)
+    this._trend = null;               // { rev, series } — the chart traces a beat asked for (#811)
+    this._scope = null;               // { rev, names } — the board scope (dimming) a beat asked for (#811)
+    this._watchFired = [];            // scenario-level `watch` entries already taken (#811)
+    this._readHoldS = 0;              // WALL seconds of reading still owed to the last lines (`pace: 'reading'`, #811)
+    this._readLastSim = null;         // sim time the hold was last counted down at
+    this._lastActionTime = null;      // sim time of the last forwarded operator command (quiet inaction, #811)
+    this._rodHold = null;             // group_id of an operator rod HOLD in progress (rod_start, no rod_stop yet)
     this._lastSimTime = 0;
     this._continueRequested = false;  // instructor_continue → `manual` trigger
     // Chat-mode state (scenarios with `chat: true` — dialogue log + interactions).
@@ -327,6 +491,11 @@
   InstructorLayer.prototype.loadChecklist = function (proc, meta) {
     if (!proc || !proc.steps || !proc.steps.length) return;
     this._checkpointRequested = true;   // checkpoint 0 for the walkthrough's step rewind (#660 item 17)
+    /* A NEW STARTUP STARTS A NEW 1/M PLOT (layman pass 8 S-1, 2026-09-26). The table only cleared on
+     * plant change, clock back or Clear, so a SECOND `pwr_startup` in one session inherited the first
+     * one's baseline and points: predictions 208 -> 203 -> 205 -> 226 against the day's own counts,
+     * and 9a's "3 short" graded off them. A procedure whose step 4 is a baseline authors `clear_1m`. */
+    if (proc.clear_1m && this.oneOverM) { OneOverMCore.clear(this.oneOverM); this.oneOverM.gen = (this.oneOverM.gen || 0) + 1; }
     this.checklist = {
       proc: proc,
       procedure_id: (meta && meta.procedure_id) || proc.id,
@@ -382,6 +551,68 @@
 
   // Back to free-play. M5 calls this on stop_scenario/stop_follow and on every
   // plain plant reset so stale progress can't outlive its plant.
+  /* The panel's two per-broadcast clearing rules (`OneOverM.tick`), mirrored so the grader's
+   * table is the panel's table: a different plant, or the clock back past the last capture. */
+  InstructorLayer.prototype._oneOverMTick = function (snapshot) {
+    var tb = this.oneOverM, m = snapshot && snapshot.metadata;
+    if (!tb || !m) return;
+    if (m.plant_id !== tb.plant) { tb.plant = m.plant_id; tb.epoch = m.timeline_epoch; OneOverMCore.clear(tb); return; }
+    if (OneOverMCore.newHistory(tb, m)) { OneOverMCore.clear(tb); return; }
+    OneOverMCore.rewindTo(tb, m.sim_time);
+  };
+  /* The prediction the panel prints right now, in steps, or null when it prints none. */
+  InstructorLayer.prototype._oneOverMPredSteps = function (snapshot) {
+    var tb = this.oneOverM;
+    if (!tb || !tb.points.length) return null;
+    return OneOverMCore.predictSteps(tb.points, OneOverMCore.fullScale(snapshot || this._lastSnapshot));
+  };
+  /* `below_1m: N` on a `stopped` accs row (`pwr_startup` 9a): the row additionally needs the
+   * graded reading (the control bank's step counter) at or below the printed prediction minus
+   * N. Further short is fine — the prediction reads HIGH, so short is the safe side; past it is
+   * not a check-off. NO PREDICTION (fewer than two points, a flat or rising line, the table
+   * cleared by a rewind) grades the row on its own op alone and flags `no_1m`, so the card can
+   * say so: the player cannot be held to a number the panel is not printing, and a row that
+   * waited for one would strand a player who never plotted. ONE implementation for the live
+   * runtimes and the replay harness; mutates and returns `g`. */
+  InstructorLayer.applyBelow1m = function (g, predSteps, en) {
+    if (!g || !en || en.below_1m == null) return g;
+    g.pred_1m = (typeof predSteps === 'number' && isFinite(predSteps)) ? predSteps : null;
+    g.no_1m = g.pred_1m == null;
+    if (!g.no_1m && !(typeof g.value === 'number' && g.value <= g.pred_1m - en.below_1m)) g.met = false;
+    return g;
+  };
+  /* `reach_1m: N` (2026-09-26-develop-k, `pwr_startup` 9a; OWNER, release blocker that day: "i think
+   * it should check right away when i hit 3.9 steps away from the critical prediction"). The
+   * OPPOSITE claim to `below_1m`: "CONTROL ROD POSITION has come within N steps of the printed
+   * prediction" — a you-got-here milestone, so WITH a prediction it REPLACES the row's own op (the
+   * rods need not be still; the row ticks on the broadcast the counter gets there, moving or not)
+   * and holds at or past the prediction too (a pull past the mark is 9b's reading to correct, not a
+   * strand). NO PREDICTION keeps the row's own op (`stopped` 60 s on 9a) and flags `no_1m`, the
+   * same no-soft-lock fallback and the same card line as `below_1m`. The value is the rounded step
+   * counter and the prediction is `Math.round`ed, so N = 3.9 ticks at prediction minus 3. */
+  InstructorLayer.applyReach1m = function (g, predSteps, en) {
+    if (!g || !en || en.reach_1m == null) return g;
+    g.pred_1m = (typeof predSteps === 'number' && isFinite(predSteps)) ? predSteps : null;
+    g.no_1m = g.pred_1m == null;
+    if (!g.no_1m) g.met = typeof g.value === 'number' && g.value >= g.pred_1m - en.reach_1m;
+    return g;
+  };
+  /* `still_s: S` on any accs row (2026-09-26-develop-k, `pwr_startup` 9b): the row additionally
+   * needs the CONTROL BANK unmoved for S plant-seconds (`gradeStopped` on `control_bank_steps`,
+   * motion flag included). It folds into the row's OWN grading what a hidden ordered `stopped` row
+   * used to carry in front of it — that row locked the drawn row behind it (muted, dark) until the
+   * rods had been still S seconds, and every tap re-locked it (owner, same day: "the step doesnt
+   * unlock until 5 minuts pass and then lockes again when i hit withdaraw"). Folded in, the rods-still
+   * wait only DELAYS THE TICK; the row is live the moment its predecessor latches. ONE
+   * implementation for the live runtimes and the replay harness; `bag` is the caller's, per step. */
+  InstructorLayer.applyStill = function (g, bag, snapshot, en) {
+    if (!g || !en || !(en.still_s > 0)) return g;
+    var sg = InstructorLayer.gradeStopped(bag, snapshot, { p: 'control_bank_steps', op: 'stopped', v: en.still_s });
+    g.still = sg.still;
+    if (!sg.met) g.met = false;
+    return g;
+  };
+
   InstructorLayer.prototype.unload = function () {
     var reg = this.register;
     this._clear();
@@ -394,14 +625,56 @@
   InstructorLayer.prototype.step = function (snapshot, simTime) {
     this._lastSimTime = simTime;
     this._lastSnapshot = snapshot;    // #715 — outcome_guard re-grades off this, not a latch
+    this._oneOverMTick(snapshot);
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
     if (this.checklist) this._stepChecklist(snapshot);
-    this._continueRequested = false;    // a Continue click satisfies at most one pass
+    if (!this._heldPass) this._continueRequested = false;    // a Continue click satisfies at most one pass
+    this._heldPass = false;                                   // ...that ran the flow (reading hold, #811)
   };
 
   InstructorLayer.prototype._stepScenario = function (snapshot, simTime) {
     if (this.scenarioStartTime === null) this.scenarioStartTime = simTime;
+
+    /* SCENARIO-LEVEL WATCHES (#811, OWNER RULING 2026-09-28: "part of the instruction in the
+     * background might include triggers for undoing like if the player does something incorrectly
+     * or something unexpected happens"). `scenario.watch: [{ id, trigger, goto, until }]` is armed
+     * from the first pass until the beat named `until` fires; the first to trigger jumps to its
+     * `goto` exactly as a branch does, once. This is how content reacts to the unexpected (an early
+     * trip) without every beat carrying the same branch. */
+    /* NEVER ONCE THE FLOW HAS ENDED (QA3 2026-09-28): a watch with no `until`, or one whose `until`
+     * the route skipped, would otherwise re-open a finished scenario under its finish card. */
+    var ws = (this.scenario && this.scenario.watch && !this.levelComplete && this.currentBeatId != null)
+      ? this.scenario.watch : [];
+    for (var wi = 0; wi < ws.length; wi++) {
+      var w = ws[wi];
+      if (this._watchFired.indexOf(w.id) !== -1) continue;
+      if (w.until && this.firedBeats.has(w.until)) continue;
+      if (this.firedBeats.has(w.goto)) continue;      // a fired beat never fires again: the jump would stall the flow
+      if (this._evalTrigger(w.trigger, snapshot, simTime)) {
+        this._watchFired.push(w.id);
+        this._readHoldS = 0;          // the unexpected is news: its beat is not held behind reading time
+        this._fireBranch(w, simTime);
+        break;
+      }
+    }
+
+    /* READING TIME (#811, OWNER 2026-09-28: "the cadence is a little fast. It's hard to keep up
+     * with reading it and looking at the board."). A scenario with `pace: 'reading'` owes each
+     * line it says READING_S(line) of WALL time — the UI reveals the lines on the same clock
+     * (chatDwellS) — and no branch or beat fires until the last beat's lines have all had theirs.
+     * Wall, not sim: at 5x a sim-time delay runs away from the reader five times over. Wall is
+     * sim / time_acceleration, so it stops with the clock and it is the same in the browser and
+     * the Node harnesses. The scenario `watch` above is NOT held, and a watch that fires cancels the
+     * hold: an unexpected trip is news, and the UI still reveals the owed lines on its own clock. */
+    if (this.scenario && this.scenario.pace === 'reading') {
+      var acc = (snapshot && snapshot.metadata && snapshot.metadata.time_acceleration) || 1;
+      if (this._readLastSim != null && simTime > this._readLastSim && acc > 0)
+        this._readHoldS = Math.max(0, this._readHoldS - (simTime - this._readLastSim) / acc);
+      this._readLastSim = simTime;
+      // A Continue click during the hold is KEPT for the pass that runs the flow, not dropped.
+      if (this._readHoldS > 0) { this._heldPass = true; this._updateGates(snapshot, simTime); return; }
+    }
 
     // Watching a decision beat's branches: first branch trigger to fire wins (§6).
     // A fired branch jumps to its goto beat, which is then evaluated in the SAME
@@ -459,6 +732,9 @@
     // transcript); commentary remains the single-slot fallback for non-chat
     // scenarios and for gate feedback.
     if (beat.dialogue && beat.dialogue.length) this._appendChat(beat.dialogue, simTime, beat.story_min != null ? beat.story_min : null, !!beat.time_skip);
+    if (beat.dialogue && this.scenario && this.scenario.pace === 'reading') {
+      for (var rl = 0; rl < beat.dialogue.length; rl++) if (beat.dialogue[rl]) this._readHoldS += InstructorLayer.readingSeconds(beat.dialogue[rl]);
+    }
 
     // Scenario actions descend as commands through M4, which places failures
     // correctly (HR7) and applies command interception.
@@ -498,8 +774,28 @@
     }
 
     this.firedBeats.add(beat.id);
+    /* A BEAT CAN SET THE TREND CHART (#811, owner 2026-09-28): `trend: [series ids]` puts those
+     * traces on the chart when the beat fires. `rev` counts the requests so the UI applies each
+     * once; the UI keeps the player's own selection and restores it when the content ends. The
+     * beat's text must say what it put there — the chart changing unannounced is the defect. */
+    if (beat.trend && beat.trend.length) {
+      this._trend = { rev: (this._trend ? this._trend.rev : 0) + 1, series: beat.trend.slice() };
+    }
+    /* A BEAT CAN SCOPE THE BOARD (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the
+     * part of the board we are focusing on"): `scope: ['primary', 'rods', 'Tavg']` names board
+     * REGIONS (or single focus names) and the UI dims everything else. STICKY like `highlight`: it
+     * stands until a later beat carries `scope`; `scope: null` is the whole board. Nothing else
+     * changes it — not an alarm, not a trip (OWNER RULING 2026-09-28: "we should give the
+     * instructor exclusive control"); a beat that should react to one says so, usually via a
+     * scenario-level `watch`. The brief OUTLINE is a chat line's `point`, not a beat's. */
+    if (Object.prototype.hasOwnProperty.call(beat, 'scope')) {
+      var sc = beat.scope, rev = this._scopeRev = (this._scopeRev || 0) + 1;
+      this._scope = (sc == null || (Array.isArray(sc) && !sc.length)) ? null
+        : { rev: rev, names: [].concat(sc) };
+    }
     this.lastBeatFireTime = simTime;
     this._actionsSinceBeat = [];
+    this._beatBaseline = {};
 
     // A rewind beat asks M5 to roll the WORLD back while the Instructor keeps its
     // progress (the "watch that again" device). It does not also checkpoint —
@@ -517,6 +813,14 @@
     this._advanceFrom(beat);
   };
 
+  /* A line's reading time in WALL seconds (#811 pacing): 0.3 s a word plus 2.5 s to look at the
+   * board — a 20-word line gets 8.5 s. Learning register, like the UI's reveal. Shared with the UI
+   * (app.js chatDwellS) so the reveal and the flow keep the same clock. */
+  InstructorLayer.readingSeconds = function (line) {
+    var w = String((line && (line.learning || line.industry)) || '').trim().split(/\s+/).length;
+    return w * 0.3 + 2.5;
+  };
+
   InstructorLayer.prototype._advanceFrom = function (beat) {
     // `advance: "end"` terminates the scenario flow at this beat — needed by
     // branch endpoints, since beats are one flat ordered list and a finished
@@ -532,11 +836,24 @@
     this.currentBeatId = null;
   };
 
+  /* An operator rod HOLD in progress (#811): a rod_start forwarded with no rod_stop yet. Self-heals
+   * when the bank is no longer moving (driven to its end, blocked, a start with no release) so a
+   * lost release can never park a `quiet` inaction exit for ever. */
+  InstructorLayer.prototype._holdActive = function (snapshot) {
+    if (!this._rodHold) return false;
+    var rgs = snapshot && snapshot.control_state && snapshot.control_state.rod_groups;
+    for (var i = 0; rgs && i < rgs.length; i++) {
+      if (rgs[i].id === this._rodHold && rgs[i].moving === false) { this._rodHold = null; return false; }
+    }
+    return true;
+  };
+
   InstructorLayer.prototype._fireBranch = function (branch, simTime) {
     this.branchWatch = null;
     this.currentBeatId = branch.goto;
     this.lastBeatFireTime = simTime;      // delay triggers on the target measure from the decision
     this._actionsSinceBeat = [];
+    this._beatBaseline = {};
   };
 
   // ------------------------------------------------------------ chat (TMI-2 M5)
@@ -556,14 +873,18 @@
     for (var i = 0; i < lines.length; i++) {
       var l = lines[i];
       if (!l) continue;
-      this.chatLog.push({
+      var entry = {
         speaker: l.speaker || 'sup',
         learning: l.learning || l.industry || '',
         industry: l.industry || l.learning || '',
         t: simTime != null ? simTime : this._lastSimTime,
         story: (i === 0 && storyMin != null) ? storyMin : null,
         skip: (i === 0 && timeSkip) ? true : null,
-      });
+      };
+      // A line may POINT at board components (#811): the UI outlines them briefly when the line
+      // appears, and again when the player clicks it. Presentation only; absent on most lines.
+      if (l.point) entry.point = [].concat(l.point);
+      this.chatLog.push(entry);
     }
     while (this.chatLog.length > CHAT_LOG_CAP) this.chatLog.shift();
     this._chatRev++;
@@ -628,6 +949,27 @@
       case 'true_state':      // deliberate author hook for truth the operator can't see
         v = snapshot.true_state ? snapshot.true_state[trigger.field] : undefined;
         return this._compare(v, trigger.direction, trigger.value);
+      /* A CONTROL'S OWN STATE — the lit AUTO/MANUAL light, a selector position (#811). Board-
+       * visible, so not an HR1 leak: the operator reads it off the button they pressed. Added for
+       * the opener's "put spray back in AUTO", which a player may have done BEFORE being asked —
+       * an operator_action trigger only sees commands after the beat fired, and strands them. */
+      case 'control_state':
+        v = snapshot.control_state ? snapshot.control_state[trigger.field] : undefined;
+        return this._compare(v, trigger.direction, trigger.value);
+      /* A ROD GROUP'S TRAVEL SINCE THE BEAT FIRED (#811 follow-up): `direction` 'out' | 'in',
+       * `steps` how far. RELATIVE, because "the player drove the rods the wrong way" is a fact
+       * about where the bank was AT THE ASK, and that position depends on the route taken to it.
+       * The baseline is the first reading after the beat fired (one broadcast late at most), and
+       * rides in saveState so a restore mid-ask does not re-zero it. Board-visible (the bank's
+       * step counter), so not an HR1 leak. */
+      case 'rod_travel': {
+        var rgs = snapshot.control_state && snapshot.control_state.rod_groups, grp = null;
+        for (i = 0; rgs && i < rgs.length; i++) if (rgs[i].id === trigger.group_id) grp = rgs[i];
+        if (!grp || typeof grp.steps !== 'number') return false;
+        if (this._beatBaseline[trigger.group_id] == null) this._beatBaseline[trigger.group_id] = grp.steps;
+        var moved = grp.steps - this._beatBaseline[trigger.group_id];
+        return (trigger.direction === 'in' ? -moved : moved) >= trigger.steps;
+      }
       case 'operator_action': // a matching command descended since the last beat fired
         for (i = 0; i < this._actionsSinceBeat.length; i++) {
           if (this._commandMatches(this._actionsSinceBeat[i], trigger)) return true;
@@ -635,8 +977,19 @@
         return false;
       case 'inaction': {      // window elapsed with no sibling action having fired first
         var arm = this.lastBeatFireTime !== null ? this.lastBeatFireTime : this.scenarioStartTime;
+        /* QUIET (#811 layman pass, 2026-09-28): `quiet: true` means "the player has not touched a
+         * control for `window` seconds" — the clock restarts on every forwarded operator command
+         * and does not run at all while a rod HOLD is in progress. Measured before it existed: a
+         * player who began holding INSERT at 85-115 s into the rods ask got "I'll drive the rods
+         * in 40 steps for you" and the clock to 5x at exactly +120.0 s, under their finger. */
+        if (trigger.quiet) {
+          if (this._holdActive(snapshot)) return false;
+          if (this._lastActionTime !== null && (arm === null || this._lastActionTime > arm)) arm = this._lastActionTime;
+        }
         return arm !== null && (simTime - arm) >= trigger.window;
       }
+      case 'no_hold':         // no operator rod HOLD in progress (#811): grade a hold on its RELEASE
+        return !this._holdActive(snapshot);
       case 'alarm':
         if (!snapshot.alarms) return false;
         for (i = 0; i < snapshot.alarms.length; i++) {
@@ -785,19 +1138,25 @@
    * through the same runtime and get the same treatment with no per-pool list to maintain. */
   var SCRAM_CMD_RE = /scram/i;
   function stepCmdAction(c) { return !c ? null : (typeof c === 'string' ? c : c.action) || null; }
+  /* A PREDICATE THAT ASSERTS THE TRIP, not one that merely names `scrammed` (layman pass 5,
+   * 2026-09-25). Cooldown 16d grades `scrammed < 1` -- "the SCRAM button is reset" -- and the old
+   * name-only test read that as the leg scripting its own scram: the cooldown lost its trip notice
+   * (a real trip in it would have drawn no banner) and the route gate stopped seeing a trip on it
+   * (`pwr_cooldown:pressure_sp_ramped` stranded instead of ending on its named trip). */
+  function assertsTrip(pr) { return !!pr && pr.p === 'scrammed' && pr.op !== '<' && pr.op !== '<='; }
   InstructorLayer.legScriptsScram = function (proc) {
     var steps = (proc && proc.steps) || [];
     for (var i = 0; i < steps.length; i++) {
       var st = steps[i] || {};
       if (SCRAM_CMD_RE.test(stepCmdAction(st.cmd) || '')) return true;
-      if (st.acc && st.acc.p === 'scrammed') return true;
-      if (st.saw && st.saw.p === 'scrammed') return true;
-      if (st.overtaken && st.overtaken.p === 'scrammed') return true;
+      if (assertsTrip(st.acc)) return true;
+      if (assertsTrip(st.saw)) return true;
+      if (assertsTrip(st.overtaken)) return true;
       var accs = st.accs || [];
       for (var j = 0; j < accs.length; j++) {
         var en = accs[j] || {};
         if (SCRAM_CMD_RE.test(stepCmdAction(en.cmd) || '')) return true;
-        if (en.p === 'scrammed') return true;
+        if (assertsTrip(en)) return true;
       }
     }
     return false;
@@ -1322,6 +1681,7 @@
     c.doneBy[c.idx] = by;
     c.idx++;
     c.cmdSeen = false; c.sawSeen = false; c.accStreak = 0; c.accMetNow = false; c.gradedBy = null;
+    c.cmdSeenHead = -1;
     c.accVoided = null; c.sawVoided = null;
     c.accsState = null;                 // per-entry multi-check-off latches (#244 item 8)
     c.outOfTurn = null;                 // #759 — the out-of-turn note belongs to the step it was pressed on
@@ -1398,6 +1758,7 @@
    * quality pass: both come from the SAME source — `pwr2_shell.js` builds `trip_blocks` out of
    * the very flags those fields report — so there is no second copy of the truth here. */
   var RPS_BLOCK_PARAMS = {
+    sr_high_blocked:         'sr_high',     /* the P-6 row (OWNER RULING 2026-09-26, "B") */
     ir_high_blocked:         'ir_high',
     pr_low_setpoint_blocked: 'pr_low_setpoint',
     lo_press_blocked:        'lo_press',
@@ -1422,7 +1783,100 @@
                       * `true_state` does not carry it, so without this line `paramValue` returns
                       * undefined and `pwr_cooldown` step 10's acceptance could never grade. It is
                       * a FRACTION here (0.07) and per cent on the card. */
-                     rhr_hx_fraction: 1 };
+                     rhr_hx_fraction: 1,
+                     /* SET PZR PRESSURE, the typed box (#809 item 8, `pwr_heatup` 14a) — the
+                      * operator's setpoint, published as `control_state.pressure_setpoint` (MPa,
+                      * pwr2_shell.js) and read by the box itself (pwr_board_wiring `imrsg8b7b9o`).
+                      * Same shape as `steam_dump_setpoint` above. */
+                     pressure_setpoint: 1 };
+  /* STEAM DUMP IN PRESSURE MODE — the card's status word PRESS, as a number the grader can read
+   * *(OWNER RULING, 2026-09-24, selected "Grade the mode": "Give the grader a numeric 'dump in
+   * pressure mode' value so PRESS is actually required. This is a small shared change and
+   * reverses #697's 'press optional' for these rows.")*. `control_state.steam_dump_mode` is TEXT
+   * ('pressure' | 'tavg' | 'off') and `_predMet` compares numbers, so the "status PRESS" rows
+   * graded the AUTO lamp instead — `steam_dump_auto` is `mode !== 'off'` and reads 1 in TAVG too.
+   * Derived HERE, not minted as a true_state field: the mode is the operator's selection, which
+   * lives in control_state beside the lamp (same reason as CTL_PARAMS above), and a contract field
+   * would exist for the checklists alone. Same test the board's status word uses
+   * (`imrppq5r7kw`, pwr_board_wiring.js: `m === 'pressure'` -> "PRESS"), so the row and the word
+   * cannot disagree. A plant that publishes no mode (the retired engine) resolves undefined,
+   * which `_predMet` fails closed on. */
+  var DERIVED_CTL_PARAMS = {
+    steam_dump_press_mode: function (cs) {
+      var m = cs ? cs.steam_dump_mode : undefined;
+      return typeof m === 'string' ? (m === 'pressure' ? 1 : 0) : undefined;
+    },
+    /* ...AND IN AVERAGE-TEMPERATURE MODE, the word TAVG (2026-09-27-develop-a, `pwr_startup` 14c): the
+     * chained route used to reach 100 % still in pressure mode while the standalone raise-power IC
+     * boots in TAVG. Same tile test (`m === 'tavg'` -> "TAVG"). */
+    steam_dump_tavg_mode: function (cs) {
+      var m = cs ? cs.steam_dump_mode : undefined;
+      return typeof m === 'string' ? (m === 'tavg' ? 1 : 0) : undefined;
+    },
+    /* BORON STATUS READS HOLD (#807 item 5, `pwr_heatup` 16d) — the card's status word is
+     * `boron_adjust > 0 ? BORATING : < 0 ? DILUTING : HOLD` (pwr_board_wiring `ims3wy5oym4`), so
+     * this is exactly the tile's own test, 1 when it reads HOLD. It exists because a SOURCE RANGE
+     * steadiness row short enough to tick in a plant-minute cannot see a dilution: MEASURED from
+     * the heatup's own step-16 arrival (seeds 42/7/123), a 918 -> 719 ppm dilution climbs the
+     * count 168 -> 174 cps in 4 min and a 60 s steady window ticks it inside 1.0-2.3 min, while
+     * `boron_adjust` reads -0.05 from the first broadcast. */
+    /* ...AND NOTHING STILL ARRIVING (#807 review, 2026-09-26): after the blender stops, a long
+     * dilution's last ~19 ppm is still in the VCT / charging line and keeps reaching the loop for
+     * ~30 plant-minutes, which a HOLD read off the command alone called finished. The board word
+     * now reads MIXING until |control_state.boron_in_transit_ppm| < 1 ppm — the SAME threshold as
+     * pwr_board_wiring `boronMixing`, change both. A plant that publishes no transit reads 0. */
+    /* A+B 7 % LIT ON THE LETDOWN CARD (#809 item 6, `pwr_heatup` 7a — OWNER: "just have the one
+     * step for the A+B button"). The tile's own test (pwr_board_wiring `imrmtimyxef`: not
+     * isolated, orifice A AND orifice B), so ONE row means both orifices are open. A row on
+     * `letdown_orifice_a` alone would tick on the A 3 % button, which opens A only. */
+    letdown_orifices_ab: function (cs) {
+      if (!cs || typeof cs.letdown_orifice_a !== 'boolean' || typeof cs.letdown_orifice_b !== 'boolean') return undefined;
+      return (cs.letdown_isolated !== true && cs.letdown_orifice_a && cs.letdown_orifice_b) ? 1 : 0;
+    },
+    boron_status_hold: function (cs) {
+      var r = cs ? cs.boron_adjust : undefined;
+      if (typeof r !== 'number') return undefined;
+      var t = typeof cs.boron_in_transit_ppm === 'number' ? cs.boron_in_transit_ppm : 0;
+      return (r === 0 && Math.abs(t) < 1) ? 1 : 0;
+    }
+  };
+  /* A STATUS WORD THE BOARD LIGHTS A LAMP FROM (2026-09-25, `pwr_heatup` 1c "Check OFF is lit on the
+   * RCP FLOW card"). The card lights OFF from `!IN(s).rcp_running` (pwr_board_wiring `imrsjy59pnu`):
+   * a STATUS passthrough in `snapshot.instruments` (pwr2_shell `_instrExtras`, the breaker), not a
+   * transmitter channel — it has no lag, no noise and no failure mode, so it is NOT in
+   * PARAM_INSTRUMENT (whose channels `run_checklist_pwr2` 2ae fails one by one; mapping it there
+   * threw "no channel rcp_running"). true_state carries no such field. The RCP FLOW number beside
+   * the lamp reads natural circulation, 3.9 % with the pumps stopped, so it cannot say OFF.
+   * Boolean on the wire, normalised to 1/0. */
+  var STATUS_PARAMS = { rcp_running: 1, afw_pump_running: 1 };   /* afw: the AUX FEED card's RUNNING word (#808) */
+  function statusParam(snapshot, p) {
+    var v = snapshot && snapshot.instruments ? snapshot.instruments[p] : undefined;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    return v == null ? undefined : v;
+  }
+  function derivedCtlParam(snapshot, p) {
+    return DERIVED_CTL_PARAMS[p](snapshot && snapshot.control_state);
+  }
+  /* THE BORON CARD'S ON LAMP AND TARGET BOX, READ-ONLY (2026-09-25, `pwr_startup` 2a/2b: "Turn
+   * the boron dilution system ON", "Set the boron target to 719 ppm"). Both live on the control
+   * layer's `boron_conc` automation channel — the board draws ON from `engaged` and the box from
+   * `setpoint` (pwr_board_wiring `imrqp6com2b` / `imrpq29jo7t`) — and neither is in true_state or
+   * control_state, so without these the two substeps had nothing to grade. Same numbers the board
+   * reads, so the row and the lamp cannot disagree. No channel (a plant without one) resolves
+   * undefined, which `_predMet` fails closed on. */
+  function boronChan(snapshot) {
+    var ch = snapshot && snapshot.automation && snapshot.automation.channels;
+    if (!ch) return null;
+    for (var i = 0; i < ch.length; i++) if (ch[i] && ch[i].id === 'boron_conc') return ch[i];
+    return null;
+  }
+  var AUTO_CHAN_PARAMS = {
+    boron_auto_on: function (s) { var c = boronChan(s); return c ? (c.engaged ? 1 : 0) : undefined; },
+    boron_target_ppm: function (s) {
+      var c = boronChan(s);
+      return c && c.setpoint != null && isFinite(c.setpoint) ? +c.setpoint : undefined;
+    }
+  };
   function rodParam(snapshot, p) {
     var spec = ROD_PARAMS[p];
     if (!spec) return undefined;
@@ -1436,6 +1890,17 @@
     }
     return undefined;
   }
+  /* Is the bank a rod param names physically travelling right now (`moving`, published by the
+   * control layer beside `steps`)? Only `gradeStopped` asks — see the note there. */
+  function rodMoving(snapshot, p) {
+    var spec = ROD_PARAMS[p];
+    var groups = spec && snapshot && snapshot.control_state && snapshot.control_state.rod_groups;
+    if (!groups) return false;
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i] && groups[i].id === spec.group) return groups[i].moving === true;
+    }
+    return false;
+  }
 
   /* THE ONE RESOLVER (#605). `test/procedures_harness.js` asserts the same `acc` predicates
    * this layer grades, and it used to read `snapshot.true_state[p]` directly — a second sampler
@@ -1444,11 +1909,14 @@
   InstructorLayer.paramValue = function (snapshot, p) {
     if (ROD_PARAMS[p]) return rodParam(snapshot, p);
     if (RPS_BLOCK_PARAMS[p]) return rpsBlockParam(snapshot, p);
+    if (DERIVED_CTL_PARAMS[p]) return derivedCtlParam(snapshot, p);
+    if (AUTO_CHAN_PARAMS[p]) return AUTO_CHAN_PARAMS[p](snapshot);
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (cv == null || (typeof cv === 'number' && isNaN(cv))) return undefined;
       return (typeof cv === 'boolean') ? (cv ? 1 : 0) : cv;
     }
+    if (STATUS_PARAMS[p]) return statusParam(snapshot, p);
     return snapshot && snapshot.true_state ? snapshot.true_state[p] : undefined;
   };
 
@@ -1459,6 +1927,9 @@
   function readParam(snapshot, p) {
     if (RPS_BLOCK_PARAMS[p]) return { value: rpsBlockParam(snapshot, p), graded_by: 'rps_state' };
     if (ROD_PARAMS[p]) return { value: rodParam(snapshot, p), graded_by: 'control_state' };
+    if (DERIVED_CTL_PARAMS[p]) return { value: derivedCtlParam(snapshot, p), graded_by: 'control_state' };
+    if (STATUS_PARAMS[p]) return { value: statusParam(snapshot, p), graded_by: 'status' };
+    if (AUTO_CHAN_PARAMS[p]) return { value: AUTO_CHAN_PARAMS[p](snapshot), graded_by: 'control_state' };
     if (CTL_PARAMS[p]) {
       var cv = snapshot && snapshot.control_state ? snapshot.control_state[p] : undefined;
       if (typeof cv === 'boolean') cv = cv ? 1 : 0;
@@ -1484,6 +1955,41 @@
     }
     return { value: v, graded_by: by };
   }
+
+  /* `mean_s` — A LATCHING ROW GRADED ON THE TRAILING MEAN, NOT ON FIVE NOISY SAMPLES (2026-09-26,
+   * `pwr_startup` 5a-8a, the owner's "Guide, count is the target" selection). MEASURED (full stack,
+   * `hot_zero_power`, seeds 42/7, 900 s at 10x, one grading a plant-second): the SOURCE RANGE tile
+   * carries sigma 31-33 cps at 7.0e2 (4.5 %) and 400 cps at 6.6e3, so the ACC_STABLE_N debounce —
+   * five consecutive readings at or over the row — latches with the SETTLED count well under it:
+   * bank 67 (mean 672 cps) latched after 354 s, bank 71 (688) after 183-593 s, where the count
+   * really reaches 695 at bank 73. A 30 s mean has sigma under 1 %, so the row ticks within about a
+   * bank of where the count truly is. The row still LATCHES (it is not a hold), the op is unchanged,
+   * and the ring restarts when the clock goes back, as `gradeSteady`'s does. Live runtime only:
+   * the replay harness grades the raw reading. That USUALLY ticks sooner (five noisy readings in a
+   * row cross the line below the true count) but not always: with the mean just over the line, five
+   * consecutive raw readings can take longer than the mean does. The replay does not rely on it.
+   *
+   * ONE SAMPLE PER PLANT INSTANT (2026-09-26, #807 review item 6): `instructor.step` also runs on the
+   * broadcast a COMMAND produces, and while paused that repeats the same sim time, so an unweighted
+   * ring counted a paused instant once per press. A sample at the sim time of the last one REPLACES
+   * it (the newest reading of that instant wins); `run_checklist_pwr2` 2am gates it. */
+  InstructorLayer.gradeMean = function (bag, snapshot, pred, predMet) {
+    var r = readParam(snapshot, pred.p);
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var out = { met: false, value: r.value, graded_by: r.graded_by };
+    if (!bag.s) bag.s = [];
+    var s = bag.s;
+    if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) return out;
+    if (s.length && t < s[s.length - 1].t) s.length = 0;
+    if (s.length && t === s[s.length - 1].t) s[s.length - 1].v = r.value;
+    else s.push({ t: t, v: r.value });
+    while (s.length > 1 && t - s[1].t >= pred.mean_s) s.shift();
+    if (t - s[0].t < pred.mean_s) return out;               // the window is not full yet
+    var sum = 0; for (var i = 0; i < s.length; i++) sum += s[i].v;
+    out.value = sum / s.length;
+    out.met = predMet(out.value, pred);
+    return out;
+  };
 
   InstructorLayer.prototype._grade = function (snapshot, pred) {
     var r = readParam(snapshot, pred.p);
@@ -1608,14 +2114,14 @@
     /* THE CLOCK WENT BACKWARDS — a Rewind, a restored save, a re-selected plant. The ring
      * describes a plant that no longer exists, so it starts again; the step then owes its
      * window afresh, which is the conservative direction. */
-    if (s.length && t < s[s.length - 1].t) s.length = 0;
+    if (s.length && t < s[s.length - 1].t) { s.length = 0; bag.held = false; }
     var gap = Math.max(0.05, W / 120);          // ~120 samples per window at 1x; cheap at 60x
     if (!s.length || t - s[s.length - 1].t >= gap) s.push({ t: t, v: r.value });
     // keep exactly one sample at or before the window's trailing edge, so `covered` is honest
     while (s.length > 1 && t - s[1].t > W) s.shift();
     out.n = s.length;
     out.covered = s.length > 1 && (t - s[0].t) >= W;
-    if (!out.covered) return out;
+    if (!out.covered) { bag.held = false; return out; }
     var tm = t - W / 2, a = 0, na = 0, b = 0, nb = 0;
     for (var i = 0; i < s.length; i++) {
       if (t - s[i].t > W) continue;             // the one sample outside the window
@@ -1632,7 +2138,8 @@
     }
     var mid = Math.abs((lo + hi) / 2);
     out.drift = mid > 1e-9 ? Math.abs(hi - lo) / mid : Math.abs(hi - lo);
-    out.met = out.drift <= pred.v;
+    out.met = out.drift <= (bag.held ? pred.v * STEADY_RELEASE_K : pred.v);   // hysteresis, above
+    bag.held = out.met;
     return out;
   };
 
@@ -1656,7 +2163,14 @@
      * again and the step owes `v` afresh, which is the conservative direction. */
     if (bag.t != null && t < bag.t) { bag.last = null; bag.since = null; }
     bag.t = t;
-    if (bag.last == null || r.value !== bag.last) { bag.last = r.value; bag.since = t; }
+    /* A ROD BANK IN MOTION IS NOT STOPPED, WHATEVER ITS STEP COUNTER SAYS (layman pass 2, 2026-09-24,
+     * #653). `steps` is the ROUNDED position: one SLOW step is ~8 plant-s of travel and the counter
+     * flips only at the half-step, so for ~4 s after a tap the bank is moving and `steps` has not
+     * changed. Measured on `pwr_startup` step 9 at 1x, bank 207 still for 300 s, one tap: the
+     * 300 s `stopped` row stayed met, the pull's rate spike met the rate row, and the step sat
+     * awaiting Continue 0.6 s after the tap, rod still moving, for 32 ticks. The group's own
+     * `moving` flag is the motion; restart the quiet clock on it. */
+    if (bag.last == null || r.value !== bag.last || rodMoving(snapshot, pred.p)) { bag.last = r.value; bag.since = t; }
     out.still = t - bag.since;
     out.met = out.still >= need;
     return out;
@@ -1729,7 +2243,15 @@
     // check. Recording only — the command is never blocked or altered.
     if (this.checklist && !this.checklist.complete && command && command.action) {
       var cst = this.checklist.proc.steps[this.checklist.idx];
-      if (cst && this._cmdEvidence(cst.cmd, command)) this.checklist.cmdSeen = true;
+      if (cst && this._cmdEvidence(cst.cmd, command)) {
+        this.checklist.cmdSeen = true;
+        /* WHICH SUBSTEP WAS ACTIVE WHEN IT LANDED (2026-09-25, layman pass 5 S-1, #653). An
+         * `act_first` head is a press that a LATER substep asks for after an earlier one already
+         * sent the same family (startup 9b's first tap, after 9a's hold) — step-level `cmdSeen`
+         * is already true there. ui/app.js holds 1× on such a head until this names it. Taken
+         * BEFORE `_accsCmdWatch` so a press that ticks a cmd row is credited to that row's head. */
+        this.checklist.cmdSeenHead = this._accsActiveHead(this.checklist, cst);
+      }
       if (cst) this._accsCmdWatch(this.checklist, cst, command);   // multi-check-off cmd entries
     }
 
@@ -1741,11 +2263,32 @@
     // mode, then consume — M4 would reject it as an unknown plant command.
     // Never gated: taking a reading is an observation, always allowed.
     if (command && command.action === 'plot_1m_point') {
+      /* RECORD THE SAMPLE THE PLAYER SAW (2026-09-24, 9a's "3 short"). The panel sends the
+       * point it captured — x, counts and its snapshot's time — so this table is the panel's,
+       * reading for reading. A command with no sample (the replay harness, which has no panel)
+       * is sampled here off the last snapshot through the panel's own refusals; a refused
+       * sample records nothing, as the panel would. The check-off latches either way (#641). */
+      var tb = this.oneOverM, ls = this._lastSnapshot;
+      if (tb) {
+        var cx = command.x, cc = command.counts;
+        if (typeof cx === 'number' && isFinite(cx) && typeof cc === 'number' && isFinite(cc) && cc >= 1) {
+          OneOverMCore.add(tb, cx, cc, (typeof command.t === 'number' && isFinite(command.t)) ? command.t
+                                       : (ls && ls.metadata ? ls.metadata.sim_time : null));
+        } else {
+          var smp = OneOverMCore.sample(ls);
+          if (smp.ok) OneOverMCore.add(tb, smp.x, smp.counts, ls.metadata.sim_time);
+        }
+      }
       if (this.mode === 'follow' && this.follow && !this.follow.done) {
         var fst1m = this.follow.proc.steps[this.follow.idx];
         if (fst1m && fst1m.cmd && fst1m.cmd.action === 'plot_1m_point') this.follow.cmdSeen = true;
         if (fst1m) this._accsCmdWatch(this.follow, fst1m, command);  // "point plotted" check-off
       }
+      return null;
+    }
+    // The panel's Clear button — the grader's table clears with it. Consumed, never forwarded.
+    if (command && command.action === 'plot_1m_clear') {
+      if (this.oneOverM) OneOverMCore.clear(this.oneOverM);
       return null;
     }
 
@@ -1759,6 +2302,10 @@
       }
       var ret = this.below.handleCommand(command);
       this._actionsSinceBeat.push(command);   // operator_action / inaction triggers watch these
+      this._lastActionTime = this._lastSimTime;
+      if (command.action === 'rod_start') this._rodHold = command.group_id || 'control_rods';
+      else if (command.action === 'rod_stop_all' || command.action === 'scram' ||
+               (command.action === 'rod_stop' && (!this._rodHold || (command.group_id || 'control_rods') === this._rodHold))) this._rodHold = null;
       return ret;
     }
 
@@ -1843,7 +2390,10 @@
        * `steady` and `stopped` join it (#755, #761) and for the same reason: "it has stopped
        * moving" is a HOLD claim, and a plant — or a player — that starts moving again has left
        * it. */
-      var holds = !!(en && (en.op === '~' || BAG_OPS[en.op]));
+      /* ...UNLESS THE ROW AUTHORS `latch: true` (2026-09-23 layman playtest S-1): then it is a
+       * "you got here" claim like `>`, and the HOLD it would have re-asserted must live in a
+       * later row of the same ordered step (`run_checklist_pwr2` §2ak gates that pairing). */
+      var holds = !!(en && !en.latch && (en.op === '~' || BAG_OPS[en.op]));
       /* THE PLAYER'S OWN CASUALTY (#773/#788) — recomputed here every tick for EVERY row,
        * met or not, so that clearing the failure takes the relief away again. It is kept
        * OUT of `ax.met` on purpose: `met` is a latch, and a latched void would survive the
@@ -1854,16 +2404,58 @@
         if (BAG_OPS[en.op]) {
           if (!ax.bag) ax.bag = { s: [] };
           g = InstructorLayer.gradeBagged(ax.bag, snapshot, en);
+        } else if (en.mean_s > 0) {
+          if (!ax.bag) ax.bag = { s: [] };
+          var selfM = this;
+          g = InstructorLayer.gradeMean(ax.bag, snapshot, en, function (v, pr) { return selfM._predMet(v, pr); });
         } else g = this._grade(snapshot, en);
+        if (en.below_1m != null) {         /* 9a's "3 short of the 1/M prediction" */
+          InstructorLayer.applyBelow1m(g, this._oneOverMPredSteps(snapshot), en);
+          ax.no_1m = g.no_1m; ax.pred_1m = g.pred_1m;
+        }
+        if (en.reach_1m != null) {         /* 9a's "within 3.9 steps of the 1/M prediction" (develop-k) */
+          InstructorLayer.applyReach1m(g, this._oneOverMPredSteps(snapshot), en);
+          ax.no_1m = g.no_1m; ax.pred_1m = g.pred_1m;
+        }
+        if (en.still_s > 0) {              /* 9b's rods-still wait, folded into the row (develop-k) */
+          if (!ax.stillBag) ax.stillBag = { s: [] };
+          InstructorLayer.applyStill(g, ax.stillBag, snapshot, en);
+        }
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.streak = g.met ? ax.streak + 1 : 0;
+        /* A `reach_1m` verdict reads the operator's own step counter against a printed number — exact,
+         * no instrument noise to debounce — so it ticks on the FIRST broadcast it holds, which is the
+         * owner's "right away" (develop-k). The fallback (no prediction) keeps the debounce. */
+        if (en.reach_1m != null && !g.no_1m && g.met) ax.streak = Math.max(ax.streak, ACC_STABLE_N);
         /* ORDERED STEPS (#756): a blocked entry still GRADES — `obs` keeps updating and a
          * `steady` ring keeps filling from the moment the step became active — it just may not
          * LATCH. Grading it is not cosmetic: measured on the 1/M ladder, the settle window has
          * to run from the step's start or the settle row would owe a fresh 120 s after the count
          * row ticks, and the crossing is at the same wall-clock instant either way. */
-        if (ax.streak >= ACC_STABLE_N && !blocked) ax.met = true;
-        else if (holds) ax.met = false;        // left the band — the check-off comes back off
+        /* A MET `~` BAND LETS GO ON A SUSTAINED EXCURSION, NOT ON ONE NOISY SAMPLE (2026-09-24,
+         * run_walkthrough_routes). The band grades the INSTRUMENT (Hard Rule 1), and at its edge
+         * the gauge's noise straddles the limit: MEASURED on `pwr_raise_power` 6, true Tavg
+         * 584.7 degF against a 585.5 degF edge, the channel read 307.508 / 307.396 / 307.525 degC
+         * (585.51 / 585.31 / 585.55 degF) on successive broadcasts and the row went tick-untick-tick.
+         * It un-ticks after ACC_STABLE_N consecutive out-of-band gradings — the tick side's own
+         * debounce, mirrored — or once it has been out for BAND_RELEASE_S plant-seconds, whichever
+         * is first, so at WARP (a broadcast can be minutes) a real departure is not certified for
+         * five broadcasts. `steady`/`stopped` are not debounced here: `steady` has its own
+         * hysteresis (gradeSteady) and `stopped` reads an exact control. */
+        var t_ = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+        if (g.met) { ax.miss = 0; ax.missT = null; }
+        else if (ax.met && ax.bandHeld && holds && en.op === '~') {
+          ax.miss = (ax.miss || 0) + 1;
+          if (ax.missT == null) ax.missT = t_;
+        }
+        /* ...and only a band that its OWN grading ticked: a `cmd`-kind `~` row is set met by the
+         * press in handleCommand before the gauge agrees (cooldown 6, SPRAY at 50 %, flow still
+         * ramping), and the debounce would draw that press as a 0.4 s tick. */
+        if (ax.streak >= ACC_STABLE_N && !blocked) { ax.met = true; ax.bandHeld = true; }
+        else if (holds && !(en.op === '~' && ax.met && ax.bandHeld && ax.miss < ACC_STABLE_N &&
+                            !(t_ != null && ax.missT != null && t_ - ax.missT >= BAND_RELEASE_S))) {
+          ax.met = false; ax.bandHeld = false;  // left the band — the check-off comes back off
+        }
       }
       // a voided row neither holds the step nor blocks its successors — it is an
       // observation the player deliberately made impossible, not an unmet one.
@@ -1882,7 +2474,7 @@
      * array; when that entry is met and this one is not, this one latches and is flagged
      * `implied` so the card can say so.
      *
-     * WHY IT EXISTS. `pwr_startup` step 9 grades criticality on two instrument rows — INTER
+     * WHY IT EXISTS. `pwr_startup` step 9 (step 10 since the 2026-09-23 split) grades criticality on two instrument rows — INTER
      * RANGE at or above 1.0e-7 A, and REACTOR POWER above 0.05 %. `accs` is a CONJUNCTION, so
      * a channel the player can break takes the step with it: MEASURED on this tree,
      * `hot_full_power`, seed 7, through this function — `set_instrument_failure
@@ -1940,6 +2532,22 @@
   // On an `accs_ordered` step a cmd entry is DEAF until its predecessors are met — that is the
   // half of the sequencer the player actually feels (#756: pressing Plot point early does nothing
   // instead of latching a stale point), because the press, not the predicate, is what they do.
+  /* The active substep HEAD — the same rule as ui/app.js `cklActiveAccsHead`: the first
+   * non-hidden unmet row, walked back over `cont` rows to the head they continue. -1 when the
+   * step has no `accs` or every drawn row is met. Two copies, so keep them in step. */
+  InstructorLayer.prototype._accsActiveHead = function (holder, st) {
+    if (!st || !st.accs || !st.accs.length) return -1;
+    var state = holder.accsState || [];
+    var fu = -1;
+    for (var i = 0; i < st.accs.length; i++) {
+      if (st.accs[i].hidden) continue;
+      if (!(state[i] || {}).met) { fu = i; break; }
+    }
+    if (fu < 0) return -1;
+    while (fu > 0 && st.accs[fu].cont) fu--;
+    return fu;
+  };
+
   InstructorLayer.prototype._accsCmdWatch = function (holder, st, command) {
     if (!st || !st.accs || !st.accs.length) return;
     var state = this._ensureAccsState(holder, st);
@@ -2079,6 +2687,8 @@
       message_register: base.message_register,
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
+      trend: this._trend ? { rev: this._trend.rev, series: this._trend.series.slice() } : null,
+      scope: this.mode === 'scenario' && this._scope ? { rev: this._scope.rev, names: this._scope.names.slice() } : null,
       // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its
       // interrupt on this: a routine message cues the collapsed card's badge, a step
       // that blocks the player has to reach them even with another panel open, or the
@@ -2086,6 +2696,11 @@
       // A boolean, not the gate list: which actions are blocked is the layer's business
       // and is already enforced here — the UI only needs to know that it matters.
       gated: this.activeGates.length > 0,
+      /* The 1/M table the grader holds (RD.OneOverMCore): how many points, and the prediction
+       * the panel prints off them, in steps (null = none printed). Read by the replay harness,
+       * which grades `below_1m` off the same number the live row does. */
+      one_over_m: this.oneOverM ? { points: this.oneOverM.points.length, gen: this.oneOverM.gen || 0,
+                                    pred_steps: this._oneOverMPredSteps(this._lastSnapshot) } : null,
       ui_policy: this.uiPolicy,
       highlight: this.mode === 'follow'
         ? (st && st.control ? { view: null, control_label: st.control, instrument_id: null } : null)
@@ -2102,7 +2717,8 @@
         // `implied` — this row latched on a sibling's threshold, not its own (`implied_by`).
         accs: f.accsState ? f.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
-                   voided: a.voided || null };
+                   voided: a.voided || null, no_1m: !!a.no_1m,
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
         }) : null,
       } : null,
       level_complete: this.levelComplete ? {
@@ -2128,6 +2744,13 @@
         steps_done: this.checklist.done.slice(),
         done_by: this.checklist.doneBy.slice(),
         acc_met: this.checklist.accMetNow,
+        /* THE STEP'S OWN `cmd` FAMILY HAS DESCENDED since the step was entered (2026-09-24
+         * layman pass 4, S-1). ui/app.js holds the walkthrough's auto speed at 1× until this is
+         * true on a step whose `cmd` is the action, so the fast-forward buys the WAIT and never
+         * the player's reading of the step (owner #796: speed the wait, not the action). */
+        cmd_seen: !!this.checklist.cmdSeen,
+        // The `accs` head active when that command last landed, or -1 (see handleCommand).
+        cmd_head: (this.checklist.cmdSeenHead == null ? -1 : this.checklist.cmdSeenHead),
         /* THE SOLE ROW THE PLAYER'S OWN CASUALTY STOOD DOWN (#773/#788) — the display
          * name of the failure they injected, or null. `acc_met` is TRUE alongside it, so
          * without this the step would tick with nothing asserting it and nothing said;
@@ -2169,7 +2792,8 @@
         // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
-                   voided: a.voided || null };
+                   voided: a.voided || null, no_1m: !!a.no_1m,
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
         }) : null,
         /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
          * indices into the step's own `accs`. `acc_index` is the row the press WOULD have
@@ -2255,6 +2879,13 @@
       pending_message: this.pendingMessage ? JSON.parse(JSON.stringify(this.pendingMessage)) : null,
       chat_log: this.chatLog.length ? JSON.parse(JSON.stringify(this.chatLog)) : null,
       chat_rev: this._chatRev,
+      beat_baseline: JSON.parse(JSON.stringify(this._beatBaseline || {})),
+      trend: this._trend ? JSON.parse(JSON.stringify(this._trend)) : null,
+      scope: this._scope ? JSON.parse(JSON.stringify(this._scope)) : null,
+      watch_fired: this._watchFired.slice(),
+      read_hold_s: this._readHoldS,
+      last_action_time: this._lastActionTime,
+      rod_hold: this._rodHold,
       interact: JSON.parse(JSON.stringify(this._interact)),
       ui_policy: this.uiPolicy ? JSON.parse(JSON.stringify(this.uiPolicy)) : null,
       highlight: this.highlight ? JSON.parse(JSON.stringify(this.highlight)) : null,
@@ -2371,7 +3002,8 @@
     if (!state.mode) return;
 
     if (state.mode === 'scenario') {
-      var sc = RD.SCENARIOS ? RD.SCENARIOS[state.scenario_id] : null;
+      var sc = (RD.SCENARIOS && RD.SCENARIOS[state.scenario_id]) ||
+               (RD.OPENERS && RD.OPENERS[state.scenario_id]) || null;   // openers load as scenarios (#811)
       if (!sc) {
         if (typeof console !== 'undefined') console.warn('InstructorLayer.loadState: scenario "' + state.scenario_id + '" not in RD.SCENARIOS — degrading to free-play.');
         return;
@@ -2391,6 +3023,15 @@
       this.pendingMessage = state.pending_message || null;
       this.chatLog = state.chat_log || [];
       this._chatRev = state.chat_rev || 0;
+      this._beatBaseline = state.beat_baseline || {};
+      this._trend = state.trend || null;
+      this._scope = state.scope || null;
+      this._scopeRev = this._scope ? this._scope.rev : 0;
+      this._watchFired = (state.watch_fired || []).slice();
+      this._readHoldS = state.read_hold_s || 0;   // absent on older saves: nothing owed
+      this._readLastSim = null;
+      this._lastActionTime = state.last_action_time != null ? state.last_action_time : null;   // absent on older saves
+      this._rodHold = state.rod_hold || null;
       this._interact = state.interact || {};
       this.uiPolicy = state.ui_policy || null;
       this.highlight = state.highlight || null;

@@ -210,6 +210,17 @@
 
         </div>
         <div class="warp-info mono" id="warpInfo" aria-live="polite"></div>
+        <!-- "Walkthrough sets time warp" (#807 item 7, OWNER: "Add a setting that shows up under
+             the time warp bar that toggles the walkthrough automatically setting time warp. this
+             setting only shows up when playing a walkthrough otherwise its not visible."). Hidden
+             by default; app.js syncWarpInfo shows it iff a walkthrough step is active. Default ON
+             is today's behaviour; OFF stops the walkthrough pressing this bar for you, in either
+             direction, for the rest of the run — the step card's own "Suggested time warp" line
+             is untouched, and so is the accumulator-arming speed_hold refusal (a plant fact, not
+             a pacing courtesy — see the ruling in ui/app.js beside cklAutoWarpOn). -->
+        <label class="ckl-warp-pref" id="cklWarpPrefRow" hidden
+            data-scanner-hint="Walkthrough sets time warp — On (default) lets the running walkthrough raise and drop this bar for you, exactly as it always has. Off leaves the bar to you for the rest of the walkthrough; the step card's own Suggested time warp line still tells you the rung it is written for.">
+          <input type="checkbox" id="cklWarpPrefBox" checked> Walkthrough sets time warp</label>
         <!-- THE .sim-status BAR THAT STOOD HERE IS GONE (#689, owner 2026-09-09: "Change the
              SELECT PLANT, MISSION & RESET menu to this button and get rid of the old button.").
              It was a full-width button reading "SELECT PLANT, MISSION & RESET" plus a live
@@ -375,7 +386,8 @@
                  walkthrough is shown in the Instructor tab, one step at a time. The pane, menu
                  and data attributes keep their `ckl` ids — four gates address them by id. -->
             <div class="ckl-picker" id="instrCklRow">
-              <div class="phys-note">Pick a walkthrough. It runs in the <b>Instructor</b> tab one
+              <div class="phys-note">To start up the plant, begin with the first walkthrough and work
+                down the list; each one offers the next when it finishes. It runs in the <b>Instructor</b> tab one
                 step at a time: each step checks itself off the instruments, and <b>Continue</b>
                 lights up when the step is done.</div>
               <div class="ckl-menu" id="cklMenu" data-scanner-hint="Walkthroughs — pick a procedure and it runs one step at a time in the Instructor tab; each step checks itself off the instruments while you operate."
@@ -915,6 +927,7 @@
   <script src="../scenarios/pwr_mode5_to_mode3.js"></script>
   <script src="../scenarios/pwr_mode3_to_mode5.js"></script>
   <script src="../scenarios/pwr_return_to_mode1.js"></script>
+  <script src="../scenarios/opener_pwr2_hfp.js"></script>
   <!-- rbmk_*/bwr_* scenarios: removed with their engines (#514) — see the note above -->
   <script src="panels/one_over_m.js"></script>
   <script src="campaign_data.js"></script>

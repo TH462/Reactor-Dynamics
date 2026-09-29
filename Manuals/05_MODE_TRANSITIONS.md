@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 21  
+**Revision:** 22  
 
 ---
 
@@ -219,7 +219,7 @@ This is the deepest **fully simulated** shutdown state.
 > > [1000] psig"*; LTOP SR 3.4.12.3 *"Verify each accumulator is isolated."*). **Re-align them
 > on the way back up** — Phase A step A5.
 
-**Simulator:** This is driveable to the **Mode 5** end state — the cold plant on RHR (#524, restored 2026-08-31) — and there is a **runnable walkthrough** for it — `pwr_cooldown`, the one you run on the board and the thing that reproduces N15's performance table on every gate run. Borate for shutdown margin, **block SI before the pressure setpoint moves** (the depressurization crosses the 1798 psi (12.4 MPa) SI actuation setpoint; measured with SI armed the pumps inject, the pressurizer goes solid and the plant trips), and **block BOTH low-pressure reactor trips** — the 1800 psi (12.41 MPa) low-pressure trip and the reactor-trip-on-SI are two separate entries on the same channel, and HPI/LPI OFF blocks neither (measured: the plant scrams in the first cooling leg with either one left armed). Then — **with the dumps in steam-pressure mode, which is what AUTO selects on a tripped turbine and the only mode in which the setpoint is read at all** (**03** §12.3) — lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary, depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, **isolate the accumulators at 1000 psi (6.895 MPa)** (discharge valve on the board's ECCS side, `close_accumulator_valve`), place **RHR On** below the 425 psig (440 psi / 3.03 MPa) block-open permissive, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**90 °F/h** (50 °C/h) cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
+**Simulator:** This is driveable to the **Mode 5** end state — the cold plant on RHR (#524, restored 2026-08-31) — and there is a **runnable walkthrough** for it — `pwr_cooldown`, the one you run on the board and the thing that reproduces N15's performance table on every gate run. Borate for shutdown margin, **block SI before the pressure setpoint moves** (the depressurization crosses the 1798 psi (12.4 MPa) SI actuation setpoint; measured with SI armed the pumps inject, the pressurizer goes solid and the plant trips), and **block BOTH low-pressure reactor trips** — the 1800 psi (12.41 MPa) low-pressure trip and the reactor-trip-on-SI are two separate entries on the same channel, and HPI/LPI OFF blocks neither (measured: the plant scrams in the first cooling leg with either one left armed). Then — **with the dumps in steam-pressure mode, which is what AUTO selects on a tripped turbine and the only mode in which the setpoint is read at all** (**03** §12.3) — lower the steam-dump setpoint (`set_steam_dump_setpoint`) to cool the secondary and with it the primary — **one entry of 120 psi (0.83 MPa); the controller paces the walk at 60 °F/hr (33.3 °C/hr)** (**03** §12.3, declared departure 2026-09-28), depressurize in step (`set_pressure_setpoint`, spray) keeping subcooling positive, **isolate the accumulators at 1000 psi (6.895 MPa)** (discharge valve on the board's ECCS side, `close_accumulator_valve`), place **RHR On** below the 425 psig (440 psi / 3.03 MPa) block-open permissive, and **secure the RCPs** (`set_rcp`) so RHR draws the RCS to cold. Once RHR carries the cooldown, set its pace with **RHR Cooldown Rate (HX flow split)** (`set_rhr_hx`) — walk it up to hold the ~**90 °F/h** (50 °C/h) cooldown limit rather than opening full-through-the-exchanger on a hot plant. The cold end state matches the `cold_shutdown` IC. Cooldown *rate* is time-compressed. **PWR-N15** is the companion procedure.
 
 ---
 
@@ -365,7 +365,7 @@ Press AUTO on Emergency card after manual intervention. Standing start condition
 
 ### PWR-T13 — SR → IR handoff (Mode 3, Hot Standby / Mode 2, Startup startup)
 
-IR ≥ 1e-10 A (P-6) → the intermediate range is on scale and is the instrument to read. **Nothing to press**: the source range switches itself off at 1e5 cps, and this plant has no source-range trip to beat. Confirm INTER RANGE is reading before the source range goes dark.
+IR ≥ 1e-10 A (P-6) → confirm INTER RANGE is reading, then **block SR HIGH FLUX** on the Trip Blocks panel: it blocks the source-range trip and switches the detector off, and the intermediate range becomes the instrument to read. **Miss it and the source range trips the reactor at 1e5 cps.** On the way down the block clears itself below 5e-11 A and the detector comes back on.
 
 ### PWR-T14 — Startup trip blocks (entering Mode 1, At Power)
 

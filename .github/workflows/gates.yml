@@ -119,7 +119,10 @@ jobs:
       matrix:
         # N lives HERE and in the --shard argument below, and nowhere else. run_ci_shards.js
         # asserts the two agree; do not introduce a third copy.
-        shard: [1, 2, 3]
+        # 3 -> 4 (2026-09-29, Alpha 1.8.0 release): shards 2 and 3 hit the 30-min step budget
+        # (4 of the 6 runs since 2026-09-26 failed that way; shard 3 reached 18/43 runners). The
+        # suite outgrew three lanes; a fourth cuts each shard's CPU by a quarter.
+        shard: [1, 2, 3, 4]
     # 45 -> 35 (#637 Phase E, same day): the tail runner is split — see the step note.
     # 60 -> 45 (#637, 2026-09-05): a shard is a third of the suite, but the un-split tail runner
     # (run_pwr2_engine, 23-35 min depending on the runner class) can still land in one of them,
@@ -193,7 +196,7 @@ jobs:
       # was 7m42s-14m53s measured for ~52 runners with a ~2x runner-class spread; the merged
       # suite measures ~19 min locally at 10-way parallel, so the same 2x slow-end logic gives
       # ~38 — the step must always fail on its OWN name before the job's budget does.
-      - name: Aggregate gate (shard ${{ matrix.shard }} of 3)
+      - name: Aggregate gate (shard ${{ matrix.shard }} of 4)
         # 40 -> 30 (#637 Phase E, 2026-09-05, same day): run_pwr2_engine is now THREE runners
         # (325 / 330 / 835 s solo, local) and the new tail is part C — group I, the failure
         # levers, 9 mutations x 85 s of replay. On CI the old whole file ran at 0.71x (green,
@@ -230,7 +233,7 @@ jobs:
         # 45 -> 70 (#507 wave 8): timed out at 45 on the wave-7 push with every runner green
         # locally — see the job-level note
         timeout-minutes: 30
-        run: node test/run_all.js --shard=${{ matrix.shard }}/3
+        run: node test/run_all.js --shard=${{ matrix.shard }}/4
 
       - name: Upload diagnostic reports
         if: always()
@@ -264,7 +267,7 @@ jobs:
         run: |
           r="${{ needs.gate-shard.result }}"
           if [ "$r" != "success" ]; then
-            echo "::error::gate-shard result is '$r', not 'success' — open the gate-shard (1..3) jobs; at least one shard failed, was cancelled, or never ran"
+            echo "::error::gate-shard result is '$r', not 'success' — open the gate-shard (1..4) jobs; at least one shard failed, was cancelled, or never ran"
             exit 1
           fi
-          echo "all 3 shards: $r"
+          echo "all 4 shards: $r"

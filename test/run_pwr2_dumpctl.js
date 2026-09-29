@@ -200,6 +200,67 @@ function runSuite(RD, rec, quiet) {
       pm.controller === 'pressure' && pm.armed === true && pm.dump_demand > 0.3,
       pm.dump_demand.toFixed(2) + ' demand at 0.3 MPa over the setpoint -- the cooldown tool');
 
+  /* THE COOLDOWN RATE LIMIT (OWNER RULING 2026-09-28, the automatic ramp — quoted on the RAMP
+   * block in pwr2_dumpctl.js; a DECLARED DEPARTURE, DESIGN_COMPANION §8.38). A typed DUMP
+   * SETPOINT is a TARGET; the working setpoint's SATURATION TEMPERATURE falls at the fixed rate.
+   * The plant-coupled half (Tavg itself stays under the limit and arrives) is run_pwr2_shell's. */
+  head('THE COOLDOWN RATE LIMIT  [declared departure: a lowered setpoint is walked, not stepped]');
+  var W = RD.water, lim_c_s = DC.RAMP.cooldown_f_per_hr / 1.8 / 3600;
+  var dcR = DC.createDumpCtl({ mode: 'pressure', pressure_setpoint_mpa: 7.03 });
+  var tsat0 = W.T_sat(7.03), rR = null;
+  for (var iR = 0; iR < 600 / DT; iR++) {
+    rR = DC.stepDumpCtl(dcR, DT, { pressure_setpoint_mpa: 0.8274, steam_pressure_mpa: dcR.pressure_setpoint_mpa,
+      load_frac: 0, turbine_tripped: true, condenser_available: true });
+  }
+  ck('a 1020 -> 120 psi target: the working setpoint\'s Tsat falls at the limit (600 s)',
+     (tsat0 - W.T_sat(rR.pressure_setpoint_mpa)) * 1.8, DC.RAMP.cooldown_f_per_hr / 6, 0.05, 'degF');
+  ckT('...while the TARGET the box shows is what was typed',
+      rR.pressure_target_mpa === 0.8274 && rR.pressure_setpoint_mpa > 5.5,
+      'target ' + rR.pressure_target_mpa + ' MPa, working ' + rR.pressure_setpoint_mpa.toFixed(3) + ' MPa');
+  var hrs = (tsat0 - W.T_sat(0.8274)) * 1.8 / DC.RAMP.cooldown_f_per_hr, dtB = 1;
+  for (var jR = 0; jR < (hrs * 3600 + 120) / dtB; jR++) {
+    rR = DC.stepDumpCtl(dcR, dtB, { steam_pressure_mpa: dcR.pressure_setpoint_mpa, load_frac: 0,
+      turbine_tripped: true, condenser_available: true });
+  }
+  ck('...and it ARRIVES at the target, no undershoot (' + hrs.toFixed(2) + ' h of walk)',
+     rR.pressure_setpoint_mpa, 0.8274, 1e-9, 'MPa');
+  var up = DC.stepDumpCtl(dcR, DT, { pressure_setpoint_mpa: 7.03, steam_pressure_mpa: 0.8274,
+    load_frac: 0, turbine_tripped: true, condenser_available: true });
+  ckT('an UPWARD move is not limited: the working setpoint is the target on the next step',
+      up.pressure_setpoint_mpa === 7.03, up.pressure_setpoint_mpa + ' MPa one step after 7.03 was typed');
+  var dcT = DC.createDumpCtl({ mode: 'tavg' });
+  var tv = DC.stepDumpCtl(dcT, DT, { pressure_setpoint_mpa: 0.8274, tavg_c: 286.11, load_frac: 0,
+    turbine_tripped: false, condenser_available: true });
+  ckT('TAVG mode is unchanged: a typed setpoint lands at once (nothing reads it there)',
+      tv.pressure_setpoint_mpa === 0.8274, tv.pressure_setpoint_mpa + ' MPa');
+  var sel = DC.stepDumpCtl(dcT, DT, { mode: 'pressure', steam_pressure_mpa: 7.03, load_frac: 0,
+    turbine_tripped: true, condenser_available: true });
+  ckT('SELECTING pressure mode under a low target starts the walk from the steam header, not the target',
+      Math.abs(sel.pressure_setpoint_mpa - 7.03) < 0.01 && sel.dump_demand < 0.05,
+      'working ' + sel.pressure_setpoint_mpa.toFixed(3) + ' MPa, demand ' + sel.dump_demand.toFixed(3) +
+      ' (the whole step at once would read ~1)');
+  var dcG = DC.createDumpCtl({ mode: 'tavg' });
+  var selG = DC.stepDumpCtl(dcG, DT, { mode: 'pressure', steam_pressure_mpa: 7.58, load_frac: 0,
+    turbine_tripped: true, condenser_available: true });
+  ckT('...but a target AT the ' + DC.RAMP.anchor_mpa + ' MPa no-load anchor lands at once (the post-trip ' +
+      'AUTO press: a header as high as the 7.58 MPa safety lift - measured 7.50 on pwr_shutdown)',
+      selG.pressure_setpoint_mpa === 7.03, 'working ' + selG.pressure_setpoint_mpa + ' MPa');
+  /* A SMALL LOWERED TARGET IS STILL A LOWERED TARGET (2026-09-28 review). The rule before this
+   * exempted any gap under 15 degF of Tsat; 908.6 psia (6.2646 MPa) typed under a 1027 psia
+   * (7.08 MPa) header is 14 degF, and MEASURED full stack it landed in one step: Tavg -13.5 degF
+   * in 33 s. Below the anchor the walk starts from the header whatever the gap. */
+  var dcS = DC.createDumpCtl({ mode: 'off' });
+  DC.stepDumpCtl(dcS, DT, { pressure_setpoint_mpa: 6.2646, steam_pressure_mpa: 7.08, load_frac: 0,
+    turbine_tripped: true, condenser_available: true });
+  var gapF = (W.T_sat(7.08) - W.T_sat(6.2646)) * 1.8;
+  var selS = DC.stepDumpCtl(dcS, DT, { mode: 'pressure', steam_pressure_mpa: 7.08, load_frac: 0,
+    turbine_tripped: true, condenser_available: true });
+  ckT('...and a target BELOW the anchor is walked from the header even under a ' + gapF.toFixed(1) +
+      ' degF gap (908.6 psia typed, AUTO at 1027 psia)',
+      Math.abs(selS.pressure_setpoint_mpa - 7.08) < 0.01 && selS.dump_demand < 0.05 && gapF < 15,
+      'working ' + selS.pressure_setpoint_mpa.toFixed(3) + ' MPa, demand ' + selS.dump_demand.toFixed(3) +
+      ' (landing at once would read ~1)');
+
   head('C-9 AND THE INDICATION  [a demand with no path must stay visible]');
   var dcD = DC.createDumpCtl({});
   drive(dcD, 30, function (t) { return t < 10 ? 1.0 : 0.80; });
@@ -260,6 +321,24 @@ var MUTATIONS = [
   ['C-9 is ignored (the dumps actuate into an unavailable condenser)',
    'dump_demand: armed && c9 ? demand : 0,',
    'dump_demand: armed ? demand : 0,'],
+  /* the 2026-09-28 automatic ramp: the limiter deleted (a lowered target lands at once, the
+   * pre-ruling plant), the upward exemption deleted, and the selection edge deleted */
+  ['the cooldown limiter is deleted (a lowered target lands on the next step)',
+   'if (dc.mode !== \'pressure\' || !(tgt < dc.pressure_setpoint_mpa)) {',
+   'if (true) {'],
+  ['upward moves creep too (the working setpoint rate-limited in both directions)',
+   '!(tgt < dc.pressure_setpoint_mpa)) {\n      dc.pressure_setpoint_mpa = tgt;',
+   '!(tgt < dc.pressure_setpoint_mpa)) {\n      dc.pressure_setpoint_mpa = Math.min(tgt, dc.pressure_setpoint_mpa + 0.001);'],
+  ['the pressure-mode selection edge is deleted (select under a low target = the whole step)',
+   'tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {',
+   'false) {'],
+  ['the anchor exemption is deleted (the post-trip AUTO press walks a few psi for minutes)',
+   'tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {',
+   'drivers.steam_pressure_mpa > tgt) {'],
+  /* the 2026-09-28 review: the rule this replaced, put back — a 14 degF lowered target lands */
+  ['the 15 degF entry gap is back (a small lowered target lands in one step)',
+   'tgt < RAMP.anchor_mpa && drivers.steam_pressure_mpa > tgt) {',
+   '(RD.water.T_sat(drivers.steam_pressure_mpa) - RD.water.T_sat(tgt)) * 1.8 > 15) {'],
   ['arming is ignored (controller output goes straight to the valves)',
    'dump_demand: armed && c9 ? demand : 0,',
    'dump_demand: c9 ? demand : 0,']

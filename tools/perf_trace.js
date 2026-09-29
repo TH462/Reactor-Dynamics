@@ -415,6 +415,43 @@ var KNOBS = {
    * plus five cooling-tower plume ellipses rewriting `style` at 9 Hz. The components guard those
    * writes with `if (power !== last.power)` and at hot_full_power the power reading moves every
    * broadcast, so the guard never holds. Promotion cannot cache a blur whose input changes. */
+  /* THE INSTRUCTOR SCOPE + POINTER (#811): the board scoped to primary + rods (the rest dimmed and
+   * desaturated) and the reactor-vessel pointer re-fired every 4.5 s, its worst case (a cue always
+   * running). Free play clears the scope on every broadcast, so the knob pins it by stubbing
+   * setScope after applying. */
+  focus: {
+    apply: function () {
+      var B = RD.PwrBoard;
+      B.setScope({ names: ['primary', 'rods'], lit: [] });
+      B.setScope = function () {}; B.clearPointers = function () {};
+      B.pointAt(['Reactor Vessel']);
+      setInterval(function () { B.pointAt(['Reactor Vessel']); }, 4500);
+      return { lit: B.scopeState().lit.length, pointers: B.scopeState().pointers.length };
+    },
+    verify: function () {
+      var st = RD.PwrBoard.scopeState(), ol = document.querySelector('.bd-focus-ol.on');
+      return { dimming: st.dimming, pointers: st.pointers.join(','), pulse: ol ? getComputedStyle(ol).animationName : 'none',
+               took: st.dimming && st.pointers.length === 1 };
+    },
+  },
+  // Combine with `focus`: keep the dimming's opacity, drop its desaturation filter.
+  dimnogray: {
+    css: '.pwr-board-stage.bd-dimming * { filter: none !important; }',
+    verify: function () {
+      var t = document.querySelector('.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit)');
+      return { filter: t ? getComputedStyle(t).filter : 'no dimmed tile', took: !!t && getComputedStyle(t).filter === 'none' };
+    },
+  },
+  // Combine with `focus`: remove the outline overlay, keep the dimming (isolates the two costs).
+  nofocusol: {
+    css: '.bd-focus-layer { display: none !important; }',
+    verify: function () { var l = document.querySelector('.bd-focus-layer'); return { took: !!l && getComputedStyle(l).display === 'none' }; },
+  },
+  // Combine with `focus`: keep the outline, lift the dimming.
+  nodim: {
+    css: '.pwr-board-stage.bd-dimming > .bd-tile, .pwr-board-stage.bd-dimming .bd-dim { opacity: 1 !important; filter: none !important; }',
+    verify: function () { var t = document.querySelector('.pwr-board-stage.bd-dimming > .bd-tile:not(.bd-lit)'); return { took: !!t && getComputedStyle(t).opacity === '1' }; },
+  },
   filterlayer: {
     apply: function () {
       var els = document.querySelectorAll('[filter]');

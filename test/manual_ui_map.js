@@ -108,7 +108,9 @@ var STEP_UI = {
     { i: 1, view: 'board', control: 'RCP ON/OFF' },
     { i: 2, view: 'board', control: 'Shutdown Bank' },
     { i: 3, view: 'board', control: 'Turbine Load' },
-    { i: 4, view: 'board', control: 'Feed Pumps' },
+    /* i:4 RENAMED IN PLACE (#808, 2026-09-27): Mode 3 now runs on aux feed, so the step presses
+     * AUX FEED WATER AUTO and its pill reads AFW. Nothing shifts. */
+    { i: 4, view: 'board', control: 'AFW' },
     /* i:5 (Dump SP) DELETED, not renumbered (#608 item 1, 2026-09-02): that step became an
      * observation — it commanded the setpoint the Mode 5 initial condition already boots at, and
      * the setpoint is inert in this mode anyway. An obs step carries no `control`, so it owns no
@@ -150,22 +152,31 @@ var STEP_UI = {
    * #698 note below). Moved one at a time, not re-derived, for the reason those notes give. */
   'pwr2:pwr_startup': [
     { i: 1, view: 'board', control: 'Boron control' },
-    { i: 2, view: 'board', control: 'Feed Pumps' },
+    { i: 2, view: 'board', control: 'AFW' },   // renamed in place (#808): the aux feed check
     { i: 3, view: 'board', control: '1/M Plot' },
     { i: 4, view: 'board', control: 'Control Bank' },
     { i: 5, view: 'board', control: 'Control Bank' },
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
-    { i: 8, view: 'board', control: 'Control Bank' },
+    /* 2026-09-27-develop-a: i:8 is the new SR block at P-6 (owner ruling 2026-09-26 "B"); old 10 and 11 merged
+     * into 12 and the level-off became 11, so the count and every other row stay. */
+    { i: 8, view: 'board', control: 'Trip Blocks' },
     { i: 9, view: 'board', control: 'Control Bank' },
+    /* 2026-09-23: old step 9 split into 9 + 10 and old step 11 (no `control`) folded away, so
+     * i:10 is now a real Control Bank step (the old i:9, power 0.5 %) and i:11 onward keep
+     * their indices. Added one row, moved none. */
+    { i: 10, view: 'board', control: 'Control Bank' },
     { i: 11, view: 'board', control: 'Control Bank' },
-    { i: 12, view: 'board', control: 'Control Bank' },
-    { i: 13, view: 'board', control: 'Turbine Load' },
+    /* #808 (2026-09-27) INSERTED the feed transfer at i:12, so the four rows below it MOVED by one
+     * (12->13, 13->14, 14->15, 15->16) -- moved, not re-derived, per the notes above. */
+    { i: 12, view: 'board', control: 'Feed Pumps' },
+    { i: 13, view: 'board', control: 'Control Bank' },
+    { i: 14, view: 'board', control: 'Turbine Load' },
     /* TWO block steps since #601, taken in P-10's own order: the intermediate-range trip (which
      * also clears the C-1 rod stop) then the power-range low setting. Both land on the same
      * panel; they are separate rows because they are separate operator actions. */
-    { i: 14, view: 'board', control: 'Trip Blocks' },
     { i: 15, view: 'board', control: 'Trip Blocks' },
+    { i: 16, view: 'board', control: 'Trip Blocks' },
   ],
   /* #619 item 27 (2026-09-04) inserted the boron SAMPLE step at i:2, so every row below it
    * shifted by one. Written out rather than re-derived: the indices are positional and this map
@@ -187,15 +198,8 @@ var STEP_UI = {
     { i: 6, view: 'board', control: 'Control Bank' },
     { i: 7, view: 'board', control: 'Control Bank' },
     { i: 8, view: 'board', control: 'Boron control' },    // the verify step, now boron-bounded (#683)
-    /* i:9 WAS 'Boron control' — the closing trim to 617 ppm. It is the ROD trim since #733
-     * (owner playtest #724 item 17): the boron route scrammed the plant 15 min after the step
-     * checked itself off, and measured at power the bank carries 56.3 degF against boron's 27.0.
-     * The step that follows it is an `obs` and owns no row. */
-    { i: 9, view: 'board', control: 'Control Bank' },
-    /* #752 (2026-09-14) APPENDED the first dilution dose at i:10, after the rod trim and before
-     * the closing `obs`. Nothing below it shifts — the `obs` owns no row — so this is the one
-     * case where this positional table grows without a re-derivation. */
-    { i: 10, view: 'board', control: 'Boron control' },
+    /* i:9 (the rod give-back) and i:10 (the first boron dose) LEFT 2026-09-26 with raise-power
+     * steps 10-12 (owner directive: xenon is a different walkthrough). Nothing above them shifts. */
   ],
   /* #736 — the 75 MWe stage is TWO steps now (lower load, then trim rods), so every later
    * index shifted by one. This table is `verify_manual_follow`'s COVERAGE LIST and it iterates
@@ -244,6 +248,10 @@ var STEP_UI = {
      * stored heat and cost the leg its RHR. It is still the last step; its index came down by
      * one with everything else when the handover merged, 12 -> 11. */
     { i: 11, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    /* step 16 APPENDED at i:15 (2026-09-25, owner ruling "Both A and B", option B): the closing
+     * lineup — shutdown bank in, steam dump CLOSED, DUMP SETPOINT 1020 psi. Appended, so no row
+     * above moved. Its `control` is the first action's card. */
+    { i: 15, view: 'board', control: 'Shutdown Bank' },
   ],
   /* THE TMI-2 INCIDENT WALKTHROUGH (#670 Phase 2). Its own block, appended — the six cycle
    * legs above are untouched, because this table is POSITIONAL and the four historical

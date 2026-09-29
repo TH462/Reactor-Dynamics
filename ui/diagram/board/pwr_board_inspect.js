@@ -167,10 +167,12 @@
       'REACTOR TRIP tile names the first-out cause.', CI, '3.5'),
     imrsk4xz2dm: e('TRIP BLOCKS',
       'Opens the startup trip-block panel — deliberately blocking a protection trip during startup.',
-      'Above P-10 (10 % power) the intermediate-range high-flux trip and the 25 % power-range trip ' +
-      'stand in the way of a normal ascent, so they are blocked on purpose and the badge counts how ' +
+      'On the way up three trips stand in the way of a normal ascent and are blocked on purpose: the ' +
+      'source-range high-flux trip (1e5 cps) above P-6, 1e-10 A on the intermediate range — taking ' +
+      'that block also switches the source-range detector off — then the intermediate-range ' +
+      'high-flux trip and the 35 % power-range trip above P-10, 8 % power. The badge counts how ' +
       'many are blocked. A block is an ENABLE, not a switch: it is accepted only while the plant is ' +
-      'inside that trip\'s permissive — above P-10 for these two, below P-11 for the pressure trips ' +
+      'inside that trip\'s permissive — above P-6 or P-10 for the startup trips, below P-11 for the pressure trips ' +
       'on a cooldown — and refused anywhere else, whoever you are. That is why the reactor trips ' +
       'cannot be switched off at power. Clearing is never refused, so clearing a block that is ' +
       'holding a trip off scrams the plant on the spot. Every block reinstates itself the moment its ' +
@@ -196,24 +198,24 @@
     ims176nions: e('Source Range',
       'The lowest flux range — counts per second, the only instrument that reads a shutdown core.',
       'A proportional counter reading 1 to 1e6 cps. It is the instrument for approach to criticality ' +
-      'and the input to the 1/M plot. It hands over on the way up: it turns amber at 5e4 cps to tell ' +
-      'you the handoff to the intermediate range is due, trips the reactor at 1e5 cps, and the channel ' +
-      'de-energizes itself at that point — there is no detector switch on this plant.', CI, '4.3'),
+      'and the input to the 1/M plot. It hands over on the way up: once the intermediate range reads ' +
+      '1e-10 A (P-6) you BLOCK it on the TRIP BLOCKS panel, which also switches the detector off. ' +
+      'It turns amber at 5e4 cps to say the block is due; miss it and it trips the reactor at 1e5 ' +
+      'cps. Below 5e-11 A on the way down the block clears itself and the detector comes back on.', CI, '4.3'),
     imro6qutiht: e('Source Range indication',
       'Neutron counts per second — the shutdown-core flux instrument. Amber at the source-range to intermediate-range handoff.',
       'Logarithmic, 1 to 1e6 cps. Watch it double as rods come out: the doubling rate IS the ' +
       'approach to criticality, which is what the 1/M plot formalises. The number itself carries ' +
       'the limits: amber at 5e4 cps is the cue to complete the handoff, RED at 1e5 cps is the ' +
-      'high-flux trip that ends the ascent, and once the channel de-energizes it goes grey — that ' +
-      'trip is conditional on the detector being energized, so there is no live limit here ' +
-      'afterwards. GREEN ON THIS CARD MEANS "read this one": the source range is the instrument ' +
+      'high-flux trip that ends the ascent if the block has not been taken, and once the block ' +
+      'switches the detector off it goes grey — a blocked trip is no live limit. GREEN ON THIS CARD MEANS "read this one": the source range is the instrument ' +
       'you are on from a shutdown core up to the handoff, and grey means another range has it.',
       CI, '4.3'),
     ims176t4e8s: e('Intermediate Range',
       'The middle flux range — a compensated ion chamber reading in amps.',
       'Overlaps the source range at the bottom and the power range at the top, covering the gap ' +
       'between counting individual neutrons and measuring a current. It is the range you read ' +
-      'between those two: it comes on scale at the P-6 permissive, 5e-11 A, and the power range ' +
+      'between those two: it comes on scale at the P-6 permissive, 1e-10 A, and the power range ' +
       'takes over at P-10, 8 % rated. The indication is green over exactly that span and grey ' +
       'outside it.', CI, '4.3'),
     imro6rctcgm: e('Intermediate Range indication',
@@ -221,7 +223,7 @@
       'Reads amps, not percent: the scale is logarithmic because flux is. Its high-flux trip is one ' +
       'of the two blocked deliberately during a startup, since a normal ascent walks straight ' +
       'through the setpoint below P-10. GREEN means this is the range to be reading — from P-6 ' +
-      '(5e-11 A) up to P-10 (8 % rated) — and grey means it is not: below P-6 the channel is not ' +
+      '(1e-10 A) up to P-10 (8 % rated) — and grey means it is not: below P-6 the channel is not ' +
       'yet on scale, and above P-10 the power range has it. Red still wins over both: an armed ' +
       'trip you are standing on is the reason to look. This is the middle rung of the startup ' +
       'net: P-10 at 8 %, this trip at 25 % current equivalent, the power-range low setpoint at ' +
@@ -573,9 +575,12 @@
       'display at all, so this pairing is a teaching departure from the real board, recorded in ' +
       'Simulator Physics and Simplifications.', CI, '7.5'),
     ims3wy5oym4: e('Boron Status',
-      'Whether a dose is running: BORATING, DILUTING or HOLD, with the ppm remaining.',
+      'Whether a dose is running: BORATING, DILUTING, MIXING or HOLD, with the ppm remaining.',
       'The arrow figure counts down the metered ppm still to deliver. It pauses if the charging pump ' +
-      'stops and resumes when it restarts — a dose is a delivery, not a timer.', CI, '7.5'),
+      'stops and resumes when it restarts — a dose is a delivery, not a timer. MIXING means the ' +
+      'metering has stopped but the last of the dose is still in the volume control tank and charging ' +
+      'line, reaching the loop; the figure is the ppm still to arrive. After a long dilution that ' +
+      'tail takes about half an hour.', CI, '7.5'),
     /* The SAMPLE button's entry went with the button itself (#698, 2026-09-11) — see
      * DOC_REMOVE in pwr_board_wiring.js. It is deleted rather than left: `run_inspect`
      * reads DOC_REMOVE and fails an entry with no live item behind it. */
@@ -819,12 +824,13 @@
       'what clears the trip half of the low-Tavg signal. Restoring full feed into a generator that ' +
       'is already recovering will overfill it and isolate you again at 90 % level.', CI, '9.2'),
     imro8xhy2me: e('Steam Generator (SG) Feed Rate setpoint',
-      'Commanded feed pump speed, shown as 0–1200 gpm (0–273 m³/h). Typing here takes feed to MANUAL.',
+      'MANUAL: commanded feed pump speed. AUTO: measured feed flow. 0–1200 gpm (0–273 m³/h). Typing takes feed to MANUAL.',
       'The scale is pump speed expressed as flow: 1200 gpm (273 m³/h) is 120 % speed. Arrows step by 20 gpm (4.5 m³/h). ' +
       'Compare your setting against the STEAM FLOW indication above — matching them is what stops ' +
-      'level moving. This number is a DEMAND, not a measurement: when it goes amber, the plant is ' +
+      'level moving. In MANUAL this number is a DEMAND, not a measurement: when it goes amber, the plant is ' +
       'delivering none of it (dead feed train — the FEED FLOW readout below has the truth), and the ' +
-      'SG FEED corner reads NO FLOW.', CI, '9.2'),
+      'SG FEED corner reads NO FLOW. In AUTO the controller sets the demand and the box shows the ' +
+      'measured FEED FLOW instead; a dead feed train reads near 0 gpm there, still in amber.', CI, '9.2'),
     imrsgkz4lq0: e('Feed Flow',
       'MEASURED feedwater flow — what is actually reaching the generator.',
       'Not pump demand. Through a feed pump trip the demand stays where you left it while this falls ' +
@@ -844,8 +850,8 @@
 
     imrmssto6d: e('Auxiliary Feedwater',
       'The emergency feed path — starts, stops or arms AFW to the steam generator.',
-      'AFW is the heat sink of last resort after main feed is lost. AUTO arms it to start on low-low SG ' +
-      'level (17 % of narrow range); manual action takes it out of AUTO. It delivers far less than main ' +
+      'AFW is the heat sink of last resort after main feed is lost. The pumps start by themselves on low-low SG ' +
+      'level (17 % of narrow range); STOP stops them and leaves that start armed. It delivers far less than main ' +
       'feed — enough to remove decay heat, not enough to run the plant. How much of that flow reaches ' +
       'the generator is the flow control valves\' business, and on this board they are the automation ' +
       'channel\'s, not yours: it holds narrow-range level in a band. Your levers are STOP and AUTO.',
@@ -855,16 +861,20 @@
      * on the board, which is what caught these: a Scanner description for a control nobody can
      * point at is copy that can never be read. */
     imrmssoa137: e('STOP (Auxiliary Feedwater (AFW))',
-      'Secures BOTH auxiliary feed pumps and disarms the auto-start.',
-      'This is why the status readout distinguishes SECURED from STANDBY: a stopped AFW that is still ' +
-      'armed will come back on its own, and one that is secured will not. It reaches the turbine-driven ' +
+      'Stops BOTH auxiliary feed pumps. The auto-start stays armed, so the card reads STANDBY.',
+      'STANDBY means stopped but still armed: if steam generator level falls to the low-low setpoint ' +
+      '(17 % of narrow range) both pumps start by themselves, and the same signal trips the reactor. ' +
+      'Nothing on this card disarms that start. It reaches the turbine-driven ' +
       'pump as well as the motor-driven one — those are two separate machines with a switch each, and ' +
       'this button works both. If a safety injection is standing, it will refuse and say so: an SI ' +
       'signal is itself an aux feed start, so secure the injection first.', CI, '10.0'),
     imrmssr9ihq: e('AUTO (Auxiliary Feedwater (AFW))',
-      'Arms AFW to auto-start on low steam generator level.',
-      'The standing lineup at power — armed and idle. It is what makes a loss of main feed survivable ' +
-      'without operator action for the first minutes.', CI, '10.0'),
+      'Starts the motor-driven aux feed pump on its level hold.',
+      'The Hot Standby lineup: the pump runs, and its level hold lets water in only while steam ' +
+      'generator level is below 38 %. At power the level sits above that, so a press there changes no ' +
+      'flow. The lamp shows the auto-start is armed, which on this plant is always: low-low steam ' +
+      'generator level, a safety injection, loss of main feed above 5 % power or loss of offsite power ' +
+      'start the pumps whether AUTO was pressed or not.', CI, '10.0'),
     ims2k81zwi8: e('Auxiliary Feedwater (AFW) Indications',
       'Auxiliary feed flow and pump discharge pressure.',
       'Read them together. Discharge at shutoff head with flow at zero is a pump running against a ' +
@@ -971,18 +981,20 @@
       'to atmosphere.', CI, '12.3'),
     imrop5ouw7h: e('Steam Dump',
       'Dumps steam straight to the condenser, bypassing the turbine — the secondary heat sink.',
-      'AUTO holds SG pressure at the dump setpoint; OPEN and CLOSE take it manual. The dump is what ' +
+      'AUTO holds SG pressure at the dump setpoint; CLOSE shuts it. The dump is what ' +
       'carries the plant after a turbine trip, and lowering its setpoint is how you cool the primary ' +
       'through the steam generator on a controlled cooldown.', CI, '12.3'),
     imrppqg6mcc: e('AUTO (steam dump)',
       'Dump follows Steam Generator (SG) pressure toward the dump setpoint.',
       'At power the generator sits about 825 psi (5.69 MPa) against a setpoint near 1020 psi (7.03 MPa), which is why the ' +
       'dump is shut: there is nothing to relieve. Drop the setpoint below actual pressure and it ' +
-      'opens.', CI, '12.3'),
+      'opens. A lowered setpoint is a target: the dump walks the pressure it holds down to it at ' +
+      'about 60 °F/hr (33.3 °C/hr) of cooling, never in one jump; the status reads RAMPING until it ' +
+      'arrives.', CI, '12.3'),
     imrppquqg16: e('OPEN (steam dump)',
-      'Opens the dump manually.',
-      'Fast secondary heat removal, at the cost of dumping steam that is not making electricity. It ' +
-      'cools the primary — watch Tavg and the cooldown rate.', CI, '12.3'),
+      'Manual full-open. This plant has no manual lever: the button stays dark.',
+      'The dump runs in AUTO or CLOSE. To cool the primary through the dump, lower the dump ' +
+      'setpoint with the dump in AUTO — watch Tavg and the cooldown rate.', CI, '12.3'),
     imrppqxggbj: e('CLOSE (steam dump)',
       'Shuts the dump manually.',
       'Stops secondary heat removal through the bypass path. On a plant with the turbine offline, ' +
@@ -990,12 +1002,16 @@
     ims31tq7mgc: e('Dump Setpoint',
       'The Steam Generator (SG) pressure the AUTO dump holds.',
       'The cooldown handle: lower it and the dump vents the generator, pulling primary temperature ' +
-      'down through the tubes; raise it back toward the no-load point on a heatup. The engine clamps ' +
-      'the entry into the SG safety band.', MT, 'PWR-T21'),
+      'down through the tubes; raise it back toward the no-load point on a heatup. A lowered value ' +
+      'is a target the dump approaches at about 60 °F/hr (33.3 °C/hr) of cooling; a raised one takes ' +
+      'effect at once. The engine clamps the entry into the SG safety band.', MT, 'PWR-T21'),
     imrppq5r7kw: e('Dump Status',
-      'NORMAL, DUMPING or MANUAL.',
-      'NORMAL means the dump is in automatic and has nothing to do. DUMPING means it is passing steam. ' +
-      'MANUAL means you own it, whatever pressure does.', CI, '12.3'),
+      'STM PRESS, RAMPING, TAVG or MANUAL.',
+      'STM PRESS means AUTO is holding steam pressure at the dump setpoint (turbine off). RAMPING means ' +
+      'AUTO is still walking steam pressure down to a lowered setpoint, about 60 °F/hr (33.3 °C/hr) ' +
+      'of cooling, and reads STM PRESS once it arrives. TAVG means AUTO ' +
+      'is following coolant temperature (turbine on line). MANUAL means CLOSE is pressed and the dump ' +
+      'stays shut, whatever pressure does.', CI, '12.3'),
     imrprmm4u5q: e('Steam Dump Valve',
       'The bypass valve itself — steam from the main line to the condenser.',
       'Position follows the dump command. Its schematic fills and animates only when it is actually ' +
@@ -1170,10 +1186,10 @@
   // once, lazily, from the generated doc: the DOM cannot answer this (tiles are
   // absolutely-positioned siblings), and hard-coding parents would rot on the
   // next re-export while the geometry stays true by construction.
-  var parent = null;
+  var parent = null, itemById = {};
   function build() {
     if (parent) return parent;
-    parent = {};
+    parent = {}; itemById = {};
     var G = (typeof window !== 'undefined' ? window : globalThis);
     var doc = G.RD_PWR_BOARD_DOC;
     if (!doc) return parent;                 // board data not loaded — no fallback
@@ -1181,6 +1197,7 @@
     var extra = (RD.PwrBoardDriver && RD.PwrBoardDriver.extraItems) ? RD.PwrBoardDriver.extraItems() : [];
     items = items.concat(extra || []);
     var boxes = items.filter(function (i) { return i.kind === 'box'; });
+    items.forEach(function (it) { itemById[it.id] = it; });
     items.forEach(function (it) {
       var cx = it.left + (it.width || 0) / 2, cy = it.top + (it.height || 0) / 2;
       var best = null;
@@ -1217,8 +1234,63 @@
     own: function (id) { return ITEMS[id] || null; },
     ids: function () { return Object.keys(ITEMS); },
     aliases: function () { return ALIASES; },
-    parentOf: function (id) { return build()[id] || null; }
+    parentOf: function (id) { return build()[id] || null; },
+    // What a walkthrough highlight label IS, for the glow it wears (#809) — see glowRole below.
+    glowRole: function (label) { return glowRole(label); },
+    panelOf: function (id) { return panelOf(id); }
   };
+
+  /* ============================================================ walkthrough glow roles (#809)
+   * *(OWNER, 2026-09-27, #809 items 3/4: "Lets make a dimmer glow thats for the panel that contains
+   * the control. keep the brighter solid glow for indications." / "in steps that have you check a
+   * button the button should have a dashed glow.")*. The DRAWN SHAPE follows what the element IS,
+   * so it is decided here, from the board's own item kinds, and never authored per step:
+   *   'control'    — kind button / scram / number (a setpoint box), or a component the board wires
+   *                  a player action to (the accumulator and AFW block valves, the PORV). Measured
+   *                  2026-09-27: every other `component` a walkthrough names is a readout tile
+   *                  (Tavg, PRIMARY PRESSURE, REACTOR POWER, SG LEVEL), so kind alone cannot tell.
+   *   'panel'      — kind box, a card.
+   *   'indication' — everything else (value, readout, text, a non-actionable component).
+   * `panel` is the card a CONTROL sits on: the OUTERMOST TITLED box containing it (a rod WITHDRAW
+   * button is in CONTROL inside REACTOR/ROD CONTROL, and the owner's "rod control panel" is the
+   * outer one — #809 item 1), else the nearest box when no enclosing box carries a title (the RCP
+   * ON/OFF card). Null for a label the board map does not carry (a shell target such as Plot point). */
+  var actionable = null;
+  function isActionable(id) {
+    if (!actionable) {
+      var d = RD.PwrBoardDriver;
+      var ids = d ? (d.actionableIds ? d.actionableIds() : (d.pressableIds ? d.pressableIds() : [])) : null;
+      if (!ids) return false;
+      actionable = {};
+      ids.forEach(function (x) { actionable[x] = true; });
+    }
+    return !!actionable[id];
+  }
+  var CONTROL_KINDS = { button: true, scram: true, number: true };
+  function roleOf(id) {
+    build();
+    var it = itemById[id];
+    if (!it) return 'indication';
+    if (it.kind === 'box') return 'panel';
+    if (CONTROL_KINDS[it.kind]) return 'control';
+    if (it.kind === 'component' && isActionable(id)) return 'control';
+    return 'indication';
+  }
+  function panelOf(id) {
+    var p = build(), cur = p[id], nearest = cur || null, titled = null, guard = 0;
+    while (cur && guard++ < 12) {
+      if (itemById[cur] && itemById[cur].title) titled = cur;
+      cur = p[cur];
+    }
+    return titled || nearest;
+  }
+  function glowRole(label) {
+    var d = RD.PwrBoardDriver;
+    var id = d && d.controlLabelItem ? d.controlLabelItem(label) : null;
+    if (!id) return null;
+    var role = roleOf(id);
+    return { id: id, role: role, panel: role === 'control' ? panelOf(id) : null };
+  }
 
   // Node (test/run_inspect.js) reaches the registry the same way the browser does,
   // through globalThis.RD — no module exports (CLAUDE.md, "Code conventions").

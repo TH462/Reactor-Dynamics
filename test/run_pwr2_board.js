@@ -650,7 +650,8 @@ function runSuite(quietRec) {
     coldRows.lo_press && coldRows.lo_press.will_trip === true &&
     coldRows.lo_press.text === 'RELEASE?' && /WILL TRIP THE REACTOR NOW/.test(coldRows.lo_press.sub) &&
     coldRows.si_trip && coldRows.si_trip.will_trip === true &&
-    coldRows.si_trip.text === 'RELEASE?' && /Press again to confirm/.test(coldRows.si_trip.sub),
+    coldRows.si_trip.text === 'RELEASE?' && /Releasing takes two presses/.test(coldRows.si_trip.sub) &&
+    !/Press again/.test(coldRows.si_trip.sub),   /* a standing caption must not claim a first press (layman 2026-09-28, S-3) */
     coldRows.lo_press ? ('lo_press "' + coldRows.lo_press.text + '" — ' + coldRows.lo_press.sub)
                       : 'NO ROW');
   q('...and the release is still PERMITTED — the warning replaced the surprise, not the action',
@@ -665,9 +666,19 @@ function runSuite(quietRec) {
    * release — otherwise "warn" degenerates into "warn always", which trains the operator to
    * click through it and is worse than no warning at all. At power the two flux rows are the
    * unblocked case and the P-11 pair is revoked, so nothing on a healthy plant warns. */
-  q('...and NOTHING warns on a healthy at-power plant (a warning on every row is no warning)',
-    tbRows.every(function (r) { return r.will_trip !== true; }) &&
-    tbRows.every(function (r) { return !/WILL TRIP THE REACTOR NOW/.test(r.sub || ''); }),
+  /* rc8f (2026-09-27) — THIS CHECK USED TO SAY "NOTHING warns at power", and it was pinning the
+   * defect. Since OWNER RULING 2026-09-26 "B" every at-power IC boots with SR HIGH FLUX BLOCKED,
+   * and releasing it TRIPS THE REACTOR (measured before the fix: 0.52 s after one
+   * set_trip_block sr_high blocked:false at Hot Full Power) — yet the row read an ordinary
+   * one-click BLOCKED, because the de-energized source range can never report its own would-trip.
+   * The plant now derives it off the intermediate range (pwr2_shell getTripBlocks). HR10: on the
+   * OLD build this form reads the SR row as BLOCKED and FAILS; the discriminator half (no OTHER row
+   * warns) still holds on both. */
+  var srRow = tbById.sr_high || {};
+  q('...and at power ONLY the SR HIGH FLUX row warns — releasing it trips the reactor (rc8f)',
+    srRow.will_trip === true && srRow.text === 'RELEASE?' &&
+    /WILL TRIP THE REACTOR NOW/.test(srRow.sub || '') &&
+    tbRows.every(function (r) { return r.id === 'sr_high' || r.will_trip !== true; }),
     'at power: ' + tbRows.map(function (r) { return r.id + ':' + r.text; }).join(' '));
 
   /* A LEGACY snapshot — no trip_block_status at all — must say NOTHING about capability, or
@@ -846,6 +857,29 @@ function runSuite(quietRec) {
   q('steam dump CLOSED/AUTO round-trips through the dump_mode door (was refused)',
     dumpOff && w.snap().control_state.steam_dump_auto === true,
     'closed ' + dumpOff + ' -> auto ' + w.snap().control_state.steam_dump_auto);
+  /* RAMPING (OWNER RULING 2026-09-28: "Does the steam dump have a status indication on it? If
+   * so, we could just have that say ramping."). The card's word says the controller is still
+   * walking a lowered DUMP SETPOINT down (pwr2_dumpctl RAMP), and STM PRESS once it has arrived —
+   * read off the board driver over a full stack, so a dark wire in either half reddens. The
+   * arrival leg types a target 0.002 MPa (0.3 psi) under the working setpoint: about 2 plant-s
+   * of walk at 60 degF/hr, arrived well inside the 30 s ridden. */
+  (function () {
+    var DS = { id: 'imrppq5r7kw' };
+    function word(sn) { var r = D.valueFor(DS, sn); return r && r.text !== undefined ? String(r.text) : String(r); }
+    var wR = mkWorld('hot_zero_power');
+    var w0 = word(wR.snap());
+    wR.cmd({ action: 'set_steam_dump_setpoint', mpa: 0.8274 }); wR.tick(30);
+    var wMid = word(wR.snap()), flagMid = wR.snap().control_state.steam_dump_ramping;
+    var work = wR.svc.engine.eng.dc.pressure_setpoint_mpa;
+    wR.cmd({ action: 'set_steam_dump_setpoint', mpa: work - 0.002 }); wR.tick(30);
+    var wEnd = word(wR.snap()), flagEnd = wR.snap().control_state.steam_dump_ramping;
+    bindWorld(w);
+    q('the steam dump status word reads RAMPING while a lowered DUMP SETPOINT is being walked ' +
+      'down, and STM PRESS once the walk arrives (2026-09-28 rulings)',
+      w0 === 'STM PRESS' && wMid === 'RAMPING' && flagMid === true && wEnd === 'STM PRESS' && flagEnd === false,
+      'hold "' + w0 + '" -> 120 psi typed, +30 s "' + wMid + '" (working ' +
+      (work * 145.038).toFixed(0) + ' psia) -> arrived "' + wEnd + '"');
+  })();
   w.cmd({ action: 'set_charging_pump', running: false }); w.tick(1);
   q('charging OFF lands and the lamp field follows (was refused; field was a constant)',
     w.snap().control_state.charging_pump_running === false,
@@ -1107,10 +1141,19 @@ function runSuite(quietRec) {
    * reactor trip inside P-11 — and it works because the permissive reads each channel the way
    * the protection system does, gates included. A refusal with no reachable exit would be the
    * dead-button class this whole cluster (#503/#506/#509/#558) exists to kill. */
+  /* #800: SI now trips the reactor off its LATCH, so a latched SI is a standing trip signal
+   * and the exit gains the sourced step between: reset SI at its own panel (P-4 is met — the
+   * reactor is tripped — and the 45-60 s relay has run), then the press takes. */
   w3.cmd({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true }); w3.tick(2);
+  var rReSI = w3.cmd({ action: 'reset_rps' }); w3.tick(1);
+  q('#800: with the trip blocked but SI still latched the reset is REFUSED, not accepted and re-latched',
+    !!rReSI && rReSI.type === 'blocked' && rReSI.reason === 'TRIP_SIGNAL_PRESENT' &&
+    e3.pt.si === true && w3.snap().rps_state.scrammed === true,
+    'resp ' + JSON.stringify(rReSI && rReSI.reason) + ', si ' + e3.pt.si);
+  w3.cmd({ action: 'set_hpi', active: false }); w3.tick(2);
   var rRe2 = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
-  q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) releases the permissive ' +
-    'and the same press then takes',
+  q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) and resetting SI releases ' +
+    'the permissive and the same press then takes',
     (rRe2 == null || !rRe2.type) && w3.snap().rps_state.scrammed === false,
     'resp ' + JSON.stringify(rRe2) + ', scrammed ' + w3.snap().rps_state.scrammed);
 
@@ -1213,22 +1256,24 @@ function runSuite(quietRec) {
      * not a fixture, it is a second source of events. `held` is the lineup; a feed mutates it. */
     var held = {};
     Object.keys(st).forEach(function (id) { held[id] = (st[id] || {}).blocked === true; });
-    function snapWith(blocks) {
+    function snapWith(blocks, perm) {
       Object.keys(blocks).forEach(function (id) { held[id] = blocks[id]; });
+      perm = perm || {};
       var c = { metadata: snapNow.metadata, instruments: snapNow.instruments,
                 true_state: snapNow.true_state, control_state: snapNow.control_state,
                 automation: snapNow.automation, alarms: snapNow.alarms,
                 rps_state: { scrammed: false, trip_blocks: {}, trip_block_status: {} } };
       Object.keys(st).forEach(function (id) {
         var src = st[id] || {}, b = held[id] === true;
-        c.rps_state.trip_block_status[id] = { blocked: b, asserted: false, permissive: src.permissive,
-                                              can_block: !b && src.permissive, can_clear: b, setpoint: src.setpoint };
+        var pm = Object.prototype.hasOwnProperty.call(perm, id) ? perm[id] : src.permissive;
+        c.rps_state.trip_block_status[id] = { blocked: b, asserted: false, permissive: pm,
+                                              can_block: !b && pm, can_clear: b, setpoint: src.setpoint };
         if (b) c.rps_state.trip_blocks[id] = true;
       });
       return c;
     }
     var D2 = RD.PwrBoardDriver;
-    function feed(blocks) { D2.afterRender(snapWith(blocks)); }
+    function feed(blocks, perm) { D2.afterRender(snapWith(blocks, perm)); }
     function msgFor(id) {
       var m = D2.tripBlockMessages().filter(function (r) { return r.id === id; })[0];
       return m || null;
@@ -1257,6 +1302,15 @@ function runSuite(quietRec) {
     q('msg: acknowledging stops the flash', D2.tripBlockUnacked() === false);
     q('msg: …but the message SURVIVES it — an acked message still says the trip is live',
       !!(m2 && m2.msg), m2 ? m2.msg : 'message was destroyed by the acknowledge');
+
+    /* (3b) THE REASON CLEARS WHEN IT STOPS BEING TRUE *(OWNER RULING, 2026-09-26, selected "Clear
+     * it": "The message disappears once the permissive allows blocking again, so the panel only
+     * shows reasons that are currently true.")*. Still unblocked, P-11 back (a cooldown under
+     * 1972 psia): the message goes. INJECTION: without the clear, m2b still carries the text. */
+    feed({ lo_press: false }, { lo_press: true });
+    var m2b = msgFor('lo_press');
+    q('msg: the message CLEARS once the permissive allows blocking again (the reason is no longer true)',
+      !(m2b && m2b.msg), m2b ? m2b.msg : 'cleared');
 
     /* (4) A NEW EVENT AFTER AN ACKNOWLEDGE FLASHES AGAIN. This is the check that fails if the
      * acknowledge is ever written as a time window or as a global "seen" flag. */
@@ -1610,6 +1664,16 @@ var MUTS = [
   /* the WORD, mutated separately from the LAMPS, for the reason every paired mutation in this
    * file is separate: the lamps can go dark correctly and leave the player with no way to know
    * WHY, which is the state the PZR LTDN ISOL annunciator alone already produced. */
+  ['the plant stops publishing steam_dump_ramping (the word reads STM PRESS through a whole walk)',
+   SHPATH, SHSRC,
+   "      steam_dump_ramping: dumpMode(e) === 'pressure' && !!e.dc &&",
+   "      steam_dump_ramping: false && !!e.dc &&"],
+  ['the dump status word ignores the walk (RAMPING never drawn)', WIRING_PATH, WSRC,
+   "return CS(s).steam_dump_ramping ? 'RAMPING' : 'STM PRESS';",
+   "return 'STM PRESS';"],
+  ['the ramping flag never clears (RAMPING stays up after the walk arrives)', SHPATH, SHSRC,
+   "          ? e.dcDrivers.pressure_setpoint_mpa : e.dc.pressure_target_mpa) > 1e-6,",
+   "          ? e.dcDrivers.pressure_setpoint_mpa : e.dc.pressure_target_mpa) > -1,"],
   ['the status word stops reading the isolate (dark lamps with nothing saying why)',
    WIRING_PATH, WSRC,
    "    if (ltdnIsolated(s)) return { text: 'ISOLATED', color: BD_WARN };",

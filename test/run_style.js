@@ -138,6 +138,19 @@ function stepFields(s, fields) {
       if (sy) STORY_KEYS.forEach(function (k) { if (typeof sy[k] === 'string') out.push(sy[k]); });
       return;
     }
+    /* `accs` EXPANDS TO EVERY PER-ENTRY STRING THE CARD DRAWS (2026-09-25, workbench-f): the
+     * lettered substep's `ask`, its done-when `label`, its own `note` and its `speed_text`.
+     * Found by the lower-power bring-down: W12 scanned the STEP's `note` and never reached
+     * into `accs`, so three substep notes shipped "a few" / "as soon as" under a green run —
+     * the same blind spot `checklist_no_si` closed for itself at #741. Opt-in per check,
+     * because the imperative rules (W16/W17) are about the step LINE and a done-when label is
+     * not an imperative. */
+    if (f === 'accs') {
+      (s.step.accs || []).forEach(function (a) {
+        ['ask', 'label', 'note', 'speed_text'].forEach(function (k) { if (typeof a[k] === 'string') out.push(a[k]); });
+      });
+      return;
+    }
     if (typeof s.step[f] === 'string') out.push(s.step[f]);
   });
   return out;
@@ -154,18 +167,31 @@ function scanSteps(data, fields, re) {
   return hits;
 }
 
+/* `checklist_why_length`'s cap — see the TEN, NOT THREE note on that check. */
+var WHY_MAX_SENTENCES = 10;
+
 var CHECKS = [
   {
     id: 'checklist_vague',
     rule: 'W12 — no vague quantifier in a checklist step',
-    run: function (d) { return scanSteps(d, ['text', 'target', 'control', 'note', 'story'], VAGUE); },
-    inject: function (d) { d.steps[0].step.text = 'Raise pressure slowly to the program point.'; },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
+    /* `aim` (the step's one-line WHY, 2026-09-25) gets its OWN injection — a per-field harvest
+     * needs a per-field proof, the #741 lesson on `checklist_no_si` below. So does each of the
+     * four `accs` strings (workbench-f): delete any one from the harvest and its injection
+     * alone reports CAN'T FAIL. */
+    inject: [function (d) { d.steps[0].step.text = 'Raise pressure slowly to the program point.'; },
+             function (d) { d.steps[0].step.aim = 'Pressure comes up slowly here.'; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', note: 'Wait a few plant-minutes.' }]; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', ask: 'Raise it slowly.' }]; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Adequate pressure' }]; },
+             function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', speed_text: '10×, periodically 1×.' }]; }],
   },
   {
     id: 'checklist_modal',
     rule: 'W16 — no shall/should/must in a checklist step (the step is an imperative)',
-    run: function (d) { return scanSteps(d, ['text'], MODAL); },
-    inject: function (d) { d.steps[0].step.text = 'The operator must open the valve.'; },
+    run: function (d) { return scanSteps(d, ['text', 'aim'], MODAL); },
+    inject: [function (d) { d.steps[0].step.text = 'The operator must open the valve.'; },
+             function (d) { d.steps[0].step.aim = 'The valve should be open before heat is added.'; }],
   },
   {
     id: 'checklist_reversal',
@@ -176,14 +202,33 @@ var CHECKS = [
   {
     id: 'checklist_percent',
     rule: 'N4 — a space before the percent sign (house style is 629 spaced to 12)',
-    run: function (d) { return scanSteps(d, ['text', 'target', 'note', 'story'], TIGHT_PCT); },
-    inject: function (d) { d.steps[0].step.target = 'level 40%'; },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'note', 'story'], TIGHT_PCT); },
+    inject: [function (d) { d.steps[0].step.target = 'level 40%'; },
+             function (d) { d.steps[0].step.aim = 'Mode 1 begins at 5%.'; }],
   },
   {
     id: 'bare_megawatt',
     rule: 'N6 — never a bare MW; MWe for electrical output, MWt for thermal',
+    /* EXEMPT BY EXACT PHRASE, NOT BY RELAXING THE RULE (2026-09-24, walkthrough #653 pass 2,
+     * owner ruling: selections from "Take all" — "'MWe' vs the board's 'MW' (use the board's)").
+     * The PWR2 board's own OUTPUT tile has no unit suffix in its formatter at all —
+     * `ui/diagram/board/pwr_board_wiring.js:1469` (`imrppeh5hkb`) is `r0(IN(s).mwe_output)`, a
+     * bare number; "MW" is a static label printed beside it, never "MWe" appended to the
+     * reading (confirmed against the tile, not assumed). `pwr_startup` step 15's `target` quotes
+     * that reading verbatim rather than the general electrical/thermal register N6 exists to
+     * disambiguate — LOAD/OUTPUT on a turbine card is unambiguously electrical. The step's
+     * nested `accs[].ask`/`.label` strings carry the same board-literal "MW" under the same
+     * ruling; they are not listed here because `scanSteps` never reads inside `accs` (see
+     * `stepFields` above) — this list is only for the top-level fields the check inspects. */
+    exempt: ['OUTPUT near 10 MW'],
     run: function (d) {
-      var hits = scanSteps(d, ['text', 'target', 'note', 'why', 'story'], BARE_MW);
+      var self = this;
+      var hits = scanSteps(d, ['text', 'aim', 'target', 'note', 'why', 'story'], BARE_MW)
+        /* THE WHOLE FIELD MUST BE THE PHRASE (quality pass, 2026-09-24): a substring test let
+         * any field whose first 90 chars merely CONTAINED it -- "OUTPUT near 10 MW, 30 MW
+         * thermal" -- drop its other bare MW too. A hit ends `in: <field text sliced to 90>`, so
+         * an exact tail match on a phrase under 90 chars is an exact match on the field. */
+        .filter(function (h) { return !self.exempt.some(function (e) { var tail = 'in: ' + e; return e.length < 90 && h.slice(-tail.length) === tail; }); });
       d.manual.forEach(function (f) {
         f.lines.forEach(function (l, i) {
           if (BARE_MW.test(l)) hits.push(f.file + ':' + (i + 1) + ' — ' + l.trim().slice(0, 90));
@@ -191,7 +236,8 @@ var CHECKS = [
       });
       return hits;
     },
-    inject: function (d) { d.manual[0].lines.push('The plant is rated 100 MW gross.'); },
+    inject: [function (d) { d.manual[0].lines.push('The plant is rated 100 MW gross.'); },
+             function (d) { d.steps[0].step.aim = 'The generator carries 10 MW from here.'; }],
   },
   /* THE DETAILS PARAGRAPH IS SUPPLEMENTAL CONTEXT, NOT A CHAPTER *(OWNER, 2026-09-03, #619
    * item 12: "the click to expand description is way to verbose. nobody is going to read all
@@ -213,10 +259,20 @@ var CHECKS = [
    * sentences."; OWNER, 2026-09-09 playtest sheet §B, filed as #692: "Steps shouldn't be more
    * than 2-3 sentences.")*, and a gate looser than a twice-stated owner rule is the gate being
    * wrong. Seven blocks sat in the one-sentence gap it left open and were rewritten in the same
-   * change. When it binds, CUT — the reasoning belongs in the manual chapter the step cites. */
+   * change. When it binds, CUT — the reasoning belongs in the manual chapter the step cites.
+   *
+   * TEN, NOT THREE (2026-09-25). Raised by the owner's pick of option (c), "raise the cap", over
+   * (a) fold the Background and (b) cut every Background to three *(OWNER RULING, 2026-09-25:
+   * "C")*. The 2026-09-24 what / why / how format (`Blueprint/CHECKLIST_WRITING_GUIDE.md` §16)
+   * adds a one-line WHY under each step's first line, and the owner adopted multi-paragraph
+   * Backgrounds for `pwr_startup` steps 2 and 3 as the wording model. MEASURED with this
+   * check's own splitter on `Blueprint/walkthrough_steps/02_mode3_to_mode1.md`: step 3 = 10,
+   * step 2 = 8, every other step 1 to 5. Ten is the model's longest, not a round number.
+   * The two 2-3 sentence quotes above are superseded for `why`, not deleted: they are the record
+   * of why the cap was once three. WHY_MAX_SENTENCES is declared above CHECKS. */
   {
     id: 'checklist_why_length',
-    rule: 'W-detail — a step\'s details paragraph is supplemental context: at most 3 sentences',
+    rule: 'W-detail — a step\'s details paragraph is supplemental context: at most ' + WHY_MAX_SENTENCES + ' sentences',
     run: function (d) {
       return d.steps.filter(function (s) { return typeof s.step.why === 'string'; })
         .map(function (s) {
@@ -224,13 +280,13 @@ var CHECKS = [
             .filter(function (x) { return x.trim().length > 1; }).length;
           return { s: s, n: n };
         })
-        .filter(function (r) { return r.n > 3; })
+        .filter(function (r) { return r.n > WHY_MAX_SENTENCES; })
         .map(function (r) {
           return r.s.proc + ' step ' + r.s.n + ' — ' + r.n + ' sentences: ' + r.s.step.why.slice(0, 90);
         });
     },
     inject: function (d) {
-      d.steps[0].step.why = 'One. Two. Three. Four sentences is a chapter, not a note.';
+      d.steps[0].step.why = 'One. Two. Three. Four. Five. Six. Seven. Eight. Nine. Ten. Eleven sentences is a chapter.';
     },
   },
   /* THE STEP LINE'S WORD CAP, SCORED (#692, 2026-09-11). `Blueprint/STYLE_GUIDE.md` W2 caps a
@@ -294,7 +350,7 @@ var CHECKS = [
         (p.precond || []).forEach(function (c, i) { chk(p.id + '.precond' + i, c.text); });
       });
       d.steps.forEach(function (s) {
-        ['text', 'note', 'why', 'target', 'wait_hint'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
+        ['text', 'aim', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
         // the incident walkthrough's narrative block (#670) — four strings on the card, bound by
         // the ruling exactly as `why` is. It is prose ABOUT a plant, which is where an "(11 MPa)"
         // is most likely to be written without thinking.
@@ -303,10 +359,16 @@ var CHECKS = [
          * substep's INSTRUCTION, added for the #741 display and drawn on the card exactly like
          * the label — so it is player-facing and bound by the same 2026-09-06 ruling. A new
          * authoring key that the harvester does not know about ships ungated, which is how the
-         * panel came to print "(116 degC)" while this check stayed green (#670 S-10). */
+         * panel came to print "(116 degC)" while this check stayed green (#670 S-10).
+         * `note` and `speed_text` (walkthrough-step-format project) are the SAME trap in the
+         * same shape: two more per-entry strings the card draws verbatim, so they get the same
+         * harvest line as `ask` rather than trusting the step-level `note` scan above to reach
+         * into `accs`, which it does not — an array is not a string and `chk` no-ops on one. */
         (s.step.accs || []).forEach(function (a, j) {
           chk(s.proc + ' step ' + s.n + '.accs' + j, a.label);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.ask', a.ask);
+          chk(s.proc + ' step ' + s.n + '.accs' + j + '.note', a.note);
+          chk(s.proc + ' step ' + s.n + '.accs' + j + '.speed_text', a.speed_text);
         });
         if (s.step.overtaken) { chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.text); chk(s.proc + ' step ' + s.n + '.overtaken', s.step.overtaken.label); }
       });
@@ -318,10 +380,10 @@ var CHECKS = [
      * "CAN FAIL", because `target` alone kept it able to fail. Proven: with the ask harvest
      * removed, the old inject still self-tested green. A per-field harvest needs a per-field
      * injection or the newest field is the one nothing proves. */
-    inject: function (d) {
+    inject: [function (d) {
       d.steps[0].step.accs = [{ label: 'Load target set to 50 MWe',
                                 ask: 'Set LOAD to 50 MWe at 11.14 MPa.' }];
-    },
+    }, function (d) { d.steps[0].step.aim = 'Steam pressure holds at 7.03 MPa here.'; }],
   },
   /* THE NARRATIVE BLOCK IS FOUR LINES, NOT FOUR PARAGRAPHS (#670 Phase 1).
    *
@@ -400,9 +462,19 @@ if (SELF_TEST) {
   CHECKS.forEach(function (c) {
     var clean = build();
     var okClean = c.run(clean).length === 0;
-    var dirty = build();
-    c.inject(dirty);
-    var firedDirty = c.run(dirty).length > 0;
+    /* `inject` may be an ARRAY (2026-09-25): one injection per harvested field that needs its own
+     * proof, and EVERY one must fire. The pool objects are shared across builds (require cache),
+     * so each injection runs on a snapshot of step 0 that is put back afterwards. */
+    var firedDirty = [].concat(c.inject).every(function (inj) {
+      var dirty = build();
+      var st0 = dirty.steps[0] && dirty.steps[0].step, saved = st0 ? JSON.parse(JSON.stringify(st0)) : null;
+      var nMan = dirty.manual[0] ? dirty.manual[0].lines.length : 0;
+      inj(dirty);
+      var fired = c.run(dirty).length > 0;
+      if (st0) { Object.keys(st0).forEach(function (k) { delete st0[k]; }); Object.keys(saved).forEach(function (k) { st0[k] = saved[k]; }); }
+      if (dirty.manual[0]) dirty.manual[0].lines.length = nMan;
+      return fired;
+    });
     var ok = okClean && firedDirty;
     if (!ok) selfFailed++;
     console.log((ok ? G + 'CAN FAIL' : R + 'INERT  ') + X + '  ' + c.id +

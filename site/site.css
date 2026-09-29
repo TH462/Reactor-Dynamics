@@ -171,6 +171,19 @@ html[data-channel="dev"] .brand-test {
 
 /* ==================================================================== hero */
 .hero { text-align: center; padding: 64px 20px 40px; }
+/* Landing-page announcement (2026-09-28) — a quiet pill above the headline, green for
+   "new and running", deliberately smaller than the h1 and the CTA so it reads as news. */
+.announce {
+  display: block; width: fit-content; max-width: 100%; margin: 0 auto 18px;
+  border: 1px solid var(--running); border-radius: 999px;
+  background: rgba(70, 163, 94, 0.10); color: var(--text);
+  padding: 5px 14px 5px 6px; font-size: 13px; line-height: 1.4;
+}
+.announce-tag {
+  display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px;
+  background: var(--running); color: #07130B;
+  font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+}
 /* Sits BELOW the CTA, not above it (2026-08-06). It was the first thing on the
    page for a month: a visitor's opening handshake was a limitation, before they
    had been told what the thing is or who it is for. It still has to be seen

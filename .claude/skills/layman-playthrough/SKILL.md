@@ -29,6 +29,13 @@ player typed, and a step whose lamp said done while its check-off said not done.
   tiles a step names, or the speed bar.
 - Before shipping walkthrough work: a pass is not finished until **6 of 6 legs complete**.
 - One leg is a legitimate run — pass a single id and skip the chain.
+- **Run `node test/run_walkthrough_routes.js --all` FIRST** (owner directive 2026-09-24; the gate is
+  split into parts for CI since 2026-09-27 — `--all` runs it unsplit, in one process). It drives every
+  leg's live checklist on a typical-player route and on scripted mistakes (overshoot, press early,
+  Rewind mid-step, …), and fails on a silent strand, a step that ticks on entry, or a Continue
+  that lights and goes out. Clear what it finds before you spend a pass: the layman pass then
+  *confirms* the harness rather than *discovering* defects, and a number the step text states is
+  checked against the harness's per-step typical-route table, not only the authored replay.
 - **Swap the persona and the skill still holds.** An "operator" run (knows plant terms, does
   not know THIS board) finds label and layout defects a layman never reaches. Change only the
   persona paragraph of the prompt; the protocol, the report contract and the verification pass
@@ -102,7 +109,9 @@ Give it these facts and no more. They are the scaffolding, not the game.
   satisfy the step, class `ready` and lit when they do. **`⏪ Rewind step`** (`.wt-rewind`)
   takes the plant and the walkthrough back to the start of the previous step.
 - The **Plant & Mission** window opens from the **Main Menu** button (`#mainMenuBtn`, in the
-  tools row beside Settings) (it is NOT open on load); its
+  tools row beside Settings). It is ALREADY OPEN on every load (`openMissionSelect()` at the end
+  of `init()` in `ui/app.js`, owner directive 2026-08-11), so the first click on Main Menu can
+  land on the open overlay; its
   **Walkthroughs** tab (`[data-mmode="walkthroughs"]`) lists all six with **`▶ Start`**
   (`[data-wtstart="<leg id>"]`), which loads that leg's own starting condition and starts it.
 - Speed buttons are `[data-speed="1|5|10|60|600|3600"]`; 600× and 3600× are WARP. The status

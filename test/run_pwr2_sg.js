@@ -501,7 +501,172 @@ function runSuite(G, rec, quiet, only) {
       withFeed[withFeed.length - 1].P.toFixed(3) + ' -> ' +
       cutFeed[cutFeed.length - 1].P.toFixed(3) + ' MPa');
   }
+
+  if (grp('F')) {
+  /* ---- 6. THE PRIMARY-SIDE FILM (#588) ------------------------------------------------
+   * *(OWNER RULING, 2026-09-22: "Ship it and build the SG term now")*.
+   *
+   * THE DEFECT, MEASURED FIRST so no check below reads as more than it is. Full stack,
+   * `hot_full_power` + `large_loca` + `station_blackout`, severity 1, seed 0x1234, 1x, at
+   * 1,800 s: loop flow 4.1 kg/s (0.25 % of rated), `sg_primary` VOID FRACTION 0.998, core
+   * 100 % uncovered -- and the exchanger removing 5,239 kW against a 5,114 kW decay load.
+   * A tube bundle 99.8 % full of steam at a quarter of one per cent of rated flow was
+   * transferring heat as if it were full of subcooled water at rated flow.
+   *
+   * WHAT THESE CHECKS DO **NOT** ASSERT, and it is the same fence the Courant limiter's
+   * checks carry in run_pwr2_core: NOT THE TRAJECTORY. #588's endgame is a BIFURCATION and
+   * #543 forbids pinning one. The eight-ulp sweep with this term in (nudging system pressure
+   * at the moment of injection, 1,800 s, seed 0x1234, 1x) is
+   *
+   *     ulp        0    +1    +2    +3    +8   +32    -1    -2
+   *     HEAD    held  held  held  ----  ----  ----  held  held    <- 4 of 8 HOLD
+   *     tree    ----  ----  ----  ----  ----  ----  ----  ----    <- 0 of 8 hold
+   *
+   * so "the plant no longer leaves its envelope" is true 8 times in 8 -- but peak cladding
+   * still ranges 1,385-1,547 degF across those branches and `fuel_damaged` is FALSE on all
+   * eight. NO TRAJECTORY CLAIM IS MADE HERE. These assert THE TERM: what it is at rated,
+   * that it is a series resistance and not a multiplier, that it takes void and not quality,
+   * and that the conductance handed to Layer 2's limiter is the one the duty was computed
+   * through.
+   *
+   * AND THE REGIME IT LIVES IN IS TESTED, not just the endpoints. A term that is an IDENTITY
+   * where you test it is a term nothing tests -- so `factor === 1` at rated is checked as the
+   * EQUALITY it is (that IS the identity, and it is the bit-identity claim), and every other
+   * check below stands somewhere the factor is NOT 1.
+   */
+  if (!quiet) console.log('\nTHE PRIMARY-SIDE FILM  [#588 -- flow AND phase, like every other film here]');
+
+  var PF = G.PRIMARY_FILM, ffac = G.primaryFilmFactor, Ue = G.effectiveU;
+  var U0 = G.ratedU();
+
+  /* THE ANCHOR. Exactly 1 at rated, to the BIT -- this is what lets `ratedU()`'s derivation
+   * and everything solved beside it keep their meaning, and it is why a healthy at-power
+   * plant is bit-identical across this change (measured full stack: 0 of 3,875 true_state
+   * fields differ on hot_full_power AND on hot_zero_power, 600 s, 20 s samples). */
+  ckT('the film factor is EXACTLY 1 at rated flow in liquid -- the anchor is untouched',
+      ffac(1, 0) === 1 && Ue(U0, 1) === U0,
+      'factor ' + ffac(1, 0) + ', U_eff ' + Ue(U0, 1).toFixed(6) + ' against a rated ' + U0.toFixed(6));
+
+  /* THE SERIES SOLVE, AND WHY IT IS NOT A MULTIPLIER. This is the check that separates the
+   * shipped form from the cheap one. Halve the flow and the TUBE-SIDE FILM falls to 0.57 of
+   * rated -- but the OVERALL coefficient falls only to 0.88, because the tube wall, the
+   * fouling and the shell-side boiling film are still there and did not move. A multiplier on
+   * U would say 0.57, wrong by a third in exactly the regime a natural-circulation cooldown
+   * lives in. */
+  var f_half = ffac(0.5, 0);
+  ckT('HALF FLOW: the tube-side FILM falls to 0.57 but the OVERALL U only to 0.88 -- it is a ' +
+      'SERIES resistance, not a multiplier on U',
+      Math.abs(f_half - 0.5743) < 0.002 && Math.abs(Ue(U0, f_half) / U0 - 0.8804) < 0.004 &&
+      Ue(U0, f_half) / U0 > f_half * 1.4,
+      'factor ' + f_half.toFixed(4) + ', U_eff/U ' + (Ue(U0, f_half) / U0).toFixed(4));
+
+  /* THE SPLIT ITSELF, asserted as the arithmetic identity it is rather than as a landed
+   * number: the primary film's share of the rated resistance is U_rated/h_prim_rated, and
+   * degrading only that share is what `effectiveU` must do. Written out by hand here so the
+   * check is not simply a second run of the implementation. */
+  var fX = 0.031;
+  var byHand = 1 / ((1 / PF.h_prim_rated) / fX + (1 / U0 - 1 / PF.h_prim_rated));
+  ck('the series stack reproduces a hand-computed resistance sum', Ue(U0, fX), byHand, 1e-12,
+     'kW/m2-K');
+  ck('the primary film carries U_rated/h_prim_rated of the rated resistance',
+     U0 / PF.h_prim_rated, 0.1833, 0.001, 'of the total');
+
+  /* THE PHASE HALF, ON ITS OWN. At the SAME flow, pure vapour must transfer worse than pure
+   * liquid -- and by the sourced vapour ratio, not by some other number. */
+  ckT('at equal flow a vapour-filled bundle transfers worse than a liquid-filled one, by the ' +
+      'sourced vapour ratio',
+      Math.abs(ffac(0.3, 1) / ffac(0.3, 0) - PF.vapor_ratio) < 1e-12 && ffac(0.3, 1) < ffac(0.3, 0),
+      'vapour/liquid = ' + (ffac(0.3, 1) / ffac(0.3, 0)).toFixed(4) + ' against vapor_ratio ' +
+      PF.vapor_ratio);
+
+  /* VOID, NOT QUALITY -- and the check stands on the MEASURED pair, not a hypothetical one.
+   * At the endgame the `sg_primary` node is 0.645 QUALITY and 0.998 VOID. Handed quality this
+   * term would be 1.7x too generous, which is the #490 defect in a new place. */
+  var f_void = ffac(0.0025, 0.998), f_qual = ffac(0.0025, 0.645);
+  ckT('the MEASURED endgame pair separates void from quality -- passing quality would be ' +
+      '1.7x too generous',
+      f_qual / f_void > 1.6 && f_void < f_qual,
+      'void 0.998 -> ' + f_void.toExponential(3) + ', quality 0.645 -> ' + f_qual.toExponential(3) +
+      ' (ratio ' + (f_qual / f_void).toFixed(2) + ')');
+
+  /* THE FLOOR. Free convection scales with the FLUID's own conductivity, so the floor needs
+   * its own phase factor and must NOT reuse `vapor_ratio` -- #574's second defect, re-armed
+   * here one layer up. Checked at ZERO flow, where the forced term is identically 0 and only
+   * the floor can be speaking. */
+  ckT('at zero flow the floor holds the bundle coupled, and it is the FREE-convection phase ' +
+      'factor that sets it -- not the forced one',
+      ffac(0, 1) > 0 &&
+      Math.abs(ffac(0, 1) - PF.h_stagnant / PF.h_prim_rated * PF.vapor_ratio_free) < 1e-15 &&
+      ffac(0, 1) < ffac(0, 0),
+      'dry stagnant ' + ffac(0, 1).toExponential(4) + ' against wet stagnant ' +
+      ffac(0, 0).toExponential(4));
+
+  /* MONOTONE IN BOTH ARGUMENTS. Not a two-point check: a film coefficient that is not
+   * monotone in flow or in void is not a film coefficient, and a sign error anywhere in the
+   * blend shows here and nowhere else. */
+  var monoF = true, monoV = true, prevF = -1, prevV = 1e9, kk, fv, vv;
+  for (kk = 0; kk <= 40; kk++) {
+    fv = ffac(kk / 40, 0);  if (fv < prevF - 1e-15) monoF = false;  prevF = fv;
+    vv = ffac(0.4, kk / 40); if (vv > prevV + 1e-15) monoV = false; prevV = vv;
+  }
+  ckT('the factor is monotone NON-DECREASING in flow and NON-INCREASING in void',
+      monoF && monoV, '41 samples each');
+
+  /* ---- THE WIRE. A factor nothing reads is a dark wire; these stand on `stepSG`'s own
+   * return with a primary that IS voided and slow, and they check the DUTY and the
+   * CONDUCTANCE, not the constant. */
+  var sgA = G.createSG(), sgB = G.createSG();
+  var rRated = G.stepSG(sgA, 304.5, 0.02, { feed: 0, steam: 0 });
+  var rDry = G.stepSG(sgB, 304.5, 0.02, { feed: 0, steam: 0, flowFrac: 0.0025, voidFrac: 0.998 });
+  ckT('an UNDECLARED flow fraction is RATED, never zero -- every pre-#588 caller is untouched',
+      rRated.primary_factor === 1 && rRated.U_eff === sgA.U,
+      'factor ' + rRated.primary_factor + ', U_eff ' + rRated.U_eff.toFixed(6));
+  ckT('DECLARING the measured endgame primary collapses the duty to ~2 % of the rated-geometry ' +
+      'one -- a dry bundle is not a heat sink',
+      rDry.duty_kW / rRated.duty_kW < 0.05 && rDry.duty_kW > 0,
+      rRated.duty_kW.toFixed(0) + ' kW rated-geometry -> ' + rDry.duty_kW.toFixed(0) +
+      ' kW (' + (100 * rDry.duty_kW / rRated.duty_kW).toFixed(2) + ' %)');
+  ckT('...and the CONDUCTANCE reported to Layer 2 collapses WITH it -- `UA_kW_per_K` is the ' +
+      'one the duty was computed through, not the rated one (the dark-wire rule)',
+      Math.abs(rDry.UA_kW_per_K / rRated.UA_kW_per_K - rDry.duty_kW / rRated.duty_kW) < 1e-9 &&
+      rDry.UA_kW_per_K < rRated.UA_kW_per_K * 0.05,
+      rRated.UA_kW_per_K.toFixed(1) + ' -> ' + rDry.UA_kW_per_K.toFixed(2) + ' kW/K');
+
+  /* THE TWO DEGRADATIONS ARE INDEPENDENT AND BOTH SURVIVE. `wet` is the SECONDARY's (an area
+   * effect on the whole UA) and the film is the PRIMARY's (a resistance inside U). A build
+   * that folded either into the other would pass every check above this one. */
+  var sgC = G.createSG({ mass: 12785 * 0.2 });          /* below dryout: wet ~ 0.515 */
+  var rBoth = G.stepSG(sgC, 304.5, 0.02, { feed: 0, steam: 0, flowFrac: 0.0025, voidFrac: 0.998 });
+  ckT('secondary dryout and primary film are INDEPENDENT -- UA carries both, multiplicatively',
+      Math.abs(rBoth.UA_kW_per_K - rDry.UA_kW_per_K * rBoth.wet_frac) < 1e-9 &&
+      rBoth.wet_frac > 0.4 && rBoth.wet_frac < 0.6,
+      'wet ' + rBoth.wet_frac.toFixed(4) + ', UA ' + rBoth.UA_kW_per_K.toExponential(3) +
+      ' against dry-primary-only ' + rDry.UA_kW_per_K.toExponential(3));
+
+  /* THE THREE CONSTANTS THIS FILE RETYPES ARE THE SAME NUMBERS THE OTHER TWO FILMS USE.
+   * Layer 5 cannot read Layer 4's fuel model, so `vapor_ratio` and `vapor_ratio_free` are
+   * typed here a THIRD time -- exactly the second-copy shape this engine's own headers are
+   * the record of. Nothing but a check can tie them; pwr2_core's WALL_FILM is loadable from
+   * this gate and is the tie. */
+  var WF = RD.core.WALL_FILM;
+  ckT('the vapour ratios, the stagnant floor and the Dittus-Boelter exponent are the SAME ' +
+      'numbers pwr2_core uses -- not a third set',
+      PF.vapor_ratio === WF.vapor_ratio && PF.vapor_ratio_free === WF.vapor_ratio_free &&
+      PF.dittus_exp === WF.dittus_exp && PF.h_stagnant * 1000 === WF.h_stagnant_W_m2K,
+      'vapour ' + PF.vapor_ratio + '/' + WF.vapor_ratio + ', free ' + PF.vapor_ratio_free + '/' +
+      WF.vapor_ratio_free + ', exp ' + PF.dittus_exp + '/' + WF.dittus_exp + ', floor ' +
+      PF.h_stagnant * 1000 + '/' + WF.h_stagnant_W_m2K);
+
+  /* Layer 3's helper is the ONE expression for the flow fraction -- a second `|mdot|/1630` at
+   * the Layer 5 call site is the PROTECTION_DT trap, so the helper has to exist and has to
+   * agree with the rated flow the loop already owns for its own walls. */
+  var sysFF = RD.loop.createLoop({ h: 1250, P: 15.41, mdot: 815 });
+  ckT('Layer 3 exposes ONE flow-fraction expression, and it is the rated flow it already owns',
+      typeof RD.loop.flowFrac === 'function' && Math.abs(RD.loop.flowFrac(sysFF) - 0.5) < 1e-12,
+      'flowFrac(815 kg/s) = ' + RD.loop.flowFrac(sysFF));
+  }
 }
+
 
 console.log('\nPWR2 Layer 5 -- the lumped SG secondary');
 var G = loadFrom(SRC), rec = [];
@@ -511,14 +676,50 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
 /* Each entry's trailing { grp } names the section group that can SEE it (#513) — the replay
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var MUTATIONS = [
+  /* ---- #588: THE PRIMARY-SIDE FILM ---------------------------------------------------------
+   * Every one of these is a WRONG BUILD that was genuinely available while writing the term,
+   * not a straw man. Three of them (the multiplier, the floor's phase factor, the rated
+   * conductance) are defects this engine has ALREADY shipped once, one layer down. */
+  ['the primary film is applied as a MULTIPLIER ON U instead of a series resistance (half ' +
+   'flow would cut the overall coefficient by 43 % instead of 12 %)',
+   'return 1 / (r_prim0 / factor + r_rest);', 'return U_rated * factor;', { grp: 'F' }],
+  ['the FLOW half deleted (a stagnant bundle transfers like a flowing one — the #588 defect ' +
+   'itself, re-armed)',
+   'dittus_exp: 0.8,', 'dittus_exp: 0,', { grp: 'F' }],
+  ['the PHASE half deleted (a steam-filled bundle transfers like a water-filled one — the ' +
+   'other half of the #588 defect)',
+   "var forced = Math.pow(f, PRIMARY_FILM.dittus_exp) *\n                 ((1 - v) + v * PRIMARY_FILM.vapor_ratio);",
+   'var forced = Math.pow(f, PRIMARY_FILM.dittus_exp);', { grp: 'F' }],
+  ['the FLOOR reuses the forced-convection vapour ratio instead of the free one (#574 second ' +
+   'defect, re-armed one layer up)',
+   "var floor = (PRIMARY_FILM.h_stagnant / PRIMARY_FILM.h_prim_rated) *\n                ((1 - v) + v * PRIMARY_FILM.vapor_ratio_free);",
+   "var floor = (PRIMARY_FILM.h_stagnant / PRIMARY_FILM.h_prim_rated) *\n                ((1 - v) + v * PRIMARY_FILM.vapor_ratio);", { grp: 'F' }],
+  ['the term is computed and never applied (a dark wire that reports a factor and transfers ' +
+   'rated UA anyway)',
+   'var U_eff = pf >= 1 ? sg.U : effectiveU(sg.U, pf);', 'var U_eff = sg.U;', { grp: 'F' }],
+  ['Layer 2 is handed the RATED conductance while the duty rode a degraded one (the limiter ' +
+   'bounds a stiffness the term never had)',
+   'UA_kW_per_K: U_eff * wet * sg.area,', 'UA_kW_per_K: sg.U * wet * sg.area,', { grp: 'F' }],
+  /* NOT "delete `wet` from Q" — that is the C1 dryout mutation already above, and scoped to F
+   * it went BLIND, which is the runner doing its job. The INDEPENDENCE defect is the two
+   * degradations being COMPOSED: a build that pushes the secondary's wetted fraction through
+   * the primary film's series solve double-counts it and is non-linear in `wet`, which is
+   * exactly what the UA == UA_dry * wet identity exists to refuse. */
+  ['the secondary dryout fraction is folded THROUGH the primary film (one degradation wearing ' +
+   'the other\'s face, and no longer multiplicative)',
+   'var U_eff = pf >= 1 ? sg.U : effectiveU(sg.U, pf);',
+   'var U_eff = pf * wet >= 1 ? sg.U : effectiveU(sg.U, pf * wet);', { grp: 'F' }],
+  ['the film factor is inverted in void (steam transfers BETTER than water)',
+   "((1 - v) + v * PRIMARY_FILM.vapor_ratio);", "((1 - v) + v / PRIMARY_FILM.vapor_ratio);",
+   { grp: 'F' }],
   ['heat transfer decoupled from the primary temperature',
-   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);', 'var Q = 300000;', { grp: 'B' }],
+   'var Q = U_eff * wet * sg.area * (primaryT - T_sec);', 'var Q = 300000;', { grp: 'B' }],
   ['duty sign flipped (the SG heats the primary)',
-   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
-   'var Q = -sg.U * wet * sg.area * (primaryT - T_sec);', { grp: 'B' }],
+   'var Q = U_eff * wet * sg.area * (primaryT - T_sec);',
+   'var Q = -U_eff * wet * sg.area * (primaryT - T_sec);', { grp: 'B' }],
   ['the dryout wet fraction deleted (a dry SG transfers rated UA — #510 H-1 re-armed)',
-   'var Q = sg.U * wet * sg.area * (primaryT - T_sec);',
-   'var Q = sg.U * sg.area * (primaryT - T_sec);', { grp: 'C1' }],
+   'var Q = U_eff * wet * sg.area * (primaryT - T_sec);',
+   'var Q = U_eff * sg.area * (primaryT - T_sec);', { grp: 'C1' }],
   /* THE ANCHOR MOVED WITH #549 (2026-08-27) — the one line became three, and a mutation whose
    * anchor has been refactored away goes BLIND, which the runner reports but which is easy to
    * wave through. Re-pointed at the surviving `min`, and the two halves now have an anchor

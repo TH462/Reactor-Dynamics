@@ -159,6 +159,44 @@ const RUM_COLS = [
   { key: 'visits', label: 'Landing visits', num: true },
 ];
 
+/* RELEASE MARKERS ON THE BY-DAY CHART (#797 item 5 — the owner asked "why did traffic spike
+ * on 2026-09-19?" and nothing on the page could answer it).
+ *
+ * SOURCED FROM THE DATA, NOT THE REPO. Every telemetry event carries the release in blob3
+ * (worker/src/index.js's own column map), so `MIN(timestamp) GROUP BY blob3` is the moment
+ * each release first reached a real user — it needs no coupling between this Worker and the
+ * repo, it cannot go stale, and it marks when users actually GOT the release rather than when
+ * it was tagged.
+ *
+ * PUBLIC CHANNEL ONLY (`blob2 = 'public'`), not merely `<> 'dev'` (the standing ruling this
+ * page's other queries follow). This chart's traffic IS Cloudflare Web Analytics RUM for
+ * reactordynamics.com — a preview build reaching the tester site
+ * (develop.reactor-dynamics.pages.dev) is a different domain and contributes NONE of the
+ * traffic being graphed here, so a preview marker would sit on the chart explaining nothing
+ * about a spike in the series underneath it. Only a public release is a candidate cause of a
+ * spike a reader can see on THIS chart, so only public releases are drawn.
+ *
+ * SPLIT FROM THE QUERY on purpose, same idiom as `renderThrottleLine` above: `markersByDay`
+ * is a pure function of the SQL rows and the day range, testable with no fake transport. */
+function markersByDay(releaseRows, days) {
+  const inWindow = new Set(days);
+  const by = new Map();
+  (releaseRows || []).forEach((r) => {
+    const version = String((r && r.release) || '').trim();
+    if (!version) return;
+    const day = etDay(r.first_seen);
+    if (!day || !inWindow.has(day)) return;
+    if (!by.has(day)) by.set(day, []);
+    by.get(day).push(version);
+  });
+  return by;
+}
+
+async function fetchReleaseMarkers(apiToken) {
+  return sql(apiToken, `SELECT blob3 AS release, min(timestamp) AS first_seen
+     FROM ${DATASET} WHERE blob2 = 'public' AND blob3 <> '' GROUP BY release`);
+}
+
 /* ONE LINE PER VIEW, saying where the figures came from and how exact they are. Three forms:
  * the two Cloudflare ones (unchanged), and the new first-party one for the by-day headline,
  * which since #764 Unit 2b is genuinely produced (closed Eastern days come from
@@ -598,24 +636,44 @@ export async function analyticsPage(env, url) {
    * name, as do the SVG tooltips, which have no width limit and keep the FULL label --
    * only the gutter text is shortened. A geometry check bounds every direct label
    * against PADR so the next long one cannot clip silently. */
+  /* RELEASE MARKERS (#797 item 5) — best-effort, same convention as the throttle line just
+   * above: a failed probe must not take the whole page down, it just means no markers draw
+   * this render. `releaseAt` is positional against `rows`, which `bucketDays` preserves 1:1
+   * (one bar per day, always, since the 2026-09-20 rewrite — see its own header), so the same
+   * array indexes correctly into either chart's row shape. */
+  let releaseAt = rows.map(() => null);
+  try {
+    const releaseRows = await fetchReleaseMarkers(apiToken);
+    const releasesByDay = markersByDay(releaseRows, allDays);
+    releaseAt = rows.map((r) => releasesByDay.get(r.day) || null);
+  } catch (e) { /* best-effort: release markers just don't draw this render */ }
+  const anyRelease = releaseAt.some((a) => a && a.length);
+
   const chartOpts = { labelA: 'Pageloads', labelB: 'Landing visits',
     labelC: 'Deep-link landings', labelCShort: 'Deep-link',
-                       labelGhost: 'prior period' };
+                       labelGhost: 'prior period', releaseAt };
   const chart = isLongWindow ? lineChart(rows, chartOpts) : barChart(bucketDays(rows).rows, { ...chartOpts, bucket: 'day' });
   // THE WORST INTERVAL IN THE WINDOW (#797), same convention `countryReferrerDayNote` below
   // uses — a legend describing every faded point/bar in the chart must not understate the
   // roundest one shown. Falls back to 10 (Cloudflare's tier at the time of writing) only when
   // nothing coarse is actually in view, i.e. the number is never read against a real point.
   const worstSi = rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);
+  // A GOLD DASHED RULE, PUBLIC RELEASES ONLY — see `markersByDay`'s header for why preview
+  // is excluded. Only mentioned when at least one actually drew (`anyRelease`), same rule
+  // the throttle line above follows for its own line: a clause describing a mark that is
+  // not on screen this render would be explaining something the reader cannot see.
+  const releaseNote = anyRelease
+    ? ' · <span style="color:#e0c451">┆</span> version label = a release reaching real users'
+      + ' that day (preview/dev builds excluded)' : '';
   const legend = !chart ? '' : isLongWindow
     ? '<p class="muted">Hollow point = today, live and partial · faded point = Cloudflare-'
       + 'coarse (±' + (worstSi > 1 ? worstSi : 10) + ') · a break in the line, marked with a '
       + 'dashed tick at the baseline = no data captured that day (never drawn as a drop to '
       + 'zero) · dashed muted line = the prior, equal-length period · dates are labelled '
-      + 'every ' + lineLabelStride(rows.length) + ' day(s).</p>'
+      + 'every ' + lineLabelStride(rows.length) + ' day(s)' + releaseNote + '.</p>'
     : '<p class="muted">Hollow bar = today, live and partial · faded bar = Cloudflare-coarse '
       + '(±' + (worstSi > 1 ? worstSi : 10) + ') · dashed tick at the baseline = no data '
-      + 'captured that day · dashed muted line = the prior, equal-length period.</p>';
+      + 'captured that day · dashed muted line = the prior, equal-length period' + releaseNote + '.</p>';
 
   const dayTable = table(rows.map((r) => ({
     dateLabel: dayLabel(r.day, r.partial ? r.day : null),
@@ -941,6 +999,25 @@ export async function analyticsPage(env, url) {
    * itself: a day this table has NO ROWS for could be a real zero or a day the nightly job
    * never captured, and those must not read the same. `closedByDay` already carries that flag
    * per day (built for the by-day headline above) — reused here rather than re-querying. */
+  /* INTERNAL ROWS CANNOT CARRY A LANDING VISIT (#797 item 8) — a visit is credited only to
+   * the page load that STARTS a session, and an internal row is someone already on the site.
+   * MEASURED on the live dataset: of 128 rows, all 64 `referrer_kind: internal` rows show 0
+   * and no direct or external row ever does — the rule is EXACT, not a heuristic, so the 0
+   * itself is correct. What the owner read as missing data was the PRESENTATION: an
+   * unexplained 0 reads the same as "no data captured", which this page already uses
+   * elsewhere for a day the nightly rollup never ran. This renders an internal row's visits
+   * as an em dash with a one-line reason INSTEAD of the number — the number stays exactly
+   * what it was everywhere else `visits` is read; only this cell's markup changes.
+   *
+   * `raw: true` on the column below is `table()`'s own convention (see its header): safe
+   * only because the markup here is assembled from a KIND flag and a clamped integer, never
+   * from anything that came off the wire — the title attribute is a fixed string, not esc()d. */
+  function landingVisitsCell(kind, visits) {
+    if (kind !== 'internal') return String(Number(visits) || 0);
+    return '<span class="muted" title="An internal row cannot carry a landing visit — a visit '
+      + 'is only ever credited to the page load that STARTS a session, and an internal '
+      + 'referrer means the visitor was already on the site.">—</span>';
+  }
   function countryReferrerDayNote(anyCoarse, missingDays, worstSi) {
     return '<p class="muted">Source: <b>first-party exact</b> (' + esc(from) + ' to ' + esc(closedTo) + ')'
       + (anyCoarse ? ', a row marked <b>coarse</b> below was captured late and is'
@@ -957,13 +1034,16 @@ export async function analyticsPage(env, url) {
       const worstSi = h.rows.reduce((m, r) => Math.max(m, r.coarse ? (r.si || 1) : 1), 1);
       return countryReferrerDayNote(h.anyCoarse, missingDays, worstSi) + table(h.rows.map((r) => ({
         day: r.day, country: r.country === '' ? '(unknown)' : r.country,
-        referer: r.host || '(direct)', kind: r.kind, pageloads: r.pageloads, visits: r.visits,
+        referer: r.host || '(direct)', kind: r.kind, pageloads: r.pageloads,
+        visits: landingVisitsCell(r.kind, r.visits),
         /* THE INTERVAL IT ACTUALLY GOT, not a hard-coded 10 -- see stats.dayCountryReferrer.
          * The five other sites on this page still print the literal; they are the same
          * latent defect and are not fixed here. */
         note: r.coarse ? 'coarse (±' + r.si + ')' : '',
       })), [{ key: 'day', label: 'Date (ET)' }, { key: 'country', label: 'Country' },
-        { key: 'referer', label: 'Referrer' }, { key: 'kind', label: 'Kind' }, ...RUM_COLS,
+        { key: 'referer', label: 'Referrer' }, { key: 'kind', label: 'Kind' },
+        { key: 'pageloads', label: 'Pageloads', num: true },
+        { key: 'visits', label: 'Landing visits', num: true, raw: true },
         { key: 'note', label: 'Note' }]);
     }),
   ]);

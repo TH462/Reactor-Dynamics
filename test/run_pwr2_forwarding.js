@@ -223,11 +223,11 @@ var MUTATIONS = [
    '    if (drivers.heats) {',
    '    if (false) {'],
   ['sources', 'drivers.sources is dropped on the way to Layer 3 -- CVCS and ECCS go inert',
-   '{ heats: heats, sources: drivers.sources, mdot: sys.mdot_loop }',
-   '{ heats: heats, mdot: sys.mdot_loop }'],
+   '{ heats: heats, sources: drivers.sources, mdot: sys.mdot_loop,\n                                     exchanges: exch }',
+   '{ heats: heats, mdot: sys.mdot_loop,\n                                     exchanges: exch }'],
   ['sources', 'Layer 4 stops overriding a per-step mdot driver, so the OWNED reason becomes false',
-   '{ heats: heats, sources: drivers.sources, mdot: sys.mdot_loop }',
-   '{ heats: heats, sources: drivers.sources, mdot: drivers.mdot || sys.mdot_loop }'],
+   '{ heats: heats, sources: drivers.sources, mdot: sys.mdot_loop,\n                                     exchanges: exch }',
+   '{ heats: heats, sources: drivers.sources, mdot: drivers.mdot || sys.mdot_loop,\n                                     exchanges: exch }'],
 ];
 
 if (fail > 0) {

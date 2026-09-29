@@ -37,11 +37,19 @@
  *     P       = P_air + P_steam, the partial pressures summed (Dalton)
  *     T       from the energy the break delivered against the atmosphere heat capacity
  *
- * ⚠ DECLARED, AND THE LIST IS LONG BECAUSE THE UNSOURCED HALF OF CONTAINMENT IS ITS HEAT REMOVAL:
- *   NO SPRAY. NO FAN COOLERS. NO RECOMBINERS. Their capacities are not in the corpus — searched,
- *   nothing numeric — so none is built and all their contract fields stay declared-missing. The
- *   consequence is direct: **this containment only ever heats and pressurises.** It has no way
- *   down, so it is a model of the first minutes of a LOCA and not of the recovery.
+ * ⚠ SPRAY AND THE FAN COOLERS ARE BUILT (#784, 2026-09-21). THE PARAGRAPH THIS REPLACES WAS A
+ *   PREMISE THAT HAD EXPIRED, and the expiry is the lesson. It read "NO SPRAY. NO FAN COOLERS.
+ *   NO RECOMBINERS. Their capacities are not in the corpus — searched, nothing numeric". A
+ *   `find_source` pass on 2026-09-21 turned up BOTH system capacities in the anchor plant's own
+ *   documents — flow, temperature and response time, all quoted verbatim in the CS block below —
+ *   so the sentence had been telling readers a search had failed for a month after it stopped
+ *   being true. That is #460's trap, caught in this file's header exactly as `pwr2_protection.js`
+ *   caught it in its own. What is genuinely still unsourced is ONE number: the fan coolers'
+ *   heat-transfer coefficient, which is [fitted] and says so at its declaration.
+ *   RECOMBINERS ARE STILL NOT BUILT and their contract fields stay static-false — the ruling
+ *   authorising this work *(OWNER RULING, 2026-09-21: "Authorise it — auto-only (Recommended)")*
+ *   named containment spray, the fan coolers and the steam-line isolation that goes with them,
+ *   and nothing else.
  *   NO SUMP GEOMETRY, so `containment_sump_pct` stays missing: the mass is tracked, but turning it
  *   into a level needs a sump map this engine does not have and the corpus does not give.
  *   NO STRUCTURAL HEAT SINK. Real containment walls absorb a large fraction of the blowdown energy
@@ -72,6 +80,104 @@
     src: 'Ginna UFSAR ch15 (ML20339A101) — free volume and pre-accident conditions'
   };
 
+  /* ---- ACTIVE HEAT REMOVAL (#784) — CONTAINMENT SPRAY AND THE RECIRCULATION FAN COOLERS ----
+   *
+   * SOURCED, and the sourcing is why the "no capacity exists in the corpus" declaration above
+   * could be retired. Two documents, quoted:
+   *
+   *   Ginna UFSAR ch15 (ML20339A101) Table 15.6-18a, "PARAMETERS FOR CONTAINMENT PRESSURE —
+   *   DRY CONTAINMENT DATA": *"Spray system / Number of pumps operating 2 / Runout flow rate
+   *   1800 gpm each"*, *"Refueling water storage tank (RWST) temperature 50F"*, *"Service water
+   *   temperature 30F"*, *"Safeguards containment recirculation fan coolers (CRFCs) / Number of
+   *   fan coolers operating 4"*. The same chapter's Table 15.6-11 item H repeats the flow:
+   *   *"Maximum Containment Spray Flow 1800 gpm per pump"*.
+   *
+   *   Ginna TS Bases B 3.6.6 (ML20339A221): *"The CS System consists of two redundant, 100%
+   *   capacity trains"*; *"The CRFC System consists of four fan units"*, *"During normal
+   *   operation, at least two fan units are typically operating"*, *"In post accident operation
+   *   following a SI actuation signal, the CRFC System fans are designed to start automatically
+   *   if not already running"*; *"The CS System total response time is 28.5 seconds for one pump
+   *   to the upper spray header and 26.5 seconds for two pumps"*; *"The CRFC System total
+   *   response time of 44 seconds, includes signal delay, DG startup (for loss of offsite
+   *   power), and service water pump and CRFC unit startup times"*.
+   *
+   * ⚠ ONE SPRAY TRAIN, NOT TWO, AND IT IS A SOURCED CHOICE RATHER THAN A CONSERVATISM. Table
+   * 15.6-18a is the MINIMUM-containment-pressure analysis — its whole purpose is to maximise
+   * cooling (2 pumps, 4 fans, 50 degF RWST, 30 degF service water, "Fastest post accident
+   * initiation of fan coolers 0 seconds"), because ECCS reflood performance improves with
+   * BACKPRESSURE and that case is conservative in the other direction. The configuration the
+   * plant is licensed to RESPOND with is the post-single-failure one, and B 3.6.6 states it:
+   * *"a LOCA mass and energy event with a loss of offsite power, and a single failure of an EDG,
+   * which causes the loss of one of two containment spray pumps and two of four fan coolers"*,
+   * *"at least one CS train, the NaOH System, and two CRFC units operate, assuming the worst case
+   * single active failure"*. HR9 — this sim models the plant as operated — so ONE spray train
+   * and TWO fan units are carried, and the response time taken is the ONE-pump 28.5 s rather
+   * than the two-pump 26.5 s or the min-pressure case's 9 s.
+   *
+   * ⚠ THE SCALE IS THE VOLUME BASIS, the same one the free volume above uses, NOT the power
+   * basis. Spray and the fan coolers cool an ATMOSPHERE whose mass is set by the free volume, so
+   * scaling them on anything else would give this plant a spray of a different effectiveness from
+   * the plant it is sourced from. `run_pwr2_bases.js` pins which system scales how.
+   *
+   * ⚠ NO RWST INVENTORY NODE EXISTS on this plant (declared, `Manuals/12` §13.0, the same
+   * omission `pwr2_eccs.js` carries), so spray runs for as long as it is demanded. The anchor
+   * plant's *"Minimum Usable RWST Volume 184,950 gal"* would feed one 1800 gpm pump for about
+   * 103 minutes before the switchover to sump recirculation this engine does not model.
+   */
+  var CS = {
+    kind: '[sourced]',
+    spray_gpm_per_pump:  1800.0,   /* ch15 Table 15.6-18a "Runout flow rate 1800 gpm each" */
+    spray_trains:        1,        /* TS Bases B 3.6.6 — the credited post-single-failure train */
+    rwst_temp_f:         50.0,     /* ch15 Table 15.6-18a */
+    spray_response_s:    28.5,     /* TS Bases B 3.6.6, ONE pump to the upper spray header */
+    crfc_units:          2,        /* TS Bases B 3.6.6 — credited post-single-failure */
+    crfc_response_s:     44.0,     /* TS Bases B 3.6.6, CRFC total response time */
+    /* ⚠ [fitted] — THE ONE NUMBER IN THIS BLOCK THAT IS NOT SOURCED, and it is isolated here so
+     * a reader cannot mistake it for one that is. NO document in any lane's corpus gives a CRFC
+     * heat-removal rate: `find_source` for "fan cooler", "Btu/hr.*fan", "heat removal rate" and
+     * "recirculation fan" on 2026-09-21 returns the system description and no capacity. Two
+     * sourced constraints bound the fit and both are recorded so it can be re-argued:
+     *   ORDERING — GEND-061 (the TMI-2 hydrogen-burn report), verbatim: *"Heat transfer from the
+     *   containment atmosphere to containment sprays is rapid compared to heat removal by
+     *   containment coolers"*. So the fan term must be the SLOWER, diverse train. MEASURED at
+     *   this value at the mitigated peak (141.6 degC / 286.9 degF): spray removes 9.2 MW against
+     *   the fan coolers' 3.9 MW — a ratio of 2.3, spray ahead, as the source orders them.
+     *   OUTCOME — TS Bases B 3.6.6: *"a minimum of two CRFC units and one CS train are required
+     *   to maintain containment peak pressure and temperature below the design limits"*, with
+     *   *"the highest peak containment pressure is 59.7 psig"*. MEASURED, this plant's large
+     *   loss-of-coolant accident at severity 1.0, full stack, 600 s: 78.5 psig with neither
+     *   system (the #778 figure), 70.0 psig on the fan coolers alone, 62.7 psig on spray and
+     *   the isolation alone, 57.8 psig with both — and only the last TURNS OVER, peaking at
+     *   402.7 s instead of still climbing at 600.
+     * ⚠ DO NOT RETUNE THIS TO BUY MARGIN AGAINST THE 59.7 psig. The mitigated peak sits 1.9 psi
+     * under it, which is thin, and the reason is NAMED four paragraphs up in this file's header:
+     * there is no structural heat sink, which the header already declares OVERSTATES peak
+     * pressure. Raising the fan coefficient until the number looks comfortable would hide a
+     * declared-missing term behind a fitted one, and would break the sourced ordering above.
+     * The term to build is the wall heat sink.
+     * PER FAN UNIT, kW per K of atmosphere elevation, at the anchor plant's scale. */
+    crfc_ua_kw_per_k_per_unit: 150.0,
+    /* THE FANS' SINK TEMPERATURE IS THE PRE-ACCIDENT CONTAINMENT CONDITION, NOT SERVICE WATER,
+     * and that is a deliberate modelling choice with its own reason. Driving the removal off the
+     * sourced 30 degF service water would let a realigned fan drag a RECOVERED containment ~95
+     * degF below the state the source says it normally sits in — because this engine has no
+     * passive structural heat sink and no normal-mode ventilation model to hold it there, the
+     * two things that make a real fan cooler park at 125 degF instead of at the service-water
+     * temperature. Taking the sourced pre-accident 125 degF as the sink makes the term
+     * self-limiting at exactly the condition the plant is documented to sit at, which is what
+     * the missing models would have done. The realign is a ONE-SHOT with no automatic securing
+     * (the retired engine's row is the same), so a term that did not self-limit would run for
+     * ever. DECLARED as a simplification, not sourced. */
+    fan_sink_temp_f:     125.0,
+    src: 'Ginna UFSAR ch15 (ML20339A101) Table 15.6-18a + Table 15.6-11H; Ginna TS Bases ' +
+         'B 3.6.6 (ML20339A221). CRFC UA is [fitted] — see its own comment.'
+  };
+  /* ONE PATCH POINT for the gate's A/B legs and its mutation set (`run_pwr2_ctmt_esf.js`). The
+   * decomposition that proves spray and the fan coolers are SEPARATELY sufficient has to neuter
+   * one at a time, and it must neuter them at the SAME line the mutations do or the two would be
+   * measuring different plants. Inert in production — the marker is a comment. */
+  /*__CS_PATCH__*/
+
   function f2c(f) { return (f - 32) * 5 / 9; }
   function psigToMpa(p) { return (p + 14.696) / PSI_PER_MPA; }
 
@@ -81,6 +187,28 @@
   }
   function freeVolumeM3() {
     return CTMT.ginna_free_volume_ft3 * volumeScale() / FT3_PER_M3;
+  }
+
+  /* SPRAY MASS FLOW, kg/s, on this plant's scale. gpm -> m3/s -> kg/s at the RWST's own sourced
+   * temperature, the same convert-once-at-the-constant discipline `pwr2_afw.js` uses for gpm. */
+  var GPM_PER_M3S = 15850.32;
+  /* ⚠ THE TEMPERATURE-KEYED PROPERTIES, NOT THE PRESSURE-KEYED ONES — the #524 envelope-wall
+   * trap. `W.P_sat(10 degC)` is 0.0012 MPa, an order of magnitude below Layer 0's own
+   * `LIMITS.P_MIN` of 0.1, so routing 50 degF RWST water through `h_f(P_sat(T))` would evaluate
+   * the whole liquid branch at a clipped pressure. `rho_l_sat(T)` / `h_l_sat(T)` take T
+   * directly and are valid from 0 degC. */
+  function sprayFlowKgs() {
+    var v = CS.spray_gpm_per_pump * CS.spray_trains / GPM_PER_M3S;   /* m3/s at Ginna scale */
+    return v * W.rho_l_sat(f2c(CS.rwst_temp_f)) * volumeScale();
+  }
+  /* The enthalpy the spray stream carries in, kJ/kg. */
+  function sprayEnthalpy() { return W.h_l_sat(f2c(CS.rwst_temp_f)); }
+  /* FAN-COOLER REMOVAL, kW, at an atmosphere temperature of T_c. Self-limiting at the sourced
+   * pre-accident condition — see the CS block for why the sink is that and not service water. */
+  function fanRemovalKW(T_c) {
+    var dT = T_c - f2c(CS.fan_sink_temp_f);
+    if (!(dT > 0)) return 0;
+    return CS.crfc_ua_kw_per_k_per_unit * CS.crfc_units * dT * volumeScale();
   }
 
   function createContainment(opts) {
@@ -135,8 +263,12 @@
 
   /* stepContainment(ct, dt, drivers) -> pressure and temperature.
    *
-   *   drivers.mdot_kgs  mass arriving from the break
-   *   drivers.h_kJkg    the enthalpy it carries
+   *   drivers.mdot_kgs      mass arriving from the break
+   *   drivers.h_kJkg        the enthalpy it carries
+   *   drivers.spray_active  containment spray is DELIVERING (#784) — the caller owns the
+   *                         actuation, the response delay and the AC gate; this layer owns
+   *                         only how much water that is and what it does to the atmosphere
+   *   drivers.fan_active    the fan coolers are DELIVERING in the safety realign (#784)
    */
   function stepContainment(ct, dt, drivers) {
     drivers = drivers || {};
@@ -152,6 +284,41 @@
       ct.energy_in_kJ += dm * drivers.h_kJkg;
       ct.m_water += dm;
       ct.U_total_kJ += dm * drivers.h_kJkg;
+    }
+
+    /* ---- ACTIVE HEAT REMOVAL (#784) ---------------------------------------------------------
+     *
+     * ⚠ SPRAY IS A MASS STREAM, NOT A SINK TERM, and that is the whole point. The retired engine
+     * models spray as an extra 1/tau on a normalized steam inventory because its containment is
+     * a one-state gain model with nowhere to put water. This one carries a real mass and energy
+     * ledger closed by a flash equilibrium, so cold RWST water can be handed to it exactly the
+     * way break discharge is — as kg/s at an enthalpy — and the existing solve does the physics:
+     * the ledger's energy per unit mass falls, the solved temperature falls, the saturation
+     * pressure falls with it, vapour condenses into the sump and BOTH partial pressures drop.
+     * Nothing about the knockdown is fitted; it is the sourced flow at the sourced temperature
+     * through the closure this file already had.
+     *
+     * DECLARED SIMPLIFICATION: the drops are assumed to reach thermal equilibrium with the
+     * atmosphere, i.e. a spray efficiency of 1.0. Real drops fall a finite distance and leave a
+     * little short of it, so this is OPTIMISTIC — the same direction as the absent structural
+     * heat sink is pessimistic, and the two are not claimed to cancel.
+     *
+     * ⚠ THE FANS READ LAST STEP'S TEMPERATURE. One-step lag, the house convention, and here it
+     * is also what keeps the explicit removal from fighting the implicit solve below: the
+     * removal is booked into the ledger and the solver then finds the temperature that ledger
+     * implies, rather than two terms chasing each other inside one step. */
+    var spray_kgs = 0, fan_kW = 0;
+    if (drivers.spray_active) {
+      spray_kgs = sprayFlowKgs();
+      var dms = spray_kgs * dt;
+      ct.m_water += dms;
+      ct.U_total_kJ += dms * sprayEnthalpy();
+      ct.spray_mass_kg = (ct.spray_mass_kg || 0) + dms;
+    }
+    if (drivers.fan_active) {
+      fan_kW = fanRemovalKW(ct.T_c);
+      ct.U_total_kJ -= fan_kW * dt;
+      ct.fan_energy_kJ = (ct.fan_energy_kJ || 0) + fan_kW * dt;
     }
 
     /* ⚠ THE ATMOSPHERE IS SOLVED AS A FLASH EQUILIBRIUM, and the first version was not.
@@ -236,6 +403,19 @@
       /* REPORTED: the solver hit its physical bound, which means this model is out of the range
        * it can speak to rather than that containment is at 200 degC. */
       solver_clamped: ct.T_c >= 199.999,
+      /* THE OTHER BOUND, REPORTED FOR THE SAME REASON (#784). The bisection's lower bound is
+       * 20 degC and spray injects water at 10 degC (50 degF), so for the first time a run CAN
+       * drive the ledger under the search range — at which point the reported temperature is the
+       * bound and energy stops being conserved. Reported rather than hidden, the twin of the
+       * clamp above. The bound itself is NOT moved: `run_pwr2_containment`'s mutation set names
+       * the literal `var lo = 20, hi = 200;`, and a bound edited out from under an anchor makes
+       * a caught mutation BLIND instead of failing loudly. Not reached on any ride measured for
+       * #784 (spray auto-secures at 3.5 psig, decades above the state this would need). */
+      solver_floored: ct.T_c <= 20.001,
+      /* what the active systems did this step — the EFFECT, so a gate can assert the removal
+       * rather than that a driver was passed (the dark-wire rule, #507 wave 6 / #540) */
+      spray_kgs: spray_kgs, fan_kW: fan_kW,
+      spray_mass_kg: ct.spray_mass_kg || 0, fan_energy_kJ: ct.fan_energy_kJ || 0,
       m_air: ct.m_air, m_water: ct.m_water,
       m_vapour_kg: m_vapour, m_sump_kg: m_sump,
       V_m3: ct.V_m3,
@@ -249,7 +429,8 @@
   root.RD = root.RD || {};
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.containment = {
-    CTMT: CTMT, freeVolumeM3: freeVolumeM3, volumeScale: volumeScale,
+    CTMT: CTMT, CS: CS, freeVolumeM3: freeVolumeM3, volumeScale: volumeScale,
+    sprayFlowKgs: sprayFlowKgs, sprayEnthalpy: sprayEnthalpy, fanRemovalKW: fanRemovalKW,
     createContainment: createContainment, stepContainment: stepContainment,
     migrateState: migrateState,
     PSI_PER_MPA: PSI_PER_MPA

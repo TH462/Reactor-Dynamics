@@ -145,7 +145,19 @@ var TOOLKIT = [
   '    var st = {}, blocks = {};',
   '    Object.keys(live).forEach(function (id) {',
   '      var b = Object.prototype.hasOwnProperty.call(over, id) ? !!over[id] : live[id].blocked === true;',
-  '      st[id] = { blocked: b, permissive: true, asserted: false, can_block: true, can_clear: true };',
+  /* a row this call names takes `permissive` = its blocked state: the plant only takes a block
+   * when the permissive is LOST, and since 2026-09-26 (owner ruling "Clear it") a released row
+   * whose permissive reads true clears its message on the same render — the old `permissive: true`
+   * for every row would fabricate a revoke the rule instantly retires */
+  '      var pm = Object.prototype.hasOwnProperty.call(over, id) ? b : live[id].permissive === true;',
+  /* THE LIVE ROW'S OTHER FIELDS RIDE ALONG (2026-09-27). This used to build the row from five
+   * fields and DROP `setpoint`, so every fabricated render re-captioned the rows that print one —
+   * SI REACTOR TRIP went "1715 psi" -> "LOW PRESSURE", wrapped, and grew 25.04 -> 33.12 px. While
+   * SI was the last row that growth moved nothing; the SR HIGH FLUX row below it made S-9 read it
+   * as an 8 px shift. The plant never drops a setpoint, so neither may the fabrication. */
+  '      var base = {}; Object.keys(live[id] || {}).forEach(function (f) { base[f] = live[id][f]; });',
+  '      base.blocked = b; base.permissive = pm; base.asserted = false; base.can_block = !b && pm; base.can_clear = true;',
+  '      st[id] = base;',
   '      if (b) blocks[id] = true;',
   '    });',
   '    s.rps_state.trip_block_status = st;',
@@ -513,6 +525,30 @@ var TOOLKIT = [
   ck('  …and so is the card\'s status line',
     /\bbd-pop-status-msg\b/.test(opened.status.cls) && opened.status.color === AMBER,
     opened.status.cls + ' / ' + opened.status.color);
+  /* THE ROWS DO NOT MOVE UNDER THE CURSOR WHEN A MESSAGE CLEARS (layman pass 4, 2026-09-24, S-9).
+   * Blocking a row the plant had released deletes its message line and the status line's, and
+   * everything under it rose — measured 17.6 px on the live cooldown, a second click at the old
+   * spot hitting the card background. Re-block ROW_A with the card OPEN (two renders: the first
+   * is where `noteTripBlockEvents` clears the message, the second draws the short text) and read
+   * every BLOCK button's position in the same turn, before a live broadcast can re-release it.
+   * INJECTION: with `holdTripPopHeights()` not called, the rows below ROW_A rise. */
+  var shift = await page.evaluate(function (a) {
+    /* the ROW's top, not the button's: a row whose own caption re-wraps moves its button inside
+     * itself, which is not the defect — the defect is a row pushed by a shrinking row above it */
+    function ys() { var o = {}; [].slice.call(document.querySelectorAll('.bd-pop button[data-trip]')).forEach(function (b) {
+      o[b.getAttribute('data-trip')] = b.parentNode.getBoundingClientRect().y; }); return o; }
+    var y0 = ys();
+    window.__c.tb(JSON.parse('{"' + a.A + '":true}'));
+    window.__c.tb(JSON.parse('{"' + a.A + '":true}'));
+    var y1 = ys(), worst = 0, had = /RELEASED BY THE PLANT/.test((window.__c.row(a.A) || {}).text || '');
+    var who = ''; Object.keys(y0).forEach(function (k) { if (y1[k] != null && Math.abs(y1[k] - y0[k]) > Math.max(worst, 0.5)) who = k; if (y1[k] != null) worst = Math.max(worst, Math.abs(y1[k] - y0[k])); });
+    window.__c.tb(JSON.parse('{"' + a.A + '":false}'));   // put the revoke back for the checks below
+    window.__c.tb(JSON.parse('{"' + a.A + '":false}'));
+    return { worst: +worst.toFixed(2), msgGone: !had, n: Object.keys(y0).length, who: who, a: a.A };
+  }, { A: ROW_A });
+  ck('re-blocking a released row with the card open moves no row under the cursor (S-9)',
+    shift.msgGone && shift.n >= 2 && shift.worst < 1,
+    'largest row move ' + shift.worst + ' px (' + (shift.who || 'none') + ', re-blocking ' + shift.a + ') over ' + shift.n + ' rows; message cleared: ' + shift.msgGone);
   /* THE ROW IS NOT SCROLLED OUT OF SIGHT. "Viewed" is defined as "the open card rendered this row",
    * which would be a lie if the card could clip a row away. The panel is content-sized with four
    * rows; assert it, because a fifth blockable trip would silently break the definition. */
@@ -693,6 +729,58 @@ var TOOLKIT = [
     !/\bbd-sub-msg\b/.test(rAgain.row.cls) && rAgain.row.color !== AMBER &&
       /RELEASED BY THE PLANT/.test(rAgain.row.text),
     rAgain.row.cls + ' / ' + rAgain.row.color);
+
+  /* THE REASON GOES WHEN IT STOPS BEING TRUE *(OWNER RULING, 2026-09-26, selected "Clear it": "The
+   * message disappears once the permissive allows blocking again, so the panel only shows reasons
+   * that are currently true.")*. Layman pass 7 read "pressure rose above the shutdown permissive
+   * (P-11)" at 1930 psi on a cooldown. The card is left OPEN through a real depressurization back
+   * under P-11 and read at or below 1930 psia (true): no P-11 message, no line on the row, none in
+   * the status count, and no row moved (the pass-5 height hold). INJECTION: without the clear in
+   * `noteTripBlockEvents` both messages stand and the first check reads 2. */
+  await page.waitForTimeout(320);
+  var clr0 = await page.evaluate(function () {
+    var o = {}; [].slice.call(document.querySelectorAll('.bd-pop button[data-trip]')).forEach(function (b) {
+      o[b.getAttribute('data-trip')] = b.parentNode.getBoundingClientRect().y; });
+    window.__c.cmd({ action: 'set_pressure_setpoint', mpa: 13.31 });   // 1930 psia, the pass-7 reading
+    return o;
+  });
+  var perm = null, low = null, lastOut = null;
+  for (var ci = 0; ci < 400 && !low; ci++) {   // 6 plant-s a read
+    var cq = await page.evaluate(function () { return window.__c.adv(1, 60); });
+    if (!perm && cq.st.lo_press && cq.st.lo_press.permissive === true) perm = cq;
+    if (!perm) lastOut = cq;
+    if (perm && cq.mpa * 145.038 <= 1935) low = cq;
+  }
+  await page.waitForTimeout(400);
+  var clr = await page.evaluate(function (y0) {
+    var worst = 0; [].slice.call(document.querySelectorAll('.bd-pop button[data-trip]')).forEach(function (b) {
+      var k = b.getAttribute('data-trip'); if (y0[k] != null) worst = Math.max(worst, Math.abs(b.parentNode.getBoundingClientRect().y - y0[k])); });
+    return { msgs: RD.PwrBoardDriver.tripBlockMessages(), row: window.__c.row('lo_press'), si: window.__c.row('si_trip'),
+             status: window.__c.status(), open: !!document.querySelector('.bd-pop'), worst: +worst.toFixed(2) };
+  }, clr0);
+  ck('back under P-11 at 1930 psi, the stale "pressure rose above P-11" is GONE (owner ruling 2026-09-26, "Clear it")',
+    !!low && clr.open && clr.msgs.filter(function (m) { return /P-11/.test(m.msg || ''); }).length === 0 &&
+      !/RELEASED BY THE PLANT/.test(clr.row.text) && !/RELEASED BY THE PLANT/.test(clr.si.text),
+    (perm ? 'permissive back between ' + (lastOut ? (lastOut.mpa * 145.038).toFixed(0) : '?') + ' and ' + (perm.mpa * 145.038).toFixed(0) + ' psia' : 'P-11 never came back') +
+      (low ? ', read at ' + (low.mpa * 145.038).toFixed(0) + ' psia (' + low.mpa.toFixed(2) + ' MPa)' : '') +
+      ' · P-11 messages ' + clr.msgs.filter(function (m) { return /P-11/.test(m.msg || ''); }).length);
+  ck('  …and the card\'s status count carries only current reasons, with no row moved under the cursor',
+    /* 2026-09-26 (OWNER RULING "B", the P-6 source-range block): this ride now ALSO loses the SR
+     * block for a true reason — post-trip, the intermediate range falls through the 5E-11 A P-6
+     * reset inside the window, and "reactor power fell below ... (P-6)" is a current reason, not a
+     * stale one. So the count is held to the messages that stand, not to zero; the P-11 half is
+     * the check above. The SR row sits LAST on the card, so its line moves no row under the cursor. */
+    /* rc8f (2026-09-27): "count === standing messages" alone could not fail on a stale P-11
+     * message, because that message would be counted AND standing. The claim is restored: every
+     * counted message is a CURRENT reason — here only the SR row's P-6 loss — so the count must
+     * equal the P-6 messages and there must be no other. INJECTION: without the clear in
+     * `noteTripBlockEvents` this reads 3 counted, 1 P-6. */
+    !!low && (function () { var m = /(\d+) (?:WAS|WERE) RELEASED BY THE PLANT/.exec(clr.status.text);
+      var n = m ? +m[1] : 0;
+      var p6 = clr.msgs.filter(function (x) { return x.id === 'sr_high' && /P-6/.test(x.msg || ''); }).length;
+      return n === clr.msgs.length && n === p6; })() && clr.worst < 1,
+    clr.status.text + ' · msgs ' + clr.msgs.map(function (x) { return x.id; }).join(',') +
+      ' · largest row move ' + clr.worst + ' px');
   await page.evaluate(function () { window.__c.click('imrsk4xz2dm'); });
 
   // ============================================================ 5. the two walkthrough highlights
