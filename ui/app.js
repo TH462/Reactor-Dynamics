@@ -6719,13 +6719,48 @@
      * pool; picking one loads its starting condition (`from`) and starts it in the Instructor
      * tab. The old Follow-in-Instructor buttons are gone. */
     var ics = {}; (ENGINES[msel.engine].initStates || []).forEach(function (r) { ics[r[0]] = r[1]; });
-    var h = '<div class="m-note">Pick a walkthrough. The plant loads at its starting condition and the walkthrough runs in the Instructor tab, one step at a time.</div>';
-    return h + (procs.map(function (x) {
+    /* A leg can start at a preset free play does not offer (pwr2's `low_power`, the startup's hand-off
+     * state), which left its row with no "starts at". Name it from the plant family's list instead. */
+    (((PROFILES[ENGINES[msel.engine].plant] || {}).initStates) || []).forEach(function (r) { if (!ics[r[0]]) ics[r[0]] = r[1]; });
+    /* WHERE TO START, AND IN GROUPS (OWNER, 2026-09-28: "the walkthrough menu should explain where
+     * to start to perform a startup. The 'pick a walkthrough' line should be replaced." then "Maybe
+     * start grouping the walkthroughs. Ie startup, shutdown, TMI"). The pool is in plant order;
+     * GROUPS names each leg's group by id, in display order. A leg no group names (another plant's
+     * pool, or a leg added later and not placed yet) falls into a trailing unheaded group, so
+     * nothing can drop off the list. */
+    var GROUPS = msel.engine === 'pwr2' ? [
+      { title: 'Startup', note: 'Cold Shutdown to full power. Start here, at the first one.',
+        ids: ['pwr_heatup', 'pwr_startup', 'pwr_raise_power'] },
+      { title: 'Shutdown', note: 'Full power back to Cold Shutdown.',
+        ids: ['pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown'] },
+      { title: 'Incidents', note: 'Real events, replayed on this plant.',
+        ids: ['pwr_tmi2_incident'] }
+    ] : [];
+    function row(x) {
       var from = x.from && ics[x.from] ? ics[x.from] : null;
       return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) +
         (from ? '<span class="m-note"> · starts at ' + mesc(from) + '</span>' : '') + '</span>' +
         '<button class="btn" data-wtstart="' + mesc(x.id) + '">▶ Start</button></div>';
-    }).join('') || '<div class="m-note">No walkthroughs for this plant.</div>');
+    }
+    var placed = {}, h;
+    if (GROUPS.length) {
+      h = '<div class="m-note"><b>To start up the plant, begin with the first Startup walkthrough</b> and take them in order. ' +
+        'Each one offers the next when it finishes, and each loads its own starting condition, so you can also begin at any of them. ' +
+        'A running walkthrough is shown in the Instructor tab, one step at a time.</div>';
+      GROUPS.forEach(function (g) {
+        var rows = procs.filter(function (x) { return g.ids.indexOf(x.id) !== -1; });
+        rows.forEach(function (x) { placed[x.id] = 1; });
+        if (rows.length) h += '<div class="wt-group"><span class="wt-group-t">' + mesc(g.title) + '</span>' +
+          '<span class="m-note"> · ' + mesc(g.note) + '</span></div>' + rows.map(row).join('');
+      });
+    } else {
+      h = '<div class="m-note"><b>To start up the plant, begin with the first walkthrough</b> and work down the list. ' +
+        'Each one offers the next when it finishes, and each loads its own starting condition, so you can also begin at any of them. ' +
+        'A running walkthrough is shown in the Instructor tab, one step at a time.</div>';
+    }
+    var rest = procs.filter(function (x) { return !placed[x.id]; });
+    if (GROUPS.length && rest.length) h += '<div class="wt-group"><span class="wt-group-t">More</span></div>';
+    return procs.length ? h + rest.map(row).join('') : h + '<div class="m-note">No walkthroughs for this plant.</div>';
   }
 
   // THE SELECTION SCREEN IS GONE *(OWNER DIRECTIVE, 2026-08-11: "The plant and mission menu
