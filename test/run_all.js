@@ -1750,7 +1750,7 @@ var BASELINES = {
   // And against run_all itself: the unknown-baseline guard neutered 1, a runner dropped from
   // discovery 5, a runner placed in two shards 2, the whole suite forced into shard 1 2, and a
   // malformed --shard exiting 0 rather than 2, 4.
-  'run_ci_shards.js':      { code: 0, score: '34checks 0failed', secs: 1 },
+  'run_ci_shards.js':      { code: 0, score: '35checks 0failed', secs: 1 },   // 34 -> 35 (2026-09-29): the CI matrix went 3 -> 4 shards (30-min step budget exceeded); SHARDS asserts one row per shard.
   /* #639 (2026-09-05). NEW: a shipped release is history, not a draft. Alpha 1.7.2 merged to main at 08:50 and a change hours later rewrote its CHANGELOG.md section and its manual Rev 17 row IN PLACE -- with run_release and run_manual_rev both green, because a consistency check is satisfied by a coherent rewrite and neither holds any record of what shipped. test/released_seals.json is that record. NOT GIT-BASED, deliberately: gates.yml checks out with actions/checkout@v7 and no fetch-depth/fetch-tags, so CI has ONE COMMIT AND NO TAGS and `git show v1.7.2:...` would find nothing to compare and report green on every CI run. Six injections: rewriting the released 1.7.2 CHANGELOG section, its changelog.html entry, or the released Rev 17 row each redden; extending the PENDING -rc entry or the pending Rev 18 row does not; and cutting a release without sealing reddens with "PUBLISHED but never sealed", which is what makes the procedure self-enforcing rather than remembered. */
   'run_released_frozen.js': { code: 0, score: '5checks 0failed' },
   // NEW 2026-08-06 — the public site's SOCIAL CARDS. Every page carried a RELATIVE
