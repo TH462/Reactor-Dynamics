@@ -33,6 +33,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Alpha 1.8.0-rc11] — 2026-09-28
 
 ### Changed
+- **Landing page announces the walkthroughs** (site only; OWNER 2026-09-28): a NEW pill above the headline, "Guided walkthroughs now take you through a full plant startup and shutdown.", keyed to the public `walkthroughs` flag and hidden when it is off.
 - **Automatic cooldown ramp** (OWNER RULING 2026-09-28: "I ask for the automatic ramp because manually ramping down is tedious and people get bored with it."). In steam-pressure mode a lowered DUMP SETPOINT is a TARGET: the dump walks its working setpoint down so AVG COOLANT TEMPERATURE falls at 60 °F/hr (33.3 °C/hr); raising it, TAVG and CLOSED are unchanged. Declared departure, `DESIGN_COMPANION` §8.38 (WTSM 11.2 §11.2.2.1, ML11223A294: the operator lowers it by hand). Cooldown step 4 is one entry (type 120 psi) instead of a 34-entry stair; measured 546.9 → 345.3 °F in 202.7 plant-minutes, tile peak −67 °F/hr.
 - **1/M plot keeps the points taken before a Rewind** (#809 playtest: "1/m plot points are lost when rewinding steps"). Both the panel and the step-9a grader cleared the whole table when time went backwards; `RD.OneOverMCore.rewindTo` drops only later points.
 - **Trip-block row glow follows the substep** (#809: cooldown 3b never lit SI REACTOR TRIP). `stepTripWants` reads `accs[].cmd`: met rows keep the steady ring, the first unmet pulses.
