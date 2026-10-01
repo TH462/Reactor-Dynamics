@@ -292,6 +292,20 @@ export async function usagePage(env, url) {
   } catch (e) { probeErr = e.message; }
 
   const wt = haveWt > 0 ? await walkthroughSections(apiToken, since, versionWhere) : [];
+  /* Same guard for the openers: names no doubles, so it is safe on a window with none. */
+  let haveOp = 0, opProbeErr = '';
+  try {
+    const r = await sql(apiToken, `SELECT sum(_sample_interval) AS n FROM ${DATASET}
+        WHERE (blob1 = 'opener_beat' OR (blob1 LIKE 'mission_%' AND blob5 LIKE 'opener_%'))
+          AND blob2 <> 'dev' AND ${since}${versionWhere}`);
+    haveOp = num(r[0] && r[0].n);
+  } catch (e) { opProbeErr = e.message; }
+  const op = haveOp > 0 ? await openerSections(apiToken, since, versionWhere) : [];
+  const noOp = '<p class="muted">No opener sessions in this window'
+    + (selected ? ' for <b>' + esc(sampleLabel) + '</b>' : '') + '. Openers are public from '
+    + 'Alpha 1.8.0 on.'
+    + (opProbeErr ? ' The probe itself errored: <span class="mono">' + esc(opProbeErr) + '</span>' : '')
+    + '</p>';
   // Unconditional, unlike the walkthrough sections above: a first command or panel is
   // ordinary command/panel_open traffic, not a walkthrough event, so it needs no probe
   // gated on `haveWt` — see firstMinuteSection's own header for why it names no
@@ -335,6 +349,8 @@ export async function usagePage(env, url) {
     + 'for sampling. Durations are <b>wall time</b>, not plant time — a step can burn a '
     + 'minute of someone’s life and an hour of the clock at 600×.</p>'
     + (haveWt > 0 ? wt.join('') : noData)
+    + '<h2>Guided openers <span class="muted">— the five-minute instructor chat</span></h2>'
+    + (haveOp > 0 ? op.join('') : noOp)
     + '<h2>The first 60 seconds <span class="muted">— what a new visitor does before they decide to stay</span></h2>'
     + firstMinute.join('')
     + '<h2>In the simulator <span class="muted">— everything else the sim reports</span></h2>'
@@ -575,6 +591,160 @@ async function walkthroughSections(apiToken, since, versionWhere) {
       + '<p class="muted">The step the player was ON when they pressed the walkthrough’s '
       + 'own Rewind — a step people back into is a step they got wrong. The checkpoint '
       + 'picker is a decision about the plant and is not counted here.</p>'),
+  ];
+}
+
+// ============================================================ the openers
+/* THE GUIDED OPENERS (#811) — the five-minute instructor chat on the idle Instructor tab.
+ * An opener runs as a mission, so start/finish/abandon are `mission_*` rows keyed by the
+ * opener's id (blob5 = id); its progress is `opener_beat`, keyed `id:NN` with NN the beat's
+ * index in the authored `beats` list. `mission_abandon.beat` is NOT read: a pagehide abandon
+ * files beat 0 whatever beat the player was on (see "where they stopped" below).
+ *
+ * THE BEAT NAMES are copied here because the Worker cannot load scenarios/. A copy can rot,
+ * so `test/run_usage_page.js` compares it to `RD.OPENERS[id].beats` and reddens on drift.
+ * An index past the list (an opener re-authored after the row was written) prints bare. */
+export const OPENER_BEATS = {
+  opener_pwr2_hfp: ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_small', 'o3_dump',
+    'o4_rods', 'o4_wrong', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help',
+    'o7_spray_watch', 'o8_late', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help',
+    'o11_trip', 'o12_settle', 'o13_end', 'ox_trip_early'],
+};
+const beatName = (id, i) => {
+  const n = (OPENER_BEATS[id] || [])[i];
+  return n ? i + ' · ' + n : String(i);
+};
+
+async function openerSections(apiToken, since, versionWhere) {
+  versionWhere = versionWhere || '';
+  const failed = [];
+  const errRows = (what) => (e) => {
+    failed.push(what + ': ' + String((e && e.message) || e).slice(0, 200));
+    return [];
+  };
+  const isOpener = "blob5 LIKE 'opener_%'";
+  const [ends, funnel, beatRows, finishers, times] = await Promise.all([
+    sql(apiToken, `SELECT blob1 AS ev, blob5 AS id, count(DISTINCT blob4) AS sessions
+       FROM ${DATASET} WHERE blob1 IN ('mission_start', 'mission_complete', 'mission_abandon')
+         AND ${isOpener} AND blob2 <> 'dev' AND ${since}${versionWhere}
+       GROUP BY ev, id`).catch(errRows('starts/ends')),
+    // Off the KEY, not double4: the key is the part the daily rollup keeps (index.js KEY_OF).
+    sql(apiToken, `SELECT blob5 AS k, count(DISTINCT blob4) AS sessions
+       FROM ${DATASET} WHERE blob1 = 'opener_beat' AND blob2 <> 'dev' AND ${since}${versionWhere}
+       GROUP BY k`).catch(errRows('beats reached')),
+    /* WHERE THEY STOPPED comes from each session's LAST beat row, not from
+     * mission_abandon.beat: a tab closed mid-opener files its abandon from pagehide with
+     * beat 0 (app.js `end`), which would read as "left at the hello". */
+    sql(apiToken, `SELECT blob4 AS s, blob5 AS k, timestamp AS t
+       FROM ${DATASET} WHERE blob1 = 'opener_beat' AND blob2 <> 'dev' AND ${since}${versionWhere}
+       LIMIT 20000`).catch(errRows('where they stopped')),
+    sql(apiToken, `SELECT blob4 AS s FROM ${DATASET} WHERE blob1 = 'mission_complete'
+         AND ${isOpener} AND blob2 <> 'dev' AND ${since}${versionWhere}
+       GROUP BY s`).catch(errRows('finishers')),
+    sql(apiToken, `SELECT blob1 AS ev, blob5 AS id, double1 AS seconds
+       FROM ${DATASET} WHERE blob1 IN ('mission_complete', 'mission_abandon') AND ${isOpener}
+         AND blob2 <> 'dev' AND ${since}${versionWhere}
+       LIMIT 20000`).catch(errRows('time')),
+  ]);
+
+  // ---- 1. started / finished / ended early, plus wall time ----------------
+  const by = new Map();
+  const get = (id) => {
+    if (!by.has(id)) by.set(id, { started: 0, finished: 0, ended: 0, tDone: [], tQuit: [] });
+    return by.get(id);
+  };
+  ends.forEach((r) => {
+    const b = get(String(r.id || ''));
+    if (r.ev === 'mission_start') b.started += num(r.sessions);
+    else if (r.ev === 'mission_complete') b.finished += num(r.sessions);
+    else if (r.ev === 'mission_abandon') b.ended += num(r.sessions);
+  });
+  times.forEach((r) => {
+    const b = get(String(r.id || ''));
+    (r.ev === 'mission_complete' ? b.tDone : b.tQuit).push(num(r.seconds));
+  });
+  const med = (v) => (v.length ? dur(quantile(v.slice().sort((a, b) => a - b), 0.5)) : '—');
+  const overview = [...by.keys()].sort().map((id) => {
+    const b = by.get(id);
+    const rate = b.started ? Math.round((b.finished / b.started) * 100) : null;
+    return {
+      id, started: b.started, finished: b.finished, ended: b.ended,
+      rate: rate == null ? '—' : pctBar(rate, rate + '%'),
+      tDone: med(b.tDone), tQuit: med(b.tQuit),
+    };
+  });
+  const startedOf = (id) => (by.get(id) || { started: 0 }).started;
+
+  // ---- 2. beats reached ------------------------------------------------------
+  /* Against the STARTERS, the walkthrough funnel's rule: an opener closed before its first
+   * beat is the sharpest finding there is, and normalising on beat 0 would hide it. */
+  const funnelRows = funnel.map((r) => {
+    const k = keyParts(r.k), i = Number(k.b), s = num(r.sessions), st = startedOf(k.id);
+    return { id: k.id, i, beat: beatName(k.id, i), s, st };
+  }).sort((a, b) => (a.id === b.id ? a.i - b.i : (a.id < b.id ? -1 : 1)))
+    .map((r) => ({ id: r.id, beat: r.beat,
+      bar: r.st ? pctBar((r.s / r.st) * 100, r.s + ' / ' + r.st) : pctBar(0, String(r.s)) }));
+
+  // ---- 3. where the unfinished ones stopped --------------------------------
+  const done = new Set(finishers.map((r) => String(r.s)));
+  const last = new Map();
+  beatRows.forEach((r) => {
+    const s = String(r.s);
+    if (done.has(s)) return;
+    /* TIES ARE THE COMMON CASE: the client batches, so every beat in one send carries the
+     * same second (measured 2026-09-30 on the live dataset — beats 3 and 6 at 19:59:27).
+     * A tie goes to the HIGHER index, which is script order for every beat but the
+     * early-trip branch (index 23), the only one authored out of sequence. */
+    const t = String(r.t || ''), k = keyParts(r.k);
+    const cur = last.get(s);
+    if (!cur || t > cur.t || (t === cur.t && Number(k.b) > Number(cur.k.b))) last.set(s, { t, k });
+  });
+  const stopBy = new Map();
+  last.forEach((v) => {
+    const key = v.k.id + '|' + Number(v.k.b);
+    stopBy.set(key, (stopBy.get(key) || 0) + 1);
+  });
+  const quitRows = [...stopBy.entries()].map(([key, n]) => {
+    const [id, i] = key.split('|');
+    return { id, i: Number(i), sessions: n };
+  }).sort((a, b) => b.sessions - a.sessions || a.i - b.i)
+    .map((r) => ({ id: r.id, beat: beatName(r.id, r.i), sessions: r.sessions }));
+
+  const errNote = failed.length
+    ? '<p class="err">' + failed.length + ' of the 5 opener queries failed, so the sections '
+      + 'below are incomplete — this is NOT "no activity": '
+      + failed.map((f) => '<span class="mono">' + esc(f) + '</span>').join(' · ') + '</p>'
+    : '';
+
+  return [
+    errNote,
+    await section('Openers started, finished, ended early', async () =>
+      table(overview, [
+        { key: 'id', label: 'Opener' },
+        { key: 'started', label: 'Started', num: true },
+        { key: 'finished', label: 'Finished', num: true },
+        { key: 'ended', label: 'Ended early', num: true },
+        { key: 'rate', label: 'Completion', raw: true },
+        { key: 'tDone', label: 'Median time, finished', num: true },
+        { key: 'tQuit', label: 'Median time, ended early', num: true }])
+      + '<p class="muted">Counted in SESSIONS. <b>Ended early</b> is End pressed, another '
+      + 'scenario started, or the tab closed mid-opener. Times are <b>wall time</b> — the '
+      + 'opener is written to take about five minutes.</p>'),
+    await section('Beats reached — how far do they go', async () =>
+      table(funnelRows, [
+        { key: 'id', label: 'Opener' }, { key: 'beat', label: 'Beat' },
+        { key: 'bar', label: 'Sessions reaching it, of those who started', raw: true }])
+      + '<p class="muted">Beat = its position in the opener’s script, then its name. '
+      + '<span class="mono">_help</span> and <span class="mono">_wrong</span> beats are '
+      + 'side branches (the instructor stepping in, or a move in the wrong direction), so '
+      + 'a low count there is good news. A beat entered and left inside one update is not '
+      + 'recorded.</p>'),
+    await section('Where the unfinished ones stopped', async () =>
+      table(quitRows, [
+        { key: 'id', label: 'Opener' }, { key: 'beat', label: 'Beat' },
+        { key: 'sessions', label: 'Sessions', num: true }])
+      + '<p class="muted">Each unfinished session’s LAST beat — where they were when they '
+      + 'left, or where they are now if the session is still open.</p>'),
   ];
 }
 

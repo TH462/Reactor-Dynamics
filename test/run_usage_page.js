@@ -128,7 +128,23 @@ function injectSrc(rel, src) {
       // 15. "touched nothing" is forced to 0 instead of `total - touched.size` — the
       //     0-touch category, a real answer to "how far do they get", disappears.
       .split('const zeroTouch = Math.max(0, totalSessions - touched.size);')
-      .join('const zeroTouch = 0;');
+      .join('const zeroTouch = 0;')
+      /* --- guided openers (#811) -------------------------------------------------- */
+      // 16. the beat funnel normalised on itself instead of on the starters.
+      .split('pctBar((r.s / r.st) * 100, r.s')
+      .join('pctBar(100, r.s')
+      // 17. "where they stopped" takes a session's FIRST-seen beat row, not its latest.
+      .split('if (!cur || t > cur.t || (t === cur.t && Number(k.b) > Number(cur.k.b))) last.set(s')
+      .join('if (!cur) last.set(s')
+      // 20. a same-second tie (one client batch) goes to whichever row came back first.
+      .split(' || (t === cur.t && Number(k.b) > Number(cur.k.b))) last.set(s')
+      .join(') last.set(s')
+      // 18. finishers are no longer excluded from "where they stopped".
+      .split('if (done.has(s)) return;')
+      .join('')
+      // 19. the beat-name copy drifts from the authored opener (one name dropped).
+      .split("'o4_rods', 'o4_wrong',")
+      .join("'o4_wrong',");
   }
   if (rel === 'sessions.js') {
     return src
@@ -209,6 +225,13 @@ function dispatch(rows, q) {
     // with any query above or below it.
     if (has('GROUP BY release, channel')) return Promise.resolve(rows.releases || []);
     if (has("LIKE 'walkthrough_%'")) return Promise.resolve(rows.probe);
+    // Guided openers (#811). Probe first: it also names 'opener_beat'.
+    if (has("blob1 = 'opener_beat' OR")) return Promise.resolve(rows.opProbe || []);
+    if (has("'opener_beat'", 'timestamp AS t')) return Promise.resolve(rows.opBeatRows || []);
+    if (has("'opener_beat'", 'GROUP BY k')) return Promise.resolve(rows.opFunnel || []);
+    if (has("'mission_complete'", 'GROUP BY s')) return Promise.resolve(rows.opFinishers || []);
+    if (has("'mission_start'", 'GROUP BY ev, id')) return Promise.resolve(rows.opEnds || []);
+    if (has("'mission_complete'", 'double1 AS seconds')) return Promise.resolve(rows.opTimes || []);
     if (has("'walkthrough_start'")) return Promise.resolve(rows.starts);
     if (has("'walkthrough_end'")) return Promise.resolve(rows.ends);
     if (has("'walkthrough_rewind'")) return Promise.resolve(rows.rewinds);
@@ -1040,6 +1063,75 @@ async function renderSessionDetail(rows, sid, seen) {
     firstMinuteQueries.length > 0 && firstMinuteQueries.every(function (q) {
       return q.indexOf("blob3 = 'Alpha 1.7.9'") !== -1 && q.indexOf("blob2 = 'public'") !== -1;
     }));
+
+  head('18. guided openers (#811): started/finished, beats reached, where they stopped');
+  /* 4 starters, 1 finished (s1), 2 ended early. Beat rows arrive OUT OF TIME ORDER for s2 so a
+   * first-seen pick (01) and the correct latest pick (06) disagree. s1 reached beat 22 and
+   * finished, so it must not appear among "where they stopped". */
+  var OP = 'opener_pwr2_hfp';
+  var br = function (s, i, t) { return { s: s, k: OP + ':' + String(i).padStart(2, '0'), t: '2026-09-29 10:' + t }; };
+  var opRows = Object.assign({}, ROWS, {
+    opProbe: [{ n: 20 }],
+    opEnds: [
+      { ev: 'mission_start', id: OP, sessions: 4 },
+      { ev: 'mission_complete', id: OP, sessions: 1 },
+      { ev: 'mission_abandon', id: OP, sessions: 2 },
+    ],
+    opFunnel: [
+      { k: OP + ':06', sessions: 2 }, { k: OP + ':00', sessions: 4 },
+      { k: OP + ':01', sessions: 3 }, { k: OP + ':22', sessions: 1 },
+    ],
+    opBeatRows: [
+      br('s1', 0, '00:00'), br('s1', 1, '00:10'), br('s1', 6, '00:20'), br('s1', 22, '05:00'),
+      br('s2', 1, '01:10'), br('s2', 6, '01:20'), br('s2', 0, '01:00'),
+      br('s3', 0, '02:00'), br('s3', 1, '02:10'),
+      // s4: beats 0 and 1 in ONE batch, same second, the EARLIER beat returned first.
+      br('s4', 0, '03:00'), br('s4', 1, '03:00'),
+    ],
+    opFinishers: [{ s: 's1' }],
+    opTimes: [
+      { ev: 'mission_complete', id: OP, seconds: 300 },
+      { ev: 'mission_abandon', id: OP, seconds: 60 },
+      { ev: 'mission_abandon', id: OP, seconds: 120 },
+    ],
+  });
+  var seenOp = [];
+  var pageOp = await render(opRows, 't', seenOp);
+  var opSec = pageOp.slice(pageOp.indexOf('Guided openers'), pageOp.indexOf('The first 60 seconds'));
+  ck('the openers block renders', opSec.length > 0 && /Openers started, finished, ended early/.test(opSec));
+  ck('overview: 4 started, 1 finished, 2 ended early, 25 % completion',
+    /<td>opener_pwr2_hfp<\/td><td class="num">4<\/td><td class="num">1<\/td><td class="num">2<\/td><td><div class="bar"><i style="width:25\.0%">/.test(opSec));
+  ck('median wall time: 5m 0s finished, 1m 0s ended early',
+    /<td class="num">5m 0s<\/td><td class="num">1m 0s<\/td>/.test(opSec));
+  ck('beats are named and in script order (0, 1, 6, 22)',
+    /0 · o0_hello[\s\S]*1 · o1_load[\s\S]*6 · o4_rods[\s\S]*22 · o13_end/.test(opSec));
+  ck('beat funnel is against the STARTERS: beat 6 = 2 of 4 at 50 %',
+    /6 · o4_rods<\/td><td><div class="bar"><i style="width:50\.0%"><\/i><b>2 \/ 4<\/b>/.test(opSec));
+  var stopSec = opSec.slice(opSec.indexOf('Where the unfinished ones stopped'));
+  ck('where they stopped: beat 1 x2 (s3, s4), beat 6 x1 (s2 by LATEST row)',
+    /1 · o1_load<\/td><td class="num">2<\/td>/.test(stopSec)
+    && /6 · o4_rods<\/td><td class="num">1<\/td>/.test(stopSec));
+  ck('...and the finisher (s1, last at beat 22) is not among them', !/>22 · /.test(stopSec));
+  var opQ = seenOp.filter(function (q) { return /opener/.test(q); });
+  ck('all 6 opener queries issued (probe + 5), each excluding dev', opQ.length === 6
+    && opQ.every(function (q) { return q.indexOf("blob2 <> 'dev'") !== -1; }), opQ.length + ' seen');
+  var noOpPage = await render(ROWS, 't');
+  ck('no opener rows: the probe guard prints the empty note, not empty tables',
+    /No opener sessions in this window/.test(noOpPage) && !/Openers started, finished/.test(noOpPage));
+  /* THE BEAT-NAME COPY vs THE AUTHORED OPENER. usage.js cannot load scenarios/, so it keeps a
+   * copy; a reordered or renamed beat would silently relabel every historical row. */
+  globalThis.RD = globalThis.RD || {};
+  require(path.join(__dirname, '..', 'scenarios', 'opener_pwr2_hfp.js'));
+  globalThis.__RD_FAKE_SQL = fakeSql(ROWS);
+  var umod = await loadEsm(path.join(__dirname, '..'), 'usage.js',
+    { 'cfapi.js': fakeCfapi('// names ' + (++nonce) + '\n') });
+  var authored = Object.keys(RD.OPENERS || {}).sort();
+  ck('OPENER_BEATS covers every authored opener', authored.length > 0
+    && JSON.stringify(Object.keys(umod.OPENER_BEATS).sort()) === JSON.stringify(authored),
+    authored.join(','));
+  ck('...and each copy matches the authored beat list exactly', authored.every(function (id) {
+    return JSON.stringify(umod.OPENER_BEATS[id]) === JSON.stringify(RD.OPENERS[id].beats.map(function (x) { return x.id; }));
+  }));
 
   console.log('\n' + BOLD + (nFail ? RED + 'FAIL' : GREEN + 'PASS') + RST
     + '  ' + nPass + ' passed, ' + nFail + ' failed'

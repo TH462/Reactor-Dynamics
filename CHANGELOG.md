@@ -30,6 +30,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added
+- **Ops dashboard: Guided openers on the Feature usage page** (site only, #811; OWNER 2026-09-30: "add it to the site."). Started / finished / ended early with median wall time, beats reached against the starters, and each unfinished session's last beat (not `mission_abandon.beat`, which a tab close files as 0). `run_usage_page` 112 → 123.
+
 ## [Alpha 1.8.0] — 2026-09-29
 
 ### Changed
