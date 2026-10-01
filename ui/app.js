@@ -8781,6 +8781,7 @@
     // this is the player acting. Blocked commands are dropped inside command().
     if (RD.Events) RD.Events.command(cmdT, c, !!(r && r.type === 'blocked') || !!(r && r.type === 'error'));
     TEL.command(c, !!(r && r.type === 'blocked'));
+    if (c && REBASE_ON[c.action] && !(r && (r.type === 'blocked' || r.type === 'error'))) rebaseAutosave();   // #816
     // The command was blocked or refused, not executed — show why. Instructor gates focus
     // the Instructor card (its commentary carries the message); plant interlocks
     // (M4, e.g. the rod-withdrawal block) flash theirs in the scanner bar; an ERROR —
@@ -10308,6 +10309,17 @@
        * mission_start / walkthrough_start. The leg button IS a [data-wtstart] and falls through
        * to that handler below, so a leg starts exactly one way. */
       if (e.target.closest('[data-mcontinue]')) { menuCta('continue'); continueAutosave(); return; }
+      /* THE SAME CONFIRM THE INSTRUCTOR-TAB OPENER ASKS (#816 review): a card button that
+       * replaces a plant which has RUN arms on the first press and acts on the second. */
+      var arm = e.target.closest('#mpStart [data-mopener], #mpStart [data-wtstart]');
+      if (arm && plantHasRun() && arm.getAttribute('data-armed') !== '1') {
+        arm.setAttribute('data-armed', '1');
+        arm.classList.add('mp-reset-armed');
+        txt(arm, '⚠ This restarts the plant. Your current plant will be lost. Press again to start.');
+        clearTimeout(resetArmT);
+        resetArmT = setTimeout(function () { renderMissionSelect(); }, 6000);
+        return;
+      }
       var mo = e.target.closest('[data-mopener]');
       if (mo) { menuCta('start_opener'); closeMissionSelect(); startOpener(mo.getAttribute('data-mopener')); return; }
       if (e.target.closest('[data-mcta]')) menuCta(e.target.closest('[data-mcta]').getAttribute('data-mcta'));
@@ -11438,7 +11450,7 @@
 
   function rebuildPlantUI() {
     heldShown = false;        /* #520 — a rebuilt plant can halt again, and must say so again */
-    asBaseT = service.simTime;   /* #816 — no autosave until THIS plant has run */
+    rebaseAutosave();   /* #816 — no autosave until THIS plant has run */
     // BEFORE chartBuf can take a row: the packed row width and the column of every series
     // come from the incoming plant's profile, and a sample taken against the old index
     // would be silently misfiled rather than empty.
@@ -11507,6 +11519,19 @@
     try { res = service.loadState(state); }
     catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
     if (res && res.type === 'error') return res.message || 'not a valid save';
+    /* WHAT IS RUNNING NOW IS WHAT THE SAVE SAYS (#816 review): an opener/scenario/follow from
+     * BEFORE the load used to survive it in ui.*, leaving autosave off for the session and the
+     * opener UI stale. Re-derive from the restored instructor; ui.follow re-syncs on render. */
+    var rIns = service.instructor || {}, rSid = rIns.mode === 'scenario' && rIns.scenario ? rIns.scenario.id : null;
+    var rPrev = ui.opener || ui.scenario || null;
+    ui.follow = null;
+    ui.opener = rSid && RD.OPENERS && RD.OPENERS[rSid] ? rSid : null;
+    ui.scenario = rSid && !ui.opener ? rSid : null;
+    openerConfirm = null; lastLcKey = null;
+    /* Tear the chat/trend down only when the content CHANGED: a save of the SAME running opener
+     * continues its transcript, and resetting it there broke the next line's board pointer
+     * (verify_opener_ui, measured 53/55). */
+    if (rPrev !== rSid) { restoreInstrTrend(); resetInstrFlow(); resetChat(); }
     afterPlantChange();
     diagReset('restore', { engine_key: ui.engineKey });
     return null;
@@ -11527,12 +11552,20 @@
    * every load, so without that guard simply opening the page would overwrite a heatup in
    * progress with a fresh Hot Full Power plant. Quota and storage errors are swallowed. */
   var AUTOSAVE_KEY = 'rd_autosave', AUTOSAVE_MS = 30000;
-  var asBaseT = null;   // service.simTime when the plant was last (re)built — see rebuildPlantUI
+  var asBaseT = null;   // service.simTime at the last (re)build, timeline jump or save
+  var plantBaseT = null;   // service.simTime at the last (re)build or jump ONLY — "has this plant run?"
+  /* Called on every path that puts a new timeline under the player: boot, rebuildPlantUI, and
+   * the commands in REBASE_ON (cmd()). A rewind or a retry resets sim time WITHOUT a rebuild, and
+   * a `>` guard against a pre-rewind base then refused every later save (#816 review). */
+  function rebaseAutosave() { asBaseT = plantBaseT = service ? service.simTime : null; }
+  var REBASE_ON = { rewind: 1, start_follow: 1, start_checklist: 1, start_opener: 1, start_scenario: 1, reset: 1 };
+  function plantHasRun() { return !!service && plantBaseT != null && service.simTime !== plantBaseT; }
   function autosaveEligible() {
     if (!service || ui.opener || ui.scenario) return false;
     var ins = latest && latest.instructor;
     if (ins && ins.mode === 'scenario') return false;
-    return asBaseT != null && service.simTime > asBaseT;
+    // DIFFERS, not "is greater": a timeline jump the rebase missed must still save, never block.
+    return asBaseT != null && service.simTime !== asBaseT;
   }
   function autosave() {
     if (!autosaveEligible()) return false;
@@ -11559,9 +11592,11 @@
     try { a = JSON.parse(localStorage.getItem(AUTOSAVE_KEY)); } catch (e) { a = undefined; }
     if (a === null) return null;
     var ok = a && typeof a === 'object' && a.v === 1 && typeof a.savedAt === 'number' &&
-      a.snapshot && a.snapshot.metadata && ENGINES[a.engine] && a.engine === (msel.engine || ui.engineKey);
+      a.snapshot && a.snapshot.metadata && typeof a.engine === 'string';
     if (!ok) { try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {} return null; }
-    return a;
+    // ANOTHER ENGINE'S SAVE is not offered here and NOT deleted (#816 review: opening
+    // ?engine=pwr used to delete the PWR2 save).
+    return a.engine === (msel.engine || ui.engineKey) ? a : null;
   }
   function agoText(ms) {
     var m = Math.max(0, Math.round((Date.now() - ms) / 60000));
@@ -12150,6 +12185,7 @@
     buildGauges(); buildIndications(); buildPhysics();
     buildPlantDisplay();
     service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
+    rebaseAutosave();   // #816 review: boot skips rebuildPlantUI, so without this the boot plant never autosaved
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
     buildAutomate();

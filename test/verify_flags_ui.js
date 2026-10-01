@@ -1402,11 +1402,70 @@ function pinChannel(ch) {
   ck('#816 dev: everything done -> the card is hidden', !v3.shown && v3.legs.length === 0, JSON.stringify(v3));
   await s3.ctx.close();
 
+  /* #816 REVIEW FIXES. The old "a just-loaded plant is NOT autosaved" passed only because the
+   * BOOT path never set the autosave base at all — the boot plant could never autosave. These
+   * drive the boot plant, a rewind, the card's confirm, and Continue out of a running opener. */
+  async function runFor(pg, secs) {
+    var t = await pg.evaluate(function () { return RD.__dev.service().simTime; });
+    await pg.waitForFunction(function (t) { return RD.__dev.service().simTime > t; }, t + secs, { timeout: 30000 });
+  }
+  var s5 = await menuPage(null);
+  var p5 = s5.page;
+  await p5.click('#missionClose');
+  await runFor(p5, 1);
+  ck('#816: boot plant, menu dismissed, run -> autosave() saves',
+    (await p5.evaluate(function () { return RD.__dev.autosave(); })) === true);
+  // REWIND: a save, then a rewind to an EARLIER point, then run -> the save is the post-rewind state.
+  var rw = await p5.evaluate(function () {
+    var svc = RD.__dev.service(); svc._pushCheckpoint(); return svc.simTime; });
+  await runFor(p5, 2);
+  var rw1 = await p5.evaluate(function () {
+    RD.__dev.autosave(); return JSON.parse(localStorage.getItem('rd_autosave')).snapshot.metadata.sim_time; });
+  await p5.evaluate(function () { RD.__dev.service().handleCommand({ action: 'rewind', steps: 1, exact: true }); });
+  await p5.waitForTimeout(400);
+  var rw2 = await p5.evaluate(function () {
+    var ok = RD.__dev.autosave(); return { ok: ok, t: JSON.parse(localStorage.getItem('rd_autosave')).snapshot.metadata.sim_time,
+      now: RD.__dev.service().simTime }; });
+  ck('#816: after a rewind, the next autosave holds the POST-rewind plant',
+    rw2.ok && rw2.t < rw1 && rw2.t >= rw - 0.5, JSON.stringify({ cp: rw, before: rw1, after: rw2 }));
+  // THE CARD ASKS FIRST once the plant has run, like the Instructor-tab opener.
+  await p5.click('#mainMenuBtn');
+  await p5.click('#mpStart [data-mopener]');
+  var armed = await p5.evaluate(function () {
+    var b = document.querySelector('#mpStart [data-mopener]');
+    return { armed: !!b && b.getAttribute('data-armed') === '1', mode: RD.__dev.service().instructor.mode };
+  });
+  ck('#816: on a plant that has run, the card opener button asks before replacing it',
+    armed.armed && armed.mode !== 'scenario', JSON.stringify(armed));
+  await p5.click('#mpStart [data-mopener]');
+  await p5.waitForFunction(function () { return RD.__dev.service().instructor.mode === 'scenario'; });
+  await p5.click('#mainMenuBtn');
+  await p5.click('#mpStart [data-mcontinue]');
+  await runFor(p5, 1);
+  ck('#816: Continue out of a running opener -> autosave works afterwards',
+    (await p5.evaluate(function () { return RD.__dev.autosave(); })) === true);
+  await s5.ctx.close();
+
+  var s6 = await menuPage(null, prog({ completed_openers: ['opener_pwr2_hfp'] }));
+  var v6 = await sh(s6.page);
+  ck('#816: only the opener done -> Next up names the first walkthrough, no opener button',
+    v6.shown && /Next up/.test(v6.text) && v6.legs.join() === 'pwr_heatup' && !v6.opener, JSON.stringify(v6));
+  await s6.ctx.close();
+
+  // ANOTHER ENGINE'S SAVE survives a visit to a different engine (not offered, not deleted).
+  var c7 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await c7.addInitScript('try { localStorage.setItem("rd_autosave", JSON.stringify({ v: 1, savedAt: Date.now(), release: "x", engine: "pwr2", snapshot: { metadata: { plant_id: "pwr2" } } })); } catch (e) {}');
+  var p7 = await c7.newPage();
+  await p7.goto('file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr&dev=1');
+  await p7.waitForSelector('#mainMenuBtn');
+  var v7 = await sh(p7);
+  ck('#816: a PWR2 save is neither offered nor deleted on ?engine=pwr',
+    v7.cont === '' && !!(await p7.evaluate(function () { return localStorage.getItem('rd_autosave'); })), JSON.stringify(v7));
+  await c7.close();
+
   // AUTOSAVE + CONTINUE, mid-walkthrough, through a real reload.
   var s4 = await menuPage(null);
   var p4 = s4.page;
-  ck('#816: a just-loaded plant (no sim time) is NOT autosaved',
-    (await p4.evaluate(function () { return RD.__dev.autosave(); })) === false);
   await p4.click('#mpStart [data-wtstart="pwr_heatup"]');
   await p4.waitForFunction(function () { var c = RD.__dev.service().instructor.checklist; return c && c.procedure_id === 'pwr_heatup'; });
   var t0 = await p4.evaluate(function () { return RD.__dev.service().simTime; });
