@@ -715,9 +715,15 @@ async function openerSections(apiToken, since, versionWhere) {
       + 'below are incomplete — this is NOT "no activity": '
       + failed.map((f) => '<span class="mono">' + esc(f) + '</span>').join(' · ') + '</p>'
     : '';
+  // The two raw-row queries stop at 20,000 rows; past that their tables are short, and say so.
+  const capped = beatRows.length >= 20000 || times.length >= 20000;
+  const capNote = capped
+    ? '<p class="warn">⚠ A raw-row query hit its 20,000-row cap: the median times and '
+      + '"where they stopped" are drawn from part of this window. Narrow the window.</p>'
+    : '';
 
   return [
-    errNote,
+    errNote + capNote,
     await section('Openers started, finished, ended early', async () =>
       table(overview, [
         { key: 'id', label: 'Opener' },
@@ -727,9 +733,11 @@ async function openerSections(apiToken, since, versionWhere) {
         { key: 'rate', label: 'Completion', raw: true },
         { key: 'tDone', label: 'Median time, finished', num: true },
         { key: 'tQuit', label: 'Median time, ended early', num: true }])
-      + '<p class="muted">Counted in SESSIONS. <b>Ended early</b> is End pressed, another '
-      + 'scenario started, or the tab closed mid-opener. Times are <b>wall time</b> — the '
-      + 'opener is written to take about five minutes.</p>'),
+      + '<p class="muted">Counts are SESSIONS. <b>Ended early</b> is End pressed or the tab '
+      + 'closed mid-opener. Starting another scenario over an opener files no ending row, so '
+      + 'Finished + Ended early can fall short of Started. Times are per run, <b>wall time</b> '
+      + 'from the opener’s start, including any time the tab sat idle. The opener is written '
+      + 'to take about five minutes.</p>'),
     await section('Beats reached — how far do they go', async () =>
       table(funnelRows, [
         { key: 'id', label: 'Opener' }, { key: 'beat', label: 'Beat' },

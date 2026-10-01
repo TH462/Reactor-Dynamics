@@ -144,7 +144,10 @@ function injectSrc(rel, src) {
       .join('')
       // 19. the beat-name copy drifts from the authored opener (one name dropped).
       .split("'o4_rods', 'o4_wrong',")
-      .join("'o4_wrong',");
+      .join("'o4_wrong',")
+      // 21. the row-cap warning never fires.
+      .split('const capped = beatRows.length >= 20000 || times.length >= 20000;')
+      .join('const capped = false;');
   }
   if (rel === 'sessions.js') {
     return src
@@ -1129,6 +1132,10 @@ async function renderSessionDetail(rows, sid, seen) {
   ck('OPENER_BEATS covers every authored opener', authored.length > 0
     && JSON.stringify(Object.keys(umod.OPENER_BEATS).sort()) === JSON.stringify(authored),
     authored.join(','));
+  ck('the ending note does not claim a scenario switch files an ending', !/another scenario started, or/.test(opSec) && /files no ending row/.test(opSec));
+  var capRows = Object.assign({}, opRows, { opTimes: Array.from({ length: 20000 }, function () { return { ev: 'mission_abandon', id: OP, seconds: 1 }; }) });
+  ck('a raw-row query at its 20,000 cap says the tables are partial', /hit its 20,000-row cap/.test(await render(capRows, 't'))
+    && !/hit its 20,000-row cap/.test(pageOp));
   ck('...and each copy matches the authored beat list exactly', authored.every(function (id) {
     return JSON.stringify(umod.OPENER_BEATS[id]) === JSON.stringify(RD.OPENERS[id].beats.map(function (x) { return x.id; }));
   }));
