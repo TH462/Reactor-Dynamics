@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 22  
+**Revision:** 23  
 
 ---
 
@@ -214,15 +214,24 @@ that bar, and only SCRAM carried the idiom across.
 
 ---
 
-## 5.0 Plant & Mission window
+## 5.0 Main Menu
 
-Entry: the plant & mission status line under the sim controls, or **Operate** tab → **Change**.
+Entry: **Main Menu**, in the tools row beside Settings. The menu also opens on every load, with
+the plant paused until you close it or start something.
 
 ### 5.1 Selection order
 
-1. **Plant** — PWR / RBMK (pre or post) / BWR  
-2. **Mode** — Free Play, campaign mission, or scenario  
-3. **Initial condition** — for Free Play: Hot Full Power, 50 % Power, Hot Standby (Mode 3), Hot Shutdown (Mode 4), Cold Shutdown (Mode 5)  
+1. **Continue** — shown only when this browser holds an autosave; picks up where you left off.
+2. **Category** — **Free Play**, **Walkthroughs** (a guided startup and shutdown) or **Lessons**
+   (short guided sessions with the Instructor). Clicking one moves the list to a narrow left
+   column and shows that category's choices beside it; click another to switch.
+3. **The choice inside it** — for Free Play, the starting condition and **Start Free Play**; for
+   Walkthroughs, a part of the **Startup** or **Shutdown** (*Startup Part 1* to *Part 3*, each with
+   its starting and ending Mode; the next one to do is tagged **NEXT**); for Lessons, the
+   full-power opener (about 5 minutes).
+
+Once the plant has run, every **Start** button asks for a second press before it replaces the
+plant you have.
 
 ### 5.2 Free Play vs training
 
@@ -420,8 +429,9 @@ During missions:
 ### 8.3 Walkthroughs and their prerequisite banner
 
 Any non-narrative procedure can be run as a **walkthrough** — a live, self-checking
-procedure against the plant. The **Walkthroughs** tab lists them; the Plant & Mission window's Walkthroughs tab lists
-them too, and its **Start** button loads the procedure's own starting condition first. The 📋
+procedure against the plant. The **Walkthroughs** tab lists them; the Main Menu's Walkthroughs category lists
+the operating cycle as *Startup Part 1–3* and *Shutdown Part 1–3*, and its **Start** button loads the
+procedure's own starting condition first. The 📋
 button on a procedure card in the manual runs one against the plant as it sits. A running
 walkthrough is drawn in the **Instructor** tab **one step at a time**, headed *Step X of N*, with
 the step's details open. Steps check themselves off the instruments while you operate; nothing

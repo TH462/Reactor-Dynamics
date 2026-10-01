@@ -18,6 +18,18 @@ var PORT = 9750 + Math.floor(Math.random() * 50);
 var ENGINES = ['pwr2'];   /* the plant the site runs since 2026-08-26 — see the note at REQUIRED_BOARD_LABELS */
 var VIEWS = ['diagram', 'primary', 'secondary', 'all'];
 
+/* START FREE PLAY THE WAY A PLAYER DOES (#816): Free Play is a category pane of the Main Menu
+ * now — the first view is a list — and its Start asks before replacing a plant that has run, so
+ * a second press confirms. Drives the real buttons; no deep link. */
+async function startFreePlay(page) {
+  if (!(await page.isVisible('[data-mfree]'))) await page.click('[data-mmode="free"]', { timeout: 4000 });
+  await page.click('[data-mfree]', { timeout: 4000 });
+  var armed = await page.evaluate(function () {
+    var b = document.querySelector('[data-mfree]'), ov = document.getElementById('missionOverlay');
+    return !!b && b.getAttribute('data-armed') === '1' && !!ov && !ov.hidden;
+  });
+  if (armed) await page.click('[data-mfree]', { timeout: 4000 });
+}
 /* THE PLANT & MISSION WINDOW OPENS ON EVERY LOAD since 2026-08-11 *(OWNER DIRECTIVE: "It
  * should always the the first thing someone sees when loading the sim.")*, so every gate
  * navigation has to dismiss it exactly as a player does.
@@ -1912,7 +1924,7 @@ async function testMissionMenuShape(page) {
   // …and Start still boots the plant, with no plant card left to have selected it.
   await page.click('[data-mmode="free"]');
   await page.waitForTimeout(200);
-  await page.click('[data-mfree]');
+  await startFreePlay(page);
   await waitBoardLive(page, 20000);
   var boot = await page.evaluate(function () {
     var pid = null;
@@ -1963,7 +1975,7 @@ async function testMissionCloseResumes(page) {
   await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission');
-  await page.click('[data-mfree]');
+  await startFreePlay(page);
   /* was waitForTimeout(1200): wait on the two states the assertions read — closed AND
    * running (#513). On the defect it waits the ceiling and reds as before. NOTE the
    * player-paused twin below keeps its fixed sleep DELIBERATELY: it asserts a negative
@@ -1988,7 +2000,7 @@ async function testMissionCloseResumes(page) {
   await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission (2nd)');
-  await page.click('[data-mfree]');
+  await startFreePlay(page);
   await page.waitForTimeout(1200);
   if (await running()) {
     throw new Error('a plant the PLAYER paused started itself on a plant change — the `user` ' +
@@ -3065,7 +3077,7 @@ async function testWalkthroughHoldReleasedOnExit(page) {
   await armPausedWalkthrough();
   await page.click('#mainMenuBtn');
   await page.waitForSelector('#missionOverlay', { state: 'visible', timeout: 5000 });
-  await page.click('[data-mfree]');
+  await startFreePlay(page);
   await page.waitForTimeout(500);
   var r2 = await assertGenuinelyRunning('a plant switch out of a paused walkthrough');
   log.push('Plant switch: plant runs again, sim_time advancing past ' + r2.simTime.toFixed(2) + ', .bd-frozen cleared');
@@ -5140,7 +5152,7 @@ async function testRodLimitMarginIndicationRange(page) {
   await page.click('#mainMenuBtn');
   await page.waitForTimeout(400);
   if (!(await page.isVisible('#missionOverlay'))) throw new Error('could not reopen Plant & Mission to reset the plant');
-  await page.click('[data-mfree]');
+  await startFreePlay(page);
   await waitBoardLive(page, 20000);
   await page.click('[data-tab="indications"]');
   await page.waitForTimeout(600);

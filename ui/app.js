@@ -5536,7 +5536,7 @@
     var btnsEl = $('cklBtns');
     if (btnsEl) {
       var bh = (nextPr ? '<button class="btn ckl-next" data-ckl-start="' + mesc(nextPr.id) + '">Next: ' +
-                         mesc(nextPr.title) + ' ▸</button>' : '') +
+                         mesc(legName(ui.engineKey, nextPr)) + ' ▸</button>' : '') +
         '<button class="btn" data-ckl-stop="1">' + (ck.complete ? 'Close' : 'End walkthrough') + '</button>';
       if (btnsEl.innerHTML !== bh) btnsEl.innerHTML = bh;   /* `hidden` is set once, above */
     }
@@ -6288,8 +6288,12 @@
       return (a.title || '').localeCompare(b.title || '');   // last resort; ids are unique so unreachable
     });
     return stable.map(function (r) {
-      return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') + '>' +
-             '<span class="ckl-cat">' + mesc(r.category || '') + '</span>' + mesc(r.title) +
+      // A cycle leg is offered under its Main Menu name, "Startup Part 2" (#816); others keep their title.
+      var part = legPart(ui.engineKey, r.id);
+      return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') +
+             (part ? ' title="' + mesc(part.modes) + '"' : '') + '>' +
+             '<span class="ckl-cat">' + mesc(part ? part.group.toLowerCase() : (r.category || '')) + '</span>' +
+             mesc(part ? legName(ui.engineKey, r) : r.title) +
              (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
     }).join('');
   }
@@ -6633,7 +6637,7 @@
   // pick the plant (left column), then the mode (Free Play / Campaign /
   // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
   // running sim until a start button is pressed.
-  var msel = { engine: 'pwr2', mode: 'free', init: null };   /* the shipped plant (2026-08-26) */
+  var msel = { engine: 'pwr2', mode: null, init: null };   /* mode null = the category list (#816) */   /* the shipped plant (2026-08-26) */
   var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
   /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
    * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
@@ -6642,9 +6646,15 @@
    * being about the load moment. That was wrong and the owner corrected it: freeze while
    * the menu is up, unfreeze on close. openModal/closeModal already express exactly that —
    * closeModal releases this hold and restarts the plant when no other hold is standing. */
+  // `?mmode=` picks a category at open (dev/screenshots/gates); without it every open is the list.
+  function urlMenuMode() {
+    var m = /[?&]mmode=(free|campaign|scenarios|walkthroughs|lessons)/.exec(location.search || '');
+    return m ? m[1] : null;
+  }
   function openMissionSelect() {
     msel.engine = ui.engineKey;
     msel.init = ui.initState;
+    msel.mode = urlMenuMode();
     renderMissionSelect();
     openModal('missionOverlay');
   }
@@ -6775,17 +6785,29 @@
      * stage:'preview' in site/flags.js, so a public visitor gets a green "here now" over a
      * locked door. Same rule as CLAUDE.md's "a flag-gated feature is not released and gets no
      * changelog.html entry": the badge is an announcement and must not outrun the flag. */
-    var modes = [['free', 'Free Play'], ['walkthroughs', 'Walkthroughs', walkthroughsOffered()]];
-    if (/[?&]mmode=/.test(location.search || '')) modes.push(['campaign', 'Campaign'], ['scenarios', 'Scenarios']);
-    else if (msel.mode === 'campaign' || msel.mode === 'scenarios') msel.mode = 'free';
-    $('mpModes').innerHTML = modes.map(function (m) {
-      return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] +
-        (m[2] ? '<span class="mp-new">NEW</span>' : '') + '</button>';
+    /* THE CATEGORY LIST (#816, OWNER DIRECTIVE 2026-10-01: "it should have a list when you first
+     * open it offering free play, a walkthrough that takes you through a startup and shutdown and
+     * an instructor mode … When clicking on one of these menus it shifts the list to a left hand
+     * column then shows the options in that category."). The tabs became this list. `msel.mode`
+     * is the picked category; null is the first view (every open resets it — openMissionSelect).
+     * A category with nothing to offer on this channel is NOT LISTED (it used to be a tab over a
+     * COMING SOON panel). The NEW badge is the isNew slot, and the walkthroughs row exists only
+     * when walkthroughsOffered(), so the badge still cannot outrun the flag. The Start-here card
+     * is retired: its Next mark lives in the Walkthroughs pane, its opener in the Lessons pane. */
+    var cats = menuCategories();
+    if (msel.mode && !cats.some(function (c) { return c.id === msel.mode; })) msel.mode = null;
+    $('mpModes').innerHTML = cats.map(function (c) {
+      return '<button class="mp-cat' + (msel.mode === c.id ? ' on' : '') + '" data-mmode="' + c.id + '">' +
+        '<span class="mp-cat-t">' + mesc(c.name) + (c.isNew ? '<span class="mp-new">NEW</span>' : '') + '</span>' +
+        '<span class="mp-cat-d">' + mesc(c.desc) + '</span></button>';
     }).join('');
-    renderStartHere();   // Continue + Start here / Next up (#816), above the tabs
-    // Step 3 — the mode's content
+    $('mpSplit').classList.toggle('picked', !!msel.mode);
+    renderContinue();   // Continue (#816), above the list
+    // Step 3 — the picked category's content (nothing on the first view)
     $('mpContent').innerHTML =
+      !msel.mode                ? '' :
       msel.mode === 'free'      ? mpFree() :
+      msel.mode === 'lessons'   ? mpLessons() :
       msel.mode === 'campaign'  ? mpCampaign() :
       msel.mode === 'scenarios' ? mpScenarios() : mpWalkthroughs();
     // Step 4 — the session footer. OUTSIDE #mpContent deliberately: that element is "the
@@ -6880,10 +6902,13 @@
    * window's default, and the guided opener — offered only on the idle Instructor tab — had 3
    * starts. So the top of the window now says what to do first.
    *
-   * A GATED LEG IS NEVER OFFERED (OWNER 2026-09-15, see nextLegFor): every leg here passes
-   * walkthroughsOffered() and flagOn('procedure:<id>'), and the opener passes flagOn('openers').
-   * Rendered into #mpStart, OUTSIDE #mpContent, for the #mpSession reason. A FUNCTION returning
-   * the decision, not markup, so verify_flags_ui can put it under both channels (#485 rule). */
+   * The Start-here card that first answered it is RETIRED by the category list (#816, owner
+   * 2026-10-01, quoted at renderMissionSelect): its Next mark is in the Walkthroughs pane, its
+   * opener in the Lessons pane, and Continue stays in #mpStart, OUTSIDE #mpContent, for the
+   * #mpSession reason. A GATED LEG IS NEVER OFFERED (OWNER 2026-09-15, see nextLegFor): every leg
+   * passes walkthroughsOffered() and flagOn('procedure:<id>'); the opener passes flagOn('openers').
+   * The decisions are FUNCTIONS (menuCategories, menuNextLegId) so verify_flags_ui can put them
+   * under both channels (#485 rule). */
   function menuCta(to) {
     var t = window.RD && RD.Telemetry; if (!t) return;
     try {
@@ -6908,46 +6933,82 @@
     if (out.length < 2) out = all;
     return out.filter(function (x) { return flagOn('procedure:' + x.id); });
   }
-  // { kind: 'start' | 'next', opener, leg } or null (nothing left to suggest: the card hides).
-  function startHereModel(key) {
-    key = key || msel.engine;
-    var p = progress(), doneP = p.completed_procedures || [], doneO = p.completed_openers || [];
-    var op = openerForEngine(key), legs = legChain(key);
-    if (!doneP.length && !doneO.length) {
-      return (op || legs.length) ? { kind: 'start', opener: op, leg: legs[0] || null } : null;
+  /* THE OWNER'S "INSTRUCTOR MODE", NAME UNDECIDED (#816). One constant, so renaming it is one line. */
+  var LESSONS_NAME = 'Lessons';
+  /* The first view's rows, in order. A category is listed only when this channel offers it:
+   * Free Play on its area flag, Walkthroughs on walkthroughsOffered() (the same authority the NEW
+   * badge has always used), Lessons on the `openers` area flag — its pane says "more coming" when
+   * the flag is on and this plant has no opener yet. Campaign and Scenarios are not offered
+   * (#660 item 19) and appear only through the `?mmode=` door, as before. */
+  function menuCategories() {
+    var c = [];
+    if (flagOn('free_play')) c.push({ id: 'free', name: 'Free Play', desc: 'Pick a starting condition and run the plant your own way.' });
+    if (walkthroughsOffered()) c.push({ id: 'walkthroughs', name: 'Walkthroughs', desc: 'A guided startup and shutdown, one step at a time.', isNew: true });
+    if (flagOn('openers')) c.push({ id: 'lessons', name: LESSONS_NAME, desc: 'Short guided sessions with the Instructor.' });
+    if (/[?&]mmode=/.test(location.search || '')) {
+      c.push({ id: 'campaign', name: 'Campaign', desc: 'The retired guided path (dev door).' },
+             { id: 'scenarios', name: 'Scenarios', desc: 'Instructor-led situations (dev door).' });
     }
-    var nx = legs.filter(function (x) { return doneP.indexOf(x.id) === -1; })[0];
-    if (nx) return { kind: 'next', opener: null, leg: nx };
-    if (op && doneO.indexOf(op.id) === -1) return { kind: 'next', opener: op, leg: null };
-    return null;
+    return c;
   }
-  function renderStartHere() {
+  /* THE SIX LEGS AS THE PLAYER IS OFFERED THEM (#816): "Startup Part N" / "Shutdown Part N", a
+   * plain line on what each covers, and the Mode it starts and ends in. Drafted from each
+   * procedure's own title and purpose in ui/manual_procedures.js; the procedure's title stays
+   * the in-run heading. pwr2 only — another plant's pool keeps its titles. A part keeps its
+   * number when a neighbour is gated, because the number is the leg's place in the cycle. */
+  var WT_PARTS = {
+    pwr_heatup:      { group: 'Startup', part: 1, modes: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby',
+                       desc: 'Heat the plant up with the coolant pumps alone. The reactor stays shut down.' },
+    pwr_startup:     { group: 'Startup', part: 2, modes: 'Mode 3, Hot Standby → Mode 1, At Power',
+                       desc: 'Start the reactor, bring power up past 5 % and put the turbine on line.' },
+    pwr_raise_power: { group: 'Startup', part: 3, modes: 'Starts and ends in Mode 1, At Power',
+                       desc: 'Raise power in stages to full power. The turbine leads and the rods follow.' },
+    pwr_lower_power: { group: 'Shutdown', part: 1, modes: 'Starts and ends in Mode 1, At Power',
+                       desc: 'Lower power in stages from full power to 15 MWe. The turbine leads and the rods follow.' },
+    pwr_shutdown:    { group: 'Shutdown', part: 2, modes: 'Mode 1, At Power → Mode 3, Hot Standby',
+                       desc: 'Take the load off the generator, shut the reactor down, and check the steam dump carries the leftover heat.' },
+    pwr_cooldown:    { group: 'Shutdown', part: 3, modes: 'Mode 3, Hot Standby → Mode 5, Cold Shutdown',
+                       desc: 'Cool the plant down until residual heat removal (RHR) carries the heat.' }
+  };
+  function legPart(engKey, id) { return engKey === 'pwr2' ? (WT_PARTS[id] || null) : null; }
+  // The name a leg is OFFERED under: "Startup Part 2" where it has one, else the procedure title.
+  function legName(engKey, pr) {
+    var p = pr && legPart(engKey, pr.id);
+    return p ? p.group + ' Part ' + p.part : (pr ? pr.title : '');
+  }
+  // The first unfinished offered leg, in chain order — the Walkthroughs pane's "Next" (it was
+  // the Start-here card's). legChain() already drops every gated leg, so a gated leg is never Next.
+  function menuNextLegId(key) {
+    var doneP = progress().completed_procedures || [];
+    var nx = legChain(key || msel.engine).filter(function (x) { return doneP.indexOf(x.id) === -1; })[0];
+    return nx ? nx.id : null;
+  }
+  function renderContinue() {
     var el = $('mpStart'); if (!el) return;
     var h = '', a = readAutosave();
     if (a) {
       h += '<div class="mp-sh-row"><button class="btn mp-sh-main" data-mcontinue="1">▶ Continue — ' +
         mesc(autosaveLabel(a)) + ', saved ' + mesc(agoText(a.savedAt)) + '</button></div>';
     }
-    var m = startHereModel(msel.engine);
-    if (m) {
-      var opBtn = function (cls) {
-        return '<button class="btn' + cls + '" data-mopener="' + mesc(m.opener.id) + '">▶ 5-minute guided start at full power</button>';
-      };
-      var legBtn = function (cls) {
-        return '<button class="btn' + cls + '" data-wtstart="' + mesc(m.leg.id) + '" data-mcta="start_leg">▶ ' + mesc(m.leg.title) + '</button>';
-      };
-      h += '<div class="mp-sh-row">';
-      if (m.kind === 'start') {
-        h += '<div class="mp-sh-t">New here? Start here</div>';
-        if (m.opener) h += opBtn(' mp-sh-main');
-        if (m.leg) h += (m.opener ? '<div class="m-note">Or begin the first walkthrough:</div>' : '') + legBtn(m.opener ? '' : ' mp-sh-main');
-      } else {
-        h += '<div class="mp-sh-t">Next up</div>' + (m.leg ? legBtn(' mp-sh-main') : opBtn(' mp-sh-main'));
-      }
-      h += '</div>';
-    }
     el.innerHTML = h;
     el.hidden = !h;
+  }
+  /* The Lessons pane: the guided opener for this plant (#811). Copy keyed by opener id; an opener
+   * with no entry falls back to its own `offer` line, so a new one is never blank. */
+  var LESSON_COPY = {
+    opener_pwr2_hfp: { mins: 'About 5 minutes',
+      desc: 'The Instructor walks you through the plant at full power: cut the load, move the rods, change the pressure, then trip the reactor.' }
+  };
+  function mpLessons() {
+    var op = openerForEngine(msel.engine);
+    if (!op) return '<div class="m-note">More lessons are on the way.</div>';
+    var cp = LESSON_COPY[op.id] || { mins: '', desc: op.offer || '' };
+    var done = (progress().completed_openers || []).indexOf(op.id) !== -1;
+    return '<div class="wt-row"><div class="wt-main">' +
+      '<div class="wt-name">' + (done ? '✓ ' : '') + mesc(op.title) +
+      (cp.mins ? '<span class="wt-modes"> · ' + mesc(cp.mins) + '</span>' : '') + '</div>' +
+      '<div class="wt-desc">' + mesc(cp.desc) + '</div></div>' +
+      '<button class="btn" data-mopener="' + mesc(op.id) + '">▶ Start</button></div>';
   }
   function mpWalkthroughs() {
     /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
@@ -6960,6 +7021,7 @@
     var all = procsFor(msel.engine);
     var procs = all.filter(function (x) { return flagOn('procedure:' + x.id); });
     var doneP = p.completed_procedures || [];
+    var nextId = menuNextLegId(msel.engine);
     /* WALKTHROUGHS *(OWNER, 2026-09-08, #660 items 21-22)*: the list is the plant's checklist
      * pool; picking one loads its starting condition (`from`) and starts it in the Instructor
      * tab. The old Follow-in-Instructor buttons are gone. */
@@ -6967,14 +7029,12 @@
     /* A leg can start at a preset free play does not offer (pwr2's `low_power`, the startup's hand-off
      * state), which left its row with no "starts at". Name it from the plant family's list instead. */
     (((PROFILES[ENGINES[msel.engine].plant] || {}).initStates) || []).forEach(function (r) { if (!ics[r[0]]) ics[r[0]] = r[1]; });
-    /* WHERE TO START, AND IN GROUPS (OWNER, 2026-09-28: "the walkthrough menu should explain where
-     * to start to perform a startup. The 'pick a walkthrough' line should be replaced." then "Maybe
-     * start grouping the walkthroughs. Ie startup, shutdown, TMI"). The pool is in plant order;
-     * GROUPS names each leg's group by id, in display order. A leg no group names (another plant's
-     * pool, or a leg added later and not placed yet) falls into a trailing unheaded group, so
-     * nothing can drop off the list. */
+    /* IN GROUPS (OWNER, 2026-09-28: "Maybe start grouping the walkthroughs. Ie startup, shutdown,
+     * TMI"), and since #816 the two cycle groups name their legs "Startup Part N" from WT_PARTS. A
+     * leg no group names (another plant's pool, or a leg added later and not placed yet) falls into
+     * a trailing group, so nothing can drop off the list. */
     var GROUPS = msel.engine === 'pwr2' ? [
-      { title: 'Startup', note: 'Cold Shutdown to full power. Start here, at the first one.',
+      { title: 'Startup', note: 'Cold Shutdown to full power.',
         ids: ['pwr_heatup', 'pwr_startup', 'pwr_raise_power'] },
       { title: 'Shutdown', note: 'Full power back to Cold Shutdown.',
         ids: ['pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown'] },
@@ -6982,27 +7042,28 @@
         ids: ['pwr_tmi2_incident'] }
     ] : [];
     function row(x) {
+      var part = legPart(msel.engine, x.id), isNext = x.id === nextId;
       var from = x.from && ics[x.from] ? ics[x.from] : null;
-      return '<div class="tr-row"><span class="tr-ptitle">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(x.title) +
-        (from ? '<span class="m-note"> · starts at ' + mesc(from) + '</span>' : '') + '</span>' +
-        '<button class="btn" data-wtstart="' + mesc(x.id) + '">▶ Start</button></div>';
+      var sub = part ? part.modes : (from ? 'Starts at ' + from : '');
+      return '<div class="wt-row' + (isNext ? ' wt-next' : '') + '" data-wtrow="' + mesc(x.id) + '"><div class="wt-main">' +
+        '<div class="wt-name">' + (doneP.indexOf(x.id) !== -1 ? '✓ ' : '') + mesc(legName(msel.engine, x)) +
+        (isNext ? '<span class="wt-next-tag">NEXT</span>' : '') + '</div>' +
+        (part ? '<div class="wt-desc">' + mesc(part.desc) + '</div>' : '') +
+        (sub ? '<div class="wt-modes">' + mesc(sub) + '</div>' : '') + '</div>' +
+        '<button class="btn" data-wtstart="' + mesc(x.id) + '"' + (isNext ? ' data-mcta="start_leg"' : '') + '>▶ Start</button></div>';
     }
-    var placed = {}, h;
-    if (GROUPS.length) {
-      h = '<div class="m-note"><b>To start up the plant, begin with the first Startup walkthrough</b> and take them in order. ' +
-        'Each one offers the next when it finishes, and each loads its own starting condition, so you can also begin at any of them. ' +
-        'A running walkthrough is shown in the Instructor tab, one step at a time.</div>';
-      GROUPS.forEach(function (g) {
-        var rows = procs.filter(function (x) { return g.ids.indexOf(x.id) !== -1; });
-        rows.forEach(function (x) { placed[x.id] = 1; });
-        if (rows.length) h += '<div class="wt-group"><span class="wt-group-t">' + mesc(g.title) + '</span>' +
-          '<span class="m-note"> · ' + mesc(g.note) + '</span></div>' + rows.map(row).join('');
-      });
-    } else {
-      h = '<div class="m-note"><b>To start up the plant, begin with the first walkthrough</b> and work down the list. ' +
-        'Each one offers the next when it finishes, and each loads its own starting condition, so you can also begin at any of them. ' +
-        'A running walkthrough is shown in the Instructor tab, one step at a time.</div>';
-    }
+    var h = '<div class="m-note">' + (GROUPS.length
+      ? 'A startup takes the plant from Cold Shutdown to full power; a shutdown brings it back. '
+      : 'Work down the list. ') +
+      'Take the parts in order: each one offers the next when it finishes. Each part loads its own ' +
+      'starting condition, so you can also begin at any of them.</div>';
+    var placed = {};
+    GROUPS.forEach(function (g) {
+      var rows = procs.filter(function (x) { return g.ids.indexOf(x.id) !== -1; });
+      rows.forEach(function (x) { placed[x.id] = 1; });
+      if (rows.length) h += '<div class="wt-group"><span class="wt-group-t">' + mesc(g.title) + '</span>' +
+        '<span class="m-note"> · ' + mesc(g.note) + '</span></div>' + rows.map(row).join('');
+    });
     var rest = procs.filter(function (x) { return !placed[x.id]; });
     if (GROUPS.length && rest.length) h += '<div class="wt-group"><span class="wt-group-t">More</span></div>';
     return procs.length ? h + rest.map(row).join('') : h + '<div class="m-note">No walkthroughs for this plant.</div>';
@@ -10309,9 +10370,11 @@
        * mission_start / walkthrough_start. The leg button IS a [data-wtstart] and falls through
        * to that handler below, so a leg starts exactly one way. */
       if (e.target.closest('[data-mcontinue]')) { menuCta('continue'); continueAutosave(); return; }
-      /* THE SAME CONFIRM THE INSTRUCTOR-TAB OPENER ASKS (#816 review): a card button that
-       * replaces a plant which has RUN arms on the first press and acts on the second. */
-      var arm = e.target.closest('#mpStart [data-mopener], #mpStart [data-wtstart]');
+      /* THE SAME CONFIRM THE INSTRUCTOR-TAB OPENER ASKS (#816 review): a start button that
+       * replaces a plant which has RUN arms on the first press and acts on the second. Since the
+       * category list (#816) that is EVERY start button in the panes — Free Play, each
+       * walkthrough part and the lesson — not only the retired Start-here card's. */
+      var arm = e.target.closest('#mpContent [data-mopener], #mpContent [data-wtstart], #mpContent [data-mfree]');
       if (arm && plantHasRun() && arm.getAttribute('data-armed') !== '1') {
         arm.setAttribute('data-armed', '1');
         arm.classList.add('mp-reset-armed');
@@ -10343,7 +10406,11 @@
       /* the [data-mplant] branch went with the plant column (#688) — nothing emits that
        * attribute any more, so a handler for it would be a dark wire. */
       var mm = e.target.closest('[data-mmode]');
-      if (mm) { msel.mode = mm.getAttribute('data-mmode'); renderMissionSelect(); return; }
+      if (mm) {
+        msel.mode = mm.getAttribute('data-mmode');
+        if (/^(free|walkthroughs|lessons)$/.test(msel.mode)) menuCta('menu_' + msel.mode);
+        renderMissionSelect(); return;
+      }
       var ir = e.target.closest('[data-minit]');
       if (ir) { msel.init = ir.getAttribute('data-minit'); renderMissionSelect(); return; }
       if (e.target.closest('[data-mfree]')) {
@@ -11610,7 +11677,7 @@
   function autosaveLabel(a) {
     if (a.walkthrough) {
       var pr = procsFor(a.engine).filter(function (x) { return x.id === a.walkthrough.id; })[0];
-      if (pr) return pr.title + ', step ' + (a.walkthrough.step + 1);
+      if (pr) return legName(a.engine, pr) + ', step ' + (a.walkthrough.step + 1);
     }
     return 'Free Play, ' + (MODE_NAMES[a.mode] || 'your plant');
   }
@@ -12115,7 +12182,9 @@
         nextLegFor: nextLegFor,
         /* #816 — the Main Menu's Start-here decision and the autosave, as the menu calls them,
          * so verify_flags_ui / verify_e2e_ui can drive them on both channels without a 30 s wait. */
-        startHereModel: startHereModel,
+        menuCategories: menuCategories,
+        menuNextLegId: menuNextLegId,
+        legName: function (id) { return legName(ui.engineKey, { id: id, title: id }); },
         autosave: autosave,
         readAutosave: readAutosave,
       };
@@ -12234,8 +12303,7 @@
     }
     // optional ?missions=1 deep-link — opens the Plant & Mission window
     // (?mmode=free|campaign|scenarios|walkthroughs picks the mode — dev/screenshots)
-    var mmm = /[?&]mmode=(free|campaign|scenarios|walkthroughs)/.exec(location.search || '');
-    if (mmm) msel.mode = mmm[1];
+    if (urlMenuMode()) msel.mode = urlMenuMode();
     if (/[?&]missions=1/.test(location.search || '')) openMissionSelect();
     // optional ?help=1 deep-link — opens the help guide (dev/screenshots)
     if (/[?&]help=1/.test(location.search || '')) $('helpOverlay').hidden = false;

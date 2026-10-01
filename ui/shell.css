@@ -2817,16 +2817,34 @@ select.num-input { width: auto; }
   pointer-events: none;
 }
 
-/* step 2 — mode tabs; step 3 — the nested content */
+/* step 2 — the category list (#816); step 3 — the picked category's pane. The list is the
+   whole view until a category is picked, then a narrow left column; stacked below 700 px. */
 .mp-right { display: flex; flex-direction: column; min-height: 0; }
-.mp-modes { display: flex; border-bottom: 1px solid var(--border); }
-.mp-modes button {
-  flex: 1; padding: 9px 4px; background: none; border: none;
-  border-bottom: 2px solid transparent; color: var(--text-2);
-  font: inherit; font-size: 12px; cursor: pointer;
+.mp-split { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.mp-split:not(.picked) .mp-content { display: none; }
+.mp-split.picked { flex-direction: row; }
+.mp-modes { display: flex; flex-direction: column; gap: 8px; padding: 14px; overflow-y: auto; }
+.mp-split.picked .mp-modes { flex: 0 0 190px; padding: 12px 10px; border-right: 1px solid var(--border); }
+.mp-modes .mp-cat {
+  display: block; width: 100%; text-align: left; cursor: pointer; font: inherit;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-elevated); color: var(--text);
+  transition: border-color .12s, background-color .12s;
 }
-.mp-modes button:hover { color: var(--text); }
-.mp-modes button.on { color: var(--text); border-bottom-color: rgba(122, 176, 255, 0.85); }
+.mp-modes .mp-cat:hover { border-color: rgba(122, 176, 255, 0.4); }
+.mp-modes .mp-cat.on { border-color: rgba(122, 176, 255, 0.8); background: rgba(122, 176, 255, 0.10); }
+.mp-cat-t { display: block; font-size: 15px; font-weight: 700; }
+.mp-cat-d { display: block; margin-top: 3px; font-size: 12px; color: var(--text-2); }
+.mp-split.picked .mp-cat { padding: 9px 10px; }
+.mp-split.picked .mp-cat-t { font-size: 13px; }
+.mp-split.picked .mp-cat-d { display: none; }
+@media (max-width: 700px) {
+  .mp-split.picked { flex-direction: column; }
+  .mp-split.picked .mp-modes { flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; gap: 6px;
+    border-right: none; border-bottom: 1px solid var(--border); }
+  .mp-split.picked .mp-cat { width: auto; flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) { .mp-modes .mp-cat { transition: none; } }
 /* THE GREEN [NEW] ON THE WALKTHROUGHS TAB (#688, owner 2026-09-09). #79d297 is the same
    green the deleted plant column used for its ● active mark — brighter than --running
    (#46A35E), which is sized for a filled board tile and reads dim at 9 px. Deliberately NOT
@@ -2901,11 +2919,25 @@ select.num-input { width: auto; }
 .init-row.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
 .init-dot { color: rgba(122, 176, 255, 0.9); }
 .mp-start { display: block; width: 100%; margin-top: 12px; padding: 10px; font-weight: 700; }
-/* Continue + Start here / Next up (#816), above the mode tabs */
+/* Walkthrough parts and lessons (#816): name + NEXT tag, a plain line, the Modes; Start at right */
+.wt-row {
+  display: flex; align-items: center; gap: 12px; padding: 9px 10px; margin-top: 6px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-elevated);
+}
+.wt-row.wt-next { border-color: var(--running); }
+.wt-main { flex: 1; min-width: 0; }
+.wt-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.wt-desc { font-size: 12px; color: var(--text); margin-top: 2px; line-height: 1.4; }
+.wt-modes { font-size: 11px; color: var(--text-2); margin-top: 2px; font-weight: 400; }
+.wt-row > .btn { flex: 0 0 auto; white-space: nowrap; }
+.wt-next-tag {
+  margin-left: 8px; display: inline-block; vertical-align: 1px; border-radius: 3px; padding: 0 4px;
+  border: 1px solid #79d297; color: #79d297; font-size: 9px; font-weight: 700; letter-spacing: .08em;
+}
+/* Continue (#816), above the category list */
 .mp-start-here { padding: 10px 14px 4px; border-bottom: 1px solid var(--border); }
 .mp-start-here[hidden] { display: none; }
 .mp-sh-row { margin-bottom: 8px; }
-.mp-sh-t { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
 .mp-sh-row .btn { display: block; width: 100%; text-align: left; padding: 8px 10px; margin-bottom: 4px; }
 .mp-sh-row .btn.mp-sh-main { font-weight: 700; border-color: var(--running); }
 

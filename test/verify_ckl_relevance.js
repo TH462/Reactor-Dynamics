@@ -46,6 +46,18 @@ var MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
              '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
              '.md': 'text/plain', '.ico': 'image/x-icon' };
 
+/* START FREE PLAY THE WAY A PLAYER DOES (#816): Free Play is a category pane of the Main Menu
+ * now — the first view is a list — and its Start asks before replacing a plant that has run, so
+ * a second press confirms. Drives the real buttons; no deep link. */
+async function startFreePlay(page) {
+  if (!(await page.isVisible('[data-mfree]'))) await page.click('[data-mmode="free"]', { timeout: 4000 });
+  await page.click('[data-mfree]', { timeout: 4000 });
+  var armed = await page.evaluate(function () {
+    var b = document.querySelector('[data-mfree]'), ov = document.getElementById('missionOverlay');
+    return !!b && b.getAttribute('data-armed') === '1' && !!ov && !ov.hidden;
+  });
+  if (armed) await page.click('[data-mfree]', { timeout: 4000 });
+}
 /* The list as the PLAYER sees it: one row per procedure, whether it is greyed, and the gate
  * sentence under it. Read off the rendered DOM — the point of the gate is that the render is
  * where the staleness lived. */
@@ -83,7 +95,7 @@ function sig(rows) {
     /* ---- 1. the default boot: Hot Full Power (Mode 1) ---------------------------------- */
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForTimeout(1200);
-    await page.click('[data-mfree]');                  // Free Play, the engine's own default IC
+    await startFreePlay(page);                  // Free Play, the engine's own default IC
     await page.waitForTimeout(2500);
     await page.click('#tabbar [data-tab="checklists"]');
     await page.waitForTimeout(900);
@@ -134,7 +146,7 @@ function sig(rows) {
     await page.waitForTimeout(200);
     await page.click('[data-minit="cold_shutdown"]');
     await page.waitForTimeout(200);
-    await page.click('[data-mfree]');
+    await startFreePlay(page);
     await page.waitForTimeout(3000);
     await page.click('#tabbar [data-tab="checklists"]');
     await page.waitForTimeout(1200);
@@ -398,7 +410,7 @@ function sig(rows) {
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForTimeout(1300);
-    await page.click('[data-mfree]');
+    await startFreePlay(page);
     await page.waitForTimeout(2400);
     var band = await page.evaluate(function () {
       var hit = null;
@@ -443,7 +455,7 @@ function sig(rows) {
     await page.waitForTimeout(200);
     await page.click('[data-minit="hot_full_power"]');
     await page.waitForTimeout(200);
-    await page.click('[data-mfree]');
+    await startFreePlay(page);
     await page.waitForTimeout(2600);
     await page.click('#tabbar [data-tab="checklists"]');
     await page.waitForTimeout(700);
@@ -504,7 +516,7 @@ function sig(rows) {
     await page.waitForTimeout(200);
     await page.click('[data-minit="hot_full_power"]');
     await page.waitForTimeout(200);
-    await page.click('[data-mfree]');
+    await startFreePlay(page);
     await page.waitForTimeout(2600);
     await page.click('#tabbar [data-tab="checklists"]');
     await page.waitForTimeout(700);
@@ -596,7 +608,7 @@ function sig(rows) {
         }, mutate);
         await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
         await page.waitForTimeout(200);
-        await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+        await startFreePlay(page).catch(function () {});
         await page.waitForTimeout(2600);
         await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
         await page.waitForTimeout(700);
@@ -714,7 +726,7 @@ function sig(rows) {
       });
       await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
       await page.waitForTimeout(200);
-      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
       await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
       await page.waitForTimeout(700);
@@ -790,7 +802,7 @@ function sig(rows) {
       });
       await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
       await page.waitForTimeout(200);
-      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
       await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
       await page.waitForTimeout(700);
@@ -868,7 +880,7 @@ function sig(rows) {
       await page.waitForTimeout(200);
       await page.click('[data-minit="hot_zero_power"]', { timeout: 4000 }).catch(function () {});
       await page.waitForTimeout(250);
-      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(3000);
       await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
       await page.waitForTimeout(700);
@@ -932,7 +944,7 @@ function sig(rows) {
         }, mode);
         await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
         await page.waitForTimeout(200);
-        await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+        await startFreePlay(page).catch(function () {});
         await page.waitForTimeout(2600);
         await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
         await page.waitForTimeout(700);
@@ -1021,7 +1033,7 @@ function sig(rows) {
       });
       await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
       await page.waitForTimeout(200);
-      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
       await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
       await page.waitForTimeout(700);
@@ -1078,7 +1090,7 @@ function sig(rows) {
       await page.waitForTimeout(200);
       await page.click('[data-minit="hot_full_power"]', { timeout: 4000 }).catch(function () {});
       await page.waitForTimeout(200);
-      await page.click('[data-mfree]', { timeout: 4000 }).catch(function () {});
+      await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
       await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
       await page.waitForTimeout(700);

@@ -203,9 +203,11 @@
      * surface that buys nothing over the bucket: the question is "was this a phone",
      * not "was this 393 pixels". Deciding that here rather than at the query end is the
      * point — what is not collected cannot leak. */
-    /* #816 adds the shell's own ways in: the Main Menu's Continue and Start-here buttons
-     * (`continue`, `start_opener`, `start_leg`). Still a closed enum; ui/app.js menuCta(). */
-    cta_click:     { props: { to: ['shell', 'download', 'github', 'other', 'continue', 'start_opener', 'start_leg'],
+    /* #816 adds the shell's own ways in: the Main Menu's Continue, lesson and Next-part buttons
+     * (`continue`, `start_opener`, `start_leg`) and its three category rows (`menu_free`,
+     * `menu_walkthroughs`, `menu_lessons`). Still a closed enum; ui/app.js menuCta(). */
+    cta_click:     { props: { to: ['shell', 'download', 'github', 'other', 'continue', 'start_opener', 'start_leg',
+                                   'menu_free', 'menu_walkthroughs', 'menu_lessons'],
                               device: ['fine', 'coarse'],
                               width: ['xs', 'sm', 'md', 'lg'] } },
   };
