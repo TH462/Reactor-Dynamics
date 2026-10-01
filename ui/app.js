@@ -6924,7 +6924,7 @@
   function renderStartHere() {
     var el = $('mpStart'); if (!el) return;
     var h = '', a = readAutosave();
-    if (a && a.engine === msel.engine) {
+    if (a) {
       h += '<div class="mp-sh-row"><button class="btn mp-sh-main" data-mcontinue="1">▶ Continue — ' +
         mesc(autosaveLabel(a)) + ', saved ' + mesc(agoText(a.savedAt)) + '</button></div>';
     }
@@ -11550,14 +11550,16 @@
       return true;
     } catch (e) { return false; }  // quota, storage disabled, file:// — the sim carries on
   }
-  // The stored save, or null. A corrupt one, or one from another release, is dropped silently:
-  // a release can change the engine's state schema, and a half-restored plant is worse than none.
+  /* The stored save for THIS engine, or null. ANY RELEASE is offered (coordinator, 2026-10-01: an
+   * exact-release match dropped every save at each release and each -rcN, i.e. exactly the returning
+   * players Continue exists for): acceptance is the file-Load contract, decided by applySave at the
+   * click. Dropped silently on a parse failure, an engine mismatch, or an applySave refusal. */
   function readAutosave() {
     var a = null;
     try { a = JSON.parse(localStorage.getItem(AUTOSAVE_KEY)); } catch (e) { a = undefined; }
     if (a === null) return null;
     var ok = a && typeof a === 'object' && a.v === 1 && typeof a.savedAt === 'number' &&
-      a.snapshot && a.snapshot.metadata && ENGINES[a.engine] && a.release === (window.RD_RELEASE || '');
+      a.snapshot && a.snapshot.metadata && ENGINES[a.engine] && a.engine === (msel.engine || ui.engineKey);
     if (!ok) { try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {} return null; }
     return a;
   }
@@ -11582,8 +11584,7 @@
     var err = applySave(a.snapshot);
     if (err) {
       try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {}
-      showToast('Saved plant could not be restored — ' + err, 'error');
-      renderMissionSelect();
+      renderMissionSelect();             // silent: the menu simply no longer offers it
       return;
     }
     closeMissionSelect();

@@ -1425,6 +1425,18 @@ function pinChannel(ch) {
   var v4 = await sh(p4);
   ck('#816: after a reload the menu offers Continue naming the walkthrough',
     /Continue — Mode 5, Cold Shutdown .* heatup .*step 3, saved/.test(v4.cont), v4.cont);
+  /* AN OLDER RELEASE'S SAVE IS STILL OFFERED AND LOADS (coordinator 2026-10-01): restamp the
+   * stored save with another release, then reload without letting pagehide overwrite it. */
+  await p4.evaluate(function () {
+    var a = JSON.parse(localStorage.getItem('rd_autosave')); a.release = 'Alpha 0.0.1-old';
+    localStorage.setItem('rd_autosave', JSON.stringify(a));
+    window.addEventListener('pagehide', function () { localStorage.setItem('rd_autosave', JSON.stringify(a)); });
+  });
+  await p4.reload();
+  await p4.waitForSelector('#mainMenuBtn');
+  ck('#816: a save from an OLDER release is still offered',
+    (await p4.evaluate(function () { return (JSON.parse(localStorage.getItem('rd_autosave')) || {}).release; })) === 'Alpha 0.0.1-old' &&
+    /Continue/.test((await sh(p4)).cont));
   await p4.click('#mpStart [data-mcontinue]');
   var r4 = await p4.evaluate(function () {
     var c = RD.__dev.service().instructor.checklist;
