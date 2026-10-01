@@ -190,7 +190,8 @@ function pinChannel(ch) {
       var steps = Array.prototype.slice.call(document.querySelectorAll('.ckl-step'));
       var idx = steps.indexOf(a);
       var head = document.querySelector('.ckl-head b');
-      var title = head ? (head.textContent || '').trim() : null;
+      /* the heading is "Startup Part 2 — <title>" for a cycle leg (#816 review); the pool is keyed by the bare title */
+      var title = head ? (head.textContent || '').trim().replace(/^(Startup|Shutdown) Part \d — /, '') : null;
       /* THE POOL IS THE RUNNING PLANT'S, read off the live snapshot — NOT a hard-coded
        * 'pwr2'. The first cut hard-coded it and this check went red against a correctly
        * rendered card: this build boots the retired engine, whose pwr_startup step 1 IS an
@@ -940,8 +941,8 @@ function pinChannel(ch) {
           : 'pwr_startup start button not found');
   await b.ctx.close();
 
-  // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
-  // (#660 item 19); the campaign and scenario areas are reachable only through the door.
+  // The player's window (no `mmode` in the URL) offers Free Play, Walkthroughs and Lessons
+  // (#816); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));
   await b.page.click('#mainMenuBtn');
   var tabsPlain = await menuCats(b.page);
@@ -1518,6 +1519,18 @@ function pinChannel(ch) {
   });
   ck('#816: on a plant that has run, Start Free Play asks before replacing it',
     armedF.armed && armedF.open, JSON.stringify(armedF));
+  // FOCUS follows a category click (the list re-renders and would drop it to <body>), and only ONE Start is armed.
+  await p5.click('[data-mmode="walkthroughs"]');
+  var foc = await p5.evaluate(function () { var e = document.activeElement; return e && e.getAttribute('data-mmode'); });
+  ck('#816: after a category click the picked category button holds keyboard focus', foc === 'walkthroughs', String(foc));
+  await p5.click('#mpContent [data-wtstart="pwr_heatup"]');
+  await p5.click('#mpContent [data-wtstart="pwr_startup"]');
+  var one = await p5.evaluate(function () {
+    var a = document.querySelectorAll('#mpContent [data-armed="1"]'), f = document.querySelector('#mpContent [data-wtstart="pwr_heatup"]');
+    return { n: a.length, who: a[0] && a[0].getAttribute('data-wtstart'), first: f.textContent };
+  });
+  ck('#816: arming a second Start disarms the first (one armed at a time, first label restored)',
+    one.n === 1 && one.who === 'pwr_startup' && /^▶ Start/.test(one.first), JSON.stringify(one));
   await p5.click('[data-mmode="lessons"]');
   await p5.click('#mpContent [data-mopener]');
   var armed = await p5.evaluate(function () {
@@ -1593,12 +1606,31 @@ function pinChannel(ch) {
   });
   ck('#816: Continue restores the walkthrough at its step and closes the menu',
     r4.id === 'pwr_heatup' && saved.step === 2 && r4.step === 2 && !r4.menu, JSON.stringify(r4));
+  // #816 REVIEW: the running card's heading carries the part name, and the Checklists picker
+  // names cycle legs by part and prints a plain gate (no raw channel id such as control_bank_steps).
+  await p4.waitForSelector('.ckl-head b');
+  var hd = await p4.evaluate(function () { return document.querySelector('.ckl-head b').textContent; });
+  ck('#816: the running walkthrough heading reads "Startup Part 1 — <title>"', /^Startup Part 1 — \S/.test(hd), hd);
+  var pk = await p4.evaluate(function () {
+    var bs = Array.prototype.slice.call(document.querySelectorAll('[data-ckl-start]'));
+    function t(id) { var b = document.querySelector('[data-ckl-start="' + id + '"]'); return b ? b.textContent : ''; }
+    var sn = JSON.parse(JSON.stringify(RD.PwrBoard.lastSnapshot())); (sn.control_state.rod_groups || []).forEach(function (g) { g.steps = 627; });
+    var rk = RD.__dev.service().instructor.rankProcedures(sn, RD.MANUAL_PROCEDURES.pwr2, null).filter(function (r) { return r.id === 'pwr_raise_power'; })[0];
+    var rods = rk && rk.gate ? rk.gate.split(' · ').filter(function (g) { return /rod/.test(g); })[0] : null;
+    return { rods: rods, s2: t('pwr_startup'), s3: t('pwr_raise_power'), gates: bs.map(function (b) { var g = b.querySelector('.ckl-gate'); return g ? g.textContent : ''; }).filter(Boolean) };
+  });
+  ck('#816: the Checklists picker names the cycle legs "Startup Part N" and no gate prints a raw field name',
+    /Startup Part 2/.test(pk.s2) && /Startup Part 3/.test(pk.s3) && pk.rods === 'Requires control rods below 600 steps' &&
+    pk.gates.every(function (g) { return !/[a-z]_[a-z]/.test(g); }), JSON.stringify(pk));
   // A FINISHED LIVE WALKTHROUGH IS RECORDED (it never was: only the retired Follow path wrote it).
   await p4.evaluate(function () { RD.__dev.service().instructor.checklist.complete = true; });
   var rec = await p4.waitForFunction(function () {
     try { return (JSON.parse(localStorage.getItem('rd_progress')) || {}).completed_procedures.indexOf('pwr_heatup') !== -1; }
     catch (e) { return false; } }, null, { timeout: 10000 }).then(function () { return true; }, function () { return false; });
   ck('#816: a finished walkthrough is written to rd_progress (Next up reads it)', rec);
+  await p4.waitForSelector('.ckl-next', { timeout: 10000 });
+  var nxt = await p4.evaluate(function () { return document.querySelector('.ckl-next').textContent; });
+  ck('#816: the finished card offers "Next: Startup Part 2 ▸"', nxt === 'Next: Startup Part 2 ▸', nxt);
   /* A reload here would autosave on pagehide over the corrupt value (that is the pagehide save
    * working), so the corrupt save is seeded into a FRESH device instead. */
   await s4.ctx.close();

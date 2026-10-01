@@ -3091,7 +3091,11 @@
    * merely possible come into it.
    */
   var COND_WORDS = { tavg_c: 'RCS temperature', pressure_mpa: 'RCS pressure',
-                     power_pct: 'reactor power', boron_ppm: 'boron', mwe_output: 'generator output' };
+                     power_pct: 'reactor power', boron_ppm: 'boron', mwe_output: 'generator output',
+                     control_bank_steps: 'control rods' };
+  /* A field with no entry above prints a plain-ish name, never the raw channel id ("control_bank_steps"
+   * reached the public Checklists picker that way). */
+  function condWord(p) { return COND_WORDS[p] || String(p).replace(/_/g, ' '); }
   /* The gate string's VALUE, in the player's units — US-first per the house convention
    * (#244 item 7's sibling: 'near 286' told the owner nothing; 'near 547 °F' does). */
   function condValue(p, v) {
@@ -3100,6 +3104,7 @@
     if (p === 'power_pct') return v + ' %';
     if (p === 'boron_ppm') return v + ' ppm';
     if (p === 'mwe_output') return v + ' MWe';
+    if (p === 'control_bank_steps') return v + ' steps';
     return String(v);
   }
   InstructorLayer.prototype.rankProcedures = function (snapshot, procs, activeId) {
@@ -3145,7 +3150,7 @@
         // The gating condition, in the words a player can act on. This is the whole value
         // of demoting rather than hiding — it says WHY, and what would change it.
         gate: unmet.length ? unmet.map(function (c) {
-          var w = COND_WORDS[c.p] || c.p;
+          var w = condWord(c.p);
           var op = c.op === '<' ? 'below' : c.op === '>' ? 'above' : c.op === '~' ? 'near' :
                    c.op === '<=' ? 'at or below' : c.op === '>=' ? 'at or above' : c.op;
           return 'Requires ' + w + ' ' + op + ' ' + condValue(c.p, c.v);

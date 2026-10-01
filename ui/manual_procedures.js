@@ -4925,7 +4925,7 @@
        * warning at all above 10 %. */
       precond: [
         { p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' },
-        { p: 'power_pct', op: '<=', v: 30, text: 'Reactor at LOW power, not full power: REACTOR POWER at or below 30 % — run "Mode 1, At Power — load rampdown to about 15 %" first if you are at full power' },
+        { p: 'power_pct', op: '<=', v: 30, text: 'Reactor at LOW power, not full power: REACTOR POWER at or below 30 % — run "Shutdown Part 1" (it brings power down to about 15 %) first if you are at full power' },
       ],
       /* THE FORMAT (2026-09-24 port to `Blueprint/walkthrough_steps/05_shutdown.md`, the owner's
        * "Adopt the format for the other walkthroughs."): each step's `text` is the GOAL line

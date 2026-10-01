@@ -4899,7 +4899,7 @@
      * text — `story` is content, not state. Ordinary legs author no `story` and are untouched. */
     var headSt = (!ck.complete && pr.steps[ck.step_index]) || null;
     var headClock = (headSt && headSt.story && headSt.story.clock) ? headSt.story.clock : null;
-    h += '<div class="ckl-head"><b>' + mesc(pr.title) + '</b>' +
+    h += '<div class="ckl-head"><b>' + mesc(legPart(ui.engineKey, pr.id) ? legName(ui.engineKey, pr) + ' — ' + pr.title : pr.title) + '</b>' +
       '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) +
       (headClock ? ' · ' + mesc(headClock) : '') + '</span></div>';
     /* THE WALKTHROUGH SAYS SO WHEN THE REACTOR TRIPS UNDER IT (#709, layman playthrough
@@ -6802,6 +6802,10 @@
         '<span class="mp-cat-d">' + mesc(c.desc) + '</span></button>';
     }).join('');
     $('mpSplit').classList.toggle('picked', !!msel.mode);
+    // A category click re-renders this list, which drops focus to <body>: put it back on the picked one.
+    if (msel.mode && document.activeElement === document.body) {
+      var onCat = $('mpModes').querySelector('.mp-cat.on'); if (onCat) onCat.focus();
+    }
     renderContinue();   // Continue (#816), above the list
     // Step 3 — the picked category's content (nothing on the first view)
     $('mpContent').innerHTML =
@@ -7055,8 +7059,8 @@
     var h = '<div class="m-note">' + (GROUPS.length
       ? 'A startup takes the plant from Cold Shutdown to full power; a shutdown brings it back. '
       : 'Work down the list. ') +
-      'Take the parts in order: each one offers the next when it finishes. Each part loads its own ' +
-      'starting condition, so you can also begin at any of them.</div>';
+      'Take the parts in order: each offers the next when it finishes. Each part loads its own ' +
+      'starting condition, so you can also begin at most of them directly.</div>';
     var placed = {};
     GROUPS.forEach(function (g) {
       var rows = procs.filter(function (x) { return g.ids.indexOf(x.id) !== -1; });
@@ -10376,6 +10380,12 @@
        * walkthrough part and the lesson — not only the retired Start-here card's. */
       var arm = e.target.closest('#mpContent [data-mopener], #mpContent [data-wtstart], #mpContent [data-mfree]');
       if (arm && plantHasRun() && arm.getAttribute('data-armed') !== '1') {
+        // One Start armed at a time: arming this one puts every other back to its own label.
+        Array.prototype.forEach.call($('mpContent').querySelectorAll('[data-armed="1"]'), function (o) {
+          o.removeAttribute('data-armed'); o.classList.remove('mp-reset-armed');
+          txt(o, o.getAttribute('data-label') || '▶ Start');
+        });
+        arm.setAttribute('data-label', arm.textContent);
         arm.setAttribute('data-armed', '1');
         arm.classList.add('mp-reset-armed');
         txt(arm, '⚠ This restarts the plant. Your current plant will be lost. Press again to start.');
