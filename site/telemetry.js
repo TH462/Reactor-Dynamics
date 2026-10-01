@@ -95,7 +95,12 @@
   // deciding to collect something.
   var EVENTS = {
     // --- shape of the visit -------------------------------------------------
-    session_start: { props: { plant: ['pwr', 'rbmk', 'bwr'], initial_state: 'enum', channel: ['public', 'preview', 'dev'] } },
+    session_start: { props: { plant: ['pwr', 'rbmk', 'bwr'], initial_state: 'enum', channel: ['public', 'preview', 'dev'],
+                             /* #816 — had this DEVICE been here before, and how many whole days
+                              * since (capped at 365). Computed in ui/app.js from two device-local
+                              * timestamps that are never sent; a first visit is false / 0. No
+                              * identifier: two visits still cannot be linked to each other. */
+                             returning: 'bool', days_since_last: 'num' } },
     // The single most useful row here: WHERE PEOPLE STOP. `last_panel` and the two
     // durations together answer "did they bounce, or did they get stuck somewhere".
     // `sim_seconds` doubles as "did they ever press play" — the sim clock only advances
@@ -198,7 +203,11 @@
      * surface that buys nothing over the bucket: the question is "was this a phone",
      * not "was this 393 pixels". Deciding that here rather than at the query end is the
      * point — what is not collected cannot leak. */
-    cta_click:     { props: { to: ['shell', 'download', 'github', 'other'],
+    /* #816 adds the shell's own ways in: the Main Menu's Continue, lesson and Next-part buttons
+     * (`continue`, `start_opener`, `start_leg`) and its three category rows (`menu_free`,
+     * `menu_walkthroughs`, `menu_lessons`). Still a closed enum; ui/app.js menuCta(). */
+    cta_click:     { props: { to: ['shell', 'download', 'github', 'other', 'continue', 'start_opener', 'start_leg',
+                                   'menu_free', 'menu_walkthroughs', 'menu_lessons'],
                               device: ['fine', 'coarse'],
                               width: ['xs', 'sm', 'md', 'lg'] } },
   };

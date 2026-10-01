@@ -1204,6 +1204,45 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
   });
 }());
 
+// =========================================== ui/app.js: the returning-visitor pair (#816)
+/* session_start carries `returning` / `days_since_last`, computed from two device-local
+ * timestamps. Driven through the REAL TEL against a stub localStorage: a first visit, a return
+ * three days later in a NEW tab, and a RELOAD of that tab (which is not a return). Each check is
+ * proven red by an injection recorded in the BASELINES note. */
+(function () {
+  var DAY = 86400000;
+  function start(a, ic) {
+    a.TEL.sessionStart('load', { initial_state: ic || 'hot_full_power' });
+    var s = a.events.filter(function (e) { return e.name === 'session_start'; });
+    return s.length ? s[s.length - 1].props : null;
+  }
+  var hadUi = Object.prototype.hasOwnProperty.call(global, 'ui'), oldUi = global.ui;
+  var hadLs = Object.prototype.hasOwnProperty.call(global, 'localStorage'), oldLs = global.localStorage;
+  global.ui = { plant: 'pwr', initState: 'hot_full_power' };
+  var ls = mkStore();
+  Object.defineProperty(global, 'localStorage', { value: ls, configurable: true, writable: true });
+  try {
+    var p1 = start(loadTEL());
+    ck('first visit: session_start says returning=false, days_since_last=0',
+      !!p1 && p1.returning === false && p1.days_since_last === 0, JSON.stringify(p1));
+    ck('first visit: rd_first_seen and rd_last_seen are written on the device',
+      !!ls.getItem('rd_first_seen') && !!ls.getItem('rd_last_seen'));
+    ls.setItem('rd_last_seen', String(Date.now() - 3 * DAY - 60000));
+    var tab = mkStore();
+    var p2 = start(loadTEL({ storage: tab }));
+    ck('a new tab three days later: returning=true, days_since_last=3',
+      !!p2 && p2.returning === true && p2.days_since_last === 3, JSON.stringify(p2));
+    // a RELOAD of the same tab, onto another IC so session_start's own per-IC latch lets it emit
+    var p3 = start(loadTEL({ storage: tab }), 'cold_shutdown');
+    ck('a reload of that tab is the SAME visit (still 3 days, not 0)',
+      !!p3 && p3.returning === true && p3.days_since_last === 3, JSON.stringify(p3));
+  } finally {
+    if (hadUi) global.ui = oldUi; else delete global.ui;
+    if (hadLs) Object.defineProperty(global, 'localStorage', { value: oldLs, configurable: true, writable: true });
+    else delete global.localStorage;
+  }
+}());
+
 // =========================================== ui/app.js: state-derived milestones (TEL)
 /* #on_grid-is-an-IC: `hot_full_power` starts with the generator already on line, so the
  * old "mwe_output > 0" state test fired on_grid on the FIRST tick — recording the initial

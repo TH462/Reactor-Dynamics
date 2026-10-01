@@ -172,8 +172,8 @@
                being mixed in with the simulation controls. ⛶ stays the row's end-cap: it is an
                icon toggle rather than a named tool, and "to the right of settings" is where
                this one was asked for. -->
-          <button class="btn text-btn" id="mainMenuBtn" title="Main Menu — select plant, mission and reset" data-scanner-hint="Main Menu — click to change what you are running or restart the plant from a clean initial condition."
-              data-scanner-detail="One window covers both choices: free play (with a starting plant condition) or a guided walkthrough. Starting either one restarts the simulation from a fresh initial condition, and Reset is in the same window.">Main Menu</button>
+          <button class="btn text-btn" id="mainMenuBtn" title="Main Menu — Free Play, Walkthroughs, Lessons, Continue and Reset" data-scanner-hint="Main Menu — click to change what you are running or restart the plant from a clean initial condition."
+              data-scanner-detail="One window covers the choices: free play (with a starting plant condition), a guided walkthrough, or a lesson. Starting either one restarts the simulation from a fresh initial condition, and Reset is in the same window.">Main Menu</button>
           <button class="btn demo-btn" id="demoBtn" title="Board focus — hide the side panel and enlarge the plant diagram" data-scanner-hint="Board focus — hides the simulator panel on the right and moves the time controls atop the alarms/graph column, giving the plant diagram more room. Click again to bring the panel back.">⛶</button>
         </div>
         <!-- Points at the button that reopens the Plant &amp; Mission window, for a few
@@ -549,8 +549,16 @@
                as it is because the chart-settings window reuses it with a real left column. -->
           <div class="mission-body mp-body">
             <div class="mp-right">
-              <div class="mp-modes" id="mpModes"></div>
-              <div class="mp-content" id="mpContent"></div>
+              <!-- Continue (#816). OUTSIDE #mpContent for the reason the session footer is: it is
+                   not the picked category's content, and verify_flags_ui counts start buttons
+                   inside #mpContent. Filled by renderMissionSelect. -->
+              <div class="mp-start-here" id="mpStart" hidden></div>
+              <!-- The category list (#816): alone on the first view; once a category is picked
+                   (.picked) it becomes the left column and #mpContent shows that category. -->
+              <div class="mp-split" id="mpSplit">
+                <div class="mp-modes" id="mpModes"></div>
+                <div class="mp-content" id="mpContent"></div>
+              </div>
             </div>
           </div>
           <!-- Session footer (#443): reset is "restart what the session bar describes",

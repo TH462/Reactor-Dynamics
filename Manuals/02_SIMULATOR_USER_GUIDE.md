@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 22  
+**Revision:** 23  
 
 ---
 
@@ -25,16 +25,16 @@ Provide step-by-step instructions to launch the simulator, navigate the human-ma
    - `npx serve .`
    - `python -m http.server` / `python3 -m http.server`
 2. Confirm the board fills the plant area with its **vital-parameter tiles** across the top, and that the right column shows the Instructor, the tool tabs, and the System Scanner.
-3. If the plant is not PWR, open **Plant & Mission** and select the **Pressurized Water Reactor**.
+3. The Main Menu opens on every load. If it is closed, press **Main Menu** in the tools row; the plant is the Pressurized Water Reactor.
 
 ### 2.3 First actions (recommended)
 
 | Step | Action |
 |------|--------|
-| 1 | Click the mission/status line or open **Plant & Mission** |
-| 2 | Select **PWR** |
-| 3 | Choose **Free Play** or a training mission |
-| 4 | Select initial condition: **Hot Full Power**, **50 % Power**, **Hot Standby** (Mode 3), **Hot Shutdown** (Mode 4), or **Cold Shutdown** (Mode 5) |
+| 1 | Press **Main Menu** in the tools row (it also opens on every load) |
+| 2 | Click **Free Play** |
+| 3 | Select the starting condition (or pick **Walkthroughs** or **Lessons** for a guided session) |
+| 4 | Starting conditions: **Hot Full Power**, **50 % Power**, **Hot Standby** (Mode 3), **Hot Shutdown** (Mode 4), or **Cold Shutdown** (Mode 5) |
 | 5 | Press **Play** if paused; set speed **1×** until familiar |
 
 ---
@@ -105,7 +105,7 @@ on a card — click the component. `03_CONTROLS_AND_INDICATIONS.md` is the per-c
 | Region | Function |
 |--------|----------|
 | **Sim controls** | Play/Pause, speed 1× / 5× / 10× / 60× and the two WARP rungs 600× / 3600× with the achieved-rate readout beside them, Manual, Help, Contact, and **Board focus (⛶)** — hides this column and enlarges the board |
-| **Plant & mission line** | Always visible under the sim controls: what is running now; click to change it (§5.0) |
+| **Main Menu button** | In the tools row beside Settings: choose Free Play, a walkthrough or a lesson, and Reset (§5.0) |
 | **Instructor** | Scenario commentary, gates, walkthrough step grading |
 | **Tools** | **Operate · Inject Failure · Graph · Physics · Settings** (§7.0) |
 | **System Scanner** | **The inspection surface — hover anything to name it; click the block to expand it** (§3.4) |
@@ -214,24 +214,34 @@ that bar, and only SCRAM carried the idiom across.
 
 ---
 
-## 5.0 Plant & Mission window
+## 5.0 Main Menu
 
-Entry: the plant & mission status line under the sim controls, or **Operate** tab → **Change**.
+Entry: **Main Menu**, in the tools row beside Settings. The menu also opens on every load, with
+the plant paused until you close it or start something.
 
 ### 5.1 Selection order
 
-1. **Plant** — PWR / RBMK (pre or post) / BWR  
-2. **Mode** — Free Play, campaign mission, or scenario  
-3. **Initial condition** — for Free Play: Hot Full Power, 50 % Power, Hot Standby (Mode 3), Hot Shutdown (Mode 4), Cold Shutdown (Mode 5)  
+1. **Continue** — shown only when this browser holds an autosave; picks up where you left off.
+2. **Category** — **Lessons** (short guided sessions with the Instructor), **Walkthroughs** (a
+   guided startup and shutdown) or **Free Play**. Clicking one moves the list to a narrow left
+   column and shows that category's choices beside it; click another to switch.
+3. **The choice inside it** — for Lessons, the full-power opener (about 5 minutes); for
+   Walkthroughs, a part of the **Startup** or **Shutdown** (*Startup Part 1* to *Part 3*, each with
+   its starting and ending Mode; the next one to do is tagged **NEXT**); for Free Play, the
+   starting condition and **Start Free Play**.
+
+Once the plant has run, every **Start** button asks for a second press before it replaces the
+plant you have.
 
 ### 5.2 Free Play vs training
 
 | Mode | Use |
 |------|-----|
 | **Free Play** | Operator-driven; inject failures from the **Inject Failure** tab; practice procedures |
-| **Campaign missions** | Guided “Zero to Operator” curriculum (Acts I–VI) |
-| **Scenarios** | Flagship / library scripts (TMI, protection tours, etc.) |
-| **Procedure walkthroughs** | Step-graded from authored procedures |
+| **Walkthroughs** | Step-graded Startup and Shutdown parts, run from authored procedures |
+| **Lessons** | Short guided sessions with the Instructor (the full-power opener) |
+
+Campaign missions and Scenarios are not offered in the Main Menu.
 
 ### 5.3 Initial conditions (PWR Free Play) and plant MODES
 
@@ -280,7 +290,7 @@ is not among them — it lives on the board (§7.3).
 
 ### 7.1 Operate
 
-- **Plant** and **Mode** readouts, and **Change** — the Plant & Mission window (§5.0).
+- The plant and its starting condition are chosen in the **Main Menu** (§5.0).
 - **Reset** — return to the selected initial condition.
 - **Features** — optional plant features for the current session.
 - **Save / Load** — write or restore a plant state as JSON.
@@ -420,8 +430,9 @@ During missions:
 ### 8.3 Walkthroughs and their prerequisite banner
 
 Any non-narrative procedure can be run as a **walkthrough** — a live, self-checking
-procedure against the plant. The **Walkthroughs** tab lists them; the Plant & Mission window's Walkthroughs tab lists
-them too, and its **Start** button loads the procedure's own starting condition first. The 📋
+procedure against the plant. The **Walkthroughs** tab lists them; the Main Menu's Walkthroughs category lists
+the operating cycle as *Startup Part 1–3* and *Shutdown Part 1–3*, and its **Start** button loads the
+procedure's own starting condition first. The 📋
 button on a procedure card in the manual runs one against the plant as it sits. A running
 walkthrough is drawn in the **Instructor** tab **one step at a time**, headed *Step X of N*, with
 the step's details open. Steps check themselves off the instruments while you operate; nothing
@@ -527,7 +538,7 @@ Campaign **“Zero to Operator”** (six acts, **34 missions** plus one bonus) t
 | V | 3 | Three Mile Island — the TMI-2 module (Parts 1–3) |
 | VI | 2 | The Reckoning — compressed TMI + qualification exam |
 
-Details: `Blueprint/pwr_training_campaign.md` (design) and Plant & Mission UI (runtime).
+Details: `Blueprint/pwr_training_campaign.md` (design) and the Main Menu (runtime).
 
 ---
 

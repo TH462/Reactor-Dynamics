@@ -692,6 +692,25 @@ async function usage() {
                     GROUP BY opener, beat ORDER BY opener, beat ASC LIMIT 100`),
       (r) => ({ opener: r.opener, beat: num(r.beat), sessions: num(r.sessions) })));
 
+  /* RETURNING VISITORS (#816). session_start's double13 (returning, 1/0) and double14 (whole
+   * days since the device's previous visit). RETURNING_SINCE is the floor the Worker's column
+   * map asks for: a session_start written before the Worker carried these reads 0 — "first
+   * visit" — so rows older than the deploy must be excluded by time, not by the -1 sentinel.
+   * MOVE IT TO THE ACTUAL DEPLOY TIME when the Worker ships. Until then (and until a row exists
+   * with the column) the query may answer 422; sec() reports that as a failed section. */
+  const RETURNING_SINCE = "toDateTime('2026-10-01 19:04:32')";
+  await sec('usage_returning', 'Returning visitors  (session_start; device-local, no identifier)',
+    ['returning', 'days_since_last', 'sessions'], async () =>
+    rows(await sql(`SELECT double13 AS returning,
+                           double14 AS days_since_last,
+                           count(DISTINCT blob4) AS sessions
+                    FROM ${DATASET} WHERE ${SINCE} AND timestamp >= ${RETURNING_SINCE}
+                      AND blob1 = 'session_start' AND double13 >= 0
+                    GROUP BY returning, days_since_last ORDER BY returning, days_since_last ASC LIMIT 60`),
+      (r) => ({ returning: num(r.returning) === 1 ? 'yes' : 'no (first visit)',
+                days_since_last: num(r.returning) === 1 ? num(r.days_since_last) : '',
+                sessions: num(r.sessions) })));
+
   // A DISTRIBUTION, not a row per session — this is the section that would otherwise grow
   // without bound. quantileWeighted is the only quantile the endpoint accepts, and weighting
   // by _sample_interval is what the sampled rows require anyway.

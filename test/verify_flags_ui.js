@@ -88,6 +88,10 @@ function pinChannel(ch) {
     await page.click('[data-mmode="' + tab + '"]');
     return (await page.textContent('#mpContent')) || '';
   }
+  // The category rows the Main Menu lists (#816) — the first view's whole decision, read off the DOM.
+  async function menuCats(page) {
+    return page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
+  }
   async function build(channel, url) {
     var ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     if (channel) await ctx.addInitScript(pinChannel(channel));
@@ -186,7 +190,8 @@ function pinChannel(ch) {
       var steps = Array.prototype.slice.call(document.querySelectorAll('.ckl-step'));
       var idx = steps.indexOf(a);
       var head = document.querySelector('.ckl-head b');
-      var title = head ? (head.textContent || '').trim() : null;
+      /* the heading is "Startup Part 2 — <title>" for a cycle leg (#816 review); the pool is keyed by the bare title */
+      var title = head ? (head.textContent || '').trim().replace(/^(Startup|Shutdown) Part \d — /, '') : null;
       /* THE POOL IS THE RUNNING PLANT'S, read off the live snapshot — NOT a hard-coded
        * 'pwr2'. The first cut hard-coded it and this check went red against a correctly
        * rendered card: this build boots the retired engine, whose pwr_startup step 1 IS an
@@ -936,12 +941,39 @@ function pinChannel(ch) {
           : 'pwr_startup start button not found');
   await b.ctx.close();
 
-  // The player's window (no `mmode` in the URL) offers exactly Free Play and Walkthroughs
-  // (#660 item 19); the campaign and scenario areas are reachable only through the door.
+  // The player's window (no `mmode` in the URL) offers Lessons, Walkthroughs and Free Play
+  // (#816); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));
   await b.page.click('#mainMenuBtn');
-  var tabsPlain = await b.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
-  ck('player window: only Free Play and Walkthroughs tabs', tabsPlain.join(',') === 'free,walkthroughs', tabsPlain.join(','));
+  var tabsPlain = await menuCats(b.page);
+  /* #816 (OWNER DIRECTIVE 2026-10-01): the first view is a LIST of Free Play, Walkthroughs and
+   * Lessons, with no category's pane drawn — so nothing in #mpContent can be started yet. */
+  var firstView = await b.page.evaluate(function () {
+    var c = document.getElementById('mpContent');
+    return { picked: document.getElementById('mpSplit').classList.contains('picked'),
+             paneShown: !!c && c.offsetHeight > 0, starts: c ? c.querySelectorAll('.btn').length : -1 };
+  });
+  ck('player window: the first view lists Lessons, Walkthroughs, Free Play and draws no pane (#816)',
+    tabsPlain.join(',') === 'lessons,walkthroughs,free' && !firstView.picked && !firstView.paneShown && firstView.starts === 0,
+    tabsPlain.join(',') + ' ' + JSON.stringify(firstView));
+  // Clicking a category moves the list into the left column and draws THAT category's pane.
+  await b.page.click('[data-mmode="walkthroughs"]');
+  var picked = await b.page.evaluate(function () {
+    var c = document.getElementById('mpContent'), m = document.getElementById('mpModes');
+    var on = document.querySelector('#mpModes .mp-cat.on');
+    return { picked: document.getElementById('mpSplit').classList.contains('picked'),
+             on: on ? on.getAttribute('data-mmode') : null,
+             legs: c.querySelectorAll('[data-wtstart]').length, free: c.querySelectorAll('[data-mfree]').length,
+             leftOf: m.getBoundingClientRect().right <= c.getBoundingClientRect().left + 1 };
+  });
+  await b.page.click('[data-mmode="free"]');
+  var picked2 = await b.page.evaluate(function () {
+    var c = document.getElementById('mpContent');
+    return { legs: c.querySelectorAll('[data-wtstart]').length, free: c.querySelectorAll('[data-mfree]').length };
+  });
+  ck('player window: a category click shows its pane beside the list, and another click switches it (#816)',
+    picked.picked && picked.on === 'walkthroughs' && picked.legs > 0 && picked.free === 0 && picked.leftOf &&
+    picked2.legs === 0 && picked2.free === 1, JSON.stringify([picked, picked2]));
   await b.ctx.close();
 
   // ------------------------------------ the public build (what `main` deploys)
@@ -1054,12 +1086,16 @@ function pinChannel(ch) {
                flag: RD.Flags.on('walkthroughs') };
     });
   }
+  /* REFIT FOR #816: a category this channel does not offer is NOT LISTED (it was a tab over a
+   * COMING SOON panel), so the withheld half now asserts the row — and with it the badge — is gone,
+   * while the free row on the same page proves the list rendered at all. */
   b = await build('public', WT2 + '&flags=-walkthroughs');
-  var pubBadgeTxt = await openMission(b.page, 'walkthroughs');
+  await b.page.click('#mainMenuBtn');
+  var pubBadgeCats = await menuCats(b.page);
   var pubBadge = await wtBadge(b.page);
-  ck('public + ?flags=-walkthroughs: the tab carries NO green NEW badge over its COMING SOON panel',
-    pubBadge.tab && !pubBadge.painted && pubBadge.flag === false && /COMING SOON/.test(pubBadgeTxt),
-    JSON.stringify(pubBadge) + ' | ' + pubBadgeTxt.replace(/\s+/g, ' ').slice(0, 60));
+  ck('public + ?flags=-walkthroughs: no Walkthroughs row is listed, so no NEW badge (#816)',
+    !pubBadge.tab && !pubBadge.painted && pubBadge.flag === false && pubBadgeCats.indexOf('free') !== -1,
+    JSON.stringify(pubBadge) + ' | ' + pubBadgeCats.join(','));
   await b.ctx.close();
 
   b = await build('public', WT2);
@@ -1230,8 +1266,16 @@ function pinChannel(ch) {
   ];
   for (var a = 0; a < AREAS.length; a++) {
     b = await build('public', SHELL + '&flags=all,-' + AREAS[a].flag);
-    ck('only ' + AREAS[a].flag + ' off (everything else on): the tab still says COMING SOON',
-      /COMING SOON/.test(await openMission(b.page, AREAS[a].tab)));
+    if (AREAS[a].tab === 'walkthroughs') {
+      // #816: Walkthroughs is a player category, and an unoffered category is not listed at all.
+      await b.page.click('#mainMenuBtn');
+      var acats = await menuCats(b.page);
+      ck('only walkthroughs off (everything else on): the Walkthroughs row is not listed (#816)',
+        acats.indexOf('walkthroughs') === -1 && acats.indexOf('free') !== -1, acats.join(','));
+    } else {
+      ck('only ' + AREAS[a].flag + ' off (everything else on): the tab still says COMING SOON',
+        /COMING SOON/.test(await openMission(b.page, AREAS[a].tab)));
+    }
     await b.ctx.close();
   }
   // checklists is not a tab: with it off, walkthroughs still list with their Start
@@ -1353,6 +1397,249 @@ function pinChannel(ch) {
   ck('landing public: the page still sells the plant',
     /Real reactor physics/.test(await page.textContent('.hero .sub')));
   await ctx.close();
+
+  /* ------------------------------------------- #816: Continue + Start here / Next up (PWR2)
+   * The shipped plant, both channels. The card sits in #mpStart, OUTSIDE #mpContent, so the
+   * "nothing ungated to start" counts above are untouched by it; these checks are its own.
+   * `seed` writes localStorage BEFORE the page boots, the way a returning player arrives. */
+  var SHELL2 = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr2&dev=1';
+  async function menuPage(channel, seed, q) {
+    var c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    if (channel) await c.addInitScript(pinChannel(channel));
+    if (seed) await c.addInitScript('try { if (!sessionStorage.getItem("__seeded")) { ' + seed +
+      '; sessionStorage.setItem("__seeded", "1"); } } catch (e) {}');
+    var pg = await c.newPage();
+    await pg.goto(SHELL2 + (q || ''));
+    await pg.waitForSelector('#mainMenuBtn');
+    return { ctx: c, page: pg };
+  }
+  /* REFIT FOR THE CATEGORY LIST (#816, owner 2026-10-01): the Start-here card is retired. Its
+   * opener now lives in the Lessons pane and its "Next up" leg is the Walkthroughs pane's NEXT row,
+   * so this reads BOTH panes the way a player reaches them (a category click), plus Continue. */
+  function sh(pg) {
+    return pg.evaluate(function () {
+      function click(sel) { var e = document.querySelector(sel); if (e) e.click(); return !!e; }
+      var el = document.getElementById('mpStart');
+      var out = { cats: Array.prototype.map.call(document.querySelectorAll('#mpModes [data-mmode]'), function (b) { return b.getAttribute('data-mmode'); }),
+        cont: el && el.querySelector('[data-mcontinue]') ? el.querySelector('[data-mcontinue]').textContent : '',
+        legs: [], names: [], next: null, legsOn: true, opener: false, lesson: '' };
+      if (click('[data-mmode="walkthroughs"]')) {
+        var rows = document.querySelectorAll('#mpContent [data-wtrow]');
+        Array.prototype.forEach.call(rows, function (r) {
+          var id = r.getAttribute('data-wtrow');
+          out.legs.push(id);
+          out.names.push((r.querySelector('.wt-name') || {}).textContent || '');
+          if (r.classList.contains('wt-next')) out.next = id;
+          if (!RD.Flags.on('procedure:' + id)) out.legsOn = false;
+        });
+      }
+      if (click('[data-mmode="lessons"]')) {
+        out.opener = !!document.querySelector('#mpContent [data-mopener]');
+        out.lesson = document.getElementById('mpContent').textContent;
+      }
+      return out;
+    });
+  }
+  function prog(o) { return 'localStorage.setItem("rd_progress", ' + JSON.stringify(JSON.stringify(o)) + ')'; }
+
+  var s1 = await menuPage('public');
+  var v1 = await sh(s1.page);
+  ck('#816 public, first visit: three categories; the Walkthroughs pane marks Startup Part 1 NEXT; Lessons offers the opener',
+    v1.cats.join() === 'lessons,walkthroughs,free' && v1.next === 'pwr_heatup' && v1.opener &&
+    /About 5 minutes/.test(v1.lesson), JSON.stringify(v1));
+  ck('#816 public: the six parts are named Startup/Shutdown Part 1-3, in cycle order',
+    v1.legs.join() === 'pwr_heatup,pwr_startup,pwr_raise_power,pwr_lower_power,pwr_shutdown,pwr_cooldown' &&
+    v1.names.map(function (n) { return n.replace(/NEXT$/, '').trim(); }).join('|') ===
+      'Startup Part 1|Startup Part 2|Startup Part 3|Shutdown Part 1|Shutdown Part 2|Shutdown Part 3', JSON.stringify(v1.names));
+  ck('#816 public: no Continue on a device with no autosave', v1.cont === '', v1.cont);
+  // A CATEGORY CLICK FILES cta_click (to = menu_<category>), through the real menu handler.
+  var tel = await s1.page.evaluate(function () {
+    if (!RD.Telemetry) return { none: true };
+    var got = [], orig = RD.Telemetry.event;
+    RD.Telemetry.event = function (n, p) { got.push(n + ':' + (p && p.to)); return orig.apply(this, arguments); };
+    ['free', 'walkthroughs', 'lessons'].forEach(function (m) { document.querySelector('[data-mmode="' + m + '"]').click(); });
+    RD.Telemetry.event = orig;
+    return { got: got };
+  });
+  ck('#816: each category click emits cta_click to=menu_free / menu_walkthroughs / menu_lessons',
+    !!tel.got && tel.got.join() === 'cta_click:menu_free,cta_click:menu_walkthroughs,cta_click:menu_lessons', JSON.stringify(tel));
+  await s1.ctx.close();
+
+  // A GATED LEG IS NEVER OFFERED, AND THE OTHERS KEEP THEIR NUMBERS: heatup done, startup (Part 2)
+  // forced off for this load -> the list is Part 1 and Part 3, and NEXT is Part 3.
+  var s2 = await menuPage('public', prog({ completed_procedures: ['pwr_heatup'] }), '&flags=-procedure:pwr_startup');
+  var v2 = await sh(s2.page);
+  ck('#816 public: a gated middle part is not listed, Part 3 keeps its number and is NEXT',
+    v2.legs.indexOf('pwr_startup') === -1 && v2.legsOn && v2.next === 'pwr_raise_power' &&
+    v2.names[0] === '✓ Startup Part 1' && /^Startup Part 3/.test(v2.names[1]) &&
+    !v2.names.some(function (n) { return /Startup Part 2/.test(n); }), JSON.stringify(v2));
+  await s2.ctx.close();
+
+  var s3 = await menuPage(null, prog({ completed_openers: ['opener_pwr2_hfp'],
+    completed_procedures: ['pwr_heatup', 'pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown'] }));
+  var v3 = await sh(s3.page);
+  ck('#816 dev: everything done -> no part is marked NEXT, every cycle part carries its ✓',
+    v3.next === null && v3.legs.length >= 6 &&
+    v3.names.slice(0, 6).every(function (n) { return /^✓ /.test(n); }), JSON.stringify(v3));
+  await s3.ctx.close();
+
+  /* #816 REVIEW FIXES. The old "a just-loaded plant is NOT autosaved" passed only because the
+   * BOOT path never set the autosave base at all — the boot plant could never autosave. These
+   * drive the boot plant, a rewind, the card's confirm, and Continue out of a running opener. */
+  async function runFor(pg, secs) {
+    var t = await pg.evaluate(function () { return RD.__dev.service().simTime; });
+    await pg.waitForFunction(function (t) { return RD.__dev.service().simTime > t; }, t + secs, { timeout: 30000 });
+  }
+  var s5 = await menuPage(null);
+  var p5 = s5.page;
+  await p5.click('#missionClose');
+  await runFor(p5, 1);
+  ck('#816: boot plant, menu dismissed, run -> autosave() saves',
+    (await p5.evaluate(function () { return RD.__dev.autosave(); })) === true);
+  // REWIND: a save, then a rewind to an EARLIER point, then run -> the save is the post-rewind state.
+  var rw = await p5.evaluate(function () {
+    var svc = RD.__dev.service(); svc._pushCheckpoint(); return svc.simTime; });
+  await runFor(p5, 2);
+  var rw1 = await p5.evaluate(function () {
+    RD.__dev.autosave(); return JSON.parse(localStorage.getItem('rd_autosave')).snapshot.metadata.sim_time; });
+  await p5.evaluate(function () { RD.__dev.service().handleCommand({ action: 'rewind', steps: 1, exact: true }); });
+  await p5.waitForTimeout(400);
+  var rw2 = await p5.evaluate(function () {
+    var ok = RD.__dev.autosave(); return { ok: ok, t: JSON.parse(localStorage.getItem('rd_autosave')).snapshot.metadata.sim_time,
+      now: RD.__dev.service().simTime }; });
+  ck('#816: after a rewind, the next autosave holds the POST-rewind plant',
+    rw2.ok && rw2.t < rw1 && rw2.t >= rw - 0.5, JSON.stringify({ cp: rw, before: rw1, after: rw2 }));
+  // EVERY PANE START BUTTON ASKS FIRST once the plant has run, like the Instructor-tab opener.
+  await p5.click('#mainMenuBtn');
+  await p5.click('[data-mmode="free"]');
+  await p5.click('#mpContent [data-mfree]');
+  var armedF = await p5.evaluate(function () {
+    var b = document.querySelector('#mpContent [data-mfree]');
+    return { armed: !!b && b.getAttribute('data-armed') === '1', open: !document.getElementById('missionOverlay').hidden };
+  });
+  ck('#816: on a plant that has run, Start Free Play asks before replacing it',
+    armedF.armed && armedF.open, JSON.stringify(armedF));
+  // FOCUS follows a category click (the list re-renders and would drop it to <body>), and only ONE Start is armed.
+  await p5.click('[data-mmode="walkthroughs"]');
+  var foc = await p5.evaluate(function () { var e = document.activeElement; return e && e.getAttribute('data-mmode'); });
+  ck('#816: after a category click the picked category button holds keyboard focus', foc === 'walkthroughs', String(foc));
+  await p5.click('#mpContent [data-wtstart="pwr_heatup"]');
+  await p5.click('#mpContent [data-wtstart="pwr_startup"]');
+  var one = await p5.evaluate(function () {
+    var a = document.querySelectorAll('#mpContent [data-armed="1"]'), f = document.querySelector('#mpContent [data-wtstart="pwr_heatup"]');
+    return { n: a.length, who: a[0] && a[0].getAttribute('data-wtstart'), first: f.textContent };
+  });
+  ck('#816: arming a second Start disarms the first (one armed at a time, first label restored)',
+    one.n === 1 && one.who === 'pwr_startup' && /^▶ Start/.test(one.first), JSON.stringify(one));
+  await p5.click('[data-mmode="lessons"]');
+  await p5.click('#mpContent [data-mopener]');
+  var armed = await p5.evaluate(function () {
+    var b = document.querySelector('#mpContent [data-mopener]');
+    return { armed: !!b && b.getAttribute('data-armed') === '1', mode: RD.__dev.service().instructor.mode };
+  });
+  ck('#816: on a plant that has run, the lesson Start button asks before replacing it',
+    armed.armed && armed.mode !== 'scenario', JSON.stringify(armed));
+  await p5.click('#mpContent [data-mopener]');
+  await p5.waitForFunction(function () { return RD.__dev.service().instructor.mode === 'scenario'; });
+  await p5.click('#mainMenuBtn');
+  await p5.click('#mpStart [data-mcontinue]');
+  await runFor(p5, 1);
+  ck('#816: Continue out of a running opener -> autosave works afterwards',
+    (await p5.evaluate(function () { return RD.__dev.autosave(); })) === true);
+  await s5.ctx.close();
+
+  var s6 = await menuPage(null, prog({ completed_openers: ['opener_pwr2_hfp'] }));
+  var v6 = await sh(s6.page);
+  ck('#816: only the opener done -> NEXT is Startup Part 1, and the lesson carries its ✓',
+    v6.next === 'pwr_heatup' && /^✓ /.test(v6.lesson.trim()), JSON.stringify(v6));
+  await s6.ctx.close();
+
+  // ANOTHER ENGINE'S SAVE survives a visit to a different engine (not offered, not deleted).
+  var c7 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await c7.addInitScript('try { localStorage.setItem("rd_autosave", JSON.stringify({ v: 1, savedAt: Date.now(), release: "x", engine: "pwr2", snapshot: { metadata: { plant_id: "pwr2" } } })); } catch (e) {}');
+  var p7 = await c7.newPage();
+  await p7.goto('file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr&dev=1');
+  await p7.waitForSelector('#mainMenuBtn');
+  var v7 = await sh(p7);
+  ck('#816: a PWR2 save is neither offered nor deleted on ?engine=pwr',
+    v7.cont === '' && !!(await p7.evaluate(function () { return localStorage.getItem('rd_autosave'); })), JSON.stringify(v7));
+  await c7.close();
+
+  // AUTOSAVE + CONTINUE, mid-walkthrough, through a real reload.
+  var s4 = await menuPage(null);
+  var p4 = s4.page;
+  await p4.click('[data-mmode="walkthroughs"]');
+  await p4.click('#mpContent [data-wtstart="pwr_heatup"]');
+  await p4.waitForFunction(function () { var c = RD.__dev.service().instructor.checklist; return c && c.procedure_id === 'pwr_heatup'; });
+  var t0 = await p4.evaluate(function () { return RD.__dev.service().simTime; });
+  await p4.waitForFunction(function (t) { return RD.__dev.service().simTime > t + 1; }, t0, { timeout: 20000 });
+  /* Put the walkthrough on step 3 first, so "restored at its step" cannot pass on step 1 by
+   * coincidence (a fresh start is also step 1). */
+  await p4.evaluate(function () { RD.__dev.service().instructor.checklist.idx = 2; });
+  var saved = await p4.evaluate(function () {
+    var ok = RD.__dev.autosave(), raw = localStorage.getItem('rd_autosave') || '';
+    return { ok: ok, bytes: raw.length, step: RD.__dev.service().instructor.checklist.idx };
+  });
+  console.log(C.dim + '      autosave size: ' + saved.bytes + ' chars' + C.off);
+  ck('#816: a running walkthrough autosaves', saved.ok && saved.bytes > 0, JSON.stringify(saved));
+  await p4.reload();
+  await p4.waitForSelector('#mainMenuBtn');
+  var v4 = await sh(p4);
+  ck('#816: after a reload the menu offers Continue naming the walkthrough',
+    /Continue — Startup Part 1, step 3, saved/.test(v4.cont), v4.cont);
+  /* AN OLDER RELEASE'S SAVE IS STILL OFFERED AND LOADS (coordinator 2026-10-01): restamp the
+   * stored save with another release, then reload without letting pagehide overwrite it. */
+  await p4.evaluate(function () {
+    var a = JSON.parse(localStorage.getItem('rd_autosave')); a.release = 'Alpha 0.0.1-old';
+    localStorage.setItem('rd_autosave', JSON.stringify(a));
+    window.addEventListener('pagehide', function () { localStorage.setItem('rd_autosave', JSON.stringify(a)); });
+  });
+  await p4.reload();
+  await p4.waitForSelector('#mainMenuBtn');
+  ck('#816: a save from an OLDER release is still offered',
+    (await p4.evaluate(function () { return (JSON.parse(localStorage.getItem('rd_autosave')) || {}).release; })) === 'Alpha 0.0.1-old' &&
+    /Continue/.test((await sh(p4)).cont));
+  await p4.click('#mpStart [data-mcontinue]');
+  var r4 = await p4.evaluate(function () {
+    var c = RD.__dev.service().instructor.checklist;
+    return { id: c && c.procedure_id, step: c && c.idx, menu: !document.getElementById('missionOverlay').hidden };
+  });
+  ck('#816: Continue restores the walkthrough at its step and closes the menu',
+    r4.id === 'pwr_heatup' && saved.step === 2 && r4.step === 2 && !r4.menu, JSON.stringify(r4));
+  // #816 REVIEW: the running card's heading carries the part name, and the Checklists picker
+  // names cycle legs by part and prints a plain gate (no raw channel id such as control_bank_steps).
+  await p4.waitForSelector('.ckl-head b');
+  var hd = await p4.evaluate(function () { return document.querySelector('.ckl-head b').textContent; });
+  ck('#816: the running walkthrough heading reads "Startup Part 1 — <title>"', /^Startup Part 1 — \S/.test(hd), hd);
+  var pk = await p4.evaluate(function () {
+    var bs = Array.prototype.slice.call(document.querySelectorAll('[data-ckl-start]'));
+    function t(id) { var b = document.querySelector('[data-ckl-start="' + id + '"]'); return b ? b.textContent : ''; }
+    var sn = JSON.parse(JSON.stringify(RD.PwrBoard.lastSnapshot())); (sn.control_state.rod_groups || []).forEach(function (g) { g.steps = 627; });
+    var rk = RD.__dev.service().instructor.rankProcedures(sn, RD.MANUAL_PROCEDURES.pwr2, null).filter(function (r) { return r.id === 'pwr_raise_power'; })[0];
+    var rods = rk && rk.gate ? rk.gate.split(' · ').filter(function (g) { return /rod/.test(g); })[0] : null;
+    return { rods: rods, s2: t('pwr_startup'), s3: t('pwr_raise_power'), gates: bs.map(function (b) { var g = b.querySelector('.ckl-gate'); return g ? g.textContent : ''; }).filter(Boolean) };
+  });
+  ck('#816: the Checklists picker names the cycle legs "Startup Part N" and no gate prints a raw field name',
+    /Startup Part 2/.test(pk.s2) && /Startup Part 3/.test(pk.s3) && pk.rods === 'Requires control rods below 600 steps' &&
+    pk.gates.every(function (g) { return !/[a-z]_[a-z]/.test(g); }), JSON.stringify(pk));
+  // A FINISHED LIVE WALKTHROUGH IS RECORDED (it never was: only the retired Follow path wrote it).
+  await p4.evaluate(function () { RD.__dev.service().instructor.checklist.complete = true; });
+  var rec = await p4.waitForFunction(function () {
+    try { return (JSON.parse(localStorage.getItem('rd_progress')) || {}).completed_procedures.indexOf('pwr_heatup') !== -1; }
+    catch (e) { return false; } }, null, { timeout: 10000 }).then(function () { return true; }, function () { return false; });
+  ck('#816: a finished walkthrough is written to rd_progress (Next up reads it)', rec);
+  await p4.waitForSelector('.ckl-next', { timeout: 10000 });
+  var nxt = await p4.evaluate(function () { return document.querySelector('.ckl-next').textContent; });
+  ck('#816: the finished card offers "Next: Startup Part 2 ▸"', nxt === 'Next: Startup Part 2 ▸', nxt);
+  /* A reload here would autosave on pagehide over the corrupt value (that is the pagehide save
+   * working), so the corrupt save is seeded into a FRESH device instead. */
+  await s4.ctx.close();
+  s4 = await menuPage(null, 'localStorage.setItem("rd_autosave", "{not json")');
+  p4 = s4.page;
+  var v5 = await sh(p4);
+  ck('#816: a corrupt autosave is dropped silently (no Continue, key removed)',
+    v5.cont === '' && (await p4.evaluate(function () { return localStorage.getItem('rd_autosave'); })) === null, JSON.stringify(v5));
+  await s4.ctx.close();
 
   await browser.close();
   console.log('\n' + C.bold + '──────────────────────────────────────────' + C.off);

@@ -2,7 +2,7 @@
 
 **Document:** PWR-MT-01  
 **Title:** Plant MODE Transitions (Mode 1, At Power through Mode 6, Refueling)  
-**Revision:** 22  
+**Revision:** 23  
 
 ---
 
@@ -229,7 +229,7 @@ This is the deepest **fully simulated** shutdown state.
 
 | Step | Action |
 |------|--------|
-| 1 | Plant & Mission → **PWR** → Free Play |
+| 1 | Main Menu → **Free Play** |
 | 2 | Initial condition **Hot Standby** |
 | 3 | Confirm **Mode 3, Hot Standby**: subcritical, hot, SR on, control bank inserted |
 | 4 | Speed 1×; Play; perform **PWR-N02** |
@@ -238,7 +238,7 @@ This is the deepest **fully simulated** shutdown state.
 
 | Step | Action |
 |------|--------|
-| 1 | Plant & Mission → **PWR** → Free Play |
+| 1 | Main Menu → **Free Play** |
 | 2 | **Hot Full Power** or **50 % Power** |
 | 3 | Confirm **Mode 1, At Power**: critical, power > 5 %, MWe as expected |
 | 4 | Note turbine load mode (default Follow) |
