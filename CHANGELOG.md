@@ -30,7 +30,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.9.0-rc1] — 2026-10-01
+## [Alpha 1.8.1] — 2026-10-01
 
 ### Added
 - **Main Menu: Continue, and Start here / Next up** (#816; OWNER 2026-10-01: "Do one and 2+ the returning flag"). The plant autosaves to this browser every ~30 s and when the tab hides or closes, and the Main Menu opens with "Continue — <walkthrough, step N | Free Play, mode>, saved <when>". A running walkthrough resumes at its step: its id, step and latches already rode the save (InstructorLayer.saveState), so the SAVE FORMAT IS UNCHANGED and Settings Save/Load shares the serializer and loader. Not saved: an opener or scenario run, or a plant with no sim time since it loaded (the menu opens paused on every load). A save from any release is offered and loads through the file-Load path; one for another engine, a corrupt one, or one the loader refuses is dropped silently. Measured: one autosave of PWR2 mid-heatup is 24,879 characters. Above the tabs, a first-time player gets "New here? Start here" (the 5-minute opener, then the first walkthrough); after any completion it reads "Next up: <first unfinished leg>", skipping any leg the channel gates, and hides when everything is done. **Fixed on the way:** a finished LIVE walkthrough was never written to `rd_progress` (only the retired Follow path wrote it), so the walkthrough list's ✓ could not appear; now recorded, as is an opener's finish (`completed_openers`).
