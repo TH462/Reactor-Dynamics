@@ -698,7 +698,7 @@ async function usage() {
    * visit" — so rows older than the deploy must be excluded by time, not by the -1 sentinel.
    * MOVE IT TO THE ACTUAL DEPLOY TIME when the Worker ships. Until then (and until a row exists
    * with the column) the query may answer 422; sec() reports that as a failed section. */
-  const RETURNING_SINCE = "toDateTime('2026-10-01 00:00:00')";
+  const RETURNING_SINCE = "toDateTime('2026-10-01 19:04:32')";
   await sec('usage_returning', 'Returning visitors  (session_start; device-local, no identifier)',
     ['returning', 'days_since_last', 'sessions'], async () =>
     rows(await sql(`SELECT double13 AS returning,
