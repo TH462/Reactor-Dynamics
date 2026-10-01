@@ -941,7 +941,7 @@ function pinChannel(ch) {
           : 'pwr_startup start button not found');
   await b.ctx.close();
 
-  // The player's window (no `mmode` in the URL) offers Free Play, Walkthroughs and Lessons
+  // The player's window (no `mmode` in the URL) offers Lessons, Walkthroughs and Free Play
   // (#816); the campaign and scenario areas are reachable only through the door.
   b = await build('dev', SHELL.replace('&mmode=free', ''));
   await b.page.click('#mainMenuBtn');
@@ -953,8 +953,8 @@ function pinChannel(ch) {
     return { picked: document.getElementById('mpSplit').classList.contains('picked'),
              paneShown: !!c && c.offsetHeight > 0, starts: c ? c.querySelectorAll('.btn').length : -1 };
   });
-  ck('player window: the first view lists Free Play, Walkthroughs, Lessons and draws no pane (#816)',
-    tabsPlain.join(',') === 'free,walkthroughs,lessons' && !firstView.picked && !firstView.paneShown && firstView.starts === 0,
+  ck('player window: the first view lists Lessons, Walkthroughs, Free Play and draws no pane (#816)',
+    tabsPlain.join(',') === 'lessons,walkthroughs,free' && !firstView.picked && !firstView.paneShown && firstView.starts === 0,
     tabsPlain.join(',') + ' ' + JSON.stringify(firstView));
   // Clicking a category moves the list into the left column and draws THAT category's pane.
   await b.page.click('[data-mmode="walkthroughs"]');
@@ -1445,7 +1445,7 @@ function pinChannel(ch) {
   var s1 = await menuPage('public');
   var v1 = await sh(s1.page);
   ck('#816 public, first visit: three categories; the Walkthroughs pane marks Startup Part 1 NEXT; Lessons offers the opener',
-    v1.cats.join() === 'free,walkthroughs,lessons' && v1.next === 'pwr_heatup' && v1.opener &&
+    v1.cats.join() === 'lessons,walkthroughs,free' && v1.next === 'pwr_heatup' && v1.opener &&
     /About 5 minutes/.test(v1.lesson), JSON.stringify(v1));
   ck('#816 public: the six parts are named Startup/Shutdown Part 1-3, in cycle order',
     v1.legs.join() === 'pwr_heatup,pwr_startup,pwr_raise_power,pwr_lower_power,pwr_shutdown,pwr_cooldown' &&

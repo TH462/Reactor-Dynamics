@@ -222,13 +222,13 @@ the plant paused until you close it or start something.
 ### 5.1 Selection order
 
 1. **Continue** — shown only when this browser holds an autosave; picks up where you left off.
-2. **Category** — **Free Play**, **Walkthroughs** (a guided startup and shutdown) or **Lessons**
-   (short guided sessions with the Instructor). Clicking one moves the list to a narrow left
+2. **Category** — **Lessons** (short guided sessions with the Instructor), **Walkthroughs** (a
+   guided startup and shutdown) or **Free Play**. Clicking one moves the list to a narrow left
    column and shows that category's choices beside it; click another to switch.
-3. **The choice inside it** — for Free Play, the starting condition and **Start Free Play**; for
+3. **The choice inside it** — for Lessons, the full-power opener (about 5 minutes); for
    Walkthroughs, a part of the **Startup** or **Shutdown** (*Startup Part 1* to *Part 3*, each with
-   its starting and ending Mode; the next one to do is tagged **NEXT**); for Lessons, the
-   full-power opener (about 5 minutes).
+   its starting and ending Mode; the next one to do is tagged **NEXT**); for Free Play, the
+   starting condition and **Start Free Play**.
 
 Once the plant has run, every **Start** button asks for a second press before it replaces the
 plant you have.

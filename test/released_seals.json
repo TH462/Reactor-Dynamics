@@ -3,8 +3,8 @@
   "manual_sealed_rev": 23,
   "versions": {
     "Alpha 1.8.1": {
-      "md": "692cd0e87cb51e8f",
-      "html": "9d79290ad36e5677"
+      "md": "2b1ba1d9506fff27",
+      "html": "58f2b1d9be6e4ef6"
     },
     "Alpha 1.8.0": {
       "md": "2130824884039f86",
@@ -119,6 +119,6 @@
     "20": "0e7147beae60bc76",
     "21": "ee616f80a0acda72",
     "22": "19c2718f1e9eee1f",
-    "23": "50309539f45c4e48"
+    "23": "2da5d09c7306dc3d"
   }
 }

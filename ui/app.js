@@ -6946,9 +6946,11 @@
    * (#660 item 19) and appear only through the `?mmode=` door, as before. */
   function menuCategories() {
     var c = [];
-    if (flagOn('free_play')) c.push({ id: 'free', name: 'Free Play', desc: 'Pick a starting condition and run the plant your own way.' });
-    if (walkthroughsOffered()) c.push({ id: 'walkthroughs', name: 'Walkthroughs', desc: 'A guided startup and shutdown, one step at a time.', isNew: true });
+    /* LESSONS FIRST, FREE PLAY LAST *(OWNER, 2026-10-01: "On the main menu I want you to flip the
+     * order of the three blocks. Put the lesson first.")*. */
     if (flagOn('openers')) c.push({ id: 'lessons', name: LESSONS_NAME, desc: 'Short guided sessions with the Instructor.' });
+    if (walkthroughsOffered()) c.push({ id: 'walkthroughs', name: 'Walkthroughs', desc: 'A guided startup and shutdown, one step at a time.', isNew: true });
+    if (flagOn('free_play')) c.push({ id: 'free', name: 'Free Play', desc: 'Pick a starting condition and run the plant your own way.' });
     if (/[?&]mmode=/.test(location.search || '')) {
       c.push({ id: 'campaign', name: 'Campaign', desc: 'The retired guided path (dev door).' },
              { id: 'scenarios', name: 'Scenarios', desc: 'Instructor-led situations (dev door).' });
