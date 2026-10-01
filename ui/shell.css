@@ -2901,6 +2901,13 @@ select.num-input { width: auto; }
 .init-row.on { border-color: rgba(122, 176, 255, 0.7); background: rgba(122, 176, 255, 0.08); }
 .init-dot { color: rgba(122, 176, 255, 0.9); }
 .mp-start { display: block; width: 100%; margin-top: 12px; padding: 10px; font-weight: 700; }
+/* Continue + Start here / Next up (#816), above the mode tabs */
+.mp-start-here { padding: 10px 14px 4px; border-bottom: 1px solid var(--border); }
+.mp-start-here[hidden] { display: none; }
+.mp-sh-row { margin-bottom: 8px; }
+.mp-sh-t { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.mp-sh-row .btn { display: block; width: 100%; text-align: left; padding: 8px 10px; margin-bottom: 4px; }
+.mp-sh-row .btn.mp-sh-main { font-weight: 700; border-color: var(--running); }
 
 /* ---- 1/M startup plot (draggable window — ui/panels/one_over_m.js) ---- */
 /* ONE FORM, FLOATING AND DRAGGABLE *(OWNER RULING, 2026-09-13: "let's make the card floating and

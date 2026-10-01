@@ -94,9 +94,12 @@
   of the plant are confusing — and, on the site, whether people who arrive here ever
   reach the simulator at all. What it sends is counts, and how long things took:</p>
   <ul>
-    <li data-collects="session_start.plant session_start.initial_state session_start.channel session_end.seconds session_end.sim_seconds">which
+    <li data-collects="session_start.plant session_start.initial_state session_start.channel session_start.returning session_start.days_since_last session_end.seconds session_end.sim_seconds">which
     plant and starting condition you chose, which build you are on, and how long the
-    session ran</li>
+    session ran, and whether you have used the simulator on this device before and how
+    many days ago. That comes from a first-visit and a last-visit date the simulator keeps
+    on your device; the dates themselves are never sent, only yes or no and the number of
+    days</li>
     <li data-collects="command.action command.blocked command.count">the <em>names</em> of the
     controls you use — never the values you set them to — whether the plant
     refused one, and how many presses a run of repeats on a number-box control
@@ -116,7 +119,8 @@
     page of this site you are reading, and — if you press a button that opens the
     simulator or the download — that you pressed it, whether your device has a touch
     screen, and roughly how wide your window is (one of four size bands, never the
-    pixel measurement)</li>
+    pixel measurement). In the simulator, the same row records that you pressed
+    Continue or one of the Main Menu's Start here buttons</li>
   </ul>
   <p>Each of those carries the time it happened, measured from when the page opened —
   enough to put one visit's actions in order and see where the time went, and not

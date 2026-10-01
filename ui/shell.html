@@ -549,6 +549,10 @@
                as it is because the chart-settings window reuses it with a real left column. -->
           <div class="mission-body mp-body">
             <div class="mp-right">
+              <!-- Continue + Start here / Next up (#816). OUTSIDE #mpContent for the reason the
+                   session footer is: it is not the selected mode's content, and verify_flags_ui
+                   counts start buttons inside #mpContent. Filled by renderMissionSelect. -->
+              <div class="mp-start-here" id="mpStart" hidden></div>
               <div class="mp-modes" id="mpModes"></div>
               <div class="mp-content" id="mpContent"></div>
             </div>

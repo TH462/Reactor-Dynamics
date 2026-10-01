@@ -5501,6 +5501,7 @@
       h += '</div></div>';
     }
     if (ck.complete) {
+      noteLegComplete(ck.procedure_id);   // #816 — the Main Menu's "Next up" reads rd_progress
       /* #715 — `pr.outcome` is an AUTHORED plant-state claim ("stable near 15 %, 15 MWe"),
        * and the checklist's own steps can be satisfied for free (a scram, in the leg this
        * was filed for). `outcome_verified` is the server's re-grade of the leg's optional
@@ -6512,7 +6513,23 @@
     } else if (ui.follow) {
       var cp = p.completed_procedures || [];
       if (cp.indexOf(ui.follow.id) === -1) { cp.push(ui.follow.id); saveProgress({ completed_procedures: cp }); }
+    } else if (ui.opener) {
+      /* #816: an opener's finish is a completion too — the Main Menu's Start-here card reads it
+       * to stop offering the opener as the first thing to do. */
+      var co = p.completed_openers || [];
+      if (co.indexOf(ui.opener) === -1) { co.push(ui.opener); saveProgress({ completed_openers: co }); }
     }
+    refreshMissionSelect();
+  }
+  /* A LIVE WALKTHROUGH'S FINISH WAS NEVER RECORDED (#816, measured): completed_procedures was
+   * written only by the retired Follow path, so the walkthrough list's ✓ could never appear for
+   * the checklist legs the Main Menu actually starts. Called on every render of a complete card;
+   * the indexOf makes it a one-time write. */
+  function noteLegComplete(id) {
+    if (!id) return;
+    var cp = progress().completed_procedures || [];
+    if (cp.indexOf(id) !== -1) return;
+    cp.push(id); saveProgress({ completed_procedures: cp });
     refreshMissionSelect();
   }
 
@@ -6765,6 +6782,7 @@
       return '<button class="' + (msel.mode === m[0] ? 'on' : '') + '" data-mmode="' + m[0] + '">' + m[1] +
         (m[2] ? '<span class="mp-new">NEW</span>' : '') + '</button>';
     }).join('');
+    renderStartHere();   // Continue + Start here / Next up (#816), above the tabs
     // Step 3 — the mode's content
     $('mpContent').innerHTML =
       msel.mode === 'free'      ? mpFree() :
@@ -6855,6 +6873,81 @@
     if (!flagOn('walkthroughs')) return false;
     var all = procsFor(msel.engine);
     return !(all.length && !all.filter(function (x) { return flagOn('procedure:' + x.id); }).length);
+  }
+  /* ---- CONTINUE + START HERE / NEXT UP (#816, OWNER 2026-10-01: "Do one and 2+ the returning
+   * flag") ---------------------------------------------------------------------------------------
+   * Telemetry 2026-09-01..10-01: 66 % of sessions start at Hot Full Power because it is this
+   * window's default, and the guided opener — offered only on the idle Instructor tab — had 3
+   * starts. So the top of the window now says what to do first.
+   *
+   * A GATED LEG IS NEVER OFFERED (OWNER 2026-09-15, see nextLegFor): every leg here passes
+   * walkthroughsOffered() and flagOn('procedure:<id>'), and the opener passes flagOn('openers').
+   * Rendered into #mpStart, OUTSIDE #mpContent, for the #mpSession reason. A FUNCTION returning
+   * the decision, not markup, so verify_flags_ui can put it under both channels (#485 rule). */
+  function menuCta(to) {
+    var t = window.RD && RD.Telemetry; if (!t) return;
+    try {
+      var coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+      t.event('cta_click', { to: to, device: coarse ? 'coarse' : 'fine', width: t.widthBucket() });
+    } catch (e) { /* never break the menu */ }
+  }
+  function openerForEngine(key) {
+    if (!flagOn('openers')) return null;
+    var pid = engId(key), all = RD.OPENERS || {};
+    for (var k in all) if (all[k].plant_id === pid) return all[k];
+    return null;
+  }
+  // The legs in chain order: the pool's first leg, then each `next` (pwr2's round trip; the loop
+  // back to the first leg ends it). A pool without `next` pointers is taken in list order.
+  function legChain(key) {
+    if (!walkthroughsOffered()) return [];
+    var all = procsFor(key); if (!all.length) return [];
+    var by = {}; all.forEach(function (x) { by[x.id] = x; });
+    var out = [], cur = all[0], seen = {};
+    while (cur && !seen[cur.id]) { seen[cur.id] = 1; out.push(cur); cur = cur.next ? by[cur.next] : null; }
+    if (out.length < 2) out = all;
+    return out.filter(function (x) { return flagOn('procedure:' + x.id); });
+  }
+  // { kind: 'start' | 'next', opener, leg } or null (nothing left to suggest: the card hides).
+  function startHereModel(key) {
+    key = key || msel.engine;
+    var p = progress(), doneP = p.completed_procedures || [], doneO = p.completed_openers || [];
+    var op = openerForEngine(key), legs = legChain(key);
+    if (!doneP.length && !doneO.length) {
+      return (op || legs.length) ? { kind: 'start', opener: op, leg: legs[0] || null } : null;
+    }
+    var nx = legs.filter(function (x) { return doneP.indexOf(x.id) === -1; })[0];
+    if (nx) return { kind: 'next', opener: null, leg: nx };
+    if (op && doneO.indexOf(op.id) === -1) return { kind: 'next', opener: op, leg: null };
+    return null;
+  }
+  function renderStartHere() {
+    var el = $('mpStart'); if (!el) return;
+    var h = '', a = readAutosave();
+    if (a && a.engine === msel.engine) {
+      h += '<div class="mp-sh-row"><button class="btn mp-sh-main" data-mcontinue="1">▶ Continue — ' +
+        mesc(autosaveLabel(a)) + ', saved ' + mesc(agoText(a.savedAt)) + '</button></div>';
+    }
+    var m = startHereModel(msel.engine);
+    if (m) {
+      var opBtn = function (cls) {
+        return '<button class="btn' + cls + '" data-mopener="' + mesc(m.opener.id) + '">▶ 5-minute guided start at full power</button>';
+      };
+      var legBtn = function (cls) {
+        return '<button class="btn' + cls + '" data-wtstart="' + mesc(m.leg.id) + '" data-mcta="start_leg">▶ ' + mesc(m.leg.title) + '</button>';
+      };
+      h += '<div class="mp-sh-row">';
+      if (m.kind === 'start') {
+        h += '<div class="mp-sh-t">New here? Start here</div>';
+        if (m.opener) h += opBtn(' mp-sh-main');
+        if (m.leg) h += (m.opener ? '<div class="m-note">Or begin the first walkthrough:</div>' : '') + legBtn(m.opener ? '' : ' mp-sh-main');
+      } else {
+        h += '<div class="mp-sh-t">Next up</div>' + (m.leg ? legBtn(' mp-sh-main') : opBtn(' mp-sh-main'));
+      }
+      h += '</div>';
+    }
+    el.innerHTML = h;
+    el.hidden = !h;
   }
   function mpWalkthroughs() {
     /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
@@ -8855,6 +8948,27 @@
       try { return t.event(name, props) === true; } catch (e) { return false; }   // never break the sim
     }
     function since(ms) { return Math.max(0, Math.round((Date.now() - ms) / 1000)); }
+    /* RETURNING VISITOR (#816). Two device-local timestamps, `rd_first_seen` / `rd_last_seen`,
+     * never sent; what IS sent on session_start is `returning` (had this device been here
+     * before) and `days_since_last` (whole days since the previous visit, capped at 365). A
+     * FIRST visit sends returning=false, days_since_last=0 — read days only where returning is
+     * true. A VISIT is the tab session: the answer is computed once and held in sessionStorage,
+     * so a reload is not a return. Storage blocked: nothing is known, nothing is sent (the
+     * Worker writes -1, "not reported", for both). */
+    var visit = (function () {
+      var V = 'rd_visit', now = Date.now(), v = null;
+      try { v = JSON.parse(sessionStorage.getItem(V)); } catch (e) { v = null; }
+      if (v && typeof v.returning === 'boolean') return v;
+      try {
+        var last = Number(localStorage.getItem('rd_last_seen'));
+        var back = isFinite(last) && last > 0 && last <= now;
+        v = { returning: back, days_since_last: back ? Math.min(365, Math.floor((now - last) / 86400000)) : 0 };
+        if (!localStorage.getItem('rd_first_seen')) localStorage.setItem('rd_first_seen', String(now));
+        localStorage.setItem('rd_last_seen', String(now));
+        sessionStorage.setItem(V, JSON.stringify(v));
+        return v;
+      } catch (e) { return null; }
+    })();   // this closing form, deliberately: run_telemetry's TEL extractor ends at the first two-space-indented IIFE close (#816)
 
     return {
       sessionStart: function (reason, meta) {
@@ -8871,6 +8985,7 @@
           initial_state: (meta && meta.initial_state) || ui.initState || 'unknown',
           channel: (typeof window.RD_CHANNEL === 'string') ? window.RD_CHANNEL : 'dev',
         };
+        if (visit) { pendingStart.returning = visit.returning; pendingStart.days_since_last = visit.days_since_last; }
         this.consentAnswered();                   // a no-op until an answer exists
         if (reason === 'scenario' && meta && meta.scenario_id) {
           mission = { id: meta.scenario_id, at: Date.now() };
@@ -9791,15 +9906,13 @@
        * the retired engine, whose constructor a published build no longer contains). Same
        * normalise-a-throw-into-the-service's-own-error-shape idiom as cmd(). */
       r.onload = function () {
-        var res;
-        try { res = service.loadState(JSON.parse(r.result)); }
-        catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
-        if (res && res.type === 'error') {
-          showToast('Save not loaded — ' + (res.message || f.name), 'error');
+        var parsed, err;
+        try { parsed = JSON.parse(r.result); } catch (e2) { err = String(e2 && e2.message || e2); }
+        if (!err) err = applySave(parsed);   // shared with Continue (#816)
+        if (err) {
+          showToast('Save not loaded — ' + (err || f.name), 'error');
           return;                            /* no afterPlantChange, no diagReset: nothing moved */
         }
-        afterPlantChange();
-        diagReset('restore', { engine_key: ui.engineKey });
         showToast('State loaded — ' + f.name);
       };
       r.readAsText(f);
@@ -9969,10 +10082,13 @@
     // `beforeunload` is unreliable (mobile, bfcache), and TEL.end() is idempotent, so
     // firing on both costs nothing and missing the row costs the most useful signal
     // in the set — where people stop.
-    window.addEventListener('pagehide', function () { TEL.end(); });
+    window.addEventListener('pagehide', function () { TEL.end(); autosave('pagehide'); });
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') { var t = window.RD && RD.Telemetry; if (t) { try { t.flush(true); } catch (e) {} } }
+      if (document.visibilityState === 'hidden') { var t = window.RD && RD.Telemetry; if (t) { try { t.flush(true); } catch (e) {} } autosave('hidden'); }
     });
+    // Autosave on a wall-clock interval as well (#816): a crashed tab or a killed browser fires
+    // neither event above. autosave() itself decides whether there is anything worth keeping.
+    setInterval(function () { autosave('interval'); }, AUTOSAVE_MS);
 
     // ---- the launch consent prompt lived here; REMOVED 2026-08-09 ----------------
     // *(OWNER, 2026-08-09: "Can we get rid of the convent popup and just divulge that we
@@ -10187,6 +10303,14 @@
 
     $('missionOverlay').addEventListener('click', function (e) {
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
+      /* Continue + Start here / Next up (#816). Each press files a cta_click (the existing
+       * "did they press the way in" event) with its own `to`; what they then did is already
+       * mission_start / walkthrough_start. The leg button IS a [data-wtstart] and falls through
+       * to that handler below, so a leg starts exactly one way. */
+      if (e.target.closest('[data-mcontinue]')) { menuCta('continue'); continueAutosave(); return; }
+      var mo = e.target.closest('[data-mopener]');
+      if (mo) { menuCta('start_opener'); closeMissionSelect(); startOpener(mo.getAttribute('data-mopener')); return; }
+      if (e.target.closest('[data-mcta]')) menuCta(e.target.closest('[data-mcta]').getAttribute('data-mcta'));
       // Reset lives here because reset is "restart what the session bar describes"
       // (#443, spec §9) — and it is a two-press arm rather than a browser confirm(),
       // which blocks the headless drive and cannot be styled or read by the tour.
@@ -11314,6 +11438,7 @@
 
   function rebuildPlantUI() {
     heldShown = false;        /* #520 — a rebuilt plant can halt again, and must say so again */
+    asBaseT = service.simTime;   /* #816 — no autosave until THIS plant has run */
     // BEFORE chartBuf can take a row: the packed row width and the column of every series
     // come from the incoming plant's profile, and a sample taken against the old index
     // would be silently misfiled rather than empty.
@@ -11373,8 +11498,103 @@
     // condition, rather than on a stopped one that needs ▶ before anything happens.
     releaseHold('reset');
   }
+  /* ONE SERIALIZER, ONE LOADER (#816): Settings → Save/Load and the autosave share both, so a save
+   * format change cannot reach one and miss the other. */
+  function serializeSave(pretty) { return JSON.stringify(service.saveState(), null, pretty ? 2 : 0); }
+  // Returns null on success, or the refusal message. Nothing moves on a refusal (#553/#554).
+  function applySave(state) {
+    var res;
+    try { res = service.loadState(state); }
+    catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
+    if (res && res.type === 'error') return res.message || 'not a valid save';
+    afterPlantChange();
+    diagReset('restore', { engine_key: ui.engineKey });
+    return null;
+  }
+
+  /* ---- AUTOSAVE + CONTINUE (#816) -------------------------------------------------------------
+   * Telemetry 2026-09-01..10-01: half of all sessions end inside 1.7 min, and leaving part way
+   * through a 6½ plant-hour heatup lost everything — plant state had never been autosaved. One
+   * slot in localStorage, written on a ~30 s wall interval and when the tab hides or closes.
+   *
+   * THE WALKTHROUGH RIDES IN THE SNAPSHOT ALREADY: InstructorLayer.saveState carries `checklist`
+   * (procedure id, step, latches) and loadState restores it — the same path the file Load and the
+   * walkthrough's own Rewind use — so the save FORMAT is unchanged. `walkthrough` in the envelope
+   * is only the Continue button's label.
+   *
+   * NOT SAVED: an opener or scenario run (their beat clocks are wall-paced chat, and the brief
+   * excludes them), and a plant with no sim time since it was loaded — the menu opens paused on
+   * every load, so without that guard simply opening the page would overwrite a heatup in
+   * progress with a fresh Hot Full Power plant. Quota and storage errors are swallowed. */
+  var AUTOSAVE_KEY = 'rd_autosave', AUTOSAVE_MS = 30000;
+  var asBaseT = null;   // service.simTime when the plant was last (re)built — see rebuildPlantUI
+  function autosaveEligible() {
+    if (!service || ui.opener || ui.scenario) return false;
+    var ins = latest && latest.instructor;
+    if (ins && ins.mode === 'scenario') return false;
+    return asBaseT != null && service.simTime > asBaseT;
+  }
+  function autosave() {
+    if (!autosaveEligible()) return false;
+    try {
+      var snap = JSON.parse(serializeSave(false));
+      var ck = service.instructor && service.instructor.checklist;   // live, not the last broadcast
+      var pm = latest && latest.true_state ? latest.true_state.plant_mode : null;
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({
+        v: 1, savedAt: Date.now(), release: window.RD_RELEASE || '', engine: ui.engineKey,
+        initState: ui.initState, mode: typeof pm === 'number' ? Math.round(pm) : null,
+        walkthrough: ck && !ck.complete ? { id: ck.procedure_id, step: ck.idx } : null,
+        snapshot: snap,
+      }));
+      asBaseT = service.simTime;   // nothing new to save until the plant runs again
+      return true;
+    } catch (e) { return false; }  // quota, storage disabled, file:// — the sim carries on
+  }
+  // The stored save, or null. A corrupt one, or one from another release, is dropped silently:
+  // a release can change the engine's state schema, and a half-restored plant is worse than none.
+  function readAutosave() {
+    var a = null;
+    try { a = JSON.parse(localStorage.getItem(AUTOSAVE_KEY)); } catch (e) { a = undefined; }
+    if (a === null) return null;
+    var ok = a && typeof a === 'object' && a.v === 1 && typeof a.savedAt === 'number' &&
+      a.snapshot && a.snapshot.metadata && ENGINES[a.engine] && a.release === (window.RD_RELEASE || '');
+    if (!ok) { try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {} return null; }
+    return a;
+  }
+  function agoText(ms) {
+    var m = Math.max(0, Math.round((Date.now() - ms) / 60000));
+    if (m < 1) return 'just now';
+    if (m < 60) return m + ' min ago';
+    var h = Math.round(m / 60);
+    if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    var d = Math.round(h / 24);
+    return d + (d === 1 ? ' day ago' : ' days ago');
+  }
+  function autosaveLabel(a) {
+    if (a.walkthrough) {
+      var pr = procsFor(a.engine).filter(function (x) { return x.id === a.walkthrough.id; })[0];
+      if (pr) return pr.title + ', step ' + (a.walkthrough.step + 1);
+    }
+    return 'Free Play, ' + (MODE_NAMES[a.mode] || 'your plant');
+  }
+  function continueAutosave() {
+    var a = readAutosave(); if (!a) { renderMissionSelect(); return; }
+    var err = applySave(a.snapshot);
+    if (err) {
+      try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e) {}
+      showToast('Saved plant could not be restored — ' + err, 'error');
+      renderMissionSelect();
+      return;
+    }
+    closeMissionSelect();
+    // `latest` is the PRE-load broadcast here, so ask the instructor itself what it restored.
+    var ck = service.instructor && service.instructor.checklist;
+    if (a.walkthrough && ck && ck.procedure_id === a.walkthrough.id) { cklState.view = 'run'; selectTab('instructor'); }
+    showToast('Restored — ' + autosaveLabel(a));
+  }
+
   function downloadSave() {
-    var data = JSON.stringify(service.saveState(), null, 2);
+    var data = serializeSave(true);
     var url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_save.json'; a.click();
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
@@ -11857,6 +12077,11 @@
          * `verify_flags_ui` drives it on both channels; exposing the real function rather
          * than a copy is the point, the same reason tripCauses() hands over the real map. */
         nextLegFor: nextLegFor,
+        /* #816 — the Main Menu's Start-here decision and the autosave, as the menu calls them,
+         * so verify_flags_ui / verify_e2e_ui can drive them on both channels without a 30 s wait. */
+        startHereModel: startHereModel,
+        autosave: autosave,
+        readAutosave: readAutosave,
       };
     }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside

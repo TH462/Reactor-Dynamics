@@ -165,6 +165,19 @@ const MAX_EVENTS_PER_BATCH = 250;   // Analytics Engine caps writes per invocati
  *                                   a query excluding it would exclude nothing.
  *   doubles[11] count               presses in a coalesced run; 1 for a single press.
  *
+ *   --- 2026-10-01 (#816): the returning-visitor pair, session_start only -----------
+ *   doubles[12] returning           1 this device had visited before, 0 first visit,
+ *                                   -1 not reported (other events; older clients).
+ *   doubles[13] days_since_last     whole days since the device's previous visit, capped
+ *                                   at 365; 0 on a first visit, so read it only where
+ *                                   double13 = 1. -1 not reported.
+ *                                   THESE NEED A SINCE-GUARD, unlike doubles[8]/[9]:
+ *                                   session_start existed before them, and a row the
+ *                                   OLD Worker wrote is short and reads back 0 here —
+ *                                   "first visit" — not -1. tools/site_report.js filters
+ *                                   on RETURNING_SINCE (the Worker deploy time) AND
+ *                                   `double13 >= 0`.
+ *
  *   --- 2026-09-20: coarse DEVICE / BROWSER / OS, derived at this Worker ---------------
  *   blobs[12]   device              OUR classification, from the User-Agent, by
  *                                   deviceClass() below: mobile | tablet | desktop |
@@ -697,6 +710,11 @@ async function handleEvents(request, env, origin) {
          * finding; without this column the collapse would destroy it. Always >= 1 on a
          * command, so no -1 sentinel is needed. */
         num(p.count),
+        /* THE RETURNING-VISITOR PAIR (#816) — session_start only, -1 on every other row and
+         * on a client that predates the props. See the column map for the since-guard. */
+        bool(p.returning),
+        num(p.days_since_last),
+
       ],
     });
     written++;

@@ -1354,6 +1354,100 @@ function pinChannel(ch) {
     /Real reactor physics/.test(await page.textContent('.hero .sub')));
   await ctx.close();
 
+  /* ------------------------------------------- #816: Continue + Start here / Next up (PWR2)
+   * The shipped plant, both channels. The card sits in #mpStart, OUTSIDE #mpContent, so the
+   * "nothing ungated to start" counts above are untouched by it; these checks are its own.
+   * `seed` writes localStorage BEFORE the page boots, the way a returning player arrives. */
+  var SHELL2 = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr2&dev=1';
+  async function menuPage(channel, seed, q) {
+    var c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    if (channel) await c.addInitScript(pinChannel(channel));
+    if (seed) await c.addInitScript('try { if (!sessionStorage.getItem("__seeded")) { ' + seed +
+      '; sessionStorage.setItem("__seeded", "1"); } } catch (e) {}');
+    var pg = await c.newPage();
+    await pg.goto(SHELL2 + (q || ''));
+    await pg.waitForSelector('#mainMenuBtn');
+    return { ctx: c, page: pg };
+  }
+  function sh(pg) {
+    return pg.evaluate(function () {
+      var el = document.getElementById('mpStart');
+      return { shown: !!el && !el.hidden && el.offsetHeight > 0, text: el ? el.textContent : '',
+        opener: !!(el && el.querySelector('[data-mopener]')),
+        cont: el && el.querySelector('[data-mcontinue]') ? el.querySelector('[data-mcontinue]').textContent : '',
+        legs: el ? Array.prototype.map.call(el.querySelectorAll('[data-wtstart]'), function (b) { return b.getAttribute('data-wtstart'); }) : [],
+        legsOn: el ? Array.prototype.every.call(el.querySelectorAll('[data-wtstart]'), function (b) {
+          return RD.Flags.on('procedure:' + b.getAttribute('data-wtstart')); }) : true };
+    });
+  }
+  function prog(o) { return 'localStorage.setItem("rd_progress", ' + JSON.stringify(JSON.stringify(o)) + ')'; }
+
+  var s1 = await menuPage('public');
+  var v1 = await sh(s1.page);
+  ck('#816 public, first visit: Start here offers the opener and the first walkthrough',
+    v1.shown && /New here\? Start here/.test(v1.text) && v1.opener && v1.legs.join() === 'pwr_heatup', JSON.stringify(v1));
+  ck('#816 public: no Continue on a device with no autosave', v1.cont === '', v1.cont);
+  await s1.ctx.close();
+
+  // A GATED LEG IS NEVER OFFERED: heatup done, startup forced off for this load -> Next up skips it.
+  var s2 = await menuPage('public', prog({ completed_procedures: ['pwr_heatup'] }), '&flags=-procedure:pwr_startup');
+  var v2 = await sh(s2.page);
+  ck('#816 public: Next up skips a gated leg (startup off -> raise power) and offers only flag-on legs',
+    v2.shown && /Next up/.test(v2.text) && v2.legs.join() === 'pwr_raise_power' && v2.legsOn, JSON.stringify(v2));
+  await s2.ctx.close();
+
+  var s3 = await menuPage(null, prog({ completed_openers: ['opener_pwr2_hfp'],
+    completed_procedures: ['pwr_heatup', 'pwr_startup', 'pwr_raise_power', 'pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown'] }));
+  var v3 = await sh(s3.page);
+  ck('#816 dev: everything done -> the card is hidden', !v3.shown && v3.legs.length === 0, JSON.stringify(v3));
+  await s3.ctx.close();
+
+  // AUTOSAVE + CONTINUE, mid-walkthrough, through a real reload.
+  var s4 = await menuPage(null);
+  var p4 = s4.page;
+  ck('#816: a just-loaded plant (no sim time) is NOT autosaved',
+    (await p4.evaluate(function () { return RD.__dev.autosave(); })) === false);
+  await p4.click('#mpStart [data-wtstart="pwr_heatup"]');
+  await p4.waitForFunction(function () { var c = RD.__dev.service().instructor.checklist; return c && c.procedure_id === 'pwr_heatup'; });
+  var t0 = await p4.evaluate(function () { return RD.__dev.service().simTime; });
+  await p4.waitForFunction(function (t) { return RD.__dev.service().simTime > t + 1; }, t0, { timeout: 20000 });
+  /* Put the walkthrough on step 3 first, so "restored at its step" cannot pass on step 1 by
+   * coincidence (a fresh start is also step 1). */
+  await p4.evaluate(function () { RD.__dev.service().instructor.checklist.idx = 2; });
+  var saved = await p4.evaluate(function () {
+    var ok = RD.__dev.autosave(), raw = localStorage.getItem('rd_autosave') || '';
+    return { ok: ok, bytes: raw.length, step: RD.__dev.service().instructor.checklist.idx };
+  });
+  console.log(C.dim + '      autosave size: ' + saved.bytes + ' chars' + C.off);
+  ck('#816: a running walkthrough autosaves', saved.ok && saved.bytes > 0, JSON.stringify(saved));
+  await p4.reload();
+  await p4.waitForSelector('#mainMenuBtn');
+  var v4 = await sh(p4);
+  ck('#816: after a reload the menu offers Continue naming the walkthrough',
+    /Continue — Mode 5, Cold Shutdown .* heatup .*step 3, saved/.test(v4.cont), v4.cont);
+  await p4.click('#mpStart [data-mcontinue]');
+  var r4 = await p4.evaluate(function () {
+    var c = RD.__dev.service().instructor.checklist;
+    return { id: c && c.procedure_id, step: c && c.idx, menu: !document.getElementById('missionOverlay').hidden };
+  });
+  ck('#816: Continue restores the walkthrough at its step and closes the menu',
+    r4.id === 'pwr_heatup' && saved.step === 2 && r4.step === 2 && !r4.menu, JSON.stringify(r4));
+  // A FINISHED LIVE WALKTHROUGH IS RECORDED (it never was: only the retired Follow path wrote it).
+  await p4.evaluate(function () { RD.__dev.service().instructor.checklist.complete = true; });
+  var rec = await p4.waitForFunction(function () {
+    try { return (JSON.parse(localStorage.getItem('rd_progress')) || {}).completed_procedures.indexOf('pwr_heatup') !== -1; }
+    catch (e) { return false; } }, null, { timeout: 10000 }).then(function () { return true; }, function () { return false; });
+  ck('#816: a finished walkthrough is written to rd_progress (Next up reads it)', rec);
+  /* A reload here would autosave on pagehide over the corrupt value (that is the pagehide save
+   * working), so the corrupt save is seeded into a FRESH device instead. */
+  await s4.ctx.close();
+  s4 = await menuPage(null, 'localStorage.setItem("rd_autosave", "{not json")');
+  p4 = s4.page;
+  var v5 = await sh(p4);
+  ck('#816: a corrupt autosave is dropped silently (no Continue, key removed)',
+    v5.cont === '' && (await p4.evaluate(function () { return localStorage.getItem('rd_autosave'); })) === null, JSON.stringify(v5));
+  await s4.ctx.close();
+
   await browser.close();
   console.log('\n' + C.bold + '──────────────────────────────────────────' + C.off);
   console.log(C.bold + (fail ? C.red + 'FLAG UI: FAIL' : C.green + 'FLAG UI: PASS') + C.off +
