@@ -531,6 +531,45 @@
     src: 'WTSM 12.3.2.3 (ML11223A310), the SI reset circuit'
   };
 
+  /* THE POST-TRIP FEEDWATER ISOLATION — P-4 COINCIDENT WITH LOW TAVG (#818, OWNER RULING
+   * 2026-10-01 "R1:a") [sourced logic, derived setpoint].
+   *   LOGIC — WTSM 12.3.6.1 (ML11223A310): *"Main feedwater to the steam generators is
+   *   automatically isolated by each of the following signals: Low Tavg (564°F) coincident with a
+   *   reactor trip (permissive P-4), High steam generator water level (permissive P-14) in any
+   *   generator, and SI actuation."* Its purpose, same section: *"Overcooling of the reactor
+   *   coolant by excessive MFW to the steam generators should be avoided."*
+   *   NOT LATCHED — WTSM 12.2 (ML11223A301), P-4's function list: *"2. Isolates main feedwater
+   *   with Tavg <564°F in 2/4 loops ... 4. If main feed regulating and bypass valves are closed
+   *   by SI or SG high level, P-4 seals in the isolation."* The seal-in names SI and P-14 only,
+   *   so this signal is a live coincidence: it stands while the trip breakers are open AND
+   *   Tavg is low, and clears when either goes. It has no reset of its own.
+   *   NO MAIN FEED PUMP TRIP and NO AFW START of its own — WTSM 12.3.6.2: *"The high steam
+   *   generator water level and SI actuation signals also directly trip the main feed pumps"*
+   *   (this one does not), and WTSM 12.3.7.1's AFW actuation list (SI, low-low level, bus
+   *   undervoltage, trip of all main feed pumps) does not include it. AFW follows on low-low
+   *   level, which is WAT 05 Transient 5.11 (ML11216A094) items 11-12: *"The rapid reduction
+   *   in feed flow reflects feedwater isolation on reactor trip coincident with low Tavg
+   *   (564°F) ... The indicated feed flow reflects operation of the AFW system."*
+   *   SETPOINT [derived]: the source plant's 564 °F sits 7 °F above its 557 °F no-load Tavg
+   *   (WAT 05's own setpoint table: "564 Low T avg / 557 - 584.7 T avg program from 0% to 100%
+   *   power"). This plant's no-load Tavg is Ginna's 547 °F (pwr2_dumpctl tavg_noload_c), so
+   *   the line is 547 + 7 = 554 °F (290.0 °C). The anchor plant itself has no such function —
+   *   Ginna TS Bases B 3.3.2 Function 5 isolates feed on SG level high and SI only — so this
+   *   is the generic Westinghouse logic on this plant's anchor. No delay row: the source
+   *   gives none. 2/4 loops collapses to the one loop, the P-9/P-10 precedent. */
+  var P4FWI = {
+    kind: '[derived]',
+    offset_f: 7.0,             /* 564 - 557, WAT 05 setpoint table */
+    noload_f: 547.0,           /* fallback only — read from pwr2_dumpctl when loaded */
+    src: 'WTSM 12.3.6.1 (ML11223A310); WTSM 12.2 P-4 (ML11223A301); WAT 05 (ML11216A094)'
+  };
+  function p4FwiSetpointC() {
+    var d = root.RD && root.RD.pwr2 && root.RD.pwr2.dumpctl && root.RD.pwr2.dumpctl.DUMP;
+    var noloadC = d && typeof d.tavg_noload_c === 'number' ? d.tavg_noload_c
+                                                            : (P4FWI.noload_f - 32) * 5 / 9;
+    return noloadC + P4FWI.offset_f * 5 / 9;
+  }
+
   /* Analysis delays, same table, same rows. A function must hold CONTINUOUSLY for its delay. */
   var DELAY = {
     kind: '[sourced]',
@@ -726,6 +765,7 @@
       afas_mdafw: false,                    /* LATCHED — the AFW starts, same law as si */
       afas_tdafw: false,                    /* LATCHED */
       fwi: false,                           /* LATCHED — hi-hi feedwater isolation */
+      fwi_lo_tavg: false,                   /* LIVE, not latched — P-4 + low Tavg (#818) */
       /* LATCHED (#784) — containment spray AND steam-line isolation, one bistable at the
        * sourced 30 psig high-high. `cse_spray` is the SAME latch with its release condition
        * applied; see the latch block in stepProtection for why spray releases and isolation
@@ -1030,6 +1070,28 @@
     /* FEEDWATER ISOLATION on high-high level [sourced -- the SGLL block]. Same latch law.
      * (The SI-driven isolation lives in pwr2_feedwater with its own sourced 32 s delay.) */
     if (anyFwi && !pr.fwi && !pr.fwi_rearm_block) { pr.fwi = true; pr.fwi_cause = anyFwi; }
+    /* P-4 + LOW TAVG FEEDWATER ISOLATION (#818) — see the P4FWI block: a LIVE coincidence, not
+     * a latch. Reads the reactor-trip LATCH (the trip breakers are open while it stands) and
+     * the INSTRUMENTED Tavg the caller passes (HR1); an unavailable Tavg asserts nothing. */
+    var tavgOk = typeof drivers.tavg_c === 'number' && isFinite(drivers.tavg_c);
+    pr.fwi_lo_tavg = !!(pr.reactor_trip && tavgOk && drivers.tavg_c < p4FwiSetpointC());
+    /* ...AND THE MDAFW START THAT RIDES IT — A DECLARED DEPARTURE (#818, OWNER RULING 2026-10-01
+     * "R1:a": "isolate main feedwater and start AFW"). The source plant does not start AFW on
+     * this signal (WTSM 12.3.7.1, quoted in the P4FWI block); it gets AFW from the low-low level
+     * start inside the first minute, because its trip SHRINKS the SG below the narrow range
+     * (WAT 05 Transient 5.11 item 9: "Steam generator level shrinks to below the bottom of the
+     * narrow-range indicating range"). THIS plant's trip does not shrink the level (MEASURED,
+     * #818: 65.0 -> 69.7 % at +33 s), so on the sourced logic alone the isolated SG boiled down
+     * to the 17 % low-low start 16 plant-minutes after the trip. The start here stands in for
+     * that missing shrink-driven start; remove it if the SG ever reproduces the shrink.
+     * BOTH pumps, as the low-low start it stands in for (MEASURED #818: the motor-driven pump
+     * alone, 0.333 of full AFW flow, let the level fall 35.6 -> 17.8 % by 30 plant-minutes). */
+    if (pr.fwi_lo_tavg && !pr.afas_mdafw && !pr.afas_rearm_block) {
+      pr.afas_mdafw = true; pr.afas_mdafw_cause = 'fwi_lo_tavg';
+    }
+    if (pr.fwi_lo_tavg && !pr.afas_tdafw && !pr.afas_rearm_block) {
+      pr.afas_tdafw = true; pr.afas_tdafw_cause = 'fwi_lo_tavg';
+    }
 
     /* CONTAINMENT SPRAY + STEAM-LINE ISOLATION on the sourced 30 psig high-high (#784). Same
      * latch law again: one bistable, one latch, two consumers, reported and not acted on. */
@@ -1043,8 +1105,9 @@
      * is itself a standing start signal for the motor-driven pump (the line above), so AFW
      * cannot be unlatched from under a standing SI — reset SI at its own panel first. */
     pr.si_live = !!anyEsfas;
-    pr.afas_mdafw_live = !!(sgLolo || pr.si || drivers.main_feed_lost || drivers.loss_of_offsite);
-    pr.afas_tdafw_live = !!(sgLolo || drivers.loss_of_offsite);
+    pr.afas_mdafw_live = !!(sgLolo || pr.si || drivers.main_feed_lost || drivers.loss_of_offsite ||
+                            pr.fwi_lo_tavg);
+    pr.afas_tdafw_live = !!(sgLolo || drivers.loss_of_offsite || pr.fwi_lo_tavg);
     pr.fwi_live = !!anyFwi;
     pr.cse_live = !!anyCse;
 
@@ -1190,6 +1253,9 @@
       afas_tdafw_cause: pr.afas_tdafw_cause,
       fwi: pr.fwi,
       fwi_cause: pr.fwi_cause,
+      /* P-4 + low Tavg feedwater isolation (#818): live, unlatched — the P4FWI block */
+      fwi_lo_tavg: !!pr.fwi_lo_tavg,
+      fwi_lo_tavg_setpoint_c: p4FwiSetpointC(),
       /* THE HIGH-HIGH LEVEL TURBINE TRIP, NAMED (#562, 2026-08-27) [sourced] — WTSM 3.2
        * (ML11223A213): *"a high-high steam generator level turbine trip to protect the turbine
        * against excessive moisture carryover."*
@@ -1268,7 +1334,7 @@
      * trip are one equation instead of two. Exported as data, not as a second evaluator. */
     OTDT: OTDT,
     RPS: RPS, ESFAS: ESFAS, CTMT_ESF: CTMT_ESF, SGLL: SGLL, DELAY: DELAY, LEADLAG: LEADLAG, P10: P10, P7: P7,
-    P11: P11, RESET: RESET,
+    P11: P11, RESET: RESET, P4FWI: P4FWI, p4FwiSetpointC: p4FwiSetpointC,
     /* P-6 and P-9 EXPORTED (#642). Both were locals, and both were consequently unpinnable:
      * `run_manual_setpoints` had to carry their manual rows as `narrative` — "no single plant
      * constant to check against" — which is how the P-6 row kept a figure the engine disagreed

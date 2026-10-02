@@ -407,7 +407,14 @@ async function testSteamFeedPair(page) {
   // point rather than a refit to the new one (HR10): the check still passes on the old
   // drain rate, so nothing was weakened to accommodate the change. The ASSERTION below is
   // untouched — feed must track the TOTAL steam draw, and 0 gpm against 64 still fails.
-  var tripped = await read('&inject=turbine_trip&ff=600');
+  /* ff 600 -> 1800 (#818). The turbine trip scrams the reactor (P-9), and since #818 the
+   * P-4 + low-Tavg feedwater isolation (WTSM 12.3.6.1) shuts main feed once Tavg is under
+   * 554 degF, so the SG is fed by AFW, which refills toward its 33 % program and does NOT match
+   * the steam draw until it gets there: at 600 s it read feed 17 vs steam 28 gpm (MEASURED).
+   * At 1800 s the level sits on program and the mass balance holds again. The #206 claim and
+   * both discriminants are unchanged — a governor-only STEAM FLOW still reads ~0 here. The
+   * feed readout is now AFW-carried, which is the plant being right after a trip. */
+  var tripped = await read('&inject=turbine_trip&ff=1800');
   log.push('turbine tripped: steam=' + tripped.steam + ' feed=' + tripped.feed +
            ' gov=' + tripped.gov + ' dump=' + tripped.dump);
   if (!(num(tripped.gov) < 20)) throw new Error('turbine_trip did not shut the governor (gov=' + tripped.gov + ')');

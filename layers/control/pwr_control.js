@@ -1097,7 +1097,7 @@
     // between 47 cm2 and there latches mid-blowdown. If a design-basis LOCA is ever wanted, the
     // work starts in pwr2_core, not here. Full measurements: PWR2_VALIDATION.md §119.
     large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.04,
-                                   severity_meta: { label: 'Break Size', unit: '% (100 % = a 3.1 in² / 20 cm² hole)', min: 0, max: 100, default: 40 }, display: 'Large LOCA (Cold-Leg Break)' },
+                                   severity_meta: { label: 'Break Size', unit: '% (100 % = a 3.1 in² / 20 cm² hole)', min: 0, max: 100, default: 40 }, display: 'Small-break LOCA (cold leg)' },  /* #818: the name follows the RULED size (#580, 100 % = 20 cm2 / 3.1 in2, a small break); id `large_loca` kept for saves, campaigns and scenarios */
     continuous_rod_withdrawal:   { type: 'physics_parameter', category: 'reactivity', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',
                                    severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 24, default: 12 }, display: 'Continuous Rod Withdrawal' },
     stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
