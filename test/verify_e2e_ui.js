@@ -5398,6 +5398,24 @@ async function testWalkthroughPanelChrome(page) {
       whyLbl: box('.ckl-active .ckl-why-lbl'),
       ackRow: box('.ckl-active .ckl-ack-row'),
       stepTxt: box('.ckl-active .ckl-txt'),
+      /* the element that actually SCROLLS the row (not always #cklLog — see cklScroller in ui/app.js):
+       * the nearest ancestor that overflows, else #cklLog */
+      logBox: (function () {
+        var a = document.querySelector('.ckl-active .ckl-ack-row'), el = a && a.parentElement;
+        while (el && el !== document.body) {
+          var oy = getComputedStyle(el).overflowY;
+          if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) break;
+          el = el.parentElement;
+        }
+        if (!el || el === document.body) el = document.getElementById('cklLog');
+        if (!el) return null;
+        var rc = el.getBoundingClientRect();
+        return { top: Math.round(rc.top), bottom: Math.round(rc.bottom), id: el.id || el.className };
+      })(),
+      ackAfterWhy: (function () {
+        var w = document.querySelector('.ckl-active .ckl-why'), a = document.querySelector('.ckl-active .ckl-ack-row');
+        return !!(w && a && (w.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING));
+      })(),
     };
   });
   /* positive control: the card really is drawn, with a why on the active step — without this
@@ -5450,15 +5468,31 @@ async function testWalkthroughPanelChrome(page) {
            ', below the transcript (' + r.instrLog.bottom + ')');
 
   /* ---- item 3: Rewind + Continue BELOW the why, not above it ---------------------------- */
-  if (r.ackRow.top < r.why.bottom) {
-    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
-      'why block (bottom ' + r.why.bottom + ')');
+  /* REFITTED FOR #818, SAID SO PER HARD RULE 10. Since #818 the row is pinned to the floor of the
+   * scrolling #cklLog (`position: sticky`) so Continue is on screen on every step; on a step taller
+   * than the log the why box legitimately passes UNDER the pinned row, and the old geometric form
+   * (`ackRow.top >= why.bottom`) went red on exactly that (722 vs 753, 2026-10-01). The owner's #687
+   * claim is READING ORDER — the buttons come after the why — so that is asserted on the DOM, and the
+   * geometric form still binds unless the row is the pinned one at the log floor. Against the OLD
+   * (unpinned) card: order true, and the row sat below the why, so it passes there too. */
+  if (!r.ackAfterWhy) {
+    throw new Error('#687 item 3: Rewind/Continue precedes the why block in reading order');
   }
+  var pinned = r.logBox && Math.abs(r.ackRow.bottom - r.logBox.bottom) <= 2;
+  if (r.ackRow.top < r.why.bottom && !pinned) {
+    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
+      'why block (bottom ' + r.why.bottom + ') and is not the row pinned at the log floor (' +
+      (r.logBox ? r.logBox.bottom : 'no log') + ')');
+  }
+  /* "Continue is on screen" itself is NOT asserted here: this fixture's step does not outgrow its
+   * scroller once the sticky rule is removed (injection run 2026-10-01 stayed green), so a check
+   * here could not fail. verify_ckl_relevance's tall-step check carries that claim, injection-proven. */
   if (r.ackRow.top < r.stepTxt.bottom) {
     throw new Error('#687 item 3: Rewind/Continue is drawn above the numbered step text');
   }
   log.push('buttons: step text ends ' + r.stepTxt.bottom + ' -> why ends ' + r.why.bottom +
-           ' -> Rewind/Continue at ' + r.ackRow.top);
+           ' -> Rewind/Continue at ' + r.ackRow.top + '-' + r.ackRow.bottom +
+           ' (scroller ' + (r.logBox ? r.logBox.id + ' ' + r.logBox.top + '-' + r.logBox.bottom : 'none') + ')');
 
   /* ---- item 4: the why is LABELLED (landed at #692; pinned here so it cannot silently go) */
   if (!r.whyLbl || !r.whyLbl.text) {

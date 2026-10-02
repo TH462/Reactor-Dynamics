@@ -613,6 +613,34 @@
     return g;
   };
 
+  /* HOW FAR A TIMED ROW HAS GOT (#818, persona review: "must stay, not just touch" with nothing on the
+   * card to say the sim was counting). Four row kinds need plant time, not just a reading, before they
+   * can tick: `stopped` and `still_s` (the rods unmoved for N s), `steady` (a full trailing window
+   * whose drift is in band) and `mean_s` (a full trailing window whose MEAN meets the row). This reads
+   * the progress off the SAME bag the grader just updated — never a second sampler (#605) — and
+   * reports `{ k, el, need, restarts }` in plant-seconds, plus `mean` once a `mean_s` window is full.
+   * `restarts` counts the times `el` fell back (the rods moved, or the clock went back), so the card
+   * can say the count started again instead of silently jumping down. Display only: no grading
+   * decision reads it. */
+  InstructorLayer.holdProgress = function (ax, en, g, snapshot) {
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var p = null, s;
+    if ((en.op === 'stopped' || en.still_s > 0) && g && typeof g.still === 'number') {
+      p = { k: 'still', el: g.still, need: en.op === 'stopped' ? ((en.v > 0) ? en.v : STOPPED_DEFAULT_S) : en.still_s };
+    } else if (en.op === 'steady' && ax.bag && (s = ax.bag.s) && s.length && t != null) {
+      var W = (en.window > 0) ? en.window : STEADY_WINDOW_S;
+      p = { k: 'steady', el: Math.min(W, t - s[0].t), need: W };
+    } else if (en.mean_s > 0 && ax.bag && (s = ax.bag.s) && s.length && t != null) {
+      p = { k: 'mean', el: Math.min(en.mean_s, t - s[0].t), need: en.mean_s };
+      if (p.el >= en.mean_s && g && typeof g.value === 'number') p.mean = g.value;
+    }
+    if (!p) return null;
+    var prev = ax.prog;
+    p.restarts = (prev && prev.restarts) || 0;
+    if (prev && prev.k === p.k && p.el < prev.el - 0.5) p.restarts++;
+    return p;
+  };
+
   InstructorLayer.prototype.unload = function () {
     var reg = this.register;
     this._clear();
@@ -2422,6 +2450,7 @@
           InstructorLayer.applyStill(g, ax.stillBag, snapshot, en);
         }
         ax.obs = g.value; ax.graded_by = g.graded_by;
+        ax.prog = InstructorLayer.holdProgress(ax, en, g, snapshot);   /* #818: the card's "holding… N of M s" */
         ax.streak = g.met ? ax.streak + 1 : 0;
         /* A `reach_1m` verdict reads the operator's own step counter against a printed number — exact,
          * no instrument noise to debounce — so it ticks on the FIRST broadcast it holds, which is the
@@ -2718,7 +2747,7 @@
         accs: f.accsState ? f.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
                    voided: a.voided || null, no_1m: !!a.no_1m,
-                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,
       } : null,
       level_complete: this.levelComplete ? {
@@ -2793,7 +2822,7 @@
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
                    voided: a.voided || null, no_1m: !!a.no_1m,
-                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,
         /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
          * indices into the step's own `accs`. `acc_index` is the row the press WOULD have
