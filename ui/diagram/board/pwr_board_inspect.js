@@ -662,6 +662,7 @@
     imrppyp0wfo: e('Accumulator N₂ Pressure',
       'Cover-gas pressure in the accumulators — the driving head for passive injection.',
       'It falls as the tanks empty, because the nitrogen expands into the space the water leaves. ' +
+      'It is an absolute pressure, like every pressure on this board (about 665 psi when full). ' +
       'A dash means the save predates the field rather than a pressure of zero.', CI, '11.1'),
     imrppztrng1: e('Accumulator Status',
       'ARMED, INJECTING or ISOLATED.',
@@ -783,8 +784,18 @@
     // redundant against the IN-OUT lamps. This file is a THIRD independent copy of the
     // board's meaning — an orphan entry here describes an item nobody can click, which is
     // the rot `run_inspect` exists to catch, so it goes out with the item.)
+    bdTrefDev: e('Tavg minus Tref (ΔREF)',
+      'How far average coolant temperature (Tavg) sits above (+) or below (−) the temperature the plant is programmed to hold at this load (Tref, the reference).',
+      'The plant has a temperature PROGRAM: the reference (Tref) slides from 547 °F with no load to ' +
+      '580 °F at full load, set by turbine load. In AUTO the rods drive Tavg toward Tref and the steam ' +
+      'dump opens when Tavg runs above it, so this number is what both of them are acting on. Zero means ' +
+      'the plant is on program. Positive means the coolant is hotter than the program wants — after a ' +
+      'load cut with the rods in manual, for example, Tavg stays about 10 °F above Tref until you ' +
+      'insert rods or borate. It turns amber outside the dead band of the rod controller (about ' +
+      '1.4 °F), where AUTO rods would start to move. Tavg is the indicated value, so a failed Tavg ' +
+      'transmitter moves this number exactly as it misleads the rods.', CI, '17.2'),
     bdDtMargin: e('Core ΔT margin',
-      'How much loop ΔT is left before the nearer of the two core-protection trips, and which one it is.',
+      'How much loop ΔT is left before the nearer of the two core-protection trips, and which one it is. MGN is short for margin: this is the distance to the trip line, not the ΔT itself.',
       'The reactor has two trips computed from the temperature RISE across the core rather than from ' +
       'any single reading: Overtemperature ΔT (OTΔT) protects against departure from nucleate boiling, Overpower ΔT (OPΔT) against ' +
       'excessive heat rate in the fuel. Neither has a fixed setpoint — the trip line MOVES with ' +

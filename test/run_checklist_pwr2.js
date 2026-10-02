@@ -5362,7 +5362,11 @@ if (!only && RUN_B) {
         pzr_level_sensor_stuck: ['pzr_level', 'pzr_level_dev'],
         pzr_level_sensor_low: ['pzr_level', 'pzr_level_dev'],
         tavg_sensor_failure: ['tavg', 'subcooling_margin', 'tavg_rate', 'otdt_setpoint',
-                              'opdt_setpoint', 'otdt_margin', 'opdt_margin', 'pzr_level_dev'],
+                              'opdt_setpoint', 'otdt_margin', 'opdt_margin', 'pzr_level_dev',
+                              /* #818: Tavg minus Tref is taken off INDICATED Tavg (HR1), so a
+                               * failed Tavg transmitter corrupts it — this check reddening when
+                               * it landed was the closure working, not a regression */
+                              'tavg_tref_dev'],
       };
       var bad = [], note = [];
       Object.keys(EXPECT).forEach(function (fid) {

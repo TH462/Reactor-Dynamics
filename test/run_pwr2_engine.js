@@ -1385,6 +1385,11 @@ function runSuite(RD, rec, quiet, only) {
   /* SI's start, through the facade: the eng5 lying-pressure casualty gains its sourced AFW leg */
   var eng9 = EN.createEngine({});
   run(eng9, quiet ? 20 : 40);
+  /* PLANT THE OTHER HALF OUT OF REACH (#818). SI trips the reactor, Tavg falls under 554 degF and
+   * the P-4 + low-Tavg feedwater isolation (WTSM 12.3.6.1) would isolate main feed on its own —
+   * which left the SI-wire mutation below BLIND (measured: 6/7 in group E). The Tavg channel is
+   * held at its at-power reading, so the only isolation that can arrive is the SI one. */
+  EN.command(eng9, 'instrument_fail', { id: 'tavg', mode: 'stuck' });
   EN.command(eng9, 'instrument_fail', { id: 'primary_pressure', mode: 'low' });
   run(eng9, 10);
   ckT('a safety injection starts the motor-driven pump ONLY (ch10\'s distinction, kept)',

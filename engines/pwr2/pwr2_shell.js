@@ -792,6 +792,11 @@
             'safety injection (' + (e.pt.si_cause || 'SI') + '). Secure the ECCS first, ' +
             'then restore main feed.');
         }
+        if (e.pt.fwi_lo_tavg) {
+          throw new Error('MFW RESTORE BLOCKED — feedwater isolation on reactor trip with low ' +
+            'Tavg is standing (Tavg below the 554 °F (290 °C) setpoint with the reactor trip ' +
+            'breakers open). It clears when the reactor trip is reset or Tavg recovers.');
+        }
         if (e.pt.fwi) {
           var leftF = resetDelayS() - e.pt.fwi_t;
           if (leftF > 0) {
@@ -1401,6 +1406,7 @@
      * alignment button would keep spinning on a dead bus. */
     ex.rhr_running = e.rh ? e.rh.running === true : undefined;
     ex.safety_relief_active = !!e.pz.safetyOpen;
+    ex.tref_c = ts.tref_c;   /* #818: the Tavg program the rods and dump hold to — tavg_tref_dev */
     ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
     /* LIVE since #507 wave 1 — the CVCS lab sample (they were pinned null/false/0 while no
      * sample machinery existed) */
@@ -2140,7 +2146,8 @@
        * isolation drivers (the hi-hi latch and the feed module's held-SI isolation). */
       si_actuated: e.pt.si === true,
       afas_actuated: e.pt.afas_mdafw === true || e.pt.afas_tdafw === true,
-      fwi_actuated: e.pt.fwi === true || (e.pt.si === true && e.fw.isolated === true),
+      fwi_actuated: e.pt.fwi === true || e.pt.fwi_lo_tavg === true ||
+                    (e.pt.si === true && e.fw.isolated === true),
       heaters_shed: ts.pzr_heaters_shed === true,
       condensate_pump_running: ts.condensate_pump_running === true,
       steam_demand_mwe: e.tb.load_target_mwe,
