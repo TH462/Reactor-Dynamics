@@ -1,6 +1,6 @@
 # Mode 3, Hot Standby to Mode 1, At Power
 
-**Walkthrough id: `pwr\\\_startup`  ·  17 steps**
+**Walkthrough id: `pwr\\\_startup`  ·  18 steps**
 
 > This is the LIVE step file: the sim's `pwr\\\_startup` walkthrough was brought down to it on
 > 2026-09-23 (the owner: "Implement the new version of the walk-through for the mode 3 to 1
@@ -97,7 +97,7 @@ In AUTO the steam dump holds steam pressure at 1020 psi, where water boils at 54
 
 Suggested time warp: 1×.
 
-Note: Count targets are SOURCE RANGE in shorthand: 7.0e2 is 700 counts a second. The 1/M PLOT window hides STEAM GENERATOR LEVEL and pause: close it with its ✕ between points.
+Note: Count targets are SOURCE RANGE readings in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400. The 1/M PLOT window hides STEAM GENERATOR LEVEL and pause: close it with its ✕ between points.
 
 
 
@@ -245,7 +245,7 @@ Note: The clock runs at 10× here, so the hold is about 10 to 15 seconds. The ro
 
 Background
 
-Critical means the chain reaction sustains itself; a steady positive STARTUP RATE with the rods still is how a crew declares it. Below about 1 % power nothing takes reactivity back out, so crews keep the rate under 1.0, usually near 0.5.
+Critical means the chain reaction sustains itself; a steady positive STARTUP RATE with the rods still is how a crew declares it. Below about 1 % power nothing takes reactivity back out, so how far past critical the rods stop sets how fast power climbs; crews keep the rate under 1.0, usually near 0.5.
 
 \[HIGHLIGHTED: Withdraw, Rod Speed — Slow (pulsing); Startup Rate, Reactor Period, Source Range, Control Rod Position (steady)]
 
@@ -283,7 +283,7 @@ At 1.0e-8 A power is too low to warm the water, so only the rods set reactivity:
 
 ()12a. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.
 
-Note: Expect 6 or 7 taps. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.
+Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 
@@ -311,7 +311,7 @@ Warmer water slows this reactor, so once power warms the water the climb slows i
 
 ()13a. Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.
 
-Note: Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. Level reaches 60 % in about 10 plant-minutes. If it stops rising for 3 plant-minutes, type 100.
+Note: Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. At 50 gpm level reaches 60 % in about 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself. If it stops rising for 3 plant-minutes, type 100.
 
 ()13b. Press AUTO on the SG FEED card and check AUTO is lit.
 
@@ -327,7 +327,7 @@ Suggested time warp: 10×.
 
 Background
 
-Main feed goes in by hand first. Its AUTO aims for 65 %; switched on far below that, it rushes cold water in, cooling the reactor water about 10 °F and jumping power from 1 % to about 4 %. Manual flow to 60 % leaves AUTO 5 points.
+Real crews pause the climb here, start a main feed pump by hand and secure auxiliary feed once it holds level. Its AUTO aims for 65 %; switched on far below that, it rushes cold water in, cooling the reactor water about 10 °F, and power jumps from 1 % to about 4 %. Manual flow to 60 % leaves AUTO 5 points.
 
 \[HIGHLIGHTED: SG Feed Rate, SG Feed AUTO, AFW — Stop (pulsing); SG Level, Feed Pumps, AFW, Reactor Power (steady)]
 
@@ -369,7 +369,7 @@ Suggested time warp: 10×.
 
 Suggested time warp: 1×.
 
-Note: With the turbine on line, AUTO selects average-temperature mode: the dump opens only if the reactor water runs hot, as after a turbine trip.
+Note: With the turbine on line, AUTO selects average-temperature mode: the dump opens only if the reactor water runs hot, as after a turbine trip. Real crews switch once the turbine carries the steam and the dump valves have shut.
 
 
 

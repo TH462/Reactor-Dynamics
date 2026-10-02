@@ -212,7 +212,7 @@ The accumulators are borated-water tanks pushed by nitrogen at 665 psi. They fir
 
 Suggested time warp: 3600×.
 
-Note: Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 14), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F.
+Note: Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 14), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F; that is expected.
 
 Background
 
@@ -242,7 +242,7 @@ The RHR suction valve shut itself when PRIMARY PRESSURE passed 600 psi, an inter
 
 13. Hand STEAM PRESS to the steam dump to hold.
 
-*Pump heat has STEAM PRESS near 1020 psi, and something now has to hold it.*
+*Pump heat has STEAM PRESS at about 1020 psi, or past it with the ATMOS DUMP venting, and something has to hold it.*
 
 ()13a. Check DUMP SETPOINT reads 1020 psi. If it does not, set it to 1020 psi.
 

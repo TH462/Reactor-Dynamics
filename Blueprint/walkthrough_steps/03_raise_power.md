@@ -104,7 +104,7 @@ Note: MED is the middle speed on the ROD CONTROL card. The green segment under t
 
 Background
 
-Raising LOAD draws steam and cools the water; colder water adds reactivity, so power follows the turbine up while the temperature sags. Pulling rods then warms the water back into its band.
+Raising LOAD draws steam and cools the water; colder water adds reactivity, so power follows the turbine up while the temperature sags. Pulling rods then warms the water back into its band. PERIOD on the NIS card is the time power takes to change by a factor of about 2.7; thousands of seconds means power is nearly steady.
 
 Real plants switch rod control to automatic near 15 %; this simulator keeps rods manual by design.
 
@@ -238,13 +238,13 @@ REACTOR POWER settles near 101 %. The control bank ends part-way out, because bo
 
 Suggested time warp: 5×.
 
-Note: Read BORON CHEM twice: leave with too much boron and AVG COOLANT TEMPERATURE sinks over hours, taking PZR LEVEL with it. This walkthrough ends here; xenon, which cools the plant over two plant-days, gets its own walkthrough, still to come.
+Note: Read BORON CHEM twice: leave with too much boron and AVG COOLANT TEMPERATURE sinks over hours, taking PZR LEVEL with it. This walkthrough ends here; xenon, a neutron absorber the fuel makes, cools the plant over two plant-days and gets its own walkthrough, still to come.
 
 
 
 Background
 
-Full power, with almost no xenon yet. The last of the dilution still arriving warms the plant, so a few rod steps in hold Tavg. As xenon builds, the plant settles with less boron and the bank high, 606 of 627 steps.
+Full power, with almost no xenon yet. The last of the dilution still arriving warms the plant, so a few rod steps in hold AVG COOLANT TEMPERATURE. As xenon builds, the plant settles with less boron and the bank high, 606 of 627 steps.
 
 [HIGHLIGHTED: Insert (pulsing); Reactor Power, Generator Output, Tavg, Boron Concentration (steady)]
 

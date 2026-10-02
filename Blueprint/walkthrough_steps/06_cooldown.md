@@ -98,7 +98,7 @@ Note: COOLDOWN RATE holds near -60, which is 60 °F per hour. Low Coolant Temper
 
 Background
 
-Lower steam pressure means a lower boiling point, and the reactor water follows it down to 120 psi, about 341 °F, where RHR can take over. The controller holds about 60 °F per hour, under the 100 °F per hour limit; on a real plant the operator paces it by hand.
+Lower steam pressure means a lower boiling point, and the reactor water follows it down. At 120 psi steam boils at about 341 °F, where RHR can take over. STEAM PRESS falls fast at first and slowly near the end. The controller holds about 60 °F per hour, under the 100 °F per hour limit; a real operator paces this by hand, here the controller does it.
 
 [HIGHLIGHTED: Steam Dump — Auto, Dump Setpoint (pulsing); Steam Dump Status, Tavg (steady)]
 
@@ -244,7 +244,7 @@ Note: Keep COOLDOWN RATE under 100 °F per hour; a reading of -83 is 83 °F per 
 
 Background
 
-At 8 % COOLDOWN RATE climbs to about 85 °F per hour, then eases off, reaching Mode 5 in about two and a half hours. 9 % reads about 95 °F per hour; 12 % reads about 110 °F per hour and sets off Cooldown Rate High.
+At 8 % COOLDOWN RATE climbs to about 85 °F per hour, then eases off, reaching Mode 5 in about two and a half hours. 9 % reads about 95 °F per hour; 12 % reads about 110 °F per hour and sets off Cooldown Rate High. A higher HX SPLIT cools faster and spends SUBCOOLING MARGIN faster.
 
 [HIGHLIGHTED: RHR — HX Split, Pressurizer Spray — Off (pulsing); Residual Heat Removal (RHR), Pressurizer Spray (PZR), Subcooling Margin, Tavg (steady)]
 

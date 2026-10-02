@@ -2089,7 +2089,7 @@
                     * 42, both heatups -- `pzr_pressure_lolo` (1800 psia, critical outside Modes 4-5)
                     * and `pzr_pressure_low` raise in this step at 1726 psia as the plant enters Mode 3
                     * with the pressure setpoint at its 1700 psi floor; the step ends at 1715 psia. */
-                   note: 'Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 14), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F.',
+                   note: 'Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 14), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F; that is expected.',
                    label: 'AVG COOLANT TEMPERATURE 542 °F or higher' }],
           /* ⚠ AND THE LONG RIDE DECLARES THE ONE THE RIDE ITSELF CAUSES (same 2026-09-14 ruling).
            * This is the leg's longest hold — 40,000 s — i.e. exactly where the player is at 600x.
@@ -2222,7 +2222,7 @@
           why: 'The plant now makes more heat than it needs, and the dump sends the excess to the condenser. Without it the ATMOS DUMP vents steam to the sky. Real plants hold pressure this way whenever the turbine is off.',
           control: 'Steam Dump', target: 'AUTO lit on the STEAM DUMP card, status reading STM PRESS',
           cmd: { action: 'set_steam_dump', mode: 'auto' }, hold: 10,
-          aim: 'Pump heat has STEAM PRESS near 1020 psi, and something now has to hold it.',
+          aim: 'Pump heat has STEAM PRESS at about 1020 psi, or past it with the ATMOS DUMP venting, and something has to hold it.',
           wait_speed: 1, speed_text: true,
           /* 13a (OWNER RULING, 2026-09-25, selected "Both A and B" — option text, not his words): the
            * DUMP SETPOINT box is checked BEFORE AUTO. Measured on one plant (cooldown walkthrough,
@@ -2773,7 +2773,7 @@
           control: '1/M Plot', target: 'point 1 plotted',
           accs: [{ cmd: 'plot_1m_point',
                    ask: 'Press 1/M PLOT on the ROD CONTROL card, then press Plot point.',
-                   note: 'Count targets are SOURCE RANGE in shorthand: 7.0e2 is 700 counts a second. The 1/M PLOT window hides STEAM GENERATOR LEVEL and pause: close it with its ✕ between points.',
+                   note: 'Count targets are SOURCE RANGE readings in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400. The 1/M PLOT window hides STEAM GENERATOR LEVEL and pause: close it with its ✕ between points.',
                    wait_speed: 1, label: 'Baseline point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* GLOW THE BUTTON, NOT THE BOX THAT OPENS IT (#735, owner playtest #724 items 4 and 5:
@@ -3346,7 +3346,7 @@
            * of what ships. What the tail carried is not lost from the LEG: step 10's note still says
            * the plant behaves the same at any speed and that SOURCE RANGE hands over above 1.0e5,
            * step 11 still teaches the hand-over, and step 8's Background still defines the rate. */
-          why: 'Critical means the chain reaction sustains itself; a steady positive STARTUP RATE with the rods still is how a crew declares it. Below about 1 % power nothing takes reactivity back out, so crews keep the rate under 1.0, usually near 0.5.',
+          why: 'Critical means the chain reaction sustains itself; a steady positive STARTUP RATE with the rods still is how a crew declares it. Below about 1 % power nothing takes reactivity back out, so how far past critical the rods stop sets how fast power climbs; crews keep the rate under 1.0, usually near 0.5.',
           control: 'Control Bank', target: 'STARTUP RATE +0.3 to +1.0 with the rods still',
           /* THE DWELL GETS A SPEED, AND IT IS MEASURED *(OWNER, 2026-09-14: "We could mention that
            * dwell in the walkthrough and have the user put it at 5 or 10x speed. We should test this
@@ -3777,7 +3777,7 @@
           accs_ordered: true,
           accs: [{ p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 60,
                    ask: 'Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.',
-                   note: 'Expect 6 or 7 taps. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.',
+                   note: 'Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.',
                    wait_speed: 10,
                    hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Control Rod Position'],
                    label: 'STARTUP RATE +0.15 or more, rods still a plant-minute' },
@@ -3901,14 +3901,14 @@
          * in its own substep (`accs[].hl`), and "leave the rods alone" is gone (no rod action here). */
         { text: 'Put main feed in service and secure auxiliary feed.',
           aim: 'Auxiliary feed carries the steam generator only to about 1 % power.',
-          why: 'Main feed goes in by hand first. Its AUTO aims for 65 %; switched on far below that, it rushes cold water in, cooling the reactor water about 10 °F and jumping power from 1 % to about 4 %. Manual flow to 60 % leaves AUTO 5 points.',
+          why: 'Real crews pause the climb here, start a main feed pump by hand and secure auxiliary feed once it holds level. Its AUTO aims for 65 %; switched on far below that, it rushes cold water in, cooling the reactor water about 10 °F, and power jumps from 1 % to about 4 %. Manual flow to 60 % leaves AUTO 5 points.',
           control: 'Feed Pumps', target: 'SG FEED AUTO lit, STEAM GENERATOR LEVEL near 65 %; AUX FEED WATER reads STANDBY',
           cmd: { action: 'set_feed_pump_speed', pct: 5 }, hold: 1200,
           wait_hint: false, wait_speed: 10, wait_est_s: false,
           accs_ordered: true,
           accs: [{ p: 'sg_level_pct', op: '>=', v: 59.5,
                    ask: 'Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.',
-                   note: 'Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. Level reaches 60 % in about 10 plant-minutes. If it stops rising for 3 plant-minutes, type 100.',
+                   note: 'Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. At 50 gpm level reaches 60 % in about 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself. If it stops rising for 3 plant-minutes, type 100.',
                    wait_speed: 10,
                    hl: ['SG Feed Rate'], hl_watch: ['SG Level', 'Feed Flow', 'Reactor Power'],   // FEED FLOW, not the card (#809 quality pass)
                    label: 'STEAM GENERATOR LEVEL 60 % or more, main feed in MAN' },
@@ -4008,7 +4008,7 @@
                  { cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_tavg_mode', op: '>', v: 0,
                    hl: ['Steam Dump — Auto'], hl_watch: ['Steam Dump Status'],
                    ask: 'Press AUTO on the STEAM DUMP card again and check its status reads TAVG.',
-                   note: 'With the turbine on line, AUTO selects average-temperature mode: the dump opens only if the reactor water runs hot, as after a turbine trip.',
+                   note: 'With the turbine on line, AUTO selects average-temperature mode: the dump opens only if the reactor water runs hot, as after a turbine trip. Real crews switch once the turbine carries the steam and the dump valves have shut.',
                    wait_speed: 1,
                    label: 'STEAM DUMP status reads TAVG' }],
           hl: ['Turbine — Latch', 'Load Setpoint', 'Steam Dump — Auto'], hl_watch: ['Turbine Load', 'Generator Output', 'Steam Dump Status'] },
@@ -4353,7 +4353,7 @@
          * at the same second as unordered (MEASURED, both seeds). Bands unchanged. */
         { text: 'Take the first stage to 30 MWe, load leading and rods following.',
           aim: 'The turbine asks for power first; rods then restore the temperature for that load.',
-          why: 'Raising LOAD draws steam and cools the water; colder water adds reactivity, so power follows the turbine up while the temperature sags. Pulling rods then warms the water back into its band.\n\nReal plants switch rod control to automatic near 15 %; this simulator keeps rods manual by design.',   /* OWNER DIRECTIVE 2026-08-30: "I want to keep rod control manual" (2026-09-27-develop-a) */
+          why: 'Raising LOAD draws steam and cools the water; colder water adds reactivity, so power follows the turbine up while the temperature sags. Pulling rods then warms the water back into its band. PERIOD on the NIS card is the time power takes to change by a factor of about 2.7; thousands of seconds means power is nearly steady.\n\nReal plants switch rod control to automatic near 15 %; this simulator keeps rods manual by design.',   /* OWNER DIRECTIVE 2026-08-30: "I want to keep rod control manual" (2026-09-27-develop-a) */
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
@@ -4524,9 +4524,9 @@
          * both re-grade rather than latch — see the note in instructor_layer's _gradeAccs. */
         { text: 'Confirm full power, with the boron dilution done.',
           aim: 'The climb is not finished until the dilution has fully arrived.',
-          why: 'Full power, with almost no xenon yet. The last of the dilution still arriving warms the plant, so a few rod steps in hold Tavg. As xenon builds, the plant settles with less boron and the bank high, 606 of 627 steps.',
+          why: 'Full power, with almost no xenon yet. The last of the dilution still arriving warms the plant, so a few rod steps in hold AVG COOLANT TEMPERATURE. As xenon builds, the plant settles with less boron and the bank high, 606 of 627 steps.',
           control: 'Boron control', target: 'BORON CHEM 663 ppm or below',
-          note: 'Read BORON CHEM twice: leave with too much boron and AVG COOLANT TEMPERATURE sinks over hours, taking PZR LEVEL with it. This walkthrough ends here; xenon, which cools the plant over two plant-days, gets its own walkthrough, still to come.',
+          note: 'Read BORON CHEM twice: leave with too much boron and AVG COOLANT TEMPERATURE sinks over hours, taking PZR LEVEL with it. This walkthrough ends here; xenon, a neutron absorber the fuel makes, cools the plant over two plant-days and gets its own walkthrough, still to come.',
           hold: 600,   /* rc8f pass 10: the replay graded 9b at 663.22 ppm when step 5's pull moved 15 -> 20 and stages 6-8 met sooner; the player waits 21-27 plant-min here (below), so the replay waits too */
           wait_speed: 5, speed_text: true,   // 1 -> 5 (#807 item 2, 2026-09-26): 9b waits 21-27 plant-min for BORON on the holdup plant (route seeds 42/7/123)
           accs: [{ p: 'power_pct', op: '>', v: 96,
@@ -5284,7 +5284,7 @@
          * AUTO never pressed leaves the row unmet (see 06_cooldown.md Notes). */
         { text: 'Cool the plant on the steam dump to where RHR can take over.',
           aim: 'The steam pressure the dump holds sets the temperature the reactor water follows down.',
-          why: 'Lower steam pressure means a lower boiling point, and the reactor water follows it down to 120 psi, about 341 °F, where RHR can take over. The controller holds about 60 °F per hour, under the 100 °F per hour limit; on a real plant the operator paces it by hand.',
+          why: 'Lower steam pressure means a lower boiling point, and the reactor water follows it down. At 120 psi steam boils at about 341 °F, where RHR can take over. STEAM PRESS falls fast at first and slowly near the end. The controller holds about 60 °F per hour, under the 100 °F per hour limit; a real operator paces this by hand, here the controller does it.',
           control: 'Dump SP', target: 'STEAM DUMP status STM PRESS; DUMP SETPOINT 120 psi; AVG COOLANT TEMPERATURE below 347 °F',
           wait_hint: false,
           /* ONE ENTRY SINCE 2026-09-28 (OWNER RULING, quoted on pwr2_dumpctl.js RAMP: the automatic ramp).
@@ -5568,7 +5568,7 @@
          * -85 at +42 min, never over 100, 199 degF at +120 min. Split and physics unchanged. */
         { text: 'Cool on RHR into Mode 5, inside the 100 °F per hour limit.',
           predicts_alarms: ['subcooling_low'], aim: 'HX SPLIT is the cooldown throttle; COOLDOWN RATE shows what it is doing.',
-          why: 'At 8 % COOLDOWN RATE climbs to about 85 °F per hour, then eases off, reaching Mode 5 in about two and a half hours. 9 % reads about 95 °F per hour; 12 % reads about 110 °F per hour and sets off Cooldown Rate High.',
+          why: 'At 8 % COOLDOWN RATE climbs to about 85 °F per hour, then eases off, reaching Mode 5 in about two and a half hours. 9 % reads about 95 °F per hour; 12 % reads about 110 °F per hour and sets off Cooldown Rate High. A higher HX SPLIT cools faster and spends SUBCOOLING MARGIN faster.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: false,
           /* HOLD 9000 -> 7200 s (#729), and 5400 was tried first — see the end of this note. 9000 s was authored for the 25 % split, which reaches
