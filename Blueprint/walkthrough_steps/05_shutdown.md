@@ -16,7 +16,7 @@
 
 1. Take the load off the generator before the scram.
 
-*The scram is meant to come with no electricity on the generator, so the load comes off first.*
+*The scram is meant to come with no electricity on the generator.*
 
 ()1a. Set LOAD to 0 MW and wait for OUTPUT to fall below 5 MW.
 
@@ -26,7 +26,7 @@ Suggested time warp: 1×.
 
 Background
 
-Taking the load off the turbine first means the scram happens with no electricity on the generator. The reactor follows the falling steam demand down by itself.
+The reactor follows the falling steam demand down by itself, so the scram comes from low power with the generator unloaded.
 
 [HIGHLIGHTED: Load Setpoint (pulsing); Turbine Load, Generator Output (steady)]
 
@@ -34,7 +34,7 @@ Taking the load off the turbine first means the scram happens with no electricit
 
 2. Shut the reactor down.
 
-*Hot Standby is a shut-down reactor, and with the load already off a scram gets it there in seconds.*
+*Hot Standby is a shut-down reactor, and a scram gets it there in seconds.*
 
 ()2a. Press SCRAM on the ROD CONTROL card: once to arm it (PRESS TO ARM), then again to scram.
 
@@ -48,7 +48,7 @@ Suggested time warp: 1×.
 
 Background
 
-A planned scram from low power. Both rod banks drop into the core and the chain reaction stops in seconds. The fuel keeps making about 2 % of full power from radioactive decay, and that heat has to go somewhere; the next step checks where.
+A planned scram from low power: both rod banks drop into the core and the chain reaction stops in seconds. The fuel keeps making about 2 % of full power from decay; the next step checks where that heat goes.
 
 [HIGHLIGHTED: SCRAM (pulsing); Control Rod Position, Shutdown Rod Position, Reactor Power (steady)]
 
@@ -56,7 +56,7 @@ A planned scram from low power. Both rod banks drop into the core and the chain 
 
 3. Put the decay heat on the steam dump: Mode 3, Hot Standby.
 
-*The fuel keeps making heat after the scram, and with the turbine off line the steam dump is where that heat leaves.*
+*With the turbine off line, the steam dump is where the decay heat leaves.*
 
 ()3a. Press AUTO on the STEAM DUMP card until its status reads STM PRESS.
 
@@ -64,7 +64,7 @@ Suggested time warp: 1×.
 
 ()3b. Check REACTOR POWER reads below 1 %.
 
-Note: Cooldown Rate High (>100 °F/hr) may come in about a minute after the trip, or not at all from a cooler plant: expected either way, it is the coolant settling to its no-load temperature.
+Note: Cooldown Rate High (>100 °F/hr) may come in about a minute after the trip, or not at all. Either is expected: the coolant is settling to its no-load temperature.
 
 ()3c. Check STEAM PRESS is holding near 1020 psi.
 
@@ -76,7 +76,7 @@ Suggested time warp: 10×.
 
 Background
 
-The chain reaction is gone, but the fuel still makes about 2 % of full power from radioactive decay, and REACTOR POWER does not show it. With the turbine tripped, AUTO puts the steam dump into pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.
+REACTOR POWER does not show the decay heat, about 2 % of full power. With the turbine tripped, AUTO puts the steam dump in pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.
 
 [HIGHLIGHTED: Steam Dump — Auto (pulsing); Steam Dump, Steam Dump Status, Reactor Power, SG Pressure, Steam Dump Opening (steady)]
 
@@ -263,3 +263,7 @@ LOAD box (`Load Setpoint`), with the TURBINE-GENERATOR card and OUTPUT steady (w
 pulsing); 2 adds the two rod-position readouts and REACTOR POWER steady; 3 pulses STEAM DUMP AUTO,
 with the STEAM DUMP card, its status word, REACTOR POWER, STEAM PRESS and the dump opening steady
 (was: the whole card pulsing, AVG COOLANT TEMPERATURE steady though no substep reads it).
+
+### Concise pass — 2026-10-02 (#819)
+
+2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 133 -> 118 (400 -> 353 over 3 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare).

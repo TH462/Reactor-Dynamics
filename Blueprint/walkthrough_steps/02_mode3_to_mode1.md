@@ -17,7 +17,7 @@
 
 1. Verify the plant is in Hot Standby (Mode 3).
 
-*The startup begins from a known state: hot, at pressure, pumps running, reactor shut down.*
+*The startup begins from a known state: hot, at pressure, reactor shut down.*
 
 ()1a. Check AVG COOLANT TEMPERATURE reads 544 to 549 °F.
 
@@ -31,13 +31,13 @@
 
 Suggested time warp: 1×.
 
-Note: STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold every minute. The Turbine Trip / Low Steam Demand alarm is expected while the turbine is off line.
+Note: STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold a minute. The Turbine Trip / Low Steam Demand alarm is expected.
 
 
 
 Background
 
-In Hot Standby (Mode 3), the plant is at operating temperature and at pressure with the reactor still shut down: the pumps are running, the shutdown rods are fully out.
+In Hot Standby (Mode 3) the plant is at operating temperature and pressure with the reactor shut down: pumps running, shutdown rods fully out.
 
 \[HIGHLIGHTED: STARTUP RATE, Tavg, Primary Pressure, Reactor Coolant Pumps (RCP), Boron Concentration (steady)]
 
@@ -45,31 +45,25 @@ In Hot Standby (Mode 3), the plant is at operating temperature and at pressure w
 
 2. Dilute boron to the estimated critical concentration, 719 ppm.
 
-*Less boron in the water lets the reactor go critical with the control rods low in their travel.*
+*Less boron lets the reactor go critical with the rods low in their travel.*
 
-()2a. Check ON is lit on the BORON card. If ON is not lit, press ON.
+()2a. Check ON is lit on the BORON card. If not, press ON.
 
-()2b. Set the boron target to 719 ppm: type it into the number box on the BORON card captioned 0-2500 ppm and press Enter.
+()2b. Set the boron target to 719 ppm: type it in the BORON card's 0-2500 ppm box and press Enter.
 
 ()2c. Wait for boron concentration to read between 709 and 729 ppm.
 
-()2d. Wait for BORON STATUS to read HOLD. While it reads MIXING, the last of the dilution is still reaching the reactor.
+()2d. Wait for BORON STATUS to read HOLD. MIXING means the dilution is still reaching the reactor.
 
 Suggested time warp: 600×.
 
-Note: Dilution takes about 2 plant-hours coming from the Mode 5 to Mode 3 walkthrough, which arrives near 918 ppm: about 1¾ to reach 729 ppm, then about 20 plant-minutes of MIXING while the last of it arrives. The Hot Standby preset starts at 719 ppm, so the step ticks at once.
+Note: Coming from the Mode 5 to Mode 3 walkthrough this takes about 2 plant-hours. The Hot Standby preset starts at 719 ppm, so the step ticks at once.
 
 
 
 Background
 
-Boron dissolved in the reactor water absorbs neutrons. At this point it is one of the things keeping the reactor shut down. Dilution replaces some borated water with clean water, so the boron's hold gets weaker and the control rods can finish the job taking the plant critical.
-
-719 ppm is set so that the reactor goes critical with the control rods about a third of the way out (around step 208 of 627). That leaves most of the rod travel free to control power.
-
-Boron and rods do different jobs. Boron changes slowly, over plant-hours, so it sets the starting point. Rods change reactivity within seconds, so they do the fine work of approaching critical.
-
-Real crews never add reactivity two ways at once: the rods stay still while boron is diluted, and a dilution that doubles the SOURCE RANGE count is stopped and checked. Coming from the Mode 5 to Mode 3 walkthrough, the count roughly triples during this dilution by design, because the core is being brought near critical on purpose.
+Boron absorbs neutrons. Diluting it weakens its hold so the rods can take the reactor critical about a third of the way out (step 208 of 627). Boron is slow and sets the starting point; rods are fast and do the fine work. Real crews never add reactivity two ways at once: the rods stay still while boron is diluted. They also pause a dilution each time it doubles the SOURCE RANGE count, a pause this walkthrough leaves out. Coming from the Mode 5 to Mode 3 walkthrough the count roughly triples: expected, because the core is being brought near critical on purpose.
 
 \[HIGHLIGHTED: ON, Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
 
@@ -77,9 +71,9 @@ Real crews never add reactivity two ways at once: the rods stay still while boro
 
 3. Line up the steam generator (SG) before taking the reactor critical.
 
-*Once the reactor makes power, its heat has to leave through the steam generator, or the reactor water heats up.*
+*Once the reactor makes power, its heat has to leave through the steam generator.*
 
-()3a. Check the AUX FEED WATER card reads RUNNING. If it does not, press AUTO on that card.
+()3a. Check the AUX FEED WATER card reads RUNNING. If not, press AUTO on that card.
 
 ()3b. Check STEAM DUMP AUTO is lit and DUMP SETPOINT reads 1020 psi. If AUTO is not lit, press AUTO.
 
@@ -89,11 +83,7 @@ Suggested time warp: 1×.
 
 Background
 
-The steam generator is where the reactor's heat leaves the primary loop. Reactor water flows through its tubes and boils the water around them. The steam goes to the turbine, or, while the turbine is off line, through the steam dump to the condenser.
-
-In AUTO, the steam dump holds steam pressure at 1020 psi. At that pressure water boils at 547 °F, so holding the pressure also holds the reactor water at 547 °F. That is why AVG COOLANT TEMPERATURE sits still in Hot Standby with nobody touching it. Right now there is almost no heat to remove, and the dump barely cracks open.
-
-Auxiliary feed puts back the water that leaves as steam, which holds SG level between about 33 and 38 %; it reads about 37 % here. The main feed pumps stay stopped for now: they need more steam flow than a reactor this close to zero power makes. Auxiliary feed carries the steam generator up to about 1 % power, and main feed takes over there.
+In AUTO the steam dump holds steam pressure at 1020 psi, where water boils at 547 °F, so the reactor water holds at 547 °F. Auxiliary feed replaces the water boiled off, up to about 1 % power; main feed takes over there.
 
 \[HIGHLIGHTED: AFW — Auto, Steam Dump AUTO (pulsing); SG Level, SG Pressure, Dump Setpoint (steady)]
 
@@ -101,21 +91,19 @@ Auxiliary feed puts back the water that leaves as steam, which holds SG level be
 
 4. Take the 1/M baseline point before any rod moves.
 
-*Every later 1/M value is this count divided by a new one, so it has to be taken before any rod moves.*
+*Every later 1/M value divides this count by a new one.*
 
 ()4a. Press 1/M PLOT on the ROD CONTROL card, then press Plot point.
 
 Suggested time warp: 1×.
 
-Note: Every count target on this walkthrough is the SOURCE RANGE reading, printed in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400, 7.0e3 is 7,000. The 1/M PLOT window covers the upper right of the board, STEAM GENERATOR LEVEL and the pause button included: close it with the ✕ in its corner between points, and press 1/M PLOT to bring it back.
+Note: Count targets are SOURCE RANGE in shorthand: 7.0e2 is 700 counts a second. The 1/M PLOT window hides STEAM GENERATOR LEVEL and pause: close it with its ✕ between points.
 
 
 
 Background
 
-1/M means one over multiplication. The plot divides the starting SOURCE RANGE count by the current one. As counts climb, that number falls toward zero, and where the line would cross zero is the rod position at which the reactor goes critical.
-
-The panel fits the last three points, so each new point sharpens the prediction.
+1/M divides the starting SOURCE RANGE count by the current one. As counts climb it falls toward zero, and where the line would cross zero is the critical rod position. The panel fits the last three points.
 
 \[HIGHLIGHTED: 1/M Plot Tool, Plot point (pulsing); Source Range (steady)]
 
@@ -123,15 +111,15 @@ The panel fits the last three points, so each new point sharpens the prediction.
 
 5. Take the second 1/M point, after the first rod pull.
 
-*One point cannot make a line. The second gives the plot its first prediction of where the reactor goes critical.*
+*The second point gives the plot its first prediction of critical.*
 
-()5a. Press MED, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e2 or more, then watch it for 5 seconds: the count jumps about 15 % either way.
+()5a. Press MED, hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e2 or more, then watch it 5 seconds: it jumps about 15 % either way.
 
-Note: The clock goes to 10× the moment the rods move, so the count gets there after about 10 seconds of holding: watch SOURCE RANGE the whole time. On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 70 to 80; the position shifts with boron and recent power, the count does not. The check-off waits for SOURCE RANGE to stay at 7.0e2 or more, not just touch it. If it only touches 7.0e2 now and then, or is still short at 80, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
+Note: The clock goes to 10× once the rods move; expect about 10 seconds of holding, near CONTROL ROD POSITION 70 to 80. If the count only touches 7.0e2, or is short at 80, tap WITHDRAW once, wait half a plant-minute, and repeat.
 
 ()5b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point.
 
-Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop. If BORON still reads above 719 ppm, the step 2 dilution is still adding reactivity and STARTUP RATE takes longer to fall.
+Note: That takes about half a plant-minute after the rods stop; longer if BORON still reads above 719 ppm.
 
 Suggested time warp: 10×, set by itself once the rods start moving.
 
@@ -139,9 +127,7 @@ Suggested time warp: 10×, set by itself once the rods start moving.
 
 Background
 
-The first two points usually predict the critical position too high. Near the bottom of the core the rods are worth little per step, so the line they draw crosses zero far past the real critical position. That is expected.
-
-While the reactor is shut down, SOURCE RANGE counts are the only thing that shows how close the core is to critical. Rod position does not.
+Only SOURCE RANGE counts show how close a shut-down core is to critical; rod position does not. The first two points usually predict critical too high, because rods near the bottom of the core are worth little per step.
 
 \[HIGHLIGHTED: Rod Speed — Normal, Withdraw, Plot point (pulsing); Source Range, Startup Rate, Control Rod Position (steady)]
 
@@ -149,15 +135,15 @@ While the reactor is shut down, SOURCE RANGE counts are the only thing that show
 
 6. Take the third 1/M point.
 
-*Each point taken closer to critical pulls the prediction in toward the real critical position.*
+*Each point closer to critical pulls the prediction toward the real position.*
 
 ()6a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 1.4e3 or more.
 
-Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 150 to 155. The check-off waits for SOURCE RANGE to stay at 1.4e3 or more. If it only touches 1.4e3 now and then, or is still short at 155, tap WITHDRAW one step and wait half a plant-minute. Repeat until it stays there.
+Note: Expect CONTROL ROD POSITION 150 to 155. If the count only touches 1.4e3, or is short at 155, tap WITHDRAW once, wait half a plant-minute, and repeat.
 
-()6b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and read the predicted rod position the panel prints.
+()6b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and read the predicted rod position.
 
-Note: STARTUP RATE reaches +0.03 or less about half a plant-minute after the rods stop.
+Note: About half a plant-minute after the rods stop.
 
 Suggested time warp: 10×, set by itself once the rods start moving.
 
@@ -165,9 +151,7 @@ Suggested time warp: 10×, set by itself once the rods start moving.
 
 Background
 
-Closer to critical, a rod step is worth more, so the line steepens and the predicted crossing usually moves in. A baseline or second point taken on a low or high moment of the jumping count can put the early prediction on the wrong side, so it can also move out before it settles. The panel prints the crossing as a rod step, with a marker on the plot.
-
-That number still reads high. It improves with every point.
+Closer to critical each rod step is worth more, so the line steepens and the prediction usually moves in. It can move out first if an early point caught the count on a jump. It still reads high.
 
 \[HIGHLIGHTED: Withdraw, Plot point (pulsing); Source Range, Startup Rate, Control Rod Position (steady)]
 
@@ -175,11 +159,11 @@ That number still reads high. It improves with every point.
 
 7. Take the fourth 1/M point, after a shorter pull.
 
-*Near critical each rod step is worth more, so the pulls get smaller from here.*
+*Near critical each rod step is worth more, so the pulls get smaller.*
 
 ()7a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 3.0e3 or more.
 
-Note: On a fresh core at 719 ppm this lands near CONTROL ROD POSITION 190 to 192. The check-off waits for SOURCE RANGE to stay at 3.0e3 or more. If it only touches 3.0e3 now and then, or is still short at 192, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps.
+Note: Expect CONTROL ROD POSITION 190 to 192. If the count only touches 3.0e3, or is short at 192, tap WITHDRAW one step at a time, letting STARTUP RATE settle between taps.
 
 ()7b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and read the prediction again.
 
@@ -189,7 +173,7 @@ Suggested time warp: 10×, set by itself once the rods start moving.
 
 Background
 
-The prediction is starting to be useful, which makes the wait matter more. While STARTUP RATE is still falling, the counts are still climbing, and a point plotted then puts the predicted crossing too far out.
+While STARTUP RATE is still falling the counts are still climbing, and a point plotted then puts the predicted crossing too far out. Now that the prediction is useful, the wait matters.
 
 \[HIGHLIGHTED: Withdraw, Plot point (pulsing); Source Range, Startup Rate, Control Rod Position (steady)]
 
@@ -201,21 +185,19 @@ The prediction is starting to be useful, which makes the wait matter more. While
 
 ()8a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.
 
-Note: On a fresh core at 719 ppm the count reaches 7.0e3 about when CONTROL ROD POSITION reaches 205. Do not hold past 205. The check-off waits for SOURCE RANGE to stay at 7.0e3 or more: if it only touches 7.0e3 now and then, or is still short at 205, tap WITHDRAW one step at a time and let STARTUP RATE settle between taps. Stay at least 3 steps below the position the 1/M panel predicts.
+Note: Expect it near CONTROL ROD POSITION 205; do not hold past 205. If the count only touches 7.0e3, or is short at 205, tap one step at a time, letting STARTUP RATE settle. Stay at least 3 steps below the 1/M prediction.
 
-()8b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the critical rod position the 1/M panel predicts.
+()8b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.
 
 Suggested time warp: 5× while the rods move, then 10×, set by itself.
 
-Note: After a pull to about 205, STARTUP RATE takes about 5½ to 6½ plant-minutes to reach +0.03; after a shorter pull it gets there sooner. A point plotted before it reads +0.03 puts the predicted position further out than it is. The reactor goes critical within about three steps of the predicted position, so the next step stops short of it and taps from there. The rate step 10 asks for shows 3 to 5 steps past the predicted position (measured).
+Note: After a pull to about 205 this wait is 5½ to 6½ plant-minutes. Plotting before +0.03 puts the prediction too far out.
 
 
 
 Background
 
-This is the last plotted point. From here single rod steps beat one more fitted point, because another pull would land past critical.
-
-STARTUP RATE is the speedometer. 1.0 means power multiplies by ten every minute, and any positive reading with the rods still means the chain reaction is growing. Under 1.0 is a comfortable climb; above it, nothing in the plant slows the rise yet.
+This is the last plotted point: another pull would land past critical, so single rod steps take over. STARTUP RATE is the speedometer, and any positive reading with the rods still means the chain reaction is growing.
 
 \[HIGHLIGHTED: Withdraw, Plot point (pulsing); Source Range, Startup Rate, Control Rod Position (steady)]
 
@@ -223,21 +205,21 @@ STARTUP RATE is the speedometer. 1.0 means power multiplies by ten every minute,
 
 9. Block the source range trip at P-6.
 
-*Once the reactor is critical the count climbs past the source range trip within minutes, so the trip is blocked before the last pulls.*
+*Once critical, the count climbs past the source range trip within minutes.*
 
-()9a. Check INTER RANGE reads 1.0e-10 A or more while SOURCE RANGE still shows its count: both ranges see the core.
+()9a. Check INTER RANGE reads 1.0e-10 A or more while SOURCE RANGE still shows its count.
 
-()9b. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SR HIGH FLUX row. Check the row reads BLOCKED and SOURCE RANGE reads a dash, then press TRIP BLOCKS again to close the panel.
+()9b. Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SR HIGH FLUX row. Check it reads BLOCKED and SOURCE RANGE reads a dash, then press TRIP BLOCKS to close.
 
 Suggested time warp: 1×.
 
-Note: Skip this and the reactor trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving in the next step. The block also switches the SOURCE RANGE detector off; INTER RANGE and STARTUP RATE carry the reading from here. If power ever falls back below the permission, the plant releases the block by itself.
+Note: Skip this and the reactor trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving in the next step. INTER RANGE and STARTUP RATE carry the reading from here.
 
 
 
 Background
 
-The source range counts single neutrons and is built for a shut-down core; above 1.0e5 counts a second its trip shuts the reactor down. When INTER RANGE reads 1.0e-10 A the two ranges overlap, and the plant allows the block, which the panel calls P-6 PERMISSIVE. On a real plant P-6 usually comes after criticality, but this core's strong neutron source lights it first, near CONTROL ROD POSITION 198.
+The source range counts single neutrons and trips the reactor above 1.0e5 counts a second. When INTER RANGE reads 1.0e-10 A the two ranges overlap, and the plant permits the block: P-6 PERMISSIVE. On a real plant P-6 usually comes after criticality; this core’s strong source lights it first, near rod position 198.
 
 \[HIGHLIGHTED: Trip Blocks (pulsing); Intermediate Range, Source Range (steady)]
 
@@ -245,25 +227,25 @@ The source range counts single neutrons and is built for a shut-down core; above
 
 10. Take the reactor critical and set STARTUP RATE between +0.3 and +1.0.
 
-*The prediction is only good to within about three steps, so the rods stop short of it; a steady positive STARTUP RATE with the rods still is what shows critical.*
+*The prediction is good to about three steps, so the rods stop short of it.*
 
 ()10a. Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
 
-Note: At SLOW the rods move about one step every 8 plant-seconds. This check-off ticks the moment CONTROL ROD POSITION reads 3 steps short of the prediction; let go of WITHDRAW there.
+Suggested time warp: 1×.
+
+Note: At SLOW the rods move about one step every 8 plant-seconds. This ticks the moment the position is 3 short; let go there.
 
 ()10b. Hold WITHDRAW at SLOW until STARTUP RATE reads +0.5, then let go. A plant-minute later it should read +0.3 to +1.0: if lower, tap WITHDRAW once; if higher, tap INSERT once.
 
-Note: The rods stop about 12 steps past where 10a let go, 8 to 10 past the prediction mark, after about 2 plant-minutes of rod motion. STARTUP RATE reads high while the rods move and settles lower once they stop. This check-off comes a plant-minute after your last rod motion. Real crews never go above 1.0.
+Suggested time warp: 10×.
 
-Suggested time warp: 1×.
+Note: The clock runs at 10× here, so the hold is about 10 to 15 seconds. The rods stop 12 to 14 steps past where 10a let go. STARTUP RATE reads high while they move and settles lower; the check-off comes a plant-minute after your last rod motion.
 
 
 
 Background
 
-Critical means the chain reaction keeps itself going: with the rods still, a steady positive STARTUP RATE is the sign, and it is how a crew declares the reactor critical.
-
-Below about 1 % power nothing in the plant takes reactivity back out, so how far past critical the rods stop sets how fast power climbs. Real crews keep it under 1.0 and usually near 0.5.
+Critical means the chain reaction sustains itself; a steady positive STARTUP RATE with the rods still is how a crew declares it. Below about 1 % power nothing takes reactivity back out, so crews keep the rate under 1.0, usually near 0.5.
 
 \[HIGHLIGHTED: Withdraw, Rod Speed — Slow (pulsing); Startup Rate, Reactor Period, Source Range, Control Rod Position (steady)]
 
@@ -271,17 +253,17 @@ Below about 1 % power nothing in the plant takes reactivity back out, so how far
 
 11. Level power near 1.0e-8 A and record the critical rod position.
 
-*Step 10 left the core past critical so power could climb to 1.0e-8 A; putting those steps back holds it there, exactly critical.*
+*Putting back the steps pulled past critical holds power there, exactly critical.*
 
-()11a. Wait for INTER RANGE to read 1.0e-8 A. Once it does, you insert the rods to hold power there.
+()11a. Wait for INTER RANGE to read 1.0e-8 A.
 
-Note: It gets there about 2 plant-minutes after the rods stopped in step 10.
+Note: About 2 plant-minutes after the rods stopped in step 10.
 
-()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, then hold INSERT about 12 steps, and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
+()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 12 steps, and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
 
 Suggested time warp: 1×. While you wait for a read you can press 10× yourself; a tap is still one step.
 
-Note: About 12 steps is what step 10 pulled past critical. STARTUP RATE reads negative while the rods go in and settles over two plant-minutes, so read it then. Two steps short, it settles near +0.05. INTER RANGE comes down with the insert and levels a little under 1.0e-8 A, near 7e-9 A. This check-off comes two plant-minutes after your last rod motion.
+Note: STARTUP RATE reads negative while the rods go in and settles over two plant-minutes. INTER RANGE levels near 7e-9 A. The check-off comes two plant-minutes after your last rod motion.
 
 ()11c. Write down CONTROL ROD POSITION, the critical rod position, and compare it with the 1/M prediction.
 
@@ -289,9 +271,7 @@ Note: About 12 steps is what step 10 pulled past critical. STARTUP RATE reads ne
 
 Background
 
-At 1.0e-8 A power is still far too low to warm the water, so only the rods set the reactivity, and STARTUP RATE holding at 0 with the rods still means exactly critical. Near the source level a core short of critical also settles at 0, which is why step 10 went past critical first.
-
-The rod position here is the measured critical position. A crew compares it with the 1/M prediction and records it with the boron concentration; here boron has not moved since step 2.
+At 1.0e-8 A power is too low to warm the water, so only the rods set reactivity: STARTUP RATE at 0 with the rods still means exactly critical. A core short of critical also settles at 0 here, which is why step 10 went past first.
 
 \[HIGHLIGHTED: Insert, Rod Speed — Normal (pulsing, 11b); Intermediate Range, Startup Rate, Control Rod Position (steady)]
 
@@ -299,15 +279,15 @@ The rod position here is the measured critical position. A crew compares it with
 
 12. Raise power to the point of adding heat, about 1 %.
 
-*From about 1 % the core starts warming the water, and the warmer water starts holding the climb back.*
+*From about 1 % the core warms the water, and warmer water holds the climb back.*
 
-()12a. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, once the rods have been still a plant-minute, and stop when it reads +0.15 or more.
+()12a. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.
 
-Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. This check-off ticks on that same read; do not tap again while you wait for it, because every tap starts the plant-minute over. The 1/M PLOT window has done its work: close it with the ✕ in its corner.
+Note: Expect 6 or 7 taps. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 
-Note: About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs four decades.
+Note: About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs.
 
 Suggested time warp: 60×.
 
@@ -319,9 +299,7 @@ Suggested time warp: 10×.
 
 Background
 
-Warmer water slows this reactor down, so once power is high enough to warm the water, the climb slows itself. This point is called the point of adding heat; on the board it shows as STARTUP RATE falling while the rods are still.
-
-INTER RANGE measures a current, not a percentage, and it shows this climb four decades before REACTOR POWER shows its first tenth of a percent.
+Warmer water slows this reactor, so once power warms the water the climb slows itself: STARTUP RATE falls with the rods still. That is the point of adding heat. INTER RANGE shows the climb four decades before REACTOR POWER does.
 
 \[HIGHLIGHTED: Rod Speed — Slow, Withdraw (pulsing); Startup Rate, Intermediate Range, Reactor Power, Control Rod Position (steady)]
 
@@ -329,19 +307,19 @@ INTER RANGE measures a current, not a percentage, and it shows this climb four d
 
 13. Put main feed in service and secure auxiliary feed.
 
-*Auxiliary feed carries the steam generator only to about 1 % power, so main feed has to take over before power climbs any further.*
+*Auxiliary feed carries the steam generator only to about 1 % power.*
 
 ()13a. Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.
 
-Note: Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. At 50 gpm level reaches 60 % in about 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself. If level stops rising for 3 plant-minutes, type 100.
+Note: Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. Level reaches 60 % in about 10 plant-minutes. If it stops rising for 3 plant-minutes, type 100.
 
 ()13b. Press AUTO on the SG FEED card and check AUTO is lit.
 
-Note: The card then reads HOLDING: its automatic controller is holding STEAM GENERATOR LEVEL.
+Note: The card then reads HOLDING.
 
 ()13c. Press STOP on the AUX FEED WATER card and check the card reads STANDBY.
 
-Note: STANDBY means both aux feed pumps are stopped but still armed. If STEAM GENERATOR LEVEL falls to 17 % they start by themselves, and the same signal trips the reactor.
+Note: In STANDBY the aux feed pumps restart by themselves if STEAM GENERATOR LEVEL falls to 17 %, and the same signal trips the reactor.
 
 Suggested time warp: 10×.
 
@@ -349,9 +327,7 @@ Suggested time warp: 10×.
 
 Background
 
-The auxiliary feed pump supplies only a few percent of full feed flow, and on this plant it holds steam generator level only to about 1 % power. So real crews pause the climb here, start a main feed pump, hand level control to it, and then secure auxiliary feed.
-
-Main feed goes in by hand first. Its AUTO controller aims for 65 %, and switched on 30 points below that it rushes cold water in: the reactor water cools about 10 °F in a minute and power jumps from 1 % to about 4 % with the rods still. A small manual flow brings level up to 60 % gently, and AUTO then has only 5 points left to close.
+Main feed goes in by hand first. Its AUTO aims for 65 %; switched on far below that, it rushes cold water in, cooling the reactor water about 10 °F and jumping power from 1 % to about 4 %. Manual flow to 60 % leaves AUTO 5 points.
 
 \[HIGHLIGHTED: SG Feed Rate, SG Feed AUTO, AFW — Stop (pulsing); SG Level, Feed Pumps, AFW, Reactor Power (steady)]
 
@@ -365,13 +341,13 @@ Main feed goes in by hand first. Its AUTO controller aims for 65 %, and switched
 
 Suggested time warp: 5×.
 
-Note: Each pull lifts STARTUP RATE and the warming water brings it back down; waiting the minute keeps the climb gentle. Expect about 4 pulls and 3 to 4 plant-minutes. Power keeps climbing for a while after the last pull. It passes 8½ % once the turbine takes load in the next step. It needs to: the two startup trips cannot be blocked until REACTOR POWER is above 8 %.
+Note: Expect about 4 pulls over 3 to 4 plant-minutes. Power keeps climbing after the last pull, and passes 8½ % once the turbine takes load.
 
 
 
 Background
 
-Mode 1, At Power, begins at 5 % power. The warming water now holds power back, so each rod step buys a new steady level rather than a runaway, about half a percent of power per step.
+The warming water now holds power back, so each rod step buys a new steady level, about half a percent of power, rather than a runaway.
 
 \[HIGHLIGHTED: Rod Speed — Slow, Withdraw (pulsing); Startup Rate, Intermediate Range, Control Rod Position (steady)]
 
@@ -393,15 +369,13 @@ Suggested time warp: 10×.
 
 Suggested time warp: 1×.
 
-Note: With the turbine on line, AUTO selects average-temperature mode: the dump then opens only if the reactor water runs hot, as after a turbine trip. Real crews switch once the turbine carries the steam and the dump valves have shut.
+Note: With the turbine on line, AUTO selects average-temperature mode: the dump opens only if the reactor water runs hot, as after a turbine trip.
 
 
 
 Background
 
-LATCH resets the turbine so it can take steam. LOAD is how much electricity the generator is asked for.
-
-As the generator picks up load, more steam is drawn, the water cools, and cooler water raises power. The reactor follows the turbine up to about 10 % by itself. That coupling is the central idea of this plant.
+LATCH readies the turbine to take steam. As the generator takes load it draws more steam, the water cools, and cooler water raises power: the reactor follows the turbine to about 10 %. That coupling is the central idea of this plant.
 
 \[HIGHLIGHTED: Turbine — Latch, Load Setpoint, Steam Dump AUTO (pulsing); Turbine Load, Generator Output, Steam Dump Status (steady)]
 
@@ -415,17 +389,15 @@ As the generator picks up load, more steam is drawn, the water cools, and cooler
 
 Suggested time warp: 1×.
 
-Note: Below 8 % the BLOCK button will not take the press: its automatic permission, which the panel calls P-10 PERMISSIVE, is read off REACTOR POWER. 8.5 % leaves room for the reading to wander. If power ever stays under 8 % for two seconds, the block goes out by itself.
+Note: Below 8 % the BLOCK button refuses the press (P-10 PERMISSIVE); 8.5 % leaves margin. If power stays under 8 % for two seconds, the block drops out.
 
 ()16b. Press TRIP BLOCKS on the ROD CONTROL card and BLOCK on the IR HIGH FLUX row (IR is INTER RANGE). Check the row reads BLOCKED.
 
-Note: If the block goes out again by itself, let power come up and press it again. The reactor keeps climbing while the panel is open. The SR HIGH FLUX row now warns that releasing it would trip the reactor: at this power that is true, so leave it blocked.
+Note: If the block drops out, let power rise and press it again. The SR HIGH FLUX row warns that releasing it would trip the reactor: leave it blocked.
 
 Background
 
-Two automatic shutdowns, or trips, exist only to protect a startup: one at 25 % power and one at 35 %. Once power is up they would trip the reactor on the way to full power, so they are blocked one at a time.
-
-The plant keeps checking that power is still up there, and unblocks them by itself if it falls, whoever blocked them.
+Two trips exist only to protect a startup, at 25 % and 35 % power. They would trip the reactor on the way to full power, so they are blocked one at a time, and the plant unblocks them if power falls.
 
 \[HIGHLIGHTED: Trip Blocks (pulsing); Reactor Power (steady)]
 
@@ -435,19 +407,17 @@ The plant keeps checking that power is still up there, and unblocks them by itse
 
 *Left live, this trip shuts the reactor down at 35 %.*
 
-()17a. Press TRIP BLOCKS to open the panel, then press BLOCK on the PR HIGH (LOW SETPT) row. Check both rows, IR HIGH FLUX and PR HIGH (LOW SETPT), read BLOCKED, then press TRIP BLOCKS again to close the panel.
+()17a. Press TRIP BLOCKS, then BLOCK on the PR HIGH (LOW SETPT) row. Check both IR HIGH FLUX and PR HIGH (LOW SETPT) read BLOCKED, then press TRIP BLOCKS to close.
 
 Suggested time warp: 1×.
 
-Note: Any click outside the panel closes it, Continue included, so it is shut when this step opens. Close it when you are done: it covers the rod buttons. PR is POWER RANGE; LOW SETPT is its low setpoint.
+Note: Any click outside the panel closes it, Continue included. Close it when done: it covers the rod buttons. PR is POWER RANGE.
 
 
 
 Background
 
-Above 10 % power, the trip at 115 % takes over the job of catching a runaway, so the 35 % trip is no longer needed.
-
-The two blocks are separate presses on purpose: on a real board, blocking one trip never quietly blocks the other.
+Above 8 % power the 115 % trip catches a runaway, so the 35 % trip is no longer needed. Each block is a separate press: blocking one trip never quietly blocks the other.
 
 \[HIGHLIGHTED: Trip Blocks (pulsing)]
 
@@ -455,7 +425,7 @@ The two blocks are separate presses on purpose: on a real board, blocking one tr
 
 18. Verify the plant is in Mode 1, At Power.
 
-*Confirming the end state catches a trip block that dropped out or a generator that never picked up load.*
+*Confirming the end state catches a dropped trip block or a generator without load.*
 
 ()18a. Check REACTOR POWER reads above 9 %.
 
@@ -463,13 +433,11 @@ The two blocks are separate presses on purpose: on a real board, blocking one tr
 
 Suggested time warp: 1×.
 
-Note: IR HIGH FLUX and PR HIGH (LOW SETPT) were checked BLOCKED in the last step, before the TRIP BLOCKS panel was closed.
-
 
 
 Background
 
-The reactor is critical, the generator is carrying load, and both startup trips are blocked. The plant is in Mode 1, At Power. From here the climb to full power is the turbine leading and the rods following.
+The reactor is critical, the generator carries load, and both startup trips are blocked. From here the climb to full power is the turbine leading and the rods following.
 
 \[HIGHLIGHTED: Reactor Power, Turbine Load, SG Level (steady)]
 
@@ -1295,3 +1263,7 @@ Record and every number: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-f.
 - **5b-8b: the plot press waits for its cue** (S-3): `hl_when` STARTUP RATE under +0.035 keeps the 1/M PLOT
   / Plot point pulse dark until the tile reads +0.03. MEASURED before: the pulse lit 1.5 (7b) and 6 (8b)
   plant-minutes early, at +0.11 and +0.18. Display only, grading unchanged.
+
+### Concise pass — 2026-10-02 (#819)
+
+2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 237 -> 162 (4257 -> 2918 over 18 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare). develop text carried in (pool wins): step 2 Background keeps the doubling pause and the "roughly triples: expected" reassurance (one sentence each); step 10 10b at 10× with its own warp line, "about 10 to 15 seconds", "12 to 14 steps"; step 17 Background "Above 8 %". Step 18 note removed (draft). Step 3 aim "must" -> "has to" (W16). Step 9 note keeps "about 2 plant-minutes after the rods start moving in the next step": run_walkthrough_routes reads that number off the note (no_sr_block, 1.5x it) and the draft's "into the next step" lost it.
