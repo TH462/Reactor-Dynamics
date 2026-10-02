@@ -787,8 +787,8 @@
     bdTrefDev: e('Tavg minus Tref (ΔREF)',
       'How far average coolant temperature (Tavg) sits above (+) or below (−) the temperature the plant is programmed to hold at this load (Tref, the reference).',
       'The plant has a temperature PROGRAM: the reference (Tref) slides from 547 °F with no load to ' +
-      '580 °F at full load, set by turbine load. In AUTO the rods drive Tavg toward Tref and the steam ' +
-      'dump opens when Tavg runs above it, so this number is what both of them are acting on. Zero means ' +
+      '580 °F at full load, set by turbine load. You move the rods to bring Tavg back to Tref, and the ' +
+      'steam dump opens when Tavg runs above it, so this number is what both you and the dump are acting on. Zero means ' +
       'the plant is on program. Positive means the coolant is hotter than the program wants — after a ' +
       'load cut with the rods in manual, for example, Tavg stays about 10 °F above Tref until you ' +
       'insert rods or borate. It turns amber outside the dead band of the rod controller (about ' +
