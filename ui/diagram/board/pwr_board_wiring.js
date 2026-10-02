@@ -1527,8 +1527,12 @@
     bdTrefDev: function (s) {                                                                          // Tavg - Tref (#818)
       var v = IN(s).tavg_tref_dev;
       if (v == null || !isFinite(v)) return { text: 'ΔREF —', unit: '' };
-      var d = dTd(v), sgn = (+d > 0) ? '+' : '';
-      if (+d === 0) d = '0';   /* never '-0' — the paired-string trap (#436) */
+      /* ONE DECIMAL, not the tempd family's whole degrees (#818 review): the amber band starts at
+       * 0.8 degC = 1.44 degF, so "+1" could sit either side of it. */
+      var fm = fam('tempd'), d = fm ? fmtNum(fm.to(v), 1) : null;
+      if (d == null) return { text: 'ΔREF —', unit: '' };
+      var sgn = (+d > 0) ? '+' : '';
+      if (+d === 0) d = '0.0';   /* never '-0.0' — the paired-string trap (#436) */
       /* amber outside the rod controller's own lockup band (the board's Tavg-band constant) */
       var band = (_CTL.TAVG_DEADBAND_C || 0.8);
       return { text: 'ΔREF ' + sgn + d, unit: uStr('tempd', 'F'), color: Math.abs(v) > band ? BD_WARN : '#9fb3c4' };

@@ -9115,10 +9115,42 @@
   /* Player-facing text for an engine "… BLOCKED: …" refusal: the trip-latched rod drive refusal says
    * what to do in the board's own words; any other keeps its text minus a bracketed "[sourced, …]"
    * citation (the citation belongs in the engine comment and the manual, not on the player's board). */
+  /* LEARNING REGISTER: A CODE IS SPELLED OUT THE FIRST TIME A REFUSAL USES IT (#818 review). The
+   * engine's refusals are written in plant shorthand ("MFW RESTORE BLOCKED", "Secure the ECCS",
+   * "requires P-4"); the rod drive one was rewritten whole, every other reached a newcomer raw.
+   * The Industry register keeps the engine's text. A code already followed by its own
+   * parenthesis ("P-4 (a reactor trip)") is left alone. */
+  var BLOCK_CODES = {
+    MFW: 'main feedwater', AFW: 'auxiliary feedwater', ECCS: 'emergency core cooling system',
+    RPS: 'reactor protection system', RHR: 'residual heat removal', SI: 'safety injection',
+    RCS: 'reactor coolant system', FWI: 'feedwater isolation', SG: 'steam generator',
+    PORV: 'pressurizer relief valve', MSIV: 'main steam isolation valve',
+    'P-4': 'the reactor-tripped signal', 'P-6': 'the intermediate-range permissive',
+    'P-7': 'the low-power permissive', 'P-9': 'the turbine-trip permissive',
+    'P-10': 'the power-range permissive', 'P-11': 'the low-pressure permissive', 'P-14': 'the high steam generator level signal'
+  };
+  function spellCodes(m) {
+    var seen = {};
+    /* "MFW RESTORE BLOCKED — rest" -> "Main feedwater (MFW) restore blocked — rest" */
+    m = m.replace(/^([A-Z][A-Z0-9 /-]*?) BLOCKED\b/, function (all, head) {
+      var words = head.split(' ').map(function (w) {
+        if (BLOCK_CODES[w]) { seen[w] = true; return BLOCK_CODES[w] + ' (' + w + ')'; }
+        return w.toLowerCase();
+      }).join(' ');
+      return words.charAt(0).toUpperCase() + words.slice(1) + ' blocked';
+    });
+    return m.replace(/\b(P-\d+|[A-Z]{2,5})\b(\s*\()?/g, function (all, code, paren) {
+      if (!BLOCK_CODES[code] || seen[code]) return all;
+      seen[code] = true;
+      if (paren) return all;   // already explained in place
+      return /^P-/.test(code) ? code + ' (' + BLOCK_CODES[code] + ')' : BLOCK_CODES[code] + ' (' + code + ')';
+    });
+  }
   function blockedText(m) {
     if (/ROD DRIVE BLOCKED/.test(m) && /LATCHED/.test(m))
       return "Rods can't move: the reactor trip is latched. Reset it first — press the SCRAM button on the ROD CONTROL card once it reads PRESS TO RESET.";
-    return m.replace(/\s*\[sourced[^\]]*\]/g, '').replace(/\s{2,}/g, ' ').trim();
+    m = m.replace(/\s*\[sourced[^\]]*\]/g, '').replace(/\s{2,}/g, ' ').trim();
+    return ui.register === 'industry' ? m : spellCodes(m);
   }
   function cmd(c) {
     // A chat interaction click (e.g. the maintenance tag) is the player acting —
@@ -9954,6 +9986,17 @@
       document.querySelector('.plant-area').appendChild(t);
     }
     t.textContent = msg;
+    /* ABOVE THE SCANNER, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
+     * the average-temperature, pressurizer-level, pressure and subcooling tiles (measured at
+     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It
+     * now sits just above the scanner bar, over the lower end of the alarm list; measured, it
+     * overlaps no board item at those three sizes. Re-read on every show: the scanner can grow. */
+    try {
+      var pa = t.parentNode.getBoundingClientRect(), sc = $('scannerPanel');
+      var scTop = sc && sc.offsetParent ? sc.getBoundingClientRect().top : pa.bottom;
+      t.style.top = 'auto';
+      t.style.bottom = Math.max(8, Math.round(pa.bottom - scTop + 8)) + 'px';
+    } catch (e) { /* layout unavailable: the stylesheet's top placement stands */ }
     t.className = 'app-toast show' + (kind === 'error' ? ' error' : '');
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.remove('show'); }, kind === 'error' ? 5000 : 2500);
