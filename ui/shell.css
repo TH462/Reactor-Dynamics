@@ -2639,15 +2639,6 @@ select.num-input { width: auto; }
   display: block; color: var(--muted);
   font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 3px;
 }
-/* THE BACKGROUND FOLD (#818, owner-approved Tier 2): collapsed by default, one click to open. The
-   summary IS the legend, so a closed box still reads "Background" in the same 10 px caps; the
-   chevron is the only new mark. `list-style: none` + the webkit marker rule drop the UA triangle. */
-details.ckl-why > summary.ckl-why-lbl { cursor: pointer; list-style: none; margin-bottom: 0; user-select: none; }
-details.ckl-why > summary.ckl-why-lbl::-webkit-details-marker { display: none; }
-details.ckl-why > summary.ckl-why-lbl::before { content: '▸'; display: inline-block; width: 12px; }
-details.ckl-why[open] > summary.ckl-why-lbl::before { content: '▾'; }
-details.ckl-why > summary.ckl-why-lbl:hover { color: var(--text-2); }
-details.ckl-why[open] > summary.ckl-why-lbl { margin-bottom: 3px; }
 /* CONTINUE IS ALWAYS ON SCREEN (#818). The Rewind / Continue row stays the LAST thing in the step
    (#687 item 3: under the text) but is pinned to the floor of the scrolling #cklLog, so a long step
    scrolls its TEXT behind the row instead of scrolling the button out of sight. Opaque, on the

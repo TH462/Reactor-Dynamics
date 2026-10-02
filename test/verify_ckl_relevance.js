@@ -383,9 +383,9 @@ function sig(rows) {
                body: w ? w.textContent.replace(/\s+/g, ' ').trim().length : 0,
                borders: cs ? [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth] : null,
                marginTop: cs ? parseFloat(cs.marginTop) : null,
-               /* #818: the Background block is a FOLD, closed on arrival, its legend the summary */
-               fold: w ? { tag: w.tagName, open: !!w.open, sumIsLbl: !!(l && l.tagName === 'SUMMARY'),
-                           closedH: w.getBoundingClientRect().height } : null };
+               /* #819: the Background block is NOT a fold — its text is drawn on arrival */
+               fold: w ? { tag: w.tagName, hasDetails: !!(w.closest('details') || w.querySelector('details')),
+                           h: w.getBoundingClientRect().height } : null };
     });
     var lblOk = !!whyLbl.lbl && whyLbl.lbl.length >= 4 && whyLbl.lbl.length <= 40 &&
                 whyLbl.lbl.length < whyLbl.body;
@@ -399,13 +399,11 @@ function sig(rows) {
        whyLbl.hasWhy ? ('borders ' + JSON.stringify(whyLbl.borders) + ', margin-top ' + whyLbl.marginTop + 'px')
                      : 'no .ckl-why on the active step');
 
-    /* #818 (owner-approved Tier 2): the step reads as its action line and one-line why, and the
-     * Background paragraph is ONE CLICK away — a <details> closed on arrival whose summary is the
-     * legend, so the closed box is about one line tall. INJECTION-PROVEN 2026-10-01: the details
-     * emitted with `open` always -> this check red. */
-    ck('...and it is a FOLD, closed on arrival, its legend the one click that opens it (#818)',
-       !!whyLbl.fold && whyLbl.fold.tag === 'DETAILS' && !whyLbl.fold.open && whyLbl.fold.sumIsLbl &&
-       whyLbl.fold.closedH < 40,
+    /* ALWAYS OPEN, NEVER A FOLD *(OWNER RULING, 2026-10-02, #819: "B" = "revert to Background always
+     * open", reversing #818 package C's closed-on-arrival <details>)*. The box must be drawn at more
+     * than one line tall with no <details> around or inside it. Inverted from #818's fold check. */
+    ck('...and it is OPEN on arrival — drawn in full, not a fold (#819, owner ruling 2026-10-02)',
+       !!whyLbl.fold && whyLbl.fold.tag !== 'DETAILS' && !whyLbl.fold.hasDetails && whyLbl.fold.h >= 40,
        JSON.stringify(whyLbl.fold));
 
     /* ---- 5. EVERY PIXEL OF A NUMBER TILE TYPES INTO ITS BOX (#615) --------------------- */
