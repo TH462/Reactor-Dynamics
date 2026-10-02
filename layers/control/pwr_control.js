@@ -1130,13 +1130,13 @@
    * Each line describes the SHIPPED plant (PWR2), measured 2026-10-01 from hot full power. */
   var PWR_FAILURE_COPY = {
     continuous_rod_withdrawal: { blurb: 'The control rods pull out on their own and keep going. Slider sets the speed.',
-      armed_text: 'Waiting — the rods are already fully out; it acts once they are inserted.',
-      fired_text: 'Acting — the control rods are pulling out on their own.' },
+      armed_text: 'Armed — pulls the control rods out whenever they can move and are not already fully out.',
+      fired_text: 'Fired — the control rods are pulling out on their own.' },
     failure_to_scram: { blurb: 'The reactor trip signal comes in, but the control rods do not drop.',
-      armed_text: 'Armed — the rods will stay out the next time the reactor trips.',
+      armed_text: 'Armed — keeps the rods out the next time the reactor trips.',
       fired_text: 'Fired — the reactor tripped and the rods did not drop.' },
     anticipatory_trip_failure: { blurb: 'A turbine trip no longer trips the reactor along with it.',
-      armed_text: 'Armed — takes effect the next time the turbine trips.',
+      armed_text: 'Armed — takes effect the next time the turbine trips at power.',
       fired_text: 'Fired — the turbine is tripped and did not trip the reactor.' },
     large_loca: { blurb: 'A reactor coolant pipe breaks and coolant pours into containment. Slider sets hole size.' },
     sgtr: { blurb: 'A steam generator tube breaks; reactor coolant leaks into the steam side.' },

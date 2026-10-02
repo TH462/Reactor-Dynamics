@@ -17,6 +17,8 @@
  *   6. "Steady" is only said when the readings are: a full-power plant with an armed PORV is
  *      called steady by 10 plant-minutes, a Loss of Main Feedwater is still changing at 10.
  *   7. A walkthrough owns the tab: the debrief is null while one runs.
+ *   8-11 (#818 review): a FINISHED walkthrough is free play; "steady" is reached at 3600x; the
+ *      debrief never reports a firing only the plant's truth knows; armed/fired is right in shutdown states.
  *
  * Every check here was made to go red by breaking the thing it guards (see the #818 report).
  * Run: node test/run_coach.js
@@ -85,7 +87,7 @@ function watch(c, label) {
   ck('LOFW: automatic actions include reactor trip and the auxiliary feedwater start', /reactor trip/.test(a) && /auxiliary feedwater pumps started/.test(a), a);
   ck('LOFW: no safety injection claimed (none ran)', !/safety injection/.test(a), a);
   ck('LOFW: five readings named, with US-first values', ['Core exit temperature', 'Subcooling margin', 'Reactor coolant pressure', 'Pressurizer level', 'Steam generator level']
-     .every(function (k) { return watch(c, k) != null; }) && / °F \(/.test(watch(c, 'Core exit temperature')) && / psia \(/.test(watch(c, 'Reactor coolant pressure')),
+     .every(function (k) { return watch(c, k) != null; }) && / °F \(/.test(watch(c, 'Core exit temperature')) && /^\d+ psi \(/.test(watch(c, 'Reactor coolant pressure')),
      line(c, 'watch'));
   ck('LOFW: the quoted pressure is the live instrument', watch(c, 'Reactor coolant pressure').indexOf(String(Math.round(s.instruments.primary_pressure * 145.038))) === 0,
      watch(c, 'Reactor coolant pressure') + ' vs ' + Math.round(s.instruments.primary_pressure * 145.038));
@@ -141,7 +143,8 @@ function watch(c, label) {
   var af = s.active_failures.filter(function (f) { return f.id === 'stuck_porv_open'; })[0];
   ck('stuck PORV at full power: reported armed (the valve has not lifted)', af && af.armed === true, JSON.stringify(af));
   var c = coach(s);
-  ck('stuck PORV: the debrief says it is armed and has not acted', /armed and has not acted yet \(sticks open the next time pressure lifts the valve\)/.test(line(c, 'happened')), line(c, 'happened'));
+  ck('stuck PORV: the debrief says it was armed when injected and leaves "has it acted" to the board',
+     /armed when injected: it sticks open the next time pressure lifts the valve\. Whether it has acted shows only on the board\./.test(line(c, 'happened')), line(c, 'happened'));
   ck('stuck PORV: the catalog carries the plain line and the armed/fired wording', (function () {
     var f = svc.layer.getFailureCatalog().filter(function (x) { return x.id === 'stuck_porv_open'; })[0];
     return !!(f && f.blurb && /^Armed — /.test(f.armed_text) && /^Fired — /.test(f.fired_text));
@@ -152,11 +155,16 @@ function watch(c, label) {
   s = svc.runTo(svc.simTime + 5);
   af = s.active_failures.filter(function (f) { return f.id === 'stuck_porv_open'; })[0];
   ck('stuck PORV: once the valve lifts, reported fired', af && af.armed === false, JSON.stringify(af));
-  var cat = svc.layer.getFailureCatalog(), withArm = cat.filter(function (f) { return f.armed_text; }).map(function (f) { return f.id; }).sort();
-  ck('every failure the engine can report as armed has armed/fired wording',
-     ['afw_failure', 'anticipatory_trip_failure', 'continuous_rod_withdrawal', 'degraded_hpi', 'failure_to_scram', 'stuck_porv_open']
-       .every(function (id) { var f = cat.filter(function (x) { return x.id === id; })[0]; return f && f.armed_text && f.fired_text; }),
-     withArm.join(','));
+  var cat = svc.layer.getFailureCatalog();
+  /* DERIVED, not listed (#818 review): inject every failure on the menu into one plant and ask the
+   * engine which ones it reports armed/fired — each of those must carry both lines */
+  var svcAll = boot(); svcAll.runTo(10);
+  cat.forEach(function (f) { try { svcAll.handleCommand({ action: 'inject_failure', failure_id: f.id }); } catch (e) { /* a refusal is not this check's business */ } });
+  svcAll.runTo(svcAll.simTime + 2);
+  var armIds = Object.keys(svcAll.engine.getFailureArming()).sort();
+  ck('every failure the engine can report as armed has armed/fired wording (derived from getFailureArming, everything injected)',
+     armIds.length >= 6 && armIds.every(function (id) { var f = cat.filter(function (x) { return x.id === id; })[0]; return f && /^Armed — /.test(f.armed_text) && /^Fired — /.test(f.fired_text); }),
+     armIds.join(','));
   ck('every failure on the PWR menu has a one-line description', cat.every(function (f) { return f.blurb && f.blurb.split(/\s+/).length <= 18; }),
      cat.filter(function (f) { return !f.blurb || f.blurb.split(/\s+/).length > 18; }).map(function (f) { return f.id; }).join(',') || 'all');
 })();
@@ -170,6 +178,87 @@ function watch(c, label) {
   svc.handleCommand({ action: 'scram' });
   var s = svc.runTo(svc.simTime + 10);
   ck('a walkthrough is running: no free-play debrief', !!p && coach(s) === null, p ? p.id : 'no procedure found');
+})();
+
+// ---------------------------------------------------------------- 8. a FINISHED walkthrough is free play (#818 review)
+(function () {
+  var svc = boot(); svc.runTo(10);
+  var procs = (RD.MANUAL_PROCEDURES && (RD.MANUAL_PROCEDURES.pwr2 || RD.MANUAL_PROCEDURES.pwr)) || [];
+  var p = procs.filter(function (x) { return x.steps && x.steps.length; })[0];
+  svc.instructor.loadChecklist(p, {});
+  var s = svc.runTo(svc.simTime + 1);
+  ck('a running walkthrough is not free play (the snapshot says so)', s.instructor.free_play === false, String(s.instructor.free_play));
+  svc.instructor.checklist.complete = true;
+  s = svc.runTo(svc.simTime + 1);
+  ck('a finished walkthrough is free play', s.instructor.free_play === true, String(s.instructor.free_play));
+  var n0 = svc.checkpoints.length;
+  svc.handleCommand({ action: 'inject_failure', failure_id: 'loss_of_feedwater' });
+  ck('after a finished walkthrough, an injection lays the Retry checkpoint', svc.checkpoints.length === n0 + 1, n0 + ' -> ' + svc.checkpoints.length);
+  s = svc.runTo(svc.simTime + 10);
+  ck('after a finished walkthrough, the debrief comes up', !!coach(s) && /Loss of Main Feedwater/.test(coach(s).title), coach(s) && coach(s).title);
+})();
+
+// ---------------------------------------------------------------- 9. "steady" at 3600x (#818 review)
+(function () {
+  /* broadcasts at 3600x are 360 plant-seconds apart; the settle window used to need 3 samples
+   * inside 300 s and never got them. Measured after the fix, manual trip from full power: first
+   * steady at 42.5 / 35.5 / 33.0 plant-minutes at 60x / 600x / 3600x. */
+  var svc = boot(); svc.runTo(10); svc.timeAcceleration = 3600;
+  svc.handleCommand({ action: 'scram' });
+  var t0 = svc.simTime, first = null, s;
+  while (svc.simTime < t0 + 90 * 60) { s = svc.tick(); var c = coach(s); if (c && c.settled && first == null) first = svc.simTime - t0; }
+  ck('3600x, manual trip from full power: "steady" is said within 90 plant-minutes, not before 20',
+     first != null && first >= 20 * 60 && first <= 90 * 60, first == null ? 'never' : (first / 60).toFixed(1) + ' plant-min');
+})();
+
+// ---------------------------------------------------------------- 10. HR1: the debrief never reports a firing the board cannot see
+(function () {
+  var svc = boot(); svc.runTo(10);
+  svc.handleCommand({ action: 'inject_failure', failure_id: 'porv_indicator_stuck_closed' });
+  svc.handleCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open' });
+  var s = svc.runTo(svc.simTime + 20), before = line(coach(s), 'happened');
+  svc.handleCommand({ action: 'open_porv_manual' });
+  s = svc.runTo(svc.simTime + 5);
+  svc.handleCommand({ action: 'close_porv' });
+  s = svc.runTo(svc.simTime + 60);
+  var af = s.active_failures.filter(function (f) { return f.id === 'stuck_porv_open'; })[0];
+  var all = coach(s) ? coach(s).lines.map(function (l) { return l.text; }).join(' ') : '';
+  ck('fixture: the valve really is stuck open (truth) and its light reads closed (indication)',
+     af && af.armed === false && s.instruments.porv_indicator !== 'open', JSON.stringify(af) + ' light=' + s.instruments.porv_indicator);
+  ck('the debrief does not reveal the stuck-open valve: no Fired, no "stuck open", no relief valve open, no change in its armed sentence',
+     !!all && !/Fired|is stuck open|has lifted|relief valve (indicates )?open|PORV open/i.test(all) &&
+     /armed when injected: it sticks open/.test(line(coach(s), 'happened')) && /armed when injected: it sticks open/.test(before),
+     all.slice(0, 400));
+  var src = fs.readFileSync(path.join(ROOT, 'layers', 'instructor_layer.js'), 'utf8');
+  var a = src.indexOf('// ================================================================ free-play debrief (#818)'), b = src.indexOf('// ================================================================ output (§7)');
+  var sect = a >= 0 && b > a ? src.slice(a, b).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '') : '';
+  ck('HR1: the debrief section\'s code never reads a failure\'s armed/fired state', !!sect && !/\.armed\b/.test(sect), sect.length + ' chars of code scanned');
+})();
+
+// ---------------------------------------------------------------- 11. armed/fired is not "fired" in a shutdown state (#818 review)
+(function () {
+  function armedAt(ic, id, pre) {
+    var svc = new RD.SimulationService({ seed: 4242 });
+    svc.selectPlant('pwr2', ic); svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
+    var run = function (t) { var s = null; while (svc.simTime < t) s = svc.tick(); return s; };
+    run(10); if (pre) { pre(svc); run(svc.simTime + 30); }
+    svc.handleCommand({ action: 'inject_failure', failure_id: id });
+    var s = run(svc.simTime + 30);
+    var f = s.active_failures.filter(function (x) { return x.id === id; })[0];
+    return f ? f.armed : undefined;
+  }
+  ck('anticipatory trip failure at hot zero power (turbine already offline, below P-9): Armed', armedAt('hot_zero_power', 'anticipatory_trip_failure') === true);
+  ck('anticipatory trip failure at hot shutdown: Armed', armedAt('hot_shutdown', 'anticipatory_trip_failure') === true);
+  ck('continuous rod withdrawal injected with the trip latched (rods in, no drive power): Armed',
+     armedAt('hot_full_power', 'continuous_rod_withdrawal', function (svc) { svc.handleCommand({ action: 'scram' }); }) === true);
+  ck('anticipatory trip failure, turbine trip at full power: Fired (the reactor stays up)',
+     (function () {
+       var svc = boot(); svc.runTo(10);
+       svc.handleCommand({ action: 'inject_failure', failure_id: 'anticipatory_trip_failure' });
+       svc.handleCommand({ action: 'inject_failure', failure_id: 'turbine_trip' });
+       var s = svc.runTo(svc.simTime + 3), f = s.active_failures.filter(function (x) { return x.id === 'anticipatory_trip_failure'; })[0];
+       return f && f.armed === false && !s.rps_state.scrammed;
+     })());
 })();
 
 console.log('\n' + '='.repeat(74));

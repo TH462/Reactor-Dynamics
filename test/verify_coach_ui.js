@@ -66,6 +66,13 @@ function ck(name, ok, detail) {
   ck('Inject Failure: the Inject button is not drawn in the dim grey that read as disabled',
      rows.disabled === false && rows.color !== rows.grey, 'color ' + rows.color + ', grey ' + rows.grey + ', border ' + rows.border);
 
+  var note = await page.evaluate(function () {
+    var n = document.getElementById('failConsoleNote'), r = n && n.getBoundingClientRect();
+    return n ? { text: n.textContent, shown: !!(r && r.height > 0 && r.width > 0) } : null;
+  });
+  ck('Inject Failure: the pane says it is the instructor console view of the plant itself, not the board (Hard Rule 1, #818 review)',
+     !!note && note.shown && /Instructor's console/.test(note.text) && /board shows only the indications/.test(note.text), note && note.text);
+
   // ---------------------------------------------------------------- 2. armed, then fired
   await page.click('#fail-stuck_porv_open .fail-toggle');
   await ticks(5);
@@ -114,7 +121,7 @@ function ck(name, ok, detail) {
   ck('free play was idle before the event (the welcome text)', idle0);
   ck('the Instructor tab draws the debrief: four parts, five readings', !!deb && deb.lines === 4 && deb.watch === 5, deb && (deb.lines + ' parts, ' + deb.watch + ' readings'));
   ck('the debrief names the trip, the automatic actions and a live reading',
-     !!deb && /reactor tripped/.test(deb.text) && /auxiliary feedwater pumps started/.test(deb.text) && / psia \(/.test(deb.text), deb && deb.text.slice(0, 220));
+     !!deb && /reactor tripped/.test(deb.text) && /auxiliary feedwater pumps started/.test(deb.text) && /\d psi \(/.test(deb.text) && !/psia/.test(deb.text), deb && deb.text.slice(0, 220));
   ck('Retry is offered (a checkpoint exists before the injection)', !!deb && deb.retry);
   ck('the welcome it replaced is not folded into the message log above it', !!deb && deb.folded === 0, deb && deb.folded + ' folded messages');
 

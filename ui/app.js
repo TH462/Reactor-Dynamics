@@ -3849,7 +3849,11 @@
       syncInstrNav('idle');
       instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
       var curW = $('instrCurrent');
+      /* a FINISHED walkthrough is free play (#818 review): a trip or injection after it gets the
+       * debrief under the finished card, as it would with no walkthrough loaded */
+      if (curW && ckb.complete && coachVisible(s)) { curW.classList.remove('instr-standby'); renderCoach(s); return; }
       if (curW) {
+        if (curW.querySelector('.coach')) coachUi.html = null;
         curW.classList.remove('instr-standby');
         var wmsg = s.instructor.message || '';
         if (curW.textContent !== wmsg) curW.textContent = wmsg;
@@ -4456,8 +4460,9 @@
   function syncFailuresTab(s) {
     var btn = document.querySelector('#tabbar [data-tab="failures"]');
     if (!btn) return;
-    var ins = s && s.instructor || {}, ck = ins.checklist;
-    var busy = !!(ck && !ck.complete) || ins.mode === 'scenario' || !!ui.opener || !!ui.scenario || !!ins.follow;
+    var ins = s && s.instructor || {};
+    /* the instructor's one free-play predicate (#818 review); opener/scenario are UI-side state */
+    var busy = ins.free_play === false || !!ui.opener || !!ui.scenario;
     if (btn.hidden === busy) return;
     btn.hidden = busy;
     if (busy && btn.classList.contains('on')) selectTab('instructor');
@@ -11948,7 +11953,12 @@
     if (!service || ui.opener || ui.scenario) return false;
     var ins = latest && latest.instructor;
     if (ins && ins.mode === 'scenario') return false;
-    if (bootUntouched && !bootWrote && localStorage.getItem(AUTOSAVE_KEY)) return false;
+    if (bootUntouched && !bootWrote) {
+      /* storage can throw (private window, blocked site data): no readable stored save means none to protect */
+      var stored = null;
+      try { stored = localStorage.getItem(AUTOSAVE_KEY); } catch (e) { stored = null; }
+      if (stored) return false;
+    }
     // DIFFERS, not "is greater": a timeline jump the rebase missed must still save, never block.
     // A walkthrough that moved a step or finished with the clock stopped is also worth keeping, or
     // the menu keeps offering Continue at the step it was on before it was completed.
