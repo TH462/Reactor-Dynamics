@@ -9999,7 +9999,15 @@
     } catch (e) { /* layout unavailable: the stylesheet's top placement stands */ }
     t.className = 'app-toast show' + (kind === 'error' ? ' error' : '');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('show'); }, kind === 'error' ? 5000 : 2500);
+    /* A FADED TOAST KEEPS NO TEXT (#818, layman pass of 2026-10-02, S-8). `.app-toast` fades to
+     * opacity 0 and stays in the DOM, so its last message stayed readable to a screen reader and
+     * to any page-text read: the reviewer quoted a speed-drop toast an hour after it faded, as if
+     * the status line under the speed bar were stale (`#warpInfo` itself read empty). Cleared
+     * once the 0.18 s fade has finished, and only if no newer toast has been shown since. */
+    toastTimer = setTimeout(function () {
+      t.classList.remove('show');
+      toastTimer = setTimeout(function () { if (!t.classList.contains('show')) t.textContent = ''; }, 300);
+    }, kind === 'error' ? 5000 : 2500);
   }
 
   function bindCommands() {
