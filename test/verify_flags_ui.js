@@ -1587,6 +1587,28 @@ function pinChannel(ch) {
   var v4 = await sh(p4);
   ck('#816: after a reload the menu offers Continue naming the walkthrough',
     /Continue — Startup Part 1, step 3, saved/.test(v4.cont), v4.cont);
+  /* #818 SAVE WIPE: closing the menu starts the DEFAULT boot plant, which the player never chose;
+   * the autosave used to overwrite the walkthrough save with "Free Play, Mode 1" within 30 s. */
+  await p4.click('#missionClose');
+  await runFor(p4, 2);
+  var wipe = await p4.evaluate(function () {
+    var r = RD.__dev.autosave(), a = JSON.parse(localStorage.getItem('rd_autosave'));
+    return { saved: r, wt: a.walkthrough };
+  });
+  ck('#818: closing the menu on the untouched boot plant does NOT overwrite the walkthrough save',
+    wipe.saved === false && !!wipe.wt && wipe.wt.id === 'pwr_heatup' && wipe.wt.step === 2, JSON.stringify(wipe));
+  /* ...and once the player ACTS on that plant, the autosave writes again (a stub save stands in
+   * for the stored one, on its own page so it cannot disturb the walkthrough save above). */
+  var s8 = await menuPage(null, 'localStorage.setItem("rd_autosave", JSON.stringify({ v: 1, savedAt: Date.now(), release: "x", engine: "pwr2", snapshot: { metadata: { plant_id: "pwr2" } } }))');
+  var p8 = s8.page;
+  await p8.click('#missionClose');
+  await runFor(p8, 1);
+  var held8 = await p8.evaluate(function () { return RD.__dev.autosave(); });
+  await p8.evaluate(function () { RD.__dev.cmd({ action: 'set_load_mode', mode: 'follow' }); });
+  await runFor(p8, 1);
+  ck('#818: untouched boot plant leaves a stored save alone; after the player acts, the autosave writes again',
+    held8 === false && (await p8.evaluate(function () { return RD.__dev.autosave(); })) === true, String(held8));
+  await s8.ctx.close();
   /* AN OLDER RELEASE'S SAVE IS STILL OFFERED AND LOADS (coordinator 2026-10-01): restamp the
    * stored save with another release, then reload without letting pagehide overwrite it. */
   await p4.evaluate(function () {

@@ -2670,7 +2670,7 @@
       // three shares, not just the tiles'. The recorder's row is packed over the OLD plant's
       // field list, so a leaked row would write one plant's numbers into another's columns.
       RD.ChartFine = null; pendingTiles = null; pendingDiagFine = null;
-      afterPlantChange(); return;
+    afterPlantChange(); return;
     }
 
     // The fine sub-samples were drained in `render`, synchronously with the broadcast — see
@@ -8834,6 +8834,7 @@
     // A chat interaction click (e.g. the maintenance tag) is the player acting —
     // release the transcript's reading dwell so the exchange answers promptly.
     if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
+    if (c) bootUntouched = false;   // the player is acting on this plant: it is theirs now
     // A THROW is a refusal, not a crash (#505/#506). The pwr2 shell deliberately throws
     // on a REFUSED command — right for a harness, but nothing on the click path caught it,
     // so the handler unwound silently: no record, no message, and the SECOND command of a
@@ -11530,6 +11531,7 @@
   function rebuildPlantUI() {
     heldShown = false;        /* #520 — a rebuilt plant can halt again, and must say so again */
     rebaseAutosave();   /* #816 — no autosave until THIS plant has run */
+    bootUntouched = false;
     // BEFORE chartBuf can take a row: the packed row width and the column of every series
     // come from the incoming plant's profile, and a sample taken against the old index
     // would be silently misfiled rather than empty.
@@ -11598,6 +11600,7 @@
     try { res = service.loadState(state); }
     catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
     if (res && res.type === 'error') return res.message || 'not a valid save';
+    bootUntouched = false;
     /* WHAT IS RUNNING NOW IS WHAT THE SAVE SAYS (#816 review): an opener/scenario/follow from
      * BEFORE the load used to survive it in ui.*, leaving autosave off for the session and the
      * opener UI stale. Re-derive from the restored instructor; ui.follow re-syncs on render. */
@@ -11636,15 +11639,28 @@
   /* Called on every path that puts a new timeline under the player: boot, rebuildPlantUI, and
    * the commands in REBASE_ON (cmd()). A rewind or a retry resets sim time WITHOUT a rebuild, and
    * a `>` guard against a pre-rewind base then refused every later save (#816 review). */
-  function rebaseAutosave() { asBaseT = plantBaseT = service ? service.simTime : null; }
+  function rebaseAutosave() { asBaseT = plantBaseT = service ? service.simTime : null; asCkKey = ckKeyNow(); }
+  /* The default plant the page boots (and that closing the menu starts running behind it) is a plant
+   * the player never CHOSE. While it is untouched it must not overwrite a save that exists —
+   * closing the menu used to turn "Continue — Startup Part 1, step 5" into "Continue — Free Play,
+   * Mode 1" within 30 s. Cleared by the first command, a rebuild or a load. */
+  var bootUntouched = false, bootWrote = false;   // bootWrote: THIS untouched plant already wrote the slot, so it may keep it fresh
+  var asCkKey = '';   // walkthrough step key at the last (re)build or save — a CHANGE alone is worth saving
+  function ckKeyNow() {
+    var ck = service && service.instructor && service.instructor.checklist;
+    return ck ? ck.procedure_id + '#' + ck.idx + (ck.complete ? 'c' : '') : '';
+  }
   var REBASE_ON = { rewind: 1, start_follow: 1, start_checklist: 1, start_opener: 1, start_scenario: 1, reset: 1 };
   function plantHasRun() { return !!service && plantBaseT != null && service.simTime !== plantBaseT; }
   function autosaveEligible() {
     if (!service || ui.opener || ui.scenario) return false;
     var ins = latest && latest.instructor;
     if (ins && ins.mode === 'scenario') return false;
+    if (bootUntouched && !bootWrote && localStorage.getItem(AUTOSAVE_KEY)) return false;
     // DIFFERS, not "is greater": a timeline jump the rebase missed must still save, never block.
-    return asBaseT != null && service.simTime !== asBaseT;
+    // A walkthrough that moved a step or finished with the clock stopped is also worth keeping, or
+    // the menu keeps offering Continue at the step it was on before it was completed.
+    return asBaseT != null && (service.simTime !== asBaseT || ckKeyNow() !== asCkKey);
   }
   function autosave() {
     if (!autosaveEligible()) return false;
@@ -11658,7 +11674,8 @@
         walkthrough: ck && !ck.complete ? { id: ck.procedure_id, step: ck.idx } : null,
         snapshot: snap,
       }));
-      asBaseT = service.simTime;   // nothing new to save until the plant runs again
+      if (bootUntouched) bootWrote = true;
+      asBaseT = service.simTime; asCkKey = ckKeyNow();   // nothing new to save until the plant runs again
       return true;
     } catch (e) { return false; }  // quota, storage disabled, file:// — the sim carries on
   }
@@ -12198,6 +12215,7 @@
         menuNextLegId: menuNextLegId,
         legName: function (id) { return legName(ui.engineKey, { id: id, title: id }); },
         autosave: autosave,
+        cmd: cmd,   /* #818 — a PLAYER command (service.handleCommand directly would skip the untouched-boot clear) */
         readAutosave: readAutosave,
       };
     }
@@ -12267,6 +12285,7 @@
     buildPlantDisplay();
     service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     rebaseAutosave();   // #816 review: boot skips rebuildPlantUI, so without this the boot plant never autosaved
+    bootUntouched = true; bootWrote = false;
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
     buildAutomate();
