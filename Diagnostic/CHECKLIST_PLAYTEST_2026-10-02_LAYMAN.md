@@ -277,3 +277,8 @@ Notes (the italic lines inside a step) were needed often; Background was never n
 - TRIP BLOCKS steps say to close the panel and why ("it covers the rod buttons").
 - "If OFF is already lit under SPRAY…" and "Missed the window: …" give a recovery path before you need one.
 - Each completion card states the end state and offers the next leg, and the chain loaded each leg's start without reloading.
+
+## Addendum, 2026-10-02 — the cooldown step 1 "Cooldown Rate High" drop (seen by the verifying agent, not the reviewer)
+
+**Measured:** did not reproduce. Standalone `hot_zero_power` full stack at 1x / 600x / 3600x and in the real app: lowest `tavg_rate` reading -4.3 °F/hr against the -100 °F/hr setpoint (`layers/control/pwr_control.js:571`); step 1 only borates. Chained (`run_walkthrough_routes --leg=chain`, post-#818 package D): step 1 Tavg 547.2-548.9 °F over 66 plant-min, "no step raises an alarm its card is written to prevent" PASS, leg tile peak -85.7 °F/hr at step 11. The recorded -96.9 °F/hr chain figure (2026-09-25) predates package D and is stale.
+**Verdict:** refuted — the 1x drop at t=3602.7 s is step 1 completing (awaiting Continue), not an alarm.
