@@ -8830,6 +8830,14 @@
   }
 
   // ============================================================ commands
+  /* Player-facing text for an engine "… BLOCKED: …" refusal: the trip-latched rod drive refusal says
+   * what to do in the board's own words; any other keeps its text minus a bracketed "[sourced, …]"
+   * citation (the citation belongs in the engine comment and the manual, not on the player's board). */
+  function blockedText(m) {
+    if (/ROD DRIVE BLOCKED/.test(m) && /LATCHED/.test(m))
+      return "Rods can't move: the reactor trip is latched. Reset it first — press the SCRAM button on the ROD CONTROL card once it reads PRESS TO RESET.";
+    return m.replace(/\s*\[sourced[^\]]*\]/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
   function cmd(c) {
     // A chat interaction click (e.g. the maintenance tag) is the player acting —
     // release the transcript's reading dwell so the exchange answers promptly.
@@ -8842,7 +8850,14 @@
     // becomes the service's own error shape and flows through every consumer below.
     var r;
     try { r = service.handleCommand(c); }
-    catch (e) { r = { type: 'error', code: 'COMMAND_ERROR', message: String(e && e.message || e) }; }
+    catch (e) {
+      var em = String(e && e.message || e);
+      /* AN ENGINE REFUSAL NAMED "BLOCKED" IS AN INTERLOCK, NOT A FAULT (#818): the rod drive door's
+       * "ROD DRIVE BLOCKED: the reactor trip is LATCHED…" threw and drew as "⚠ Command error".
+       * Route it down the ⛔ Blocked path, in the player's words. */
+      r = /\bBLOCKED\b/.test(em) ? { type: 'blocked', code: 'INTERLOCK', message: blockedText(em) }
+                                  : { type: 'error', code: 'COMMAND_ERROR', message: em };
+    }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
@@ -8856,7 +8871,7 @@
     // a refused/unknown command — flashes the same way (#505: an errored press reading
     // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
-      if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
+      if (r.code === 'INTERLOCK' && r.message) { inspectFlash('⛔ Blocked', r.message); showToast('⛔ ' + r.message, 'error'); }
       /* A HELD CLOCK IS A PLANT REFUSAL, NOT INSTRUCTOR FEEDBACK *(owner playtest, 2026-09-04:
        * "when gated and i click on a warp button, it closes the checklist")*. SPEED_HELD comes
        * back `blocked` and fell into the instructor branch below, whose setFocus('instructor')

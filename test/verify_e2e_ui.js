@@ -589,6 +589,33 @@ async function testRefusalReachesTheScanner(page) {
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
 }
 
+/* A LATCHED TRIP REFUSES THE ROD DRIVE, AND THE PLAYER READS WHY (#818). The engine throws
+ * "ROD DRIVE BLOCKED: ... [sourced, Ginna ...]"; it used to draw as "Command error" with the
+ * bracketed citation in the player's face. Drives a real scram + a real rod command through the
+ * shell's cmd() and reads what is DRAWN: the Scanner line and the toast. */
+async function testBlockedRodRefusalWording(page) {
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&dev=1',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+  var r = await page.evaluate(async function () {
+    RD.__dev.cmd({ action: 'scram' });
+    await new Promise(function (ok) { setTimeout(ok, 600); });   // the trip latches on the next tick
+    var res = RD.__dev.cmd({ action: 'rod_nudge', group_id: 'control', steps: -5, speed: 'normal' });
+    await new Promise(function (ok) { setTimeout(ok, 200); });
+    var p = document.querySelector('#scannerPanel'), t = document.querySelector('#appToast');
+    return { type: res && res.type, scan: p ? p.innerText.replace(/\s+/g, ' ') : '', toast: t ? t.textContent : '' };
+  });
+  var bad = r.type !== 'blocked' || !/Blocked/.test(r.scan) || /Command error/.test(r.scan) ||
+    !/Rods can't move: the reactor trip is latched/.test(r.scan) || /sourced|ML\d{8}/.test(r.scan + r.toast) ||
+    !/Rods can't move/.test(r.toast);
+  if (bad) {
+    console.error('FAIL: a latched-trip rod refusal must draw as a Blocked line in plain words, on the Scanner AND the toast (#818): ' + JSON.stringify(r).slice(0, 400));
+    process.exitCode = 1;
+  } else console.log('  latched-trip rod refusal reads as Blocked, no citation: ' + r.toast.slice(0, 60));
+  return JSON.stringify(r) + String.fromCharCode(10);
+}
+
 /* THE TRIP BLOCKS POPOVER MUST NEVER REACH THE BOARD (#670 operator pass, S-1).
  *
  * The popover is shrink-to-fit and one of its captions is 90 characters: a blocked trip whose
@@ -5942,6 +5969,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
     var rfLog = await testRefusalReachesTheScanner(page);
     fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
+    var brLog = await testBlockedRodRefusalWording(page);
+    fs.writeFileSync(path.join(SCRATCH, 'blocked-rod-wording.log'), brLog);
     var tbLog = await testTripBlockPopoverStaysOffTheBoard(page);
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
     var tdLog = await testTripBlockPopoverDismissesOnOutsideClick(page);
