@@ -3180,6 +3180,9 @@
    * It does NOT become a whole-leg "time to completion": that number has no honest source
    * (`hold` is the replay's fixture dwell, not a player-timing measurement — see the wait-line
    * comment in `renderChecklist` below) and the ruling declines it explicitly. */
+  /* #818: when the walkthrough RAISES the clock itself, say so in plain words under the speed bar
+   * (the player did not press anything). Only announces; WHEN the speed changes is unchanged. */
+  var autoSpeedNote = null;   // { rate, step } — retired when the clock leaves that rate or the step moves on
   var warpNote = null;   // { text, reason } — the held-at-real-time note only; retired on any player speed act (unless the hold it names is still standing — see retireWarpNote, #710)
   /* #710: three sites (resumeSim, the speed-button click handler, the walkthrough rewind
    * handler) used to null `warpNote` unconditionally on any player act, on the theory that
@@ -3263,6 +3266,11 @@
       text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
     } else {
       text = advice;
+      if (autoSpeedNote) {
+        var curRate = (s.metadata && s.metadata.time_acceleration) || 1;
+        if (curRate !== autoSpeedNote.rate || autoSpeedNote.step !== cklNoteStepKey(s)) autoSpeedNote = null;
+        else if (!text) text = 'Speeding up to ' + curRate + '× — nothing to do for a while.';
+      }
     }
     if (el.textContent !== text) el.textContent = text;
     el.hidden = !text;
@@ -3297,7 +3305,7 @@
     if (req > 1 && ach != null) {
       var ratio = ach / req;
       cls = straining ? 'bad' : ratio < 0.9 ? 'warn' : 'ok';
-      text = '→ ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
+      text = 'actual ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
     }
     var key = cls + '|' + text + '|' + (p.warp_available ? 1 : 0) + '|' + (p.warp_lock || '');
     if (key === _lastPacingKey) return;   // (syncWarpInfo above has its own change guard)
@@ -3305,7 +3313,7 @@
     el.hidden = !text;
     el.textContent = text;
     el.className = 'ff-rate mono' + (cls ? ' ' + cls : '');
-    el.title = text ? 'Achieved rate: ' + text.slice(2) + ' of the requested ' + req + '× (' + p.tier + ' tier, ' + p.physics_dt + ' s step)' : '';
+    el.title = text ? 'Achieved rate: ' + text.slice(7) + ' of the requested ' + req + '× (' + p.tier + ' tier, ' + p.physics_dt + ' s step)' : '';
     var seg = $('speed');
     if (seg) seg.querySelectorAll('button.warp').forEach(function (b) {
       b.classList.toggle('locked', !p.warp_available);
@@ -4368,6 +4376,7 @@
     if (cur === want) return;
     try { service.handleCommand({ action: 'set_speed', value: want }); }
     catch (e) { return; }                                 // a refusal is not a crash (#505/#506)
+    if (want > cur) autoSpeedNote = { rate: want, step: cklNoteStepKey(s) };   // announce it in #warpInfo (#818)
     /* …and this snapshot was assembled before the change, so restamp it — the speed segment,
      * the ⚡ badge and the chart windows all read `metadata.time_acceleration` off the snapshot
      * being drawn. Same shape as the `metadata.running` restamp the walkthrough pause needs. */
@@ -6638,7 +6647,6 @@
   // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
   // running sim until a start button is pressed.
   var msel = { engine: 'pwr2', mode: null, init: null };   /* mode null = the category list (#816) */   /* the shipped plant (2026-08-26) */
-  var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
   /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
    * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
    *
@@ -6680,6 +6688,8 @@
     var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
     if (!bb.width || !tb.width) return;
     tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
+    var par = tip.offsetParent;   // the tip is an overlay (#818): sit it right under the button row
+    if (par) tip.style.top = Math.round(bb.bottom - par.getBoundingClientRect().top + 2) + 'px';
   }
   function closeMissionSelect() {
     closeModal('missionOverlay');
@@ -8830,6 +8840,28 @@
   }
 
   // ============================================================ commands
+  /* The restart confirm (Free Play / walkthrough / lesson Start over a plant that has run, and
+   * Reset). A row beside the pressed button: the sentence and two buttons, nothing that expires. */
+  var restartAnchor = null;
+  function clearRestartConfirm(disarm) {
+    var row = document.querySelector('.mp-confirm');
+    if (row && row.parentNode) row.parentNode.removeChild(row);
+    if (restartAnchor && disarm !== false) {
+      restartAnchor.removeAttribute('data-armed');
+      if (restartAnchor.hasAttribute('data-mreset')) restartAnchor.setAttribute('data-mreset', 'arm');
+    }
+    restartAnchor = null;
+  }
+  function showRestartConfirm(anchor) {
+    restartAnchor = anchor;
+    var row = document.createElement('div');
+    row.className = 'mp-confirm'; row.setAttribute('role', 'alert');
+    row.innerHTML = '<span>This restarts the plant. Your current plant will be lost.</span>' +
+      '<button class="btn mp-confirm-go" data-mconfirm-go="1">Restart plant</button>' +
+      '<button class="btn" data-mconfirm-cancel="1">Cancel</button>';
+    anchor.parentNode.insertBefore(row, anchor.nextSibling);
+    var go = row.querySelector('[data-mconfirm-go]'); if (go && go.focus) go.focus();
+  }
   /* Player-facing text for an engine "… BLOCKED: …" refusal: the trip-latched rod drive refusal says
    * what to do in the board's own words; any other keeps its text minus a bracketed "[sourced, …]"
    * citation (the citation belongs in the engine comment and the manual, not on the player's board). */
@@ -10396,19 +10428,20 @@
        * replaces a plant which has RUN arms on the first press and acts on the second. Since the
        * category list (#816) that is EVERY start button in the panes — Free Play, each
        * walkthrough part and the lesson — not only the retired Start-here card's. */
+      /* THE RESTART CONFIRM IS TWO REAL BUTTONS, NO TIMER (#818): the chip that grew the button from
+       * 56 to 388 px and disarmed itself after 6 s could vanish while the player was still reading it. */
+      if (e.target.closest('[data-mconfirm-cancel]')) { clearRestartConfirm(); return; }
+      if (e.target.closest('[data-mconfirm-go]')) {
+        var goEl = restartAnchor; clearRestartConfirm(false);
+        if (goEl) { if (goEl.hasAttribute('data-mreset')) { closeMissionSelect(); doReset(true); } else goEl.click(); }
+        return;
+      }
       var arm = e.target.closest('#mpContent [data-mopener], #mpContent [data-wtstart], #mpContent [data-mfree]');
       if (arm && plantHasRun() && arm.getAttribute('data-armed') !== '1') {
-        // One Start armed at a time: arming this one puts every other back to its own label.
-        Array.prototype.forEach.call($('mpContent').querySelectorAll('[data-armed="1"]'), function (o) {
-          o.removeAttribute('data-armed'); o.classList.remove('mp-reset-armed');
-          txt(o, o.getAttribute('data-label') || '▶ Start');
-        });
-        arm.setAttribute('data-label', arm.textContent);
+        // One confirm at a time: arming this one clears every other.
+        clearRestartConfirm();
         arm.setAttribute('data-armed', '1');
-        arm.classList.add('mp-reset-armed');
-        txt(arm, '⚠ This restarts the plant. Your current plant will be lost. Press again to start.');
-        clearTimeout(resetArmT);
-        resetArmT = setTimeout(function () { renderMissionSelect(); }, 6000);
+        showRestartConfirm(arm);
         return;
       }
       var mo = e.target.closest('[data-mopener]');
@@ -10420,13 +10453,10 @@
       var rs = e.target.closest('[data-mreset]');
       if (rs) {
         if (rs.getAttribute('data-mreset') === 'arm') {
+          clearRestartConfirm();
           rs.setAttribute('data-mreset', 'go');
-          rs.classList.add('mp-reset-armed');
-          txt(rs, '⚠ Confirm reset — the current run is lost');
-          clearTimeout(resetArmT);
-          resetArmT = setTimeout(function () { renderMissionSelect(); }, 6000);   // disarms itself
+          showRestartConfirm(rs);
         } else {
-          clearTimeout(resetArmT);
           closeMissionSelect(); doReset(true);
         }
         return;
@@ -10494,6 +10524,7 @@
         if (!$('missionOverlay').hidden) closeMissionSelect();
         if (!$('chartOverlay').hidden) closeChartSettings();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
+        if (!$('settingsOverlay').hidden) closeModal('settingsOverlay');
         if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) closeModal('feedbackOverlay');
@@ -10922,7 +10953,7 @@
     {
       sel: '.strip-chart',
       place: 'top',
-      title: 'Trends &amp; rewind',
+      title: 'Trends & rewind',
       body: '<p>Multi-parameter strip chart. <b>Rewind</b> restores an earlier ' +
         'plant state so you can try again — failure is not game over.</p>'
     },
@@ -11054,6 +11085,7 @@
     if (!$('tourRoot')) return;
     tourIdx = Math.max(0, Math.min(TOUR_STEPS.length - 1, i || 0));
     tourOn = true;
+    pauseSim('user');   /* the tour's last card says "Press Play when ready" — hold the clock, and leave it held (#818) */
     $('tourRoot').hidden = false;
     document.body.classList.add('tour-active');
     renderTour();
@@ -11747,24 +11779,38 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     showToast('State saved — reactor_save.json');
   }
-  function exportCsv() {
+  /* A series' DIMENSION, read off the same `fmt` the chart legend prints with (every dimensioned
+   * series formats through conv(v, '<dim>')), so the export converts exactly where the chart does
+   * and a unit-neutral series (%, rods, MWe) stays bare. */
+  function csvDim(ser) {
+    if (ser.dim) return ser.dim;
+    var m = ser.fmt ? /conv\(\s*v\s*,\s*'(\w+)'\s*\)/.exec(String(ser.fmt)) : null;
+    return m ? m[1] : null;
+  }
+  function buildCsv() {
     /* ONE COLUMN PER TRACE, not per channel (#454). A channel set to 'both' is two traces,
      * so it exports two columns — `id_ind` and `id_phys` — because the export's whole
      * contract is that it carries what the chart is showing. A single-side channel keeps
      * the BARE id it has always had, so an existing worksheet built on `tavg` does not
-     * break; the suffix appears only where there is genuinely a pair to tell apart. */
+     * break; the suffix appears only where there is genuinely a pair to tell apart.
+     * UNITS (#818): a dimensioned column's header carries the unit in the board's CURRENT unit
+     * setting — `tavg (°F)` — and its values are in that unit; they were SI under a bare header. */
     var cols = [];
     prof().series.forEach(function (s) {
       var side = sideOf(s); if (!side) return;
+      var dim = csvDim(s), u = dim ? unit(dim) : '', sfx = u ? ' (' + u + ')' : '';
       if (side === 'both') {
-        cols.push({ ser: s, side: 'ind', name: s.id + '_ind' });
-        cols.push({ ser: s, side: 'phys', name: s.id + '_phys' });
-      } else cols.push({ ser: s, side: side, name: s.id });
+        cols.push({ ser: s, side: 'ind', name: s.id + '_ind' + sfx, dim: dim });
+        cols.push({ ser: s, side: 'phys', name: s.id + '_phys' + sfx, dim: dim });
+      } else cols.push({ ser: s, side: side, name: s.id + sfx, dim: dim });
     });
     var head = ['sim_time'].concat(cols.map(function (c) { return c.name; })).join(',');
     // export what the chart is actually showing (seriesVal), so the CSV and the trace agree
-    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c.ser, b, c.side); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
-    var url = URL.createObjectURL(new Blob([head + '\n' + rows.join('\n')], { type: 'text/csv' }));
+    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c.ser, b, c.side); if (v != null && c.dim) v = conv(v, c.dim); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
+    return head + '\n' + rows.join('\n');
+  }
+  function exportCsv() {
+    var url = URL.createObjectURL(new Blob([buildCsv()], { type: 'text/csv' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_trend.csv'; a.click();
   }
   /* The SOE exports ALONGSIDE the trace CSV (#442) — it is the artifact a classroom
@@ -12230,6 +12276,7 @@
         menuNextLegId: menuNextLegId,
         legName: function (id) { return legName(ui.engineKey, { id: id, title: id }); },
         autosave: autosave,
+        buildCsv: buildCsv,
         cmd: cmd,   /* #818 — a PLAYER command (service.handleCommand directly would skip the untouched-boot clear) */
         readAutosave: readAutosave,
       };

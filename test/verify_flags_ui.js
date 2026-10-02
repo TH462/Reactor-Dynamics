@@ -1519,6 +1519,18 @@ function pinChannel(ch) {
   });
   ck('#816: on a plant that has run, Start Free Play asks before replacing it',
     armedF.armed && armedF.open, JSON.stringify(armedF));
+  /* #818: the confirm is a sentence + two REAL buttons that do not expire and do not grow the Start. */
+  await p5.waitForTimeout(6500);   // the old chip disarmed itself at 6 s
+  var cf = await p5.evaluate(function () {
+    var row = document.querySelector('#mpContent .mp-confirm'), b = document.querySelector('#mpContent [data-mfree]');
+    return { text: row ? row.textContent : '', go: !!(row && row.querySelector('[data-mconfirm-go]')), cancel: !!(row && row.querySelector('[data-mconfirm-cancel]')),
+      w: b ? b.getBoundingClientRect().width : 0, label: b ? b.textContent : '' };
+  });
+  ck('#818: restart confirm survives 6.5 s with Restart plant / Cancel and the Start button unchanged',
+    /This restarts the plant\. Your current plant will be lost\./.test(cf.text) && cf.go && cf.cancel && !/restarts|Press again/.test(cf.label), JSON.stringify(cf));
+  await p5.click('#mpContent [data-mconfirm-cancel]');
+  ck('#818: Cancel removes the confirm and disarms the Start',
+    await p5.evaluate(function () { return !document.querySelector('#mpContent .mp-confirm') && !document.querySelector('#mpContent [data-armed="1"]'); }));
   // FOCUS follows a category click (the list re-renders and would drop it to <body>), and only ONE Start is armed.
   await p5.click('[data-mmode="walkthroughs"]');
   var foc = await p5.evaluate(function () { var e = document.activeElement; return e && e.getAttribute('data-mmode'); });

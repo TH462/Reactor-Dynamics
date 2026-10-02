@@ -613,6 +613,14 @@ async function testBlockedRodRefusalWording(page) {
     console.error('FAIL: a latched-trip rod refusal must draw as a Blocked line in plain words, on the Scanner AND the toast (#818): ' + JSON.stringify(r).slice(0, 400));
     process.exitCode = 1;
   } else console.log('  latched-trip rod refusal reads as Blocked, no citation: ' + r.toast.slice(0, 60));
+  /* #818 CSV UNITS: the export's headers carry the board's unit and the values are in it. */
+  var csv = await page.evaluate(function () { return RD.__dev.buildCsv(); });
+  var lines = csv.split(String.fromCharCode(10)), hdr = lines[0].split(','), ti = hdr.findIndex(function (h) { return /\((°F|psi)\)/.test(h); });
+  var tv = ti >= 0 && lines.length > 1 ? parseFloat(lines[lines.length - 1].split(',')[ti]) : NaN;
+  if (!(ti >= 0 && tv > 100)) {
+    console.error('FAIL: CSV export must carry the unit in the header and convert the value (US board): headers ' + hdr.join('|') + ' value ' + tv + ' (#818)');
+    process.exitCode = 1;
+  } else console.log('  CSV header ' + hdr[ti] + ' = ' + tv.toFixed(1));
   return JSON.stringify(r) + String.fromCharCode(10);
 }
 
