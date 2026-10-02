@@ -303,9 +303,12 @@ in the top bar. Plant automation is not a tab — it lives on the board (§7.3).
 - Inject / clear failures for drills.
 - Severity sliders where provided (SGTR leak rate, LOCA size, rod runaway rate, etc.).
 - **Armed / Fired.** Some failures wait for a plant event before they act — a PORV that sticks
-  on its next lift, a failure to scram, continuous rod withdrawal, a degraded injection or
-  auxiliary-feed failure. Injected, they read **Armed — …** until the event comes, then
-  **Fired — …**.
+  on its next lift, a failure to scram, a turbine trip that fails to trip the reactor,
+  continuous rod withdrawal, a degraded injection or auxiliary-feed failure. Injected, they
+  read **Armed — …** until the event comes, then **Fired — …**. This line is the
+  instructor's console: it reads the plant itself, so it can show a valve stuck open while a
+  failed position light on the board still reads CLOSED. The Instructor tab's debrief does not
+  — it tells you only what the board shows.
 
 See **07** for the response procedure for each failure.
 
@@ -319,7 +322,6 @@ this plant, and since Rev 17 there is no button for one either (**03 §14.3**).
 
 | Channel (label) | Holds / drives |
 |-----------------|----------------|
-| Rod control → Tavg (AUTO) | Control rods to hold Tavg setpoint |
 | Boron concentration (target) | Batch-doses boron to a target ppm (metered, totalizer-stopped — see 03 §7.5) |
 | Boron → rod position trim | Bang-bang boron trim |
 | Pressurizer pressure | Heaters + spray mode |

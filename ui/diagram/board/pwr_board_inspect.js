@@ -790,10 +790,9 @@
       '580 °F at full load, set by turbine load. You move the rods to bring Tavg back to Tref, and the ' +
       'steam dump opens when Tavg runs above it, so this number is what both you and the dump are acting on. Zero means ' +
       'the plant is on program. Positive means the coolant is hotter than the program wants — after a ' +
-      'load cut with the rods in manual, for example, Tavg stays about 10 °F above Tref until you ' +
-      'insert rods or borate. It turns amber outside the dead band of the rod controller (about ' +
-      '1.4 °F), where AUTO rods would start to move. Tavg is the indicated value, so a failed Tavg ' +
-      'transmitter moves this number exactly as it misleads the rods.', CI, '17.2'),
+      'load cut, for example, Tavg stays about 10 °F above Tref until you insert rods or borate. ' +
+      'It turns amber more than about 1.4 °F off program, the band an operator holds Tavg inside. ' +
+      'Tavg is the indicated value, so a failed Tavg transmitter moves this number with it.', CI, '17.2'),
     bdDtMargin: e('Core ΔT margin',
       'Loop ΔT left before the nearer of the two core-protection trips, and which trip. MGN means margin: distance to the trip, not ΔT.',
       'The reactor has two trips computed from the temperature RISE across the core rather than from ' +
