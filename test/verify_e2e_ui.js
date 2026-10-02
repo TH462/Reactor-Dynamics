@@ -621,6 +621,23 @@ async function testBlockedRodRefusalWording(page) {
     console.error('FAIL: CSV export must carry the unit in the header and convert the value (US board): headers ' + hdr.join('|') + ' value ' + tv + ' (#818)');
     process.exitCode = 1;
   } else console.log('  CSV header ' + hdr[ti] + ' = ' + tv.toFixed(1));
+  /* #818 7b: the Inject Failure tab is free play only; open on it, start a walkthrough -> hidden and
+   * the Instructor is shown; end it -> back. */
+  var ft = await page.evaluate(async function () {
+    function st() { var b = document.querySelector('#tabbar [data-tab="failures"]'), on = document.querySelector('#tabbar button.on');
+      return { hidden: !b || b.offsetParent === null, active: on && on.getAttribute('data-tab') }; }
+    var wait = function () { return new Promise(function (o) { setTimeout(o, 500); }); };
+    document.querySelector('#tabbar [data-tab="failures"]').click(); await wait();
+    var free = st();
+    RD.__dev.cmd({ action: 'start_checklist', procedure_id: 'pwr_heatup' }); await wait();
+    var run = st();
+    RD.__dev.cmd({ action: 'stop_checklist' }); await wait();
+    return { free: free, run: run, after: st() };
+  });
+  if (!(!ft.free.hidden && ft.free.active === 'failures' && ft.run.hidden && ft.run.active !== 'failures' && !ft.after.hidden)) {
+    console.error('FAIL: Inject Failure tab must hide while a walkthrough runs (falling back off it) and return after: ' + JSON.stringify(ft));
+    process.exitCode = 1;
+  } else console.log('  Inject Failure tab hides during a walkthrough and returns');
   return JSON.stringify(r) + String.fromCharCode(10);
 }
 

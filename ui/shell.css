@@ -1377,6 +1377,7 @@ html[data-channel="dev"] .logo-test {
 .tabbar { display: flex; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .tabbar button { flex: 1 1 0; background: transparent; border: none; color: var(--text-2);
   padding: 8px 4px; font-size: 11px; cursor: pointer; border-bottom: 2px solid transparent; }
+.tabbar button[hidden] { display: none; }
 .tabbar button:hover { color: var(--text); }
 .tabbar button.on { color: var(--text); border-bottom-color: var(--normal); }
 /* fixed height (fills the tools box); overflowing tab content scrolls here */

@@ -2608,6 +2608,7 @@
      * plant-seconds of overshoot. It sits beside the pause block for the same reason: both are
      * the walkthrough asking the clock for something, both restamp the snapshot they change. */
     syncCklAutoSpeed(s);
+    syncFailuresTab(s);
     /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
      * IS DRAWN. Re-stamp it from the live service here, which is the one place every
      * renderer downstream reads it from.
@@ -4316,6 +4317,18 @@
     var want = cklStepSpeed(s, a);
     if (want == null) return null;
     return cklAutoKeyStr(a, s, want);
+  }
+  /* THE INJECT FAILURE TAB IS FREE PLAY ONLY (OWNER RULING 2026-10-01: "Hide the inject failures tab
+   * unless in free play."). Hidden while a walkthrough, lesson or campaign mission runs; back when it
+   * ends. If it is the open tab when it hides, the player lands on the Instructor. */
+  function syncFailuresTab(s) {
+    var btn = document.querySelector('#tabbar [data-tab="failures"]');
+    if (!btn) return;
+    var ins = s && s.instructor || {}, ck = ins.checklist;
+    var busy = !!(ck && !ck.complete) || ins.mode === 'scenario' || !!ui.opener || !!ui.scenario || !!ins.follow;
+    if (btn.hidden === busy) return;
+    btn.hidden = busy;
+    if (busy && btn.classList.contains('on')) selectTab('instructor');
   }
   function syncCklAutoSpeed(s) {
     var a = cklActiveStep(s);
