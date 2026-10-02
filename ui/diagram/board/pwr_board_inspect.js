@@ -785,7 +785,7 @@
     // board's meaning — an orphan entry here describes an item nobody can click, which is
     // the rot `run_inspect` exists to catch, so it goes out with the item.)
     bdTrefDev: e('Tavg minus Tref (ΔREF)',
-      'How far average coolant temperature (Tavg) sits above (+) or below (−) the temperature the plant is programmed to hold at this load (Tref, the reference).',
+      'How far average coolant temperature (Tavg) sits above (+) or below (−) its programmed value for this load (Tref).',
       'The plant has a temperature PROGRAM: the reference (Tref) slides from 547 °F with no load to ' +
       '580 °F at full load, set by turbine load. You move the rods to bring Tavg back to Tref, and the ' +
       'steam dump opens when Tavg runs above it, so this number is what both you and the dump are acting on. Zero means ' +
@@ -795,7 +795,7 @@
       '1.4 °F), where AUTO rods would start to move. Tavg is the indicated value, so a failed Tavg ' +
       'transmitter moves this number exactly as it misleads the rods.', CI, '17.2'),
     bdDtMargin: e('Core ΔT margin',
-      'How much loop ΔT is left before the nearer of the two core-protection trips, and which one it is. MGN is short for margin: this is the distance to the trip line, not the ΔT itself.',
+      'Loop ΔT left before the nearer of the two core-protection trips, and which trip. MGN means margin: distance to the trip, not ΔT.',
       'The reactor has two trips computed from the temperature RISE across the core rather than from ' +
       'any single reading: Overtemperature ΔT (OTΔT) protects against departure from nucleate boiling, Overpower ΔT (OPΔT) against ' +
       'excessive heat rate in the fuel. Neither has a fixed setpoint — the trip line MOVES with ' +

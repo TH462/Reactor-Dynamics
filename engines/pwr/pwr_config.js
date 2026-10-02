@@ -2736,6 +2736,9 @@
       pzr_level_dev:     { lag: 0,   noise: 0,     range: [-40, 40], derived: true },
       // Tavg - Tref (#818): indicated Tavg against the host plant's Tavg program (extras.tref_c).
       tavg_tref_dev:     { lag: 0,   noise: 0,     range: [-60, 60], derived: true },
+      // Tref itself (#818): the Tavg program off turbine load, published beside the deviation so
+      // it can be trended. Not a sensor and not in SOURCE: no PRNG draw (appended-instrument rule).
+      tref:              { lag: 0,   noise: 0,     range: [250, 350], derived: true },
       // Control-bank steps remaining ABOVE the rod insertion limit — the authority-remaining
       // signal the ROD LIMIT LO annunciator reads (#306). Range top is `rods.max_steps`, which
       // is also the value the engine reports when the limit does not apply; `run_m4` pins the
