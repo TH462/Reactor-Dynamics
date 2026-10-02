@@ -82,10 +82,34 @@ var BAND = { pressure_mpa: 0.07, tavg_c: 0.10, pzr_level_pct: 0.70, power_pct: 0
  * (1.8 degF) against a Mode 4/5 margin of ~58 degC is what the band now says is harmless.
  * *(OWNER RULING, 2026-09-04: "1A" — keep 1.0 degC, over pressure-only or a Mode 4/5 exemption.)* */
 
+/* INSTRUMENT NOISE OFF FOR THE FIDELITY LEGS (#818 package J, 2026-10-02). The claim is the STEP:
+ * the same physics at 0.5 s. Instrument noise is one AR(1) draw PER STEP, so WARP (7,200 steps an
+ * hour) and PLAY (180,000) draw different realizations BY CONSTRUCTION, and any controller closing
+ * a loop on a noisy channel turns that into a real-plant difference that is not step error. It was
+ * small until #818 package D started both AFW pumps on the post-trip feedwater isolation: the
+ * `afw_level` hold (kp 20 on a noisy SG level) then runs the whole scrammed hour. MEASURED on
+ * WT-1b, hot_full_power scrammed, Tavg worst |PLAY - WARP| in degC:
+ *                                  noise ON            noise OFF (both instrument sets)
+ *   before package D (77561d51^)   0.068               0.0008
+ *   after                          0.109 (red, >0.10)  0.0071
+ *   PLAY vs PLAY, ONLY the seed changed, after:  0.061-0.102 over four seed pairs (before: 0.006-0.013)
+ * i.e. the red was the noise realization, at the same size a seed change alone produces; the
+ * step error it was meant to bound is 7 % of the band. Two noise sources, both zeroed: the PWR2
+ * channel set (eng.ins) the protection reads, and the board-facing PWRInstruments set the
+ * automation channels read. The bands are UNCHANGED (still the noise-on provenance above) and the
+ * cliff (WT-2) is still required to blow them. */
+function noiseOff(svc) {
+  var e = svc.engine;
+  if (!e || !e.eng || !e.eng.ins || !e.instruments || typeof e.eng.ins.noiseScale !== 'number' ||
+      typeof e.instruments.noiseScale !== 'number') throw new Error('noiseOff: instrument noise handles moved');
+  e.eng.ins.noiseScale = 0; e.instruments.noiseScale = 0;
+}
+
 /* one leg: PLAY reference (60x) and WARP (3600x), sampled at every sim minute, worst |diff| */
 function leg(RD, ic, hours, scramAt, warpDt) {
   function walk(speed, dtOpt) {
     var svc = mk(RD, ic, dtOpt ? { warpDt: dtOpt } : null);
+    noiseOff(svc);
     settle(svc, 120);
     /* The scram is commanded on PLAY and the plant given `scramAt` seconds to come off its
      * cascade BEFORE the timed hour, so both legs start the hour from the SAME post-trip state.
