@@ -16,21 +16,21 @@
 
 1. Add the boron a cold core needs before any cooling starts.
 
-*Cold water makes the chain reaction easier, so the extra boron has to be in before the cold arrives.*
+*Cold water makes the chain reaction easier, so the boron goes in first.*
 
 ()1a. Check ON is lit on the BORON card. If ON is not lit, press ON.
 
-()1b. Set the boron target to 920 ppm: type it into the number box on the BORON card captioned 0-2500 ppm, press Enter, and check BORON STATUS reads BORATING.
+()1b. Set the boron target to 920 ppm: type it in the BORON card's 0-2500 ppm box, press Enter, and check BORON STATUS reads BORATING.
 
 ()1c. Wait for BORON CHEM to read 880 ppm or more.
 
 Suggested time warp: 600×.
 
-Note: The boration runs at a steady 3 ppm a minute and does not slow down as it closes: about 55 plant-minutes to 880 ppm from a preset, about 65 on a plant brought down from full power. Do not start cooling until BORON CHEM reads 880 ppm; BORATING only shows the boration has started.
+Note: About 55 plant-minutes to 880 ppm, 65 coming from full power. Do not start cooling until BORON CHEM reads 880 ppm.
 
 Background
 
-Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water makes the chain reaction easier, and the same core at 122 °F needs about 920 ppm for the same margin. Adding it first means the margin arrives before the cold does.
+Hot, the core is shut down on about 719 ppm. At 122 °F it needs about 920 ppm for the same margin, so the boron goes in before the cold arrives.
 
 [HIGHLIGHTED: Boron ON, Boron Target (pulsing); Boron Status, Boron Concentration (steady)]
 
@@ -44,11 +44,11 @@ Hot, the plant is comfortably shut down on about 719 ppm of boron. Cold water ma
 
 Suggested time warp: 1×.
 
-Note: Pressure Relief Valve Open and Pressurizer Pressure Low come in as pressure falls: expected. The relief valve lifts for about ten plant-seconds and closes by itself, and the PORV label on the diagram then reads CLOSED again.
+Note: Pressure Relief Valve Open and Pressurizer Pressure Low come in: expected. The relief valve closes by itself after about ten plant-seconds.
 
 Background
 
-Two automatic protections watch for falling pressure, because on a running plant falling pressure means a leak. They can only be blocked below 1972 psi, so the setpoint comes under that first. This is not the depressurization; it only unlocks the next step.
+On a running plant falling pressure means a leak, so two protections trip on it. They can only be blocked below 1972 psi. This step only unlocks the next one; it is not the depressurization.
 
 [HIGHLIGHTED: Pressure SP (pulsing); Primary Pressure (steady)]
 
@@ -56,7 +56,7 @@ Two automatic protections watch for falling pressure, because on a running plant
 
 3. Block the protection that would read the cooldown as a leak.
 
-*To the automatic protection a cooldown looks like a leak, and left on it would trip the reactor and start the emergency injection pumps.*
+*Left on, it would trip the reactor and start the emergency injection pumps.*
 
 ()3a. Press TRIP BLOCKS on the ROD CONTROL card, then press BLOCK on the PZR PRESS LO-LO row. Check the row reads BLOCKED.
 
@@ -68,7 +68,7 @@ Suggested time warp: 1×.
 
 Background
 
-To the automatic protection, a cooldown looks exactly like a leak: pressure falling on a hot plant. Left on, the first cooling stage would trip the reactor and start the emergency injection pumps, flooding the plant with cold water you did not ask for. STOP on the ECCS card keeps the injection pump idle, and it is what the card shows whenever the pump is idle; it does not disarm safety injection, which would still start the pump.
+To the protection, pressure falling on a hot plant looks exactly like a leak. STOP keeps the injection pump idle; it does not disarm safety injection, which would still start the pump.
 
 [HIGHLIGHTED: Trip Blocks, ECCS — Stop (pulsing); HPI/LPI (steady)]
 
@@ -76,29 +76,29 @@ To the automatic protection, a cooldown looks exactly like a leak: pressure fall
 
 4. Cool the plant on the steam dump to where RHR can take over.
 
-*The steam pressure the dump holds sets the temperature the steam generator boils at, and the reactor water follows it down.*
+*The steam pressure the dump holds sets the temperature the reactor water follows down.*
 
-()4a. Check STEAM DUMP AUTO is lit and its status reads STM PRESS. If it does not, press AUTO until the status reads STM PRESS.
+()4a. Check STEAM DUMP AUTO is lit and its status reads STM PRESS. If not, press AUTO until it reads STM PRESS.
 
 Suggested time warp: 1×.
 
-Note: If the status reads TAVG, the dump is holding temperature instead and ignores DUMP SETPOINT.
+Note: If the status reads TAVG, the dump holds temperature and ignores DUMP SETPOINT.
 
 ()4b. Type 120 into DUMP SETPOINT.
 
 Suggested time warp: 1×.
 
-Note: The box keeps the 120 you typed. The dump does not go there at once: it lowers the pressure it holds a little at a time, so the plant cools at about 60 °F per hour without you pacing it. While it does, the STEAM DUMP status reads RAMPING; it reads STM PRESS again when STEAM PRESS gets to 120. The clock moves to 60× by itself once 120 is in.
+Note: The dump walks STEAM PRESS down to 120 by itself at about 60 °F per hour; its status reads RAMPING meanwhile. The clock moves to 60× by itself.
 
 ()4c. Wait for AVG COOLANT TEMPERATURE to read below 347 °F.
 
 Suggested time warp: 60×.
 
-Note: Watch STEAM PRESS fall toward 120 psi and COOLDOWN RATE hold near -60, which is 60 °F per hour of cooling. Low Coolant Temperature comes in near 530 °F: expected on a cooldown, and it becomes an expected-status tile below 350 °F. Shutdown Cooling Not In Service comes in near the bottom as the plant enters Mode 4: expected, RHR goes in service at step 9. About three and a half hours from 1020 psi.
+Note: COOLDOWN RATE holds near -60, which is 60 °F per hour. Low Coolant Temperature (near 530 °F) and Shutdown Cooling Not In Service are expected. About three and a half hours.
 
 Background
 
-Steam pressure and steam temperature go together: lower the pressure the dump holds and the steam generator boils at a lower temperature, which pulls the reactor water down after it. It cannot pull the water below its own boiling point, so the target is 120 psi, about 341 °F, low enough for RHR to take over. You type the target once, and the dump controller walks the pressure it holds down to it on its own, only as fast as keeps the cooldown near 60 °F per hour, under the 100 °F per hour limit. Near the bottom the same 50 psi cools about four times as far, so STEAM PRESS falls quickly at first and slowly at the end. On a real plant the operator paces this by hand; here the controller does it so you can watch.
+Lower steam pressure means a lower boiling point, and the reactor water follows it down. At 120 psi steam boils at about 341 °F, where RHR can take over. STEAM PRESS falls fast at first and slowly near the end. The controller holds about 60 °F per hour, under the 100 °F per hour limit; a real operator paces this by hand, here the controller does it.
 
 [HIGHLIGHTED: Steam Dump — Auto, Dump Setpoint (pulsing); Steam Dump Status, Tavg (steady)]
 
@@ -106,17 +106,17 @@ Steam pressure and steam temperature go together: lower the pressure the dump ho
 
 5. Take the pressure setpoint to the bottom of its range.
 
-*The setpoint box stops at 1700 psi, and from here pressure comes down by hand.*
+*The setpoint box stops at 1700 psi; below that, pressure comes down by hand.*
 
 ()5a. Lower SET PZR PRESSURE to 1700 psi, as low as the box goes, and wait for PRIMARY PRESSURE to read below 1770 psi.
 
 Suggested time warp: 1×.
 
-Note: Pressure Relief Valve Open comes in again for about five plant-seconds: expected, as in step 2.
+Note: Pressure Relief Valve Open comes in again for about five plant-seconds: expected.
 
 Background
 
-The setpoint box is the at-power pressure control and it stops at 1700 psi. A real cooldown leaves it exactly there: below it the heaters have nothing to hold, and the operator lowers pressure with the spray instead.
+Below 1700 psi the heaters have nothing to hold. A real cooldown leaves the setpoint there and lowers pressure with the spray.
 
 [HIGHLIGHTED: Pressure SP (pulsing); Primary Pressure (steady)]
 
@@ -130,7 +130,7 @@ The setpoint box is the at-power pressure control and it stops at 1700 psi. A re
 
 Suggested time warp: 1×.
 
-Note: Heaters first: with them still in AUTO the spray will not hold and pressure climbs back instead of falling.
+Note: Heaters first: left in AUTO they boil the water back and pressure climbs instead of falling.
 
 ()6b. Type 50 in the box under SPRAY and press Enter, then press MANUAL under SPRAY. Not more than 50 %.
 
@@ -138,11 +138,11 @@ Note: Heaters first: with them still in AUTO the spray will not hold and pressur
 
 Suggested time warp: 5×.
 
-Note: Spray water goes into the pressurizer, but at 50 % PRESSURIZER LEVEL barely moves. At 100 % a pressurizer that starts high fills completely, after which the spray shuts itself off. At 50 % pressure falls about 3 psi a second with room to spare.
+Note: At 100 % a high pressurizer fills and the spray shuts itself off. At 50 % pressure falls about 3 psi a second.
 
 Background
 
-The heaters go off first, or they boil water as fast as the spray condenses it and pressure goes nowhere. Spray condenses steam in the pressurizer and pressure falls; the setpoint box has nothing left to hold. Lowering pressure spends SUBCOOLING MARGIN, how far the reactor water is below boiling, and that has to stay positive.
+Spray condenses steam in the pressurizer and pressure falls. Lowering pressure spends SUBCOOLING MARGIN, how far the reactor water is below boiling, and it has to stay positive.
 
 [HIGHLIGHTED: Pressurizer Heater — Off, Pressurizer Spray — Manual (pulsing); Pressurizer Heaters (PZR), Pressurizer Spray (PZR), Primary Pressure (steady)]
 
@@ -150,17 +150,17 @@ The heaters go off first, or they boil water as fast as the spray condenses it a
 
 7. Isolate the accumulators while pressure is inside their window.
 
-*Closed inside the window, the tanks stay full for the next heatup instead of emptying into the plant.*
+*Closed inside the window, the tanks stay full for the next heatup.*
 
 ()7a. Close the accumulator valve while PRIMARY PRESSURE is 1615 to 665 psi, and check the ACCUMULATORS tile reads ISOLATED.
 
 Suggested time warp: 1×.
 
-Note: The valve symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW. At 50 % spray the window is about 8 plant-minutes wide.
+Note: The valve sits just above the ACCUMULATORS tile, left of ECCS INJ FLOW. At 50 % spray the window is about 8 plant-minutes.
 
 Background
 
-The same window as the heatup, in reverse. Above 1615 psi the valve has no power; below 665 psi the nitrogen in the tanks pushes their water into the plant. Close it in between and the tanks stay full for the next heatup.
+The heatup's window, in reverse. Above 1615 psi the valve has no power; below 665 psi the nitrogen in the tanks pushes their water into the plant.
 
 [HIGHLIGHTED: Accumulator valve (pulsing); Accumulators, Primary Pressure (steady)]
 
@@ -168,7 +168,7 @@ The same window as the heatup, in reverse. Above 1615 psi the valve has no power
 
 8. Bring pressure under the RHR limit on the spray.
 
-*RHR cannot be aligned above 440 psi, and the spray is what takes pressure that low.*
+*RHR cannot be aligned above 440 psi; the spray takes pressure that low.*
 
 ()8a. Wait for PRIMARY PRESSURE to read below 413 psi.
 
@@ -178,7 +178,7 @@ Note: About 10 to 13 plant-minutes. If PRESSURIZER LEVEL climbs past 80 %, lower
 
 Background
 
-ALIGN on the RHR card refuses to open the suction valve above 440 psi. Switch the spray off now and pressure bounces back over that number before you get there. SUBCOOLING MARGIN stays well above 100 °F on this spray.
+ALIGN on the RHR card refuses above 440 psi. Shut the spray now and pressure bounces back over that. SUBCOOLING MARGIN stays well above 100 °F on this spray.
 
 [HIGHLIGHTED: Pressurizer Spray (PZR), Primary Pressure, Pressurizer Level (steady)]
 
@@ -186,7 +186,7 @@ ALIGN on the RHR card refuses to open the suction valve above 440 psi. Switch th
 
 9. Put RHR in service as the cooldown loop.
 
-*From here to cold, RHR is the loop that carries the heat out of the plant.*
+*From here to cold, RHR carries the heat out of the plant.*
 
 ()9a. Press ALIGN on the RHR card.
 
@@ -196,7 +196,7 @@ Suggested time warp: 1×.
 
 Background
 
-RHR is the low-pressure cooling loop that carries heat out of a shut-down plant. ALIGN opens its suction valve, which the plant only allows below 440 psi. HX SPLIT is how much of that loop goes through the heat exchanger; from here it is the cooldown throttle, 7 % is a gentle start, and COOLDOWN RATE beside it shows what that choice is doing.
+ALIGN opens RHR's suction valve, allowed only below 440 psi. HX SPLIT, the share of the loop through the heat exchanger, is now the cooldown throttle; 7 % is a gentle start.
 
 [HIGHLIGHTED: RHR — Align, RHR — HX Split (pulsing); Residual Heat Removal (RHR), Primary Pressure (steady)]
 
@@ -212,7 +212,7 @@ Suggested time warp: 1×.
 
 Background
 
-With RHR circulating, the reactor coolant pumps are only adding heat, so they come off. The spray stays: the pressurizer shell is still hot metal and it keeps boiling water off the top of the pressurizer, which puts pressure back up. It is the only thing taking that heat away now — the heaters are already off and the SET PZR PRESSURE box stopped reaching at 1700 psi.
+The spray stays on: the hot pressurizer shell keeps boiling water off and pushing pressure up. With the heaters off and the setpoint stopped at 1700 psi, the spray is all that removes that heat.
 
 [HIGHLIGHTED: RCP — Off (pulsing); RCP ON/OFF (steady)]
 
@@ -220,7 +220,7 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 11. Cool on RHR into Mode 5, inside the 100 °F per hour limit.
 
-*HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.*
+*HX SPLIT is the cooldown throttle; COOLDOWN RATE shows what it is doing.*
 
 ()11a. Raise HX SPLIT to 8 %.
 
@@ -230,7 +230,7 @@ Suggested time warp: 1×.
 
 Suggested time warp: 60×: at 600× the margin can fall 10 °F between two glances.
 
-Note: The spray keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it any earlier and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, type 50 in the box under SPRAY, press Enter, then press MANUAL under SPRAY and keep watching. The clock moves to 60× by itself once HX SPLIT is raised.
+Note: The spray keeps taking SUBCOOLING MARGIN down; Low Subcooling Margin comes in at 20 °F. Shutting the spray early lets pressure climb back over the RHR limit. If OFF is already lit under SPRAY, type 50 in its box, press Enter, then press MANUAL. The clock moves to 60× by itself once HX SPLIT is raised.
 
 ()11c. When SUBCOOLING MARGIN reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.
 
@@ -240,11 +240,11 @@ Suggested time warp: 60×.
 
 Suggested time warp: 600×.
 
-Note: Keep COOLDOWN RATE under 100 °F per hour. The tile shows cooling as a minus number, so a reading of -83 is 83 °F per hour. If the Cooldown Rate High alarm comes in, lower HX SPLIT.
+Note: Keep COOLDOWN RATE under 100 °F per hour; a reading of -83 is 83 °F per hour. If Cooldown Rate High comes in, lower HX SPLIT. Once the spray is shut, SUBCOOLING MARGIN climbs back to about 150 °F or more.
 
 Background
 
-HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 8 % the read-back climbs to about 85 °F per hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about two and a half hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, 120 to 140 °F per hour. Turn it higher and the margin goes: 9 % reads about 95 °F per hour, and 12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm.
+At 8 % COOLDOWN RATE climbs to about 85 °F per hour, then eases off, reaching Mode 5 in about two and a half hours. 9 % reads about 95 °F per hour; 12 % reads about 110 °F per hour and sets off Cooldown Rate High. A higher HX SPLIT cools faster and spends SUBCOOLING MARGIN faster.
 
 [HIGHLIGHTED: RHR — HX Split, Pressurizer Spray — Off (pulsing); Residual Heat Removal (RHR), Pressurizer Spray (PZR), Subcooling Margin, Tavg (steady)]
 
@@ -252,7 +252,7 @@ HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back.
 
 12. Shut the spray now that the plant is cold.
 
-*The pressurizer shell has given up most of its stored heat, so the spray has nothing left to take away.*
+*The pressurizer shell has given up its stored heat, so the spray has nothing left to remove.*
 
 ()12a. Press OFF under SPRAY on the PRESSURIZER (PZR) card, if step 11 has not already.
 
@@ -260,7 +260,7 @@ Suggested time warp: 1×.
 
 Background
 
-The plant is cold now and the pressurizer shell has given up most of its stored heat, so there is nothing left for the spray to take away. Shut it and pressure sits where it is. This is the lineup the Cold Shutdown preset holds: heaters off, spray in hand and shut.
+Shut the spray and pressure sits where it is. This is the Cold Shutdown preset's lineup: heaters off, spray in hand and shut.
 
 [HIGHLIGHTED: Pressurizer Spray — Off (pulsing); Pressurizer Spray (PZR) (steady)]
 
@@ -276,11 +276,11 @@ The plant is cold now and the pressurizer shell has given up most of its stored 
 
 Suggested time warp: 1×.
 
-Note: PRIMARY PRESSURE reads about 150 psi, far below the 2235 psi of a running plant; it crept back up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.
+Note: PRIMARY PRESSURE reads about 170 to 280 psi; it crept up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.
 
 Background
 
-This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup walkthrough takes it back up.
+Cold shutdown: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup walkthrough takes it back up.
 
 [HIGHLIGHTED: Tavg, Primary Pressure (steady)]
 
@@ -288,7 +288,7 @@ This is the cold-shutdown picture: water below 199 °F, pumps off, RHR carrying 
 
 14. Confirm the accumulators are still full and isolated.
 
-*The next heatup opens the tanks again, and empty tanks then are a missing safety system.*
+*The next heatup opens the tanks again; empty, they are a missing safety system.*
 
 ()14a. Check the ACCUMULATORS tile reads 100 % and ISOLATED.
 
@@ -296,7 +296,7 @@ Suggested time warp: 1×.
 
 Background
 
-You isolated the tanks on the way down so they would not empty into a depressurized plant. They have to still be full: the next heatup opens them again inside its window, and empty tanks then are a missing safety system.
+You isolated the tanks so they would not empty into a depressurized plant. They must still be full when the next heatup opens them inside its window.
 
 [HIGHLIGHTED: Accumulators (steady)]
 
@@ -304,7 +304,7 @@ You isolated the tanks on the way down so they would not empty into a depressuri
 
 15. Confirm RHR is carrying the heat.
 
-*RHR is the only thing removing heat now, and if its suction valve shut the decay heat would have nowhere to go.*
+*RHR is the only thing removing heat now.*
 
 ()15a. Check ALIGN is lit on the RHR card.
 
@@ -314,7 +314,7 @@ Suggested time warp: 1×.
 
 Background
 
-RHR is the only thing removing heat now. If its suction valve shut, the decay heat would have nowhere to go. The heatup walkthrough is the way back.
+If RHR's suction valve shut, the decay heat would have nowhere to go.
 
 [HIGHLIGHTED: Residual Heat Removal (RHR) (steady)]
 
@@ -322,11 +322,11 @@ RHR is the only thing removing heat now. If its suction valve shut, the decay he
 
 16. Leave the plant lined up for the next heatup.
 
-*The heatup starts from what this step leaves, and a steam dump left at a low setpoint cools the plant back down the moment the heatup hands it STEAM PRESS.*
+*A dump left at 120 psi cools the plant again when the next heatup starts.*
 
-()16a. If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once: no rod moves while the reactor trip is latched.
+()16a. If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once: no rod moves while the trip is latched.
 
-()16b. If SHUTDOWN ROD POSITION already reads 0 of 627, the bank is in. Otherwise press FAST on the ROD CONTROL card, then click INSERT under SHUTDOWN once, and wait for it to read 0 of 627.
+()16b. If SHUTDOWN ROD POSITION already reads 0 of 627, the bank is in. Otherwise press FAST on the ROD CONTROL card, click INSERT under SHUTDOWN once, and wait for 0 of 627.
 
 ()16c. Press CLOSE on the STEAM DUMP card.
 
@@ -334,11 +334,11 @@ RHR is the only thing removing heat now. If its suction valve shut, the decay he
 
 Suggested time warp: 60×.
 
-Note: After the scram in the shutdown walkthrough the bank already reads 0 of 627. If it does not, one INSERT click runs it in by itself, about 9 plant-minutes. The round trip is complete.
+Note: One INSERT click runs the bank in by itself, about 9 plant-minutes. The round trip is complete.
 
 Background
 
-The cooldown walked DUMP SETPOINT down to 120 psi. Left there, the next heatup's AUTO press would not hold STEAM PRESS at 1020 psi: the dump would walk it back down toward 120 psi, cooling the plant about 60 °F per hour just when the heatup needs it held. Closing the dump and putting the setpoint back to 1020 psi hands the next heatup the lineup it expects; inserting the shutdown bank leaves both banks in, the way the heatup starts. The scram from the shutdown is still latched, and while it is no rod can move: resetting it moves nothing, it gives the rod drive its power back so the heatup can withdraw the shutdown bank.
+Left at 120 psi, the dump would pull STEAM PRESS below 1020 psi and cool the plant just as the heatup needs it held. Resetting the scram moves nothing; it gives the rod drive its power back for the heatup.
 
 [HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Insert, Steam Dump — Close, Dump Setpoint, SCRAM (pulsing); Shutdown Rod Position, Steam Dump, Steam Dump Status (steady)]
 
@@ -804,3 +804,7 @@ MEASURED (route runner, seeds 42 / 7):
 - **Measured at 8 %** (seed 42): tile peak -85.1 °F/hr standalone, -85.7 chained; Mode 5 in 140 / 147
   plant-min; the leg ends at 184 / 278 psia (under the 400 psia RHR suction interlock). The 120-140
   °F/hr first-minutes figure is the engine 60 s rate on the same two runs (-122 / -142).
+
+### Concise pass — 2026-10-02 (#819)
+
+2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 171 -> 121 (2737 -> 1942 over 16 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare). develop text carried in (#818 package G): 11a HX SPLIT 8 %; Background "At 8 % ... about two and a half hours", 9 % about 95 °F per hour; 11b note keeps "Low Subcooling Margin comes in at 20 °F" (the step's predicts_alarms names it). 11b note keeps "If OFF is already lit under SPRAY": the route gate fires its spray_off_at_entry recovery only when the card says so (if_text), and the draft's "If OFF is lit" stranded that route at step 11.

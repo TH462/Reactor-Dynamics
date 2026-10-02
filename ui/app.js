@@ -5691,16 +5691,14 @@
        * the story block is the OTHER always-drawn supplementary field on this card, and two
        * supplementary blocks that look like two different kinds of thing is the confusion this
        * is fixing. */
-      /* COLLAPSED BY DEFAULT, ONE CLICK TO OPEN (#818 Tier 2, owner-approved). The card reads as the
-       * action line (`.ckl-txt`) and the one-line why (`.ckl-aim`); the Background paragraph stays a
-       * click away, never cut. A native <details>, so it is keyboard-reachable for free. The open state
-       * is remembered per step (`cklState.bgOpen`) because the card is rebuilt on every key change and
-       * a reader who opened it must not have it snap shut under them; a new step starts closed. */
+      /* ALWAYS OPEN, NEVER A FOLD *(OWNER RULING, 2026-10-02, #819: asked "(a) keep the fold /
+       * (b) revert to Background always open", replied "B"; and 2026-10-01: "we dont need to hide
+       * the background. we just need to clean up the steps and subtext to be more streamlined and
+       * concise.")*. #818 package C made this a <details> closed on arrival; the answer to unread
+       * subtext is SHORTER subtext (#819), not hidden subtext. Do not re-fold it. */
       if (st.why) {
-        var bgKey = pr.id + '#' + i;
-        det += '<details class="ckl-why" data-ckl-bg="' + mesc(bgKey) + '"' + (cklState.bgOpen === bgKey ? ' open' : '') + '>' +
-          '<summary class="ckl-why-lbl">Background</summary>' +
-          '<div class="ckl-why-body">' + mesc(st.why) + '</div></details>';
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
+          mesc(st.why) + '</div>';
       }
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
@@ -5770,15 +5768,6 @@
     var prevLog = cklScroller();
     var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
-    /* the Background fold's open state survives the next rebuild (#818); opening or closing it
-     * changes what is hidden behind the pinned Continue row, so the cue is re-read too */
-    Array.prototype.forEach.call(cur.querySelectorAll('details[data-ckl-bg]'), function (d) {
-      d.addEventListener('toggle', function () {
-        var k = d.getAttribute('data-ckl-bg');
-        if (d.open) cklState.bgOpen = k; else if (cklState.bgOpen === k) cklState.bgOpen = null;
-        cklMoreCue(cklScroller());
-      });
-    });
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;

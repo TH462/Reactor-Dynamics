@@ -487,7 +487,7 @@ underneath it:
 | Hold progress | On a step that needs the plant to stay put for a while, a line counts it — *Averaging… 13 of 30 plant-seconds* — and says when a disturbance restarted the count. |
 | **Continue ▶** | On every step, and pinned to the bottom of the card so it never scrolls out of sight; a fade above it means there is more text to scroll. Dark until the instruments satisfy the step, lit when they do — press it to move on. |
 | **⏪ Rewind step** | Beside Continue. Takes the plant and the walkthrough back to the start of the previous step. Off on the first step. |
-| **Background** | The step's reasoning, cautions and extra notes, folded shut when you arrive at the step. One click opens it; it stays open until you move to the next step. |
+| **Background** | The step's reasoning, cautions and extra notes, drawn in full under the step. |
 
 When a step's text tells you an alarm is expected, that alarm's tile carries a small **predicted by
 step N** tag while the step is active. The alarm is still real — the tag tells you it is the one
