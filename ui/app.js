@@ -3588,7 +3588,7 @@
   function idleLauncherHtml() {
     if (!flagOn('checklists')) return '';
     return '<div class="instr-launch"><button type="button" class="btn instr-launch-bar" ' +
-      'data-open-ckl="1" data-scanner-hint="Open the Walkthroughs tab — guided procedures ' +
+      'data-open-ckl="1" data-scanner-hint="Open Main Menu → Walkthroughs — guided procedures ' +
       'that check themselves off the instruments as you operate.">' +
       'Try the walkthroughs</button></div>';
   }
@@ -3792,26 +3792,9 @@
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
-    // Checklist picker row: free play only — anything instructed owns the card.
-    /* THE RUNNING CHECKLIST LIVES IN THE CHECKLISTS TAB (#607 item 6). The 2026-08-11
-     * "tab always shows the list" directive is superseded: leaving the tab used to look
-     * like a restart because the card was painted in the Instructor pane. The list is
-     * still there, behind "← All checklists". */
-    var cklRow = $('instrCklRow');
     var cklRun = $('cklRun');
     var runningCkl = !!(s.instructor && s.instructor.checklist);
     if (!runningCkl && cklState.view === 'run') cklState.view = 'list';
-    if (cklRow) {
-      /* THE LIST SHOWS WHILE A WALKTHROUGH RUNS (layman pass 5, S-2, 2026-09-25). The
-       * `!runningCkl || view === 'list'` clause dates from #607, when the list and the running
-       * card shared ONE pane. Since #660 the card lives in the Instructor pane, so hiding the
-       * list here left the Walkthroughs tab EMPTY for as long as a walkthrough — finished or
-       * not — was loaded: measured, "← All walkthroughs" on a finished card switched to a blank
-       * tab and the list came back only after Close. Nothing sets `view` to 'list' any more. */
-      var showList = flagOn('checklists');
-      cklRow.hidden = !showList;
-      if (showList) toggleCklMenu();
-    }
     if (cklRun) cklRun.hidden = !runningCkl;   // in the Instructor pane, up whenever a walkthrough runs
     /* #687 item 2 — the End-walkthrough row is a sibling of the card now, so it needs the same
      * per-broadcast gate; without it the row survives every path that hides #cklRun. */
@@ -4617,7 +4600,6 @@
     /* the End-walkthrough row lives OUTSIDE #cklRun since #687 item 2, so blanking the card no
      * longer takes it with it — it has to be torn down by name or it outlives the run */
     var btns = $('cklBtns'); if (btns) { btns.hidden = true; btns.innerHTML = ''; }
-    var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
     /* …AND THE PRESS MEMORY WITH IT (#809 pass-13 review, 2026-09-28). `cklLastGlow` is what every
      * pointer release re-applies; left standing, the first click after End walkthrough / All
@@ -5887,7 +5869,7 @@
           /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
            * scrollable ancestor, so with the checklist hosted in a content-sized pane it moved
            * `.tab-body` as well — and only the log's position is preserved across the rebuild,
-           * so the outer container snapped to the top. The pane now owns its height (ckl-mode),
+           * so the outer container snapped to the top. The pane owns its height (the instructor pane, wt-headerless),
            * which removes the outer scroller; this makes the step-advance scroll incapable of
            * reaching an ancestor even if a future layout reintroduces one. */
           var act = log.querySelector('.ckl-active');
@@ -6408,150 +6390,11 @@
     });
     document.querySelectorAll('.ckl-speed-rung').forEach(function (el) { el.classList.remove('ckl-speed-rung'); });
   }
-  // Picker menu (free-play instructor card): every non-narrative procedure for
-  // the active plant can run as a checklist.
-  /* THE LAUNCHER, ORDERED BY RELEVANCE (#443, spec §9).
-   *
-   * SORT, DO NOT FILTER. Inapplicable procedures are demoted into a collapsed group and
-   * LABELLED WITH THEIR GATING CONDITION — "Requires RCS temperature below 95" — which
-   * turns the demotion into instruction: a beginner learns which mode gates which
-   * evolution just by scanning. Hiding them would break the mental model, because a player
-   * who saw a checklist yesterday and cannot find it today assumes a bug, and someone at
-   * power may legitimately want to read ahead about an evolution they will do later.
-   *
-   * The scoring is `RD.InstructorLayer.prototype.rankProcedures`, NOT a copy here: the
-   * preconditions it reads are already graded in that layer, instrument-first per HR1, and
-   * a second evaluator in this file would be the two-samplers-of-one-truth shape #432 was.
-   *
-   * RECOMPUTED ON EVENTS, NOT CONTINUOUSLY (see cklRelevanceKey). During a heatup the plant
-   * crosses mode boundaries; a live-recomputing sort would reshuffle the list under the
-   * cursor at exactly the busiest moments.
-   */
-  function rankedProcedures() {
-    var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) {
-      return !x.narrative && flagOn('procedure:' + x.id);
-    });
-    if (!procs.length || !latest || !RD.InstructorLayer) return procs.map(function (p) {
-      return { id: p.id, category: p.category, title: p.title, score: 0, ready: true, gate: null };
-    });
-    var active = latest.instructor && latest.instructor.checklist
-      ? latest.instructor.checklist.procedure_id : null;
-    return RD.InstructorLayer.prototype.rankProcedures.call(
-      { _grade: RD.InstructorLayer.prototype._grade, _predMet: RD.InstructorLayer.prototype._predMet },
-      latest, procs, active);
-  }
-  /* The list is ALWAYS on screen in its tab (owner, 2026-08-11) — there is no open/close
-   * any more, so `toggleCklMenu` only means "make sure it is current". Kept under its old
-   * name because three call sites reach it (the idle launcher's "All checklists…", the
-   * mission window, and the tour) and renaming it would be churn for nothing.
-   *
-   * Rebuilt on a KEY, not every broadcast: the order is stable now, so a per-frame
-   * innerHTML would be pure cost on the densest list in the shell. */
-  var cklMenuKey = null;
-  /* THE KEY CARRIES THE PLANT'S RELEVANCE VERDICT, NOT JUST THE ENGINE (#606, owner playtest
-   * 2026-09-02: "when I started up in mode 5 the mode 5 checklist was greyed out but some
-   * where white").
-   *
-   * The key used to be `engineKey | active procedure id`, and NEITHER changes when the player
-   * resets the plant to a different initial condition — the engine is the same engine and no
-   * checklist is running. So the list built at the default hot_full_power boot survived the
-   * reset to Cold Shutdown verbatim: the heatup greyed with "Requires RCS temperature below
-   * 203 degF" (it was at 547) and the at-power legs white. The greying was CORRECT for a plant
-   * that no longer existed.
-   *
-   * The freeze it inherited was written for the RELEVANCE SORT ("never reorder an open list",
-   * spec section 9). That sort is retired — the list is in the standard category order since
-   * the 2026-08-11 directive — so a rebuild can no longer move a row under the cursor; it can
-   * only repaint grey/white and the gate sentence. Keying on the verdict itself means the
-   * innerHTML is still written only when something the player can SEE has changed, which is
-   * what the freeze was actually protecting. */
-  function toggleCklMenu(force) {
-    var menu = $('cklMenu'); if (!menu) return;
-    menu.hidden = false;
-    var ranked = rankedProcedures();
-    var key = ui.engineKey + '|' + (latest && latest.instructor && latest.instructor.checklist
-      ? latest.instructor.checklist.procedure_id : '') + '|' +
-      ranked.map(function (r) { return r.id + (r.ready ? '+' : '-') + (r.gate || ''); }).join(';');
-    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(ranked); }
-  }
-  /* A STANDARD ORDER *(OWNER DIRECTIVE, 2026-08-11: "They should stay in a standard
-   * order.")*. This supersedes the relevance SORT: the list is now always in the same
-   * order — category first, on the sequence an operator would name them (startup, power,
-   * control, shutdown, emergency, accident), then the POOL'S OWN ORDER. A list that
-   * rearranges itself is a list you have to re-read every time, and muscle memory is worth
-   * more here than putting the most likely item on top.
-   *
-   * The relevance SCORING is kept and still earns its place, because it is what produces
-   * the gating labels ("Requires reactor power above 10") and what the free-play
-   * Instructor's short launcher picks its four from. What is retired is the reordering,
-   * not the knowledge.
-   *
-   * THE WITHIN-CATEGORY TIEBREAK IS THE POOL'S DECLARATION ORDER, NOT THE TITLE (#606,
-   * OWNER, 2026-09-02: "the checklists should be in a logical order. ie, starting in mode 5
-   * it should start with mode 5 to mode 3 and end with mode 3 to mode 5").
-   *
-   * It was `title.localeCompare`, and alphabetical reversed two of the three pairs, because
-   * these titles begin with the mode they START FROM: "Mode 3, Hot Standby -> Mode 1" sorts
-   * above "Mode 5, Cold Shutdown -> Mode 3", so the STARTUP category listed the second leg
-   * first. Same in POWER, where "load rampdown" sorts above "power ascension". SHUTDOWN was
-   * right only by luck. Measured before the fix: startup, heatup, lower_power, raise_power,
-   * shutdown, cooldown — the operating cycle with two of its three pairs inverted.
-   *
-   * The pool is ALREADY authored in cycle order and says so structurally: every pwr2 entry
-   * names its successor in `next`, and test/run_checklist_pwr2.js asserts that chain matches
-   * the array order. So the declaration order is not an accident of authoring that could
-   * drift — it is the chain, gated, and reading the order off it means the list and the
-   * finished-card handoff can never disagree. It is still a STANDARD order (fixed, never
-   * recomputed from plant state), so the 2026-08-11 directive is untouched: what changed is
-   * which fixed order, not whether it is fixed.
-   *
-   * The CATEGORY grouping stays on top of it. Declaration order alone would give the same
-   * answer for every pool we ship today, but it would put the categories at the mercy of how
-   * a future pool happens to be typed, and the grouping is what the directive named. */
-  /* `incident` is LAST and that is the requirement, not a preference (#670 Phase 2): the six
-   * operating-cycle legs are the list a player works through, and the TMI-2 walkthrough is a
-   * historical reconstruction that starts at full power and ends with a damaged core. An
-   * unknown category already sorts last here, so this entry only makes the position explicit
-   * and stops a future category landing between the cycle and the incident by accident. */
-  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident', 'incident'];
-  function cklMenuHtml(ranked) {
-    if (!ranked) ranked = rankedProcedures();
-    if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
-    /* The pool as authored — the operating cycle. Built per render rather than cached
-     * because the engine can change under this function and a stale map would silently
-     * degrade to "everything ties", which is the failure this sort exists to fix. */
-    var poolIx = {};
-    ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).forEach(function (p, i) { poolIx[p.id] = i; });
-    var stable = ranked.slice().sort(function (a, b) {
-      var ai = CKL_CAT_ORDER.indexOf(a.category || ''), bi = CKL_CAT_ORDER.indexOf(b.category || '');
-      if (ai < 0) ai = CKL_CAT_ORDER.length;
-      if (bi < 0) bi = CKL_CAT_ORDER.length;
-      if (ai !== bi) return ai - bi;
-      var ap = poolIx[a.id], bp = poolIx[b.id];
-      if (ap == null) ap = Infinity;
-      if (bp == null) bp = Infinity;
-      if (ap !== bp) return ap - bp;
-      return (a.title || '').localeCompare(b.title || '');   // last resort; ids are unique so unreachable
-    });
-    return stable.map(function (r) {
-      // A cycle leg is offered under its Main Menu name, "Startup Part 2" (#816); others keep their title.
-      var part = legPart(ui.engineKey, r.id);
-      return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') +
-             (part ? ' title="' + mesc(part.modes) + '"' : '') + '>' +
-             '<span class="ckl-cat">' + mesc(part ? part.group.toLowerCase() : (r.category || '')) + '</span>' +
-             mesc(part ? legName(ui.engineKey, r) : r.title) +
-             (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
-    }).join('');
-  }
-  /* NEVER REORDER AN OPEN LIST (spec §9) — and since 2026-08-11 the ORDER is the fixed
-   * category order, so nothing this file does can reorder it. That is what let the freeze go
-   * (#606): the menu now rebuilds whenever the relevance VERDICT changes, which repaints
-   * grey/white and the gate sentence in place and moves no row. A first version of this had a
-   * `refreshCklRelevance` that recomputed on every event with the guard inverted, so it fired
-   * only while the menu was open — under the old relevance sort that reshuffled the list
-   * under the cursor during a heatup, which is the failure the spec names. Keying on the
-   * verdict is what keeps the rebuild rare without letting the list describe a plant the
-   * player has since reset away from. */
+  /* THE WALKTHROUGH LIST IS THE MAIN MENU'S (OWNER RULING, 2026-10-01, #818: "remove the
+   * walkthrough tab since main menu is [now] where you go to pick the walkthrough"). The side
+   * tab's list, its relevance greying (#606) and its key-cached rebuild went with the tab; the
+   * ranking itself survives in InstructorLayer.prototype.rankProcedures. A run started from the
+   * Manual's 📋 Walkthrough button or a finished card's "Next:" still lands here. */
   function startChecklist(id) {
     var running = latest && latest.instructor && latest.instructor.checklist;
     if (running && running.procedure_id === id) {
@@ -6896,10 +6739,12 @@
     var m = /[?&]mmode=(free|campaign|scenarios|walkthroughs|lessons)/.exec(location.search || '');
     return m ? m[1] : null;
   }
-  function openMissionSelect() {
+  // `mode` opens straight at a category ('walkthroughs' from the idle bar, "← All walkthroughs"
+  // and the old ?tab=checklists link, #818); a click event or nothing opens the list.
+  function openMissionSelect(mode) {
     msel.engine = ui.engineKey;
     msel.init = ui.initState;
-    msel.mode = urlMenuMode();
+    msel.mode = (typeof mode === 'string' && mode) || urlMenuMode();
     renderMissionSelect();
     openModal('missionOverlay');
   }
@@ -7409,9 +7254,9 @@
   }
 
   var SEEN_KEY = 'rd_seen_';
-  // The Checklists mark points at the LIST now — its open button is gone, because the
-  // list is always on screen (owner, 2026-08-11).
-  var COACH = { session: 'mainMenuBtn', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
+  // The Checklists mark went with the Walkthroughs tab (#818): the list is Main Menu's, whose
+  // own mark is `session`.
+  var COACH = { session: 'mainMenuBtn', feedback: 'fbHeaderBtn' };
   function seenCoach(k) {
     try { return localStorage.getItem(SEEN_KEY + k) === '1'; } catch (e) { return true; }
   }
@@ -7762,7 +7607,6 @@
     var tb = document.querySelector('.tab-body');
     if (tb) {
       tb.classList.toggle('instr-mode', name === 'instructor');
-      tb.classList.toggle('ckl-mode', name === 'checklists');
     }
     // A pane that skips its work while hidden shows whatever it last painted, and on a
     // PAUSED plant no broadcast is coming to correct it. Repaint on reveal.
@@ -7776,7 +7620,7 @@
   }
   // Where "hand it back to the tools" goes. Remembers the last non-instructor tab so
   // dismissing the Instructor returns you to what you were doing, not to a fixed default.
-  var lastToolsTab = 'checklists';
+  var lastToolsTab = 'indications';
   function applyFocus(iExp, tExp) {
     if (iExp) { selectTab('instructor'); return; }
     if (tExp) { selectTab(currentTab() === 'instructor' ? lastToolsTab : currentTab()); }
@@ -10397,11 +10241,12 @@
     document.body.addEventListener('click', function (e) {
       var st = e.target.closest('[data-ckl-start]');
       if (st) {
-        toggleCklMenu(false);
         startChecklist(st.getAttribute('data-ckl-start'));
         return;
       }
-      if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
+      // "← All walkthroughs" opens the list where it lives now, Main Menu -> Walkthroughs (#818);
+      // the menu pauses the plant and the run stays live behind it.
+      if (e.target.closest('[data-ckl-list]')) { openMissionSelect('walkthroughs'); return; }
       /* the leg-caution block (#653 defect 1). Latching a BOOLEAN — not toggling a null — is the
        * point: once the player has said open or shut, the underway default stops deciding for
        * them. `cklState.key = null` forces the rebuild the way the why-all toggle does. */
@@ -10647,10 +10492,7 @@
     $('instructorCard').addEventListener('click', function (e) {
       if (e.target.closest('[data-open-ckl]')) {
         e.preventDefault();
-        var t = document.querySelector('#tabbar [data-tab="checklists"]');
-        if (t) t.click();
-        toggleCklMenu(true);
-        markSeen('checklists');
+        openMissionSelect('walkthroughs');
         return;
       }
       var os = e.target.closest('[data-opener-start]');
@@ -10716,7 +10558,6 @@
     // Coach marks retire on first use of the thing they point at (#443).
     $('mainMenuBtn').addEventListener('click', function () { markSeen('session'); });
     $('fbHeaderBtn').addEventListener('click', function () { markSeen('feedback'); });
-    $('cklMenu').addEventListener('click', function () { markSeen('checklists'); });
 
     $('missionOverlay').addEventListener('click', function (e) {
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
@@ -11273,31 +11114,13 @@
       sel: '#toolsCard',
       place: 'left',
       title: 'The reference tabs',
-      body: '<p><b>Walkthroughs</b> to follow a procedure. <b>Indications</b> and ' +
-        '<b>Physics</b> for every reading the plant produces and the true state behind ' +
-        'them. <b>Inject Failure</b> when you are ready for casualties. None of them ' +
-        'stops the plant.</p>',
+      body: '<p><b>Indications</b> for every reading the plant produces, and <b>Inject ' +
+        'Failure</b> (free play) when you are ready for casualties. A running walkthrough ' +
+        'or lesson shows in the <b>Instructor</b> tab. None of them stops the plant.</p>',
       prep: function () {
-        var t = document.querySelector('#tabbar [data-tab="checklists"]');
+        var t = document.querySelector('#tabbar [data-tab="indications"]');
         if (t) t.click();
       }
-    },
-    {
-      sel: '#cklMenu',
-      place: 'left',
-      title: 'Walkthroughs',
-      body: '<p>Interactive procedures that check themselves off the instruments. ' +
-        'Best next step after this tour — hover a step to glow the controls it names.</p>',
-      prep: function () {
-        // Checklists is its own tab since #439, and the list is always on screen since
-        // 2026-08-11 — there is nothing to un-hide, only a tab to select.
-        applyFocus(false, true);
-        var t = document.querySelector('#tabbar [data-tab="checklists"]');
-        if (t && !t.classList.contains('on')) t.click();
-        toggleCklMenu('force');
-      },
-      // If checklists are gated off on this channel, point at the strip instead.
-      fallback: '#toolsCard'
     },
     {
       sel: '#manualBtn',
@@ -11312,8 +11135,9 @@
       sel: '#mainMenuBtn',
       place: 'bottom',
       title: 'Main Menu',
-      body: '<p>Starting condition, guided walkthroughs, and Reset. Starting any of them ' +
-        'restarts the plant from a clean initial state.</p>'
+      body: '<p>Lessons, guided <b>Walkthroughs</b> and Free Play, plus Reset. Walkthroughs ' +
+        'are interactive procedures that check themselves off the instruments — the best next ' +
+        'step after this tour. Starting any of them restarts the plant from a clean initial state.</p>'
     },
     {
       sel: '#scannerPanel',
@@ -12685,7 +12509,8 @@
     // does not render at all (paneVisible), so `?tab=physics` opened a tab that stayed
     // blank and looked like a broken panel rather than a broken link. `sim` stays as the
     // legacy alias for `operate`.
-    var tbm = /[?&]tab=(failures|graph|indications|physics|checklists|operate|sim|settings|training)/.exec(location.search || '');
+    var loadMenuMode = null;   // the Main Menu category the on-load open lands on (#818)
+    var tbm = /[?&]tab=(failures|graph|indications|physics|checklists|walkthroughs|operate|sim|settings|training)/.exec(location.search || '');
     if (tbm) {
       // Three of these no longer name a TAB (#439) and route to what replaced them:
       // `training` and `operate`/`sim` to the Plant & Mission window, `settings` to the
@@ -12693,6 +12518,9 @@
       // screenshots — a dead deep link is a broken bug report, not a tidy-up.
       var a = tbm[1];
       if (a === 'training' || a === 'operate' || a === 'sim') openMissionSelect();
+      // the Walkthroughs tab is gone (#818): its old links open the list where it lives now
+      // the on-load open below would reset a category opened here, so it carries it instead
+      else if (a === 'checklists' || a === 'walkthroughs') loadMenuMode = 'walkthroughs';
       else if (a === 'settings') openModal('settingsOverlay');
       else {
         var tabId = a === 'graph' ? 'indications' : a;      // `graph` is the old Indications
@@ -12746,7 +12574,7 @@
      * There is now no bypass at all, which is what "always" means. Anything automated —
      * a gate, a dev deep link — dismisses the window rather than being exempted from it,
      * so the thing under test is the thing players get. */
-    openMissionSelect();
+    openMissionSelect(loadMenuMode);
     missionTipArmed = true;            // the NEXT close is the one that needs the pointer
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

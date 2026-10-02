@@ -2458,16 +2458,7 @@ select.num-input { width: auto; }
 .chat-ff { text-align: center; color: var(--caution); font-size: 11px; font-style: italic; }
 
 /* ============================================================ auto-checklists (Path 3)
-   Picker lives in Operate; the live checklist still renders in the Instructor card. */
-.ckl-picker { margin: 2px 0 4px; }
-.ckl-menu { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 40vh; overflow-y: auto; }
-.ckl-menu[hidden] { display: none; }
-.ckl-menu button {
-  text-align: left; background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text); padding: 6px 9px; font-size: 12.5px; cursor: pointer;
-}
-.ckl-menu button:hover { border-color: var(--stopped); }
-.ckl-cat { display: inline-block; min-width: 62px; margin-right: 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+   The list is Main Menu -> Walkthroughs (#818); the live checklist renders in the Instructor card. */
 .ckl-log { display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px; }
 /* ...EXCEPT WHILE A CHECKLIST IS RUNNING, where it must reach the bottom of the column
    *(OWNER, 2026-09-02 playtest, M5->3 item 4: "The scroll window for the tabs should go all the
@@ -2794,20 +2785,8 @@ details.ckl-why[open] > summary.ckl-why-lbl { margin-bottom: 3px; }
 .set-body p { font-size: 13px; line-height: 1.55; color: var(--text-2); margin: 0 0 10px; }
 .set-body .scan-hint { color: var(--muted); }
 
-/* Checklists — its own tab since #439 (spec §9: it ranks above the Manual, and it is
-   a live operating aid, so it never pauses). */
-.ckl-picker[hidden] { display: none; }
 .ckl-busy { color: var(--muted); font-style: italic; }
 
-/* ---- relevance ordering (#443, spec §9): SORT, DO NOT FILTER -----------------
-   A demoted procedure keeps its place in the list and states its gating condition.
-   That is the whole value of demoting rather than hiding: the demotion becomes
-   instruction, and a player who saw a checklist yesterday can still find it. */
-.ckl-gate {
-  display: block; font-size: 10px; color: var(--muted); font-style: italic;
-  margin-top: 1px;
-}
-.ckl-gated { opacity: .72; }
 .ckl-later { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 4px; }
 .ckl-later > summary {
   font-size: 11px; color: var(--muted); cursor: pointer; padding: 2px 0;
@@ -3208,35 +3187,6 @@ details.ckl-why[open] > summary.ckl-why-lbl { margin-bottom: 3px; }
 #instructorCard.wt-headerless .instr-body > #cklRun[hidden] { display: none; }
 #instructorCard.wt-headerless .instr-body > #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
 #instructorCard.wt-headerless .instr-body > #instrLog { flex: 0 1 auto; }
-
-/* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
-   checklist scroll window keeps bouncing to the top and back to the step" and "the right column
-   scroll window should go to the bottom of the column. There is currently an unused black space
-   below it.").
-
-   #607 moved the RUNNING checklist out of the instructor pane and into this one, which is a
-   plain content-sized `.tabpane` — so it inherited neither half of the rule above. Two
-   consequences, and the owner reported both as separate bugs:
-
-     1. TWO NESTED SCROLLERS. `.tab-body` is `overflow-y: auto` and scrolled the whole pane while
-        `.ckl-log` scrolled inside it at its 48vh cap. `scrollIntoView` scrolls every scrollable
-        ancestor, so a step advance moved both, and #605's save/restore covers the log alone —
-        the outer one snapped to the top. Hence "to the top and back to the step".
-     2. DEAD SPACE. Content-sized means the pane stops where its content stops. Measured at
-        1600x950: pane bottom y=724 against a 950 px viewport, 226 px of unused black below it,
-        with the log capped at 456 px.
-
-   Giving the pane the height makes `.ckl-log` the ONLY scroller and lets it reach the bottom of
-   the column, which is one fix for both reports. `.ckl-mode` is set on .tab-body by selectTab,
-   exactly as `.instr-mode` is, so this does not depend on :has(). The identical construct is the
-   identical scrollport risk (#723) — clamp it too. */
-.tab-body.ckl-mode { overflow: hidden; overflow: clip; display: flex; flex-direction: column; }
-.tabpane[data-pane="checklists"] { flex-direction: column; min-height: 0; }
-.tabpane[data-pane="checklists"].on { display: flex; flex: 1 1 auto; min-height: 0; }
-.tabpane[data-pane="checklists"] #cklRun { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-/* The 48vh cap is right everywhere .ckl-log is content-sized; inside the running host it is
-   what stopped the log filling the column, so it is lifted HERE ONLY. */
-.tabpane[data-pane="checklists"] #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
 
 /* THE LOG. `flex: 1 1 0` with `min-height: 0` is what makes it the scrolling element
    rather than growing the pane — without the min-height a flex child refuses to shrink

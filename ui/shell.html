@@ -246,8 +246,7 @@
                "Make the instructor block a tab. Make it the leftmost tab.")*. It was a
                separate card above this strip, in a two-card accordion where expanding one
                collapsed the other. One strip, one visible pane, no accordion. -->
-          <button class="on" data-tab="instructor">Instructor</button
-          ><button data-tab="checklists">Walkthroughs</button>
+          <button class="on" data-tab="instructor">Instructor</button>
           <button data-tab="indications">Indications</button>
           <button data-tab="failures">Inject Failure</button>
         </div>
@@ -380,23 +379,9 @@
                series formatter's "3 %", and the rows are already gated by run_inspect.
                #physicsPane is gone; buildPhysics/renderPhysics are no-ops kept so the three
                call sites do not need hunting down. -->
-          <!-- Checklists (default tab, #439). REFERENCE class: it grades the live plant
-               as you operate, so it must never pause. Ranked above the Manual on purpose
-               — the manual serves depth-seekers, the average player wants a procedure to
-               follow (spec §9). -->
-          <div class="tabpane" data-pane="checklists">
-            <!-- WALKTHROUGHS (owner, 2026-09-08, #660 items 14-15): this tab is the LIST; a running
-                 walkthrough is shown in the Instructor tab, one step at a time. The pane, menu
-                 and data attributes keep their `ckl` ids — four gates address them by id. -->
-            <div class="ckl-picker" id="instrCklRow">
-              <div class="phys-note">To start up the plant, begin with the first walkthrough and work
-                down the list; each one offers the next when it finishes. It runs in the <b>Instructor</b> tab one
-                step at a time: each step checks itself off the instruments, and <b>Continue</b>
-                lights up when the step is done.</div>
-              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Walkthroughs — pick a procedure and it runs one step at a time in the Instructor tab; each step checks itself off the instruments while you operate."
-                  data-scanner-detail="The walkthrough watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always in the same order, so a procedure is where you last saw it. A running walkthrough stays where it is when you leave this tab and come back."></div>
-            </div>
-          </div>
+          <!-- The Walkthroughs tab is gone *(OWNER RULING, 2026-10-01, #818: "remove the walkthrough
+               tab since main menu is [now] where you go to pick the walkthrough")*. The list is
+               Main Menu -> Walkthroughs; the RUNNING walkthrough stays in the Instructor tab (#cklRun). -->
           <input type="file" id="loadFile" accept="application/json" style="display:none">
         </div>
       </div>

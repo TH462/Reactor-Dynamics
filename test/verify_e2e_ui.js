@@ -2933,12 +2933,10 @@ async function testWalkthroughEventPause(page) {
    * touches. So the Continue button EXISTS in the DOM (a raw querySelector finds it and #627
    * never needed more) but is not VISIBLE, and Playwright's .click() below would hang on
    * "element is not visible" — measured. Reach it exactly the way a player would after
-   * starting a checklist from elsewhere: open the Walkthroughs tab and click the
-   * already-running procedure's own entry, which hits `startChecklist`'s "already running"
+   * starting a checklist from elsewhere: press the
+   * already-running procedure's own launcher (the Manual's Walkthrough button since #818), which hits `startChecklist`'s "already running"
    * branch (sets the view to 'run' and switches to the Instructor tab) rather than restarting it. */
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
-  await page.click('[data-ckl-start="pwr_heatup"]');
+  await pressManualWalkthrough(page, 'pwr_heatup');
   // The Continue button must be ON SCREEN (not just in the DOM) for the click below to
   // land — same wait #627 uses: the Instructor tab active, with the checklist rendered.
   await page.waitForFunction(function () {
@@ -3143,9 +3141,7 @@ async function testWalkthroughHoldReleasedOnExit(page) {
 
   // ---- gap 3: picking a DIFFERENT walkthrough (startChecklist, ui/app.js ~4805) -------
   await armPausedWalkthrough();
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="pwr_startup"]', { timeout: 10000 });
-  await page.click('[data-ckl-start="pwr_startup"]');
+  await pressManualWalkthrough(page, 'pwr_startup');
   await page.waitForTimeout(500);
   var r3 = await assertGenuinelyRunning('starting a different walkthrough over a paused one');
   log.push('New walkthrough: plant runs again, sim_time advancing past ' + r3.simTime.toFixed(2) + ', .bd-frozen cleared');
@@ -3385,9 +3381,7 @@ async function testSpeedRungGlowRendered(page) {
     } catch (e) { return { ok: false, msg: String(e) }; }
   });
   if (!started.ok) throw new Error('#743 fixture: start_checklist failed — ' + started.msg);
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
-  await page.click('[data-ckl-start="pwr_heatup"]');
+  await pressManualWalkthrough(page, 'pwr_heatup');
   await page.waitForFunction(function () {
     var b = document.querySelector('#tabbar button.on');
     return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
@@ -3969,9 +3963,7 @@ async function testWatchGlowRendered(page) {
      * once, to put `cklState.view` into 'run'; the flag then stays put across a second
      * `start_checklist`, so every later leg is reached by the command alone. */
     if (viaCard) {
-      await page.click('#tabbar [data-tab="checklists"]');
-      await page.waitForSelector('[data-ckl-start="' + pid + '"]', { timeout: 10000 });
-      await page.click('[data-ckl-start="' + pid + '"]');
+      await pressManualWalkthrough(page, pid);
     }
     await page.waitForFunction(function (p) {
       var b = document.querySelector('#tabbar button.on');
@@ -5289,14 +5281,24 @@ async function testCssTransitions(page) {
   return log.join('\n') + '\n';
 }
 
+/* PRESS A WALKTHROUGH'S OWN START ON THE PLANT AS IT SITS (#818). These fixtures start the
+ * checklist by command and then press its launcher, which lands in startChecklist()'s "already
+ * running" branch (view 'run', Instructor tab) - or, for a different id, starts it in place. The
+ * Walkthroughs tab that held that launcher is gone (owner ruling 2026-10-01); the Manual's
+ * Procedures (live) page carries the same button (`data-checklist`, same startChecklist(), no
+ * reset). The Main Menu's Start is NOT equivalent: it reloads the leg's own starting condition. */
+async function pressManualWalkthrough(page, procId) {
+  var open = await page.evaluate(function () { var o = document.getElementById('manualOverlay'); return !!o && !o.hidden; });
+  if (!open) await page.click('#manualBtn');
+  await page.click('#manualNav [data-msec="procedures"]');
+  await page.waitForSelector('#manualContent [data-checklist="' + procId + '"]', { timeout: 15000, state: 'attached' });
+  await page.evaluate(function (p) { document.querySelector('#manualContent [data-checklist="' + p + '"]').click(); }, procId);
+}
 /* START A WALKTHROUGH AND LAND ON ITS CARD — the three-step dance every walkthrough check in
  * this file repeats. `start_checklist` alone is not enough: the run card is drawn behind
- * `cklState.view === 'run'`, a UI-local flag only `startChecklist()` sets, so the Walkthroughs
- * tab's own entry has to be clicked. It is clicked THROUGH THE PAGE rather than by
- * `page.click`, because a leg whose preconditions are unmet wears `.ckl-gated` and is HIDDEN —
- * Playwright's actionability check waits for visibility and times out, while the delegated
- * `data-ckl-start` listener at document.body does not care (measured: pwr_startup, 26 polls
- * against a hidden button). */
+ * `cklState.view === 'run'`, a UI-local flag only `startChecklist()` sets, so the leg's own
+ * launcher has to be pressed — the Manual's Walkthrough button since the Walkthroughs tab went
+ * (#818); see pressManualWalkthrough. */
 async function startWalkthrough(page, procId) {
   var started = await page.evaluate(function (p) {
     try {
@@ -5308,9 +5310,7 @@ async function startWalkthrough(page, procId) {
     } catch (e) { return { ok: false, msg: String(e) }; }
   }, procId);
   if (!started.ok) throw new Error('fixture: start_checklist ' + procId + ' failed — ' + started.msg);
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="' + procId + '"]', { timeout: 15000, state: 'attached' });
-  await page.evaluate(function (p) { document.querySelector('[data-ckl-start="' + p + '"]').click(); }, procId);
+  await pressManualWalkthrough(page, procId);
   await page.waitForFunction(function () {
     var b = document.querySelector('#tabbar button.on');
     return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step.ckl-active');

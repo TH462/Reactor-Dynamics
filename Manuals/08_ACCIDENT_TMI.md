@@ -16,7 +16,7 @@ listed in §7.0. Every plant number is a measurement taken on this plant through
 (service → control layer → engine) on 2026-09-08; where the model departs from the history, the
 departure is stated in the same row rather than smoothed over.
 
-**How to run it.** Open the **Walkthroughs** tab and select **TMI-2 incident**. The walkthrough
+**How to run it.** Open **Main Menu → Walkthroughs** and press **Start** on the Three Mile Island row, under *Incidents*. The walkthrough
 starts at full power and injects the failures behind the scenes, on the step that needs them; you
 operate the board. It is on the **preview channel** while the two playthrough reviews are open.
 Free play alternative: start Hot Full Power and inject **Loss of Main Feedwater**, **Auxiliary

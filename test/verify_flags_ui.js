@@ -53,6 +53,28 @@ function ck(name, ok, detail) {
 // Pin RD_CHANNEL before site/channel.js loads: a non-writable property makes the
 // stamp file's plain assignment a silent no-op, which is how a production build
 // is reproduced without editing a tracked file.
+/* THE WALKTHROUGHS TAB IS GONE (#818, owner ruling 2026-10-01): the list is Main Menu ->
+ * Walkthroughs, which loads each leg's own starting condition. The checks below started a
+ * walkthrough ON THE PLANT AS IT SAT, so they now press the Manual's Procedures (live)
+ * "Walkthrough" button, the player route with exactly those semantics (no reset). Idempotent:
+ * an already-open manual just re-selects the page. */
+async function openManualProcs(page) {
+  var open = await page.evaluate(function () { var o = document.getElementById('manualOverlay'); return !!o && !o.hidden; });
+  if (!open) await page.click('#manualBtn', { timeout: 4000 });
+  await page.click('#manualNav [data-msec="procedures"]', { timeout: 4000 });
+  await page.waitForTimeout(250);
+}
+/* The idle Instructor's "Try the walkthroughs" bar - the `checklists` flag's on-screen surface
+ * now the side picker is gone. `idle` guards the negative half: the slot must be drawn. */
+function launcherState(page) {
+  return page.evaluate(function () {
+    var cur = document.getElementById('instrCurrent');
+    var bar = document.querySelector('#instrCurrent [data-open-ckl]');
+    var r = bar ? bar.getBoundingClientRect() : null;
+    return { idle: !!cur && cur.classList.contains('instr-standby'), bar: !!r && r.width > 0 && r.height > 0 };
+  });
+}
+
 function pinChannel(ch) {
   return 'Object.defineProperty(window, "RD_CHANNEL", { value: ' + JSON.stringify(ch) +
     ', writable: false, configurable: false });';
@@ -127,11 +149,10 @@ function pinChannel(ch) {
   await openSettings(b.page);
   ck('dev: Features row is offered', await b.page.isVisible('#featureRow'));
   await closeSettings(b.page);
-  // The picker lives on the CHECKLISTS tab, and the Instructor became the leftmost and
-  // default tab on 2026-08-11 — so this has to select the tab a player would select. It
-  // checked a pane that simply was not the one on screen.
-  await b.page.click('#tabbar [data-tab="checklists"]');
-  ck('dev: the checklist picker is offered', await b.page.isVisible('#instrCklRow'));
+  // The side picker went with the Walkthroughs tab (#818); the launcher that stays on screen is
+  // the idle Instructor's bar, which opens Main Menu -> Walkthroughs.
+  var lsDev = await launcherState(b.page);
+  ck('dev: the walkthrough launcher is offered', lsDev.bar, JSON.stringify(lsDev));
   /* ---- THE ACTIVE STEP CARD SAYS WHICH CONTROL TO USE (#598 item 13) --------------------
    * The card was collapsed to the instruction alone, and measuring the cost produced the
    * owner's ruling to promote the control back out: only 41 % of the 46 pwr2 steps carrying a
@@ -143,7 +164,7 @@ function pinChannel(ch) {
    * Deliberately NOT pinned to a particular step's wording: the claim is that the active card
    * carries a `.ckl-use` line naming a control, which survives any content edit and fails the
    * moment the block is folded back into Details. */
-  await b.page.click('#tabbar [data-tab="checklists"]');
+  await openManualProcs(b.page);   // started as the plant sits: the Manual's Walkthrough button (#818)
   /* ⚠ THE FIRST LISTED CHECKLIST IS NOT A FIXTURE — PICK THE ONE THAT CAN ANSWER THE QUESTION
    * (2026-09-15). This used to click `#cklMenu [data-ckl-start]`, whichever that was, and the
    * step it landed on is an OBSERVE step, whose "Watch for:" line is drawn by a DIFFERENT branch
@@ -159,11 +180,10 @@ function pinChannel(ch) {
     var pid = (snap && snap.metadata && snap.metadata.plant_id) || null;
     var pool = ((window.RD || {}).MANUAL_PROCEDURES || {})[pid] || [];
     function procOf(id) { for (var i = 0; i < pool.length; i++) if (pool[i].id === id) return pool[i]; return null; }
-    var btns = Array.prototype.slice.call(document.querySelectorAll('#cklMenu [data-ckl-start]'));
-    if (!btns.length) btns = Array.prototype.slice.call(document.querySelectorAll('[data-ckl-start]'));
+    var btns = Array.prototype.slice.call(document.querySelectorAll('#manualContent [data-checklist]'));
     var fallback = btns[0] || null;
     for (var b = 0; b < btns.length; b++) {
-      var p = procOf(btns[b].getAttribute('data-ckl-start'));
+      var p = procOf(btns[b].getAttribute('data-checklist'));
       var s0 = p && p.steps && p.steps[0];
       if (s0 && s0.control && !/^\(observe/i.test(s0.control)) { btns[b].click(); return 'do:' + p.id; }
     }
@@ -353,13 +373,14 @@ function pinChannel(ch) {
      * and `pwr_cooldown` on pwr2 without either id appearing here. Then the rendered line must
      * name the rung RD.CklSpeedHint picks. Step 1 is asserted to be the active one, because an
      * auto-advance would put us back on a step with no wait and re-hollow the check. */
+    await openManualProcs(b.page);
     var wait = await b.page.evaluate(function () {
       var snap = (window.RD && RD.PwrBoard && RD.PwrBoard.lastSnapshot) ? RD.PwrBoard.lastSnapshot() : null;
       var pid = (snap && snap.metadata && snap.metadata.plant_id) || null;
       var pool = ((window.RD || {}).MANUAL_PROCEDURES || {})[pid] || [];
       for (var i = 0; i < pool.length; i++) {
         if ((+pool[i].steps[0].hold || 0) < 180) continue;
-        var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+        var btn = document.querySelector('#manualContent [data-checklist="' + pool[i].id + '"]');
         if (!btn) continue;
         btn.click();
         return { plant: pid, id: pool[i].id, hold: +pool[i].steps[0].hold };
@@ -382,7 +403,7 @@ function pinChannel(ch) {
                  (waitLine.line === null ? 'no wait line' : '"' + String(waitLine.line).slice(0, 80) + '"'))
               : 'no procedure in the ' + wait.plant + ' pool opens on a long wait');
   } else {
-    ck('dev: a checklist could be started from the picker', false, 'no [data-ckl-start] button found');
+    ck('dev: a checklist could be started from the picker', false, 'no Manual [data-checklist] button found');
   }
 
   var camp = await openMission(b.page, 'campaign');
@@ -423,12 +444,12 @@ function pinChannel(ch) {
    * Asserted on the SHIPPED plant's own pool (pwr2, #523), each case its own fresh build so the
    * second checklist never has to contend with the first one's run state. */
   b = await build('dev', WT2);
-  await b.page.click('#tabbar [data-tab="checklists"]');
+  await openManualProcs(b.page);   // as the plant sits: the Manual's Walkthrough button (#818)
   var w2 = await b.page.evaluate(function () {
     var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
     for (var i = 0; i < pool.length; i++) {
       if ((+pool[i].steps[0].hold || 0) < 180) continue;
-      var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+      var btn = document.querySelector('#manualContent [data-checklist="' + pool[i].id + '"]');
       if (!btn) continue;
       /* THE FIXTURE, NOT THE CLAIM (2026-09-24, wt-cooldown). This picked `pwr_cooldown` step 1,
        * which the owner's per-substep format ported to `wait_hint: false` (its substep prints its
@@ -460,12 +481,12 @@ function pinChannel(ch) {
   await b.ctx.close();
 
   b = await build('dev', WT2);
-  await b.page.click('#tabbar [data-tab="checklists"]');
+  await openManualProcs(b.page);   // as the plant sits: the Manual's Walkthrough button (#818)
   var w2b = await b.page.evaluate(function () {
     var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
     for (var i = 0; i < pool.length; i++) {
       if ((+pool[i].steps[0].hold || 0) >= 180) continue;
-      var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+      var btn = document.querySelector('#manualContent [data-checklist="' + pool[i].id + '"]');
       if (!btn) continue;
       btn.click();
       return { id: pool[i].id, hold: +pool[i].steps[0].hold || 0 };
@@ -503,7 +524,7 @@ function pinChannel(ch) {
   /* `&run=1&dev=1`: auto-speed only acts on a RUNNING clock, and `RD.__dev` (the service handle)
    * exists only on a dev build — neither is in this file's default SHELL url. */
   b = await build('dev', WT2 + '&run=1&dev=1');
-  await b.page.click('#tabbar [data-tab="checklists"]');
+  await openManualProcs(b.page);   // as the plant sits: the Manual's Walkthrough button (#818)
   var ws = await b.page.evaluate(function () {
     var pool = ((window.RD || {}).MANUAL_PROCEDURES || {}).pwr2 || [];
     for (var i = 0; i < pool.length; i++) {
@@ -516,7 +537,7 @@ function pinChannel(ch) {
         var sj = pool[i].steps[j];
         if (+sj.wait_speed === RD.CklSpeedHint(+sj.hold || 0).speed) continue;
         if (sj.cmd && !sj.wait_first) continue;
-        var btn = document.querySelector('[data-ckl-start="' + pool[i].id + '"]');
+        var btn = document.querySelector('#manualContent [data-checklist="' + pool[i].id + '"]');
         if (!btn) continue;
         btn.click();
         return { id: pool[i].id, idx: j, want: +pool[i].steps[j].wait_speed,
@@ -576,7 +597,6 @@ function pinChannel(ch) {
    * reads neither number (no step-level `wait_speed`, `hold` is 0) and never leaves 1×, which
    * would still show a "PASS" on a check that only asserted "accel !== 5". */
   b = await build('dev', WT2 + '&run=1&dev=1');
-  await b.page.click('#tabbar [data-tab="checklists"]');
   await b.page.evaluate(function () {
     var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_probe'; });
     window.RD.MANUAL_PROCEDURES.pwr2 = P;
@@ -588,7 +608,8 @@ function pinChannel(ch) {
                          { p: 'power_pct', op: '<', v: -1, label: 'B not met', wait_speed: 60 }
                        ] }] });
   });
-  await b.page.click('button[data-ckl-start="zz_pace_probe"]', { timeout: 4000 }).catch(function () {});
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_probe"]', { timeout: 4000 }).catch(function () {});
   await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
   await b.page.waitForTimeout(1800);
   var pace = await b.page.evaluate(function () {
@@ -607,7 +628,6 @@ function pinChannel(ch) {
    * override (checks for `st.accs` but forgets to fall through) would produce. Same leg, no
    * `wait_speed` on either `accs` entry, a `wait_speed: 10` on the STEP. */
   b = await build('dev', WT2 + '&run=1&dev=1');
-  await b.page.click('#tabbar [data-tab="checklists"]');
   await b.page.evaluate(function () {
     var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_fallback'; });
     window.RD.MANUAL_PROCEDURES.pwr2 = P;
@@ -620,7 +640,8 @@ function pinChannel(ch) {
                          { p: 'power_pct', op: '<', v: -1, label: 'B not met' }
                        ] }] });
   });
-  await b.page.click('button[data-ckl-start="zz_pace_fallback"]', { timeout: 4000 }).catch(function () {});
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_fallback"]', { timeout: 4000 }).catch(function () {});
   await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
   await b.page.waitForTimeout(1800);
   var fb = await b.page.evaluate(function () {
@@ -642,7 +663,6 @@ function pinChannel(ch) {
    * at 10×. */
   await b.ctx.close();
   b = await build('dev', WT2 + '&run=1&dev=1');
-  await b.page.click('#tabbar [data-tab="checklists"]');
   await b.page.evaluate(function () {
     var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_legacy'; });
     window.RD.MANUAL_PROCEDURES.pwr2 = P;
@@ -655,7 +675,8 @@ function pinChannel(ch) {
                          { p: 'power_pct', op: '<', v: -1, label: 'B not met' }
                        ] }] });
   });
-  await b.page.click('button[data-ckl-start="zz_pace_legacy"]', { timeout: 4000 }).catch(function () {});
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_legacy"]', { timeout: 4000 }).catch(function () {});
   await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
   await b.page.waitForTimeout(1800);
   var lg0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
@@ -686,7 +707,6 @@ function pinChannel(ch) {
    * moving in auto on this IC); once A ticks auto goes to 10×; a second tap must leave it there.
    * INJECTION-PROVEN: `latch` deleted from A -> 1× on the sample 1.5 s after the tap. */
   b = await build('dev', WT2 + '&run=1&dev=1');
-  await b.page.click('#tabbar [data-tab="checklists"]');
   await b.page.evaluate(function () {
     var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_latch'; });
     window.RD.MANUAL_PROCEDURES.pwr2 = P;
@@ -699,7 +719,8 @@ function pinChannel(ch) {
                          { p: 'power_pct', op: '<', v: -1, label: 'B not met', wait_speed: 10 }
                        ] }] });
   });
-  await b.page.click('button[data-ckl-start="zz_pace_latch"]', { timeout: 4000 }).catch(function () {});
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_latch"]', { timeout: 4000 }).catch(function () {});
   await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
   function lt() {
     return b.page.evaluate(function () {
@@ -739,7 +760,6 @@ function pinChannel(ch) {
    * retirement, (3) still reads "Held at real time"; without the step retirement, (2) reads the
    * old note. */
   b = await build('dev', WT2 + '&run=1&dev=1');
-  await b.page.click('#tabbar [data-tab="checklists"]');
   await b.page.evaluate(function () {
     var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_action' && x.id !== 'zz_pace_wfirst'; });
     window.RD.MANUAL_PROCEDURES.pwr2 = P;
@@ -765,7 +785,8 @@ function pinChannel(ch) {
         if (left > 0 && q && q.metadata) { left--; q.metadata.speed_snap = snap; svc.assembleSnapshot = orig; } return q; };
     }, snap);
   }
-  await b.page.click('button[data-ckl-start="zz_pace_action"]', { timeout: 4000 }).catch(function () {});
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_action"]', { timeout: 4000 }).catch(function () {});
   await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
   await b.page.evaluate(function () { globalThis.RD.__dev.service().attentionStops = false; });
   await b.page.waitForTimeout(1800);
@@ -800,7 +821,6 @@ function pinChannel(ch) {
     'before: "' + pa3a.info + '" · after, at ' + pa3b.accel + '×: "' + pa3b.info + '"');
   await b.ctx.close();
   b = await build('dev', WT2 + '&run=1&dev=1');
-  await b.page.click('#tabbar [data-tab="checklists"]');
   await b.page.evaluate(function () {
     var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_wfirst'; });
     window.RD.MANUAL_PROCEDURES.pwr2 = P;
@@ -810,7 +830,8 @@ function pinChannel(ch) {
                        cmd: { action: 'set_pressure_setpoint', mpa: 15.41 },
                        accs: [{ p: 'power_pct', op: '<', v: -1, label: 'the wait', wait_speed: 60 }] }] });
   });
-  await b.page.click('button[data-ckl-start="zz_pace_wfirst"]', { timeout: 4000 }).catch(function () {});
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_wfirst"]', { timeout: 4000 }).catch(function () {});
   await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
   await b.page.waitForTimeout(1800);
   var pw1 = await paceRead();
@@ -833,9 +854,9 @@ function pinChannel(ch) {
    * default at-power plant SOURCE RANGE is already secured, so steps 5-8 are OVERTAKEN on arrival
    * and the checklist is on step 9 before the first read (measured, the first draft of this). */
   b = await build('dev', WT2 + '&run=1&dev=1&init=hot_zero_power');
-  await b.page.click('#tabbar [data-tab="checklists"]');
+  await openManualProcs(b.page);   // as the plant sits: the Manual's Walkthrough button (#818)
   var subOk = await b.page.evaluate(function () {
-    var btn = document.querySelector('[data-ckl-start="pwr_startup"]');
+    var btn = document.querySelector('#manualContent [data-checklist="pwr_startup"]');
     if (!btn) return false;
     btn.click(); return true;
   });
@@ -992,8 +1013,8 @@ function pinChannel(ch) {
    * So it clicks the tab a player clicks, and asserts the shipped answer. Its negative half is
    * NOT deleted — it is the `flags=all,-checklists` probe further down, which now clicks the
    * same tab and was hollow in the same way. One flag, two channels of it, both non-vacuous. */
-  await b.page.click('#tabbar [data-tab="checklists"]');
-  ck('public: the checklist picker IS on screen (#722)', await b.page.isVisible('#instrCklRow'));
+  var lsPub = await launcherState(b.page);
+  ck('public: the walkthrough launcher IS on screen (#722; the side picker went with its tab, #818)', lsPub.bar, JSON.stringify(lsPub));
   var help = await b.page.textContent('#helpOverlay');
   ck('public: free play is still offered', /Start Free Play/.test(await openMission(b.page, 'free')));
   var tabs = ['campaign', 'scenarios'];
@@ -1290,8 +1311,8 @@ function pinChannel(ch) {
    * measured `false` on the public channel with `?flags=all`, i.e. the check could not fail.
    * It is the negative half of "public: the checklist picker IS on screen" above, which
    * clicks the same tab; the pair only means something if both of them do. */
-  await b.page.click('#tabbar [data-tab="checklists"]');
-  ck('only checklists off: the instructor picker is gone', !(await b.page.isVisible('#instrCklRow')));
+  var lsOff = await launcherState(b.page);
+  ck('only checklists off: the instructor launcher is gone (and the idle slot IS drawn)', lsOff.idle && !lsOff.bar, JSON.stringify(lsOff));
   await b.ctx.close();
 
   // ---------------------------------------------- the panel drives the app
@@ -1640,22 +1661,27 @@ function pinChannel(ch) {
   });
   ck('#816: Continue restores the walkthrough at its step and closes the menu',
     r4.id === 'pwr_heatup' && saved.step === 2 && r4.step === 2 && !r4.menu, JSON.stringify(r4));
-  // #816 REVIEW: the running card's heading carries the part name, and the Checklists picker
-  // names cycle legs by part and prints a plain gate (no raw channel id such as control_bank_steps).
+  // #816 REVIEW: the running card's heading carries the part name, (the leg names: see below).
   await p4.waitForSelector('.ckl-head b');
   var hd = await p4.evaluate(function () { return document.querySelector('.ckl-head b').textContent; });
   ck('#816: the running walkthrough heading reads "Startup Part 1 — <title>"', /^Startup Part 1 — \S/.test(hd), hd);
+  /* #818: the side picker is gone, so the leg NAMES are read where the list lives now, Main Menu ->
+   * Walkthroughs (same claim: cycle legs offered as "Startup Part N"). The plain-gate half keeps
+   * its layer check (rankProcedures' rods sentence); the picker's printed gates lost their subject,
+   * since nothing draws a gate sentence any more. */
+  await p4.click('#mainMenuBtn');
+  await p4.click('[data-mmode="walkthroughs"]');
   var pk = await p4.evaluate(function () {
-    var bs = Array.prototype.slice.call(document.querySelectorAll('[data-ckl-start]'));
-    function t(id) { var b = document.querySelector('[data-ckl-start="' + id + '"]'); return b ? b.textContent : ''; }
+    function t(id) { var r = document.querySelector('#missionOverlay [data-wtrow="' + id + '"] .wt-name'); return r ? r.textContent : ''; }
     var sn = JSON.parse(JSON.stringify(RD.PwrBoard.lastSnapshot())); (sn.control_state.rod_groups || []).forEach(function (g) { g.steps = 627; });
     var rk = RD.__dev.service().instructor.rankProcedures(sn, RD.MANUAL_PROCEDURES.pwr2, null).filter(function (r) { return r.id === 'pwr_raise_power'; })[0];
     var rods = rk && rk.gate ? rk.gate.split(' · ').filter(function (g) { return /rod/.test(g); })[0] : null;
-    return { rods: rods, s2: t('pwr_startup'), s3: t('pwr_raise_power'), gates: bs.map(function (b) { var g = b.querySelector('.ckl-gate'); return g ? g.textContent : ''; }).filter(Boolean) };
+    return { rods: rods, s2: t('pwr_startup'), s3: t('pwr_raise_power') };
   });
-  ck('#816: the Checklists picker names the cycle legs "Startup Part N" and no gate prints a raw field name',
-    /Startup Part 2/.test(pk.s2) && /Startup Part 3/.test(pk.s3) && pk.rods === 'Requires control rods below 600 steps' &&
-    pk.gates.every(function (g) { return !/[a-z]_[a-z]/.test(g); }), JSON.stringify(pk));
+  await p4.click('#missionClose');
+  ck('#816: the Main Menu names the cycle legs "Startup Part N", and the rods gate is plain words',
+    /Startup Part 2/.test(pk.s2) && /Startup Part 3/.test(pk.s3) && pk.rods === 'Requires control rods below 600 steps',
+    JSON.stringify(pk));
   // A FINISHED LIVE WALKTHROUGH IS RECORDED (it never was: only the retired Follow path wrote it).
   await p4.evaluate(function () { RD.__dev.service().instructor.checklist.complete = true; });
   var rec = await p4.waitForFunction(function () {

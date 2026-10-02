@@ -522,38 +522,9 @@ function ckCaptionSweep(tag, res, floor) {
     var capInstr = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
     ckCaptionSweep(tag + ' [instructor tab]', capInstr, { nowrap: 130, nowrapTestable: 90, text: null });
 
-    /* ─────────────── #723 sibling 2b: .tab-body.ckl-mode (Walkthroughs tab) ─────────────── */
-    await page.evaluate(function () {
-      var btn = document.querySelector('[data-tab="checklists"]');
-      if (btn) btn.click();
-    });
-    await page.waitForTimeout(300);
-    var ckl = await page.evaluate(function () {
-      var el = document.querySelector('.tab-body.ckl-mode');
-      if (!el) return { missing: true };
-      el.scrollTop = 300;
-      var naturalClamp = el.scrollTop;
-      el.style.maxHeight = '10px';
-      var forced = { client: el.clientHeight, scroll: el.scrollHeight };
-      el.scrollTop = 300;
-      var forcedClamp = el.scrollTop;
-      el.style.maxHeight = '';
-      return { naturalClamp: naturalClamp, forced: forced, forcedClamp: forcedClamp };
-    });
-    if (ckl.missing) {
-      ck(tag + ': .tab-body.ckl-mode present', false, 'selector missing (Walkthroughs tab did not activate?)');
-    } else {
-      ck(tag + ': .tab-body.ckl-mode refuses the scroll write',
-        ckl.naturalClamp === 0, 'scrollTop read back ' + ckl.naturalClamp);
-      ck(tag + ': .tab-body.ckl-mode refuses a FORCED scroll write too',
-        ckl.forcedClamp === 0,
-        'scrollTop read back ' + ckl.forcedClamp + ' after forcing client/scroll = ' +
-        ckl.forced.client + '/' + ckl.forced.scroll);
-    }
-
-    /* ────────── PART 3 (#712): caption/readout text overflow, Walkthroughs tab ────────── */
-    var capCkl = await page.evaluate(sweepCaptions, { TOL: 1, PIN_IDS: CAPTION_PIN_IDS });
-    ckCaptionSweep(tag + ' [checklists tab]', capCkl, { nowrap: 130, nowrapTestable: 90, text: null });
+    /* #723 sibling 2b (.tab-body.ckl-mode, the Walkthroughs tab) and its PART 3 caption sweep
+     * were removed with the tab (#818, owner ruling 2026-10-01): the pane, the class and the CSS
+     * that clamped it no longer exist, so the five checks lost their subject. */
 
     await ctx.close();
   }

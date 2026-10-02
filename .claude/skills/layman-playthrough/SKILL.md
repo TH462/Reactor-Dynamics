@@ -103,16 +103,18 @@ Return a string and it is written verbatim; return anything else and it is JSON.
 
 Give it these facts and no more. They are the scaffolding, not the game.
 
-- The **Walkthroughs** tab of the right-hand panel is the LIST. A running walkthrough is drawn
-  in the **Instructor** tab, one step at a time, headed `Step X of N`, details already open.
+- The walkthrough LIST is **Main Menu → Walkthroughs** (below); the side panel has no
+  Walkthroughs tab since #818. A running walkthrough is drawn in the **Instructor** tab, one step
+  at a time, headed `Step X of N`, details already open. Its **← All walkthroughs** button
+  (`[data-ckl-list]`) reopens the Main Menu at that list, paused, with the run still loaded.
 - Every step ends in **`Continue ▶`** (`.wt-continue`): dark and disabled until the instruments
   satisfy the step, class `ready` and lit when they do. **`⏪ Rewind step`** (`.wt-rewind`)
   takes the plant and the walkthrough back to the start of the previous step.
-- The **Plant & Mission** window opens from the **Main Menu** button (`#mainMenuBtn`, in the
+- The **Main Menu** window opens from the **Main Menu** button (`#mainMenuBtn`, in the
   tools row beside Settings). It is ALREADY OPEN on every load (`openMissionSelect()` at the end
   of `init()` in `ui/app.js`, owner directive 2026-08-11), so the first click on Main Menu can
   land on the open overlay; its
-  **Walkthroughs** tab (`[data-mmode="walkthroughs"]`) lists all six with **`▶ Start`**
+  **Walkthroughs** category (`[data-mmode="walkthroughs"]`) lists all six with **`▶ Start`**
   (`[data-wtstart="<leg id>"]`), which loads that leg's own starting condition and starts it.
 - Speed buttons are `[data-speed="1|5|10|60|600|3600"]`; 600× and 3600× are WARP. The status
   line under the bar is `#warpInfo`. **It names the cause for ONE drop reason out of five, so
