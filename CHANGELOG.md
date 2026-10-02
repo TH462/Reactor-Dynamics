@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.2-rc1] — 2026-10-02
+
 ### Changed — #819 walkthrough step text
 
 - Concise pass on the six standard PWR walkthroughs: about 25-35 % fewer words per step. Background is always drawn open, never folded (owner ruling, 2026-10-02). Own layman pass 6/6 (record `Diagnostic/CHECKLIST_PLAYTEST_2026-10-02_LAYMAN.md`); merged with #818's package H step-text fixes.
