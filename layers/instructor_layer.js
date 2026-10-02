@@ -2728,9 +2728,9 @@
     { k: 'p', id: 'primary_pressure', L: 'Reactor coolant pressure', I: 'Pressurizer pressure', val: cPress,
       delta: function (d) { return cRound(Math.abs(d) * COACH_PSI) + ' psi (' + cRound(Math.abs(d), 2) + ' MPa)'; } },
     { k: 'pz', id: 'pzr_level', L: 'Pressurizer level', I: 'Pressurizer level', val: cPct,
-      delta: function (d, v) { return 'from ' + cPct(v - d) + ' to ' + cPct(v); } },
+      delta: function (d, v) { var n = Math.abs(d) < 2 ? 1 : 0; return 'from ' + cRound(v - d, n) + ' % to ' + cRound(v, n) + ' %'; } },
     { k: 'sg', id: 'sg_level', L: 'Steam generator level', I: 'SG narrow-range level', val: cPct,
-      delta: function (d, v) { return 'from ' + cPct(v - d) + ' to ' + cPct(v); } },
+      delta: function (d, v) { var n = Math.abs(d) < 2 ? 1 : 0; return 'from ' + cRound(v - d, n) + ' % to ' + cRound(v, n) + ' %'; } },
   ];
   /* What the automatic systems did — each an indication that was OFF just before the event. */
   var COACH_ACTIONS = [
