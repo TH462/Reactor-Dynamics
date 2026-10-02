@@ -6,7 +6,7 @@
 **Manuals:** this `Manuals/` set (MODE naming Rev 2)  
 
 Use this table to jump between a campaign mission and the matching operator procedure.  
-Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** convention, and three missions drive the full **Mode 5 ↔ Mode 1** path on the board (`CAMPAIGN_MODE_ALIGNMENT_SPEC.md` §2–3 complete).
+Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** convention, and three missions drive the full **Mode 5 ↔ Mode 1** path on the board.
 
 ---
 

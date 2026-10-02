@@ -564,4 +564,3 @@ Campaign **“Zero to Operator”** (six acts, **34 missions** plus one bonus) t
 - `01_GENERAL_DESCRIPTION.md`  
 - `03_CONTROLS_AND_INDICATIONS.md`  
 - `04_NORMAL_OPERATIONS.md`  
-- `ISSUES_AND_FINDINGS.md`  

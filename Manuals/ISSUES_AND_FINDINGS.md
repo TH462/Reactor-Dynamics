@@ -32,6 +32,20 @@ only), so maintainer text that used to sit in `README.md` lives here now.
   03 §14.3 and the player-visible lines elsewhere it touched; ch04, ch09 and ch12 still carry such
   provenance inline in many places (about 100 issue numbers) — a further pass is owed.
 
+### 0.2 Moved from 12 §15.0 (2026-10-02, #818) — where a claim in chapter 12 is checked in code
+
+Everything here is derived from the as-built engine, not from prose. If you want to check a number:
+
+| Question | Where the answer lives |
+|---|---|
+| A physics coefficient, capacity or time constant | `engines/pwr/pwr_config.js` — values marked `[tune]` are calibrated; unmarked values are fixed |
+| A protection setpoint, permissive, interlock or alarm band | `layers/control/pwr_control.js`, and `09_SETPOINTS_LIMITS.md` for the operator-facing table |
+| How a mechanism is actually computed | `engines/pwr/pwr_thermal.js`, `pwr_pressurizer.js`, `pwr_primary.js`, `pwr_steam_generator.js`, `pwr_instruments.js` |
+| The step order and the reactivity balance | `engines/pwr/pwr_engine.js` |
+| What the plant is *required* to do | `Blueprint/PWR_BEHAVIOR_CATALOG.md` and the behaviour acceptance suite |
+
+**Stale on arrival:** this table names the RETIRED engine (`engines/pwr/`); the shipped plant is `engines/pwr2/` with protection in `engines/pwr2/pwr2_protection.js` and instruments still in `engines/pwr/pwr_instruments.js`. Update before relying on it.
+
 ### 0.1 Moved from 07 PWR-E06 (2026-10-02, #818) — SGTR evidence re-measurement record
 
 two SGTR evidence figures re-measured on PWR2 (2026-09-18, #593)
