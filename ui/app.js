@@ -2385,6 +2385,13 @@
     var catShort = f.category === 'safety_system' ? 'safety' : f.category;
     var html = '<div class="fail-head"><button class="fail-toggle" data-fail="' + f.id + '">Inject</button>' +
       '<span class="fail-name">' + f.display + '</span><span class="fail-cat ' + f.category + '">' + catShort + '</span></div>';
+    /* what it does, in one line, and — for a failure that waits for a plant event — whether it
+     * is armed or has fired (#818). The arm line is filled by renderFailures off the snapshot. */
+    if (f.blurb) html += '<div class="fail-desc">' + mesc(f.blurb) + '</div>';
+    if (f.armed_text) {
+      html += '<div class="fail-arm" data-armfor="' + f.id + '" hidden></div>';
+      row.setAttribute('data-arm', JSON.stringify({ armed: f.armed_text, fired: f.fired_text || '' }));
+    }
     if (f.severity_meta) {
       var m = f.severity_meta;
       html += '<div class="fail-slider"><input type="range" min="0" max="100" value="' +
@@ -3643,6 +3650,124 @@
   function renderInstructor(s) {
     renderInstructorInner(s);
     instrLogTick(s);
+    coachToastTick(s);
+  }
+
+  /* THE FREE-PLAY DEBRIEF (#818). The instructor layer writes `instructor.coach` after a trip or
+   * an injected failure in free play: four short lines read off the instruments and alarms
+   * (what happened, what the automatic systems did, readings worth watching, settled or still
+   * changing). This draws it in the Instructor tab, raises ONE dismissible toast per event
+   * pointing at that tab, and offers Retry — the existing rewind, to the newest checkpoint at
+   * or before the moment the event began (the service lays one right before a free-play
+   * injection or manual trip, so Retry lands on that instant). Dismiss returns the tab to its
+   * usual free-play content for this event; the next event brings the debrief back. */
+  var coachUi = { hidden: {}, toastSeq: 0, bound: false, html: null };
+  function coachOf(s) { return (s && s.instructor && s.instructor.coach) || null; }
+  function coachVisible(s) { var c = coachOf(s); return !!(c && !coachUi.hidden[c.seq]); }
+  function coachRetryIdx(c) {
+    var cps = (service && service.checkpoints) || [];
+    for (var i = cps.length - 1; i >= 0; i--) {
+      var m = cps[i] && cps[i].metadata;
+      if (m && m.sim_time <= c.before_t + 1e-6) return i;
+    }
+    return -1;
+  }
+  function coachBind() {
+    if (coachUi.bound) return;
+    var card = $('instructorCard');
+    if (!card) return;
+    coachUi.bound = true;
+    card.addEventListener('click', function (e) {
+      var rt = e.target.closest('[data-coach-retry]');
+      if (rt) {
+        e.preventDefault();
+        var c = coachOf(latest);
+        var idx = c ? coachRetryIdx(c) : -1;
+        if (idx < 0) { showToast('No saved point before this event to go back to.', 'error'); return; }
+        cmd({ action: 'rewind', steps: service.checkpoints.length - idx, exact: true });
+        coachToastHide();
+        return;
+      }
+      var dm = e.target.closest('[data-coach-dismiss]');
+      if (dm) {
+        e.preventDefault();
+        coachUi.hidden[+dm.getAttribute('data-coach-dismiss')] = true;
+        coachUi.html = null;
+        coachToastHide();
+        showIdleInstructor();
+      }
+    });
+  }
+  function renderCoach(s) {
+    coachBind();
+    var c = coachOf(s), cur = $('instrCurrent');
+    if (!c || !cur) return;
+    setInstrRole('Instructor');
+    var idx = coachRetryIdx(c);
+    var body = '';
+    (c.lines || []).forEach(function (ln) {
+      if (ln.kind === 'watch' && ln.items && ln.items.length) {
+        body += '<div class="coach-line coach-watch"><span class="coach-lead">Worth watching</span><ul>' +
+          ln.items.map(function (it) {
+            return '<li><span class="cw-k">' + mesc(it.label) + '</span> <span class="cw-v mono">' + mesc(it.value) +
+              '</span> <span class="cw-t cw-' + mesc(it.trend) + '">' + mesc(it.trend) + '</span></li>';
+          }).join('') + '</ul></div>';
+      } else {
+        body += '<p class="coach-line coach-' + mesc(ln.kind) + (ln.kind === 'status' && c.settled ? ' settled' : '') + '">' + mesc(ln.text) + '</p>';
+      }
+    });
+    var html = '<div class="coach" data-coach-seq="' + (+c.seq) + '">' +
+      '<div class="coach-head"><span class="coach-title">' + mesc(c.title) + '</span>' +
+      '<span class="coach-since mono">since ' + alarmClock(c.since) + '</span></div>' + body +
+      '<div class="coach-btns"><button type="button" class="btn coach-retry" data-coach-retry="' + (+c.seq) + '"' +
+      (idx < 0 ? ' disabled title="No saved point before this event to go back to."'
+               : ' title="Rewind the plant to ' + alarmClock(service.checkpoints[idx].metadata.sim_time) + ', just before this began."') +
+      '>Retry from just before</button> ' +
+      '<button type="button" class="btn linkish" data-coach-dismiss="' + (+c.seq) + '">Dismiss</button></div></div>';
+    if (html !== coachUi.html || !cur.querySelector('.coach')) {
+      cur.classList.remove('instr-standby');
+      cur.removeAttribute('data-idle-key');
+      cur.innerHTML = html;
+      coachUi.html = html;
+    }
+  }
+  function coachToastHide() {
+    var t = $('coachToast');
+    if (t) t.classList.remove('show');
+  }
+  function coachToastTick(s) {
+    var c = coachOf(s), t = $('coachToast');
+    if (!c || coachUi.hidden[c.seq]) { if (t) coachToastHide(); return; }
+    if (paneVisible('instructor')) { if (t) coachToastHide(); coachUi.toastSeq = c.seq; return; }
+    if (c.seq === coachUi.toastSeq) return;      // one toast per event, never a repeat
+    coachUi.toastSeq = c.seq;
+    /* Anchored under the TAB BAR, over the tools panel, not over the board: placed over the
+     * plant area it covered the pressurizer and steam generator level tiles at exactly the
+     * moment those readings matter (seen in the #818 screenshots). */
+    var bar = document.getElementById('tabbar');
+    if (!bar) return;
+    if (!t) {
+      var host = document.body;
+      t = document.createElement('div'); t.id = 'coachToast'; t.className = 'coach-toast';
+      t.setAttribute('role', 'status');
+      t.innerHTML = '<span class="coach-toast-msg"></span> ' +
+        '<button type="button" class="btn coach-toast-open">Open the Instructor tab</button>' +
+        '<button type="button" class="coach-toast-x" aria-label="Dismiss">×</button>';
+      t.addEventListener('click', function (e) {
+        if (e.target.closest('.coach-toast-open')) {
+          var tb = document.querySelector('#tabbar [data-tab="instructor"]');
+          if (tb) tb.click();
+          coachToastHide();
+        } else if (e.target.closest('.coach-toast-x')) coachToastHide();
+      });
+      host.appendChild(t);
+    }
+    t.querySelector('.coach-toast-msg').textContent = c.title + ': the Instructor tab has a short summary of what the board shows.';
+    var r = bar.getBoundingClientRect();
+    t.style.top = Math.round(r.bottom + 6) + 'px';
+    t.style.left = Math.round(r.left + 6) + 'px';
+    t.style.width = Math.max(200, Math.round(r.width - 12)) + 'px';
+    t.classList.add('show');
   }
   function renderInstructorInner(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
@@ -3750,7 +3875,8 @@
       // one-line ellipsized — cue the header and let the player expand.
       instrAttention();
     } else if (!msg && !msgHold.queue.length && dwellMet) {
-      if (msgHold.shown !== null || !cur.querySelector('.instr-idle') || cur.getAttribute('data-idle-key') !== idleKey()) {
+      if (coachVisible(s)) { msgHold.shown = null; renderCoach(s); }   // the free-play debrief (#818)
+      else if (msgHold.shown !== null || !cur.querySelector('.instr-idle') || cur.getAttribute('data-idle-key') !== idleKey()) {
         msgHold.shown = null;
         showIdleInstructor();
       }
@@ -7712,6 +7838,10 @@
      * the whole transcript into the log per line — measured in headless Edge on the opener, whose
      * lines are ~20 words: the conversation appeared twice, "End" and "reveal all" included. */
     if (s && s.instructor && s.instructor.chat) { instrLog.key = null; instrLog.html = ''; return; }
+    /* THE FREE-PLAY DEBRIEF IS LIVE TOO (#818): its readings and lines update in place, and the
+     * welcome it replaces is not a message. Measured in headless Chromium: without this the
+     * welcome text was folded into the log above the debrief. */
+    if (cur.querySelector('.coach')) { instrLog.key = null; instrLog.html = ''; return; }
     var first = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     if (!first) return;
     if (first === instrLog.key) { instrLog.html = cur.innerHTML; return; }  // same message, live
@@ -7763,6 +7893,15 @@
       var id = row.id.replace('fail-', ''), on = !!act[id];
       row.classList.toggle('active', on);
       var btn = row.querySelector('.fail-toggle'); txt(btn, on ? 'Clear' : 'Inject');
+      /* ARMED OR FIRED (#818): `armed` rides on the active-failure entry only for a failure that
+       * waits for a plant event. Absent = acts at once, so the line stays hidden. */
+      var arm = row.querySelector('[data-armfor]');
+      if (arm) {
+        var st = on && typeof act[id].armed === 'boolean' ? (act[id].armed ? 'armed' : 'fired') : null;
+        var words = st ? JSON.parse(row.getAttribute('data-arm'))[st] : '';
+        if (arm.hidden !== !words) arm.hidden = !words;
+        if (words) { txt(arm, words); arm.className = 'fail-arm ' + st; }
+      }
       var sl = row.querySelector('[data-sevfor]');
       if (sl && on && act[id].severity != null && document.activeElement !== sl) {
         var m = JSON.parse(row.getAttribute('data-meta'));

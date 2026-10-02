@@ -1650,11 +1650,40 @@ select.num-input { width: auto; }
 .dim-info { color: #2c343d; }
 .nv.bool-off { color: var(--text-2); }
 
-/* failures-tab inject toggle */
-.fail-toggle { background: var(--bg-elevated); color: var(--text-2); border: 1px solid var(--border);
-  border-radius: 4px; padding: 2px 8px; font-size: 10px; cursor: pointer; flex: 0 0 auto; min-width: 48px; }
-.fail-toggle:hover { color: var(--text); }
+/* failures-tab inject toggle. #818: the grey-on-grey button read as DISABLED — full-strength
+   text and an accent border so it reads as a live control, the same weight as a board button. */
+.fail-toggle { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--normal);
+  border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer; flex: 0 0 auto; min-width: 54px; }
+.fail-toggle:hover { background: rgba(34,211,238,.14); }
+.fail-toggle:focus-visible { outline: 2px solid var(--normal); outline-offset: 1px; }
 .fail-row.active .fail-toggle { background: var(--critical); color: #fff; border-color: var(--critical); }
+/* #818: one plain line on what the failure does, and its armed/fired state */
+.fail-desc { font-size: 11px; line-height: 1.35; color: var(--text-2); margin: 3px 0 0 62px; }
+.fail-arm { font-size: 11px; line-height: 1.35; margin: 3px 0 0 62px; }
+.fail-arm.armed { color: #e0b44a; }
+.fail-arm.fired { color: var(--critical); }
+
+/* #818: the free-play debrief in the Instructor tab, and its one toast */
+.coach { font-size: 12px; line-height: 1.45; color: var(--text); font-style: normal; }
+.coach-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.coach-title { font-weight: 600; }
+.coach-since { font-size: 11px; color: var(--text-2); }
+.coach-line { margin: 0 0 6px; }
+.coach-auto { color: var(--text-2); }
+.coach-watch .coach-lead { display: block; color: var(--text-2); margin-bottom: 2px; }
+.coach-watch ul { margin: 0; padding-left: 1.1em; }
+.coach-watch li { margin-bottom: 1px; }
+.coach-watch .cw-t { font-size: 11px; color: var(--text-2); }
+.coach-watch .cw-rising, .coach-watch .cw-falling { color: var(--text); }
+.coach-status.settled { color: var(--normal); }
+.coach-btns { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.coach-toast { position: fixed; z-index: 119; display: flex; align-items: center; gap: 8px; box-sizing: border-box;
+  background: var(--bg-elevated); border: 1px solid var(--normal); border-radius: 6px;
+  color: var(--text); font-size: 12px; padding: 7px 8px 7px 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+.coach-toast.show { opacity: 1; pointer-events: auto; }
+.coach-toast-x { background: none; border: 0; color: var(--text-2); font-size: 16px; cursor: pointer; padding: 0 4px; }
+.coach-toast-x:hover { color: var(--text); }
 
 /* ============================================================================
  * TABBED CONTROL STRIP — the four control sections are stacked behind a tab bar
