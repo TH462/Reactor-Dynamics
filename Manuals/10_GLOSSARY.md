@@ -1,7 +1,7 @@
 # 10 — Glossary
 
 **Document:** PWR-GL-01  
-**Revision:** 23  
+**Revision:** 24  
 
 Terms used in the PWR manuals and on the simulator board. Acronym first, then plain meaning.
 
@@ -20,7 +20,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | **5** | **Mode 5, Cold Shutdown** | Subcritical, RCS cold |
 | **6** | **Mode 6, Refueling** | Cold, vessel head not fully tensioned (out of scope here) |
 
-**Mode 5, Cold Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**). Both run end to end on integrated physics — Mode 5 was restored 2026-08-31 when the water-property floor moved below its boundary (**09 §11.0**, #524).
+**Mode 5, Cold Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** master procedures: `05_MODE_TRANSITIONS.md` (**PWR-T20**, **PWR-T21**). Both run end to end on integrated physics — Mode 5 was restored 2026-08-31 when the water-property floor moved below its boundary (**09 §11.0**).
 
 **Not plant MODES:** turbine load modes Follow / Manual / Disconnected.
 
@@ -101,7 +101,7 @@ Terms used in the PWR manuals and on the simulator board. Acronym first, then pl
 | Term | Definition |
 |------|------------|
 | **P-6** | Permissive: intermediate range on scale (≥ 1e-10 A). Allows the source-range trip to be blocked, which also switches the detector off (Trip Blocks panel, SR HIGH FLUX); resets below 5e-11 A, clearing the block. See `09` §2.0. |
-| **P-10** | Nuclear at-power permissive (8 % on this plant, the same crossing as P-7 since #753) — allows blocking the intermediate-range and power-range low-setpoint trips, and revokes a standing block below itself. |
+| **P-10** | Nuclear at-power permissive (8 % on this plant, the same crossing as P-7) — allows blocking the intermediate-range and power-range low-setpoint trips, and revokes a standing block below itself. |
 | **pcm** | Percent millirho — unit of reactivity (1 pcm = 10⁻⁵ Δk/k). |
 | **POAH** | Point of Adding Heat — power level where fission heat exceeds system losses. |
 | **PORV** | Power-Operated Relief Valve — controllable RCS pressure relief on the pressurizer. |

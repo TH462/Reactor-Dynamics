@@ -8,6 +8,86 @@
 
 ---
 
+## 0. Maintainer notes (moved out of the player's "Read Me First", 2026-10-02, #818)
+
+This file is **not packed** into the in-app manual (`tools/pack_manuals.js` packs README + 00–12
+only), so maintainer text that used to sit in `README.md` lives here now.
+
+- **Source of the set:** written from `Blueprint/` design specs, the as-built engines and control
+  layer, and the validated procedure data in `ui/manual_procedures.js`. The in-app Manual renders
+  these same files via `node tools/pack_manuals.js` — an edit here is an edit to the product.
+- **Units gate:** every US (SI) pair is verified by `node test/run_manual_units.js`, which
+  re-derives the US value from the SI value and fails on arithmetic errors, missing partners, and
+  temperature differences converted with the absolute rule. The same gate covers the live
+  walkthrough steps (`ui/manual_procedures.js`) and the System Scanner copy
+  (`ui/diagram/board/pwr_board_inspect.js`). Run it after editing any number.
+- **What stays SI:** engine command payloads (`cmd: { mpa: 8.23 }` is an argument, not a reading)
+  and developer comments in source files.
+- **Not packed:** `ISSUES_AND_FINDINGS.md`, `CAMPAIGN_MANUAL_DISCREPANCIES.md`,
+  `CAMPAIGN_MODE_ALIGNMENT_SPEC.md`. Do not link them from a packed chapter — in-app the link is
+  dead.
+- **Player chapters should carry no issue numbers, file paths, owner quotes or dated "measured"
+  stamps**; the provenance for a number goes in the revision row (`00_REVISION_HISTORY.md`), the
+  commit and `Diagnostic/TUNING_LOG.md`. The 2026-10-02 sweep (#818) cleaned README, 01, 02 and
+  03 §14.3 and the player-visible lines elsewhere it touched; ch04, ch09 and ch12 still carry such
+  provenance inline in many places (about 100 issue numbers) — a further pass is owed.
+
+### 0.2 Moved from 12 §15.0 (2026-10-02, #818) — where a claim in chapter 12 is checked in code
+
+Everything here is derived from the as-built engine, not from prose. If you want to check a number:
+
+| Question | Where the answer lives |
+|---|---|
+| A physics coefficient, capacity or time constant | `engines/pwr/pwr_config.js` — values marked `[tune]` are calibrated; unmarked values are fixed |
+| A protection setpoint, permissive, interlock or alarm band | `layers/control/pwr_control.js`, and `09_SETPOINTS_LIMITS.md` for the operator-facing table |
+| How a mechanism is actually computed | `engines/pwr/pwr_thermal.js`, `pwr_pressurizer.js`, `pwr_primary.js`, `pwr_steam_generator.js`, `pwr_instruments.js` |
+| The step order and the reactivity balance | `engines/pwr/pwr_engine.js` |
+| What the plant is *required* to do | `Blueprint/PWR_BEHAVIOR_CATALOG.md` and the behaviour acceptance suite |
+
+**Stale on arrival:** this table names the RETIRED engine (`engines/pwr/`); the shipped plant is `engines/pwr2/` with protection in `engines/pwr2/pwr2_protection.js` and instruments still in `engines/pwr/pwr_instruments.js`. Update before relying on it.
+
+### 0.1 Moved from 07 PWR-E06 (2026-10-02, #818) — SGTR evidence re-measurement record
+
+two SGTR evidence figures re-measured on PWR2 (2026-09-18, #593)
+Both figures above were measured on the retired `pwr` engine (2026-08-03, `3558561`); PWR2
+(`engines/pwr2/`) has shipped as the plant the site runs since #523. Re-measured full stack
+(M4+M5+M6, default free-play lineup, `PWR2Engine`), `hot_full_power`, 40 % severity SGTR (the
+chapter default), via `node test/measure_stack.js --plant=pwr2`.
+
+- **Step 3a's core argument survives, at about half the reported magnitude, and one framing in
+  it is REFUTED.** "Securing injection first cuts break flow far more than walking the setpoint
+  alone" still holds (49 % vs ≈1 % at twenty minutes, not the retired engine's 87 % vs 0 %) — but
+  the **"drifts toward solid" claim does not reproduce**: leaving HPI in holds inventory near
+  88 % and subcooling 5.4–7.2 °F (3.0–4.0 °C); it does not fill toward solid on this plant.
+  **New finding, not in the retired-engine record:** securing HPI with the criteria nominally met
+  (5.4 °F / 3.0 °C subcooling in hand at the moment of the click) still eroded subcooling to
+  0 °F (0 °C) by minute twelve and held there for the rest of the twenty-minute ride, while
+  leaving HPI running preserved the thin margin instead. Break flow and inventory did not worsen
+  further while subcooling sat at zero, but the margin itself never recovered. This suggests the
+  step's "subcooling in hand" precondition may need to be an ongoing check rather than a one-time
+  gate on this plant. **Flagged for an owner ruling — not resolved, and the step's action is
+  unchanged here pending that ruling.**
+- **Step 5's claim is WITHDRAWN, not just re-numbered.** The MSIV changes the secondary pressure
+  trend by 36 psi (0.25 MPa) at twenty minutes, deterministic across seeds 1, 2, 3, 4, 5 and the
+  4242 default (0 psi spread at any seed) — an order of magnitude past the retired engine's
+  reported 0.6 psi gap, and far outside any instrument-noise explanation. Closing the MSIV forces
+  the ADV open as the alternate relief path, which settles the plant at a different Tavg (548.0 °F / 286.7 °C open vs 552.4 °F / 289.1 °C
+  shut at twenty minutes) and therefore a different
+  Psat(Tavg) secondary pressure. The single-steam-generator declared departure
+  (`DESIGN_COMPANION.md` §8.26 — this trainer still cannot show which generator is leaking) is
+  untouched; the specific claim that MSIV position has no effect on the secondary pressure trend
+  is not true on this plant. **Flagged for an owner ruling on whether step 5's guidance should
+  change — not rewritten here.**
+
+Invocation, step 3a legs (A = HPI stays in; B = securing leg adds the 590 s command):
+`node test/measure_stack.js --plant=pwr2 --ic=hot_full_power --accel=10 --for=1800s --every=60s --watch=leak_flow,core_inventory_pct,pzr_level_pct,pressure_mpa,hpi_active,afw_active,scrammed,subcooling_c --cmd='0s:{"action":"inject_failure","failure_id":"sgtr","severity":0.4}' --cmd='60s:{"action":"scram"}' --cmd='120s:{"action":"set_afw","active":true}' --cmd='180s:{"action":"set_hpi","active":true}' --cmd='590s:{"action":"set_hpi","active":false}' --cmd='600s:{"action":"set_pressure_setpoint","mpa":10.0}'`
+(leg A omits the 590 s command). Step 5 legs replace the 590 s/600 s commands with
+`--cmd='200s:{"action":"open_msiv"}'` or `close_msiv`, seed swept 4242/1/2/3/4/5.
+Stamped header: full stack (M4+M5+M6), `PWR2Engine`, lineup default (free play), seed 4242
+(swept for step 5), acceleration 10x, settle 0 s — measurement t=0 is engine simTime 0.00 s.
+
+---
+
 ## 1. How to use this log
 
 | Severity | Meaning |

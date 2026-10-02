@@ -2,7 +2,7 @@
 
 **Document:** PWR-X01  
 **Title:** Three Mile Island Unit 2 — the four hours in the control room  
-**Revision:** 23  
+**Revision:** 24  
 **Category:** Accident case study (sourced narrative + walkthrough)  
 
 ---
@@ -38,7 +38,7 @@ choice.** The stuck relief valve is armed with the feed-pump trip on step 3, thr
 beat that tells you about it. The stick does nothing to a shut valve: it latches on the first lift,
 the valve lifts about five seconds in and reseats near twenty-five, and measured full-stack the
 accident happens if the failure is armed at or before **21 seconds** and does not happen at all at
-22 — the plant settles at **1989 psia (13.71 MPa)** with pressurizer level 41.5 % and the valve
+22 — the plant settles at **1989 psi (13.71 MPa)** with pressurizer level 41.5 % and the valve
 shut. A narrated chain cannot spend that budget, so the arming rides with the initiating event and
 only the **lamp** failure — which is timing-insensitive — lands on the relief-valve step.
 
@@ -49,7 +49,7 @@ only the **lamp** failure — which is timing-insensitive — lands on the relie
 | Type | Babcock & Wilcox, two once-through steam generators | Westinghouse-style, **one** U-tube steam generator (lumped single loop) |
 | Rating | **2772 MWt** (GEND-061 §4.3) | **300 MWt**, ≈ **100 MWe** |
 | Relief-valve setpoint | **2255 psig (15.55 MPa)** (Appendix II.1 E6) | **Press SP + 100 psi (0.69 MPa)** — **2335 psi (16.10 MPa)** at the normal **2235 psi (15.41 MPa)** program, and it follows the setpoint down a cooldown (**03** §6.1) |
-| Relief capacity | one power-operated relief valve at 2772 MWt | **3.6× TMI-2's per MWt** — the anchor plant's two valves at **179,000 lb/hr** each and 1520 MWt, power-scaled (`Blueprint/PWR2_VALIDATION.md` §86) |
+| Relief capacity | one power-operated relief valve at 2772 MWt | **3.6× TMI-2's per MWt** — the anchor plant's two valves at **179,000 lb/hr** each and 1520 MWt, power-scaled |
 | Vessel level instrument | none | none — the same gap, and it is the whole reason the pressurizer is read as an inventory gauge |
 | Reactor trip on turbine trip | **not fitted** — *"Some other vendors-GE and Westinghouse-voluntarily provided for these 'anticipatory trips' in their designs"* (Vol. II Pt 2) | **armed above P-9, 50 % power** (**09** §2.0) |
 
@@ -89,12 +89,12 @@ on the source, not a quote from it.
 | **04:00:37** | 0 s | *"Feedwater pumps FW-P1A and FW-P1B tripped"* (E2) | **Loss of Main Feedwater** injected, **and the relief-valve stick armed with it**; FEED FLOW to 0. Walkthrough step 3 — **the sim pauses here** |
 | 04:00:37 | 0 s | Turbine trip follows, *"Normal following trip of feedwater pumps"* (E3) | Nothing injected — the turbine trips out of the feed loss on its own, within about a second. TURBINE TRIP lit. Walkthrough step 4 |
 | 04:00:37 | 0 s | Auxiliary feed pumps start into **valves already shut** — *"Block valves EF-V12A and EF-V12B were closed"* (E4) | **Auxiliary Feedwater Failure** injected, hidden — the pumps run and deliver nothing. Walkthrough step 5 |
-| **04:00:40** | 3 s | *"RCS pressure reaches the setpoint of the pilot-operated relief valve (PORV) RC-R2. PORV opens. (Setpoint = 2255 psig)"* — **2255 psig (15.55 MPa)** (E6) | The relief valve lifts at **5 s, 2346 psia (16.175 MPa)**. Its setpoint here is **Press SP + 100 psi (0.69 MPa)** = **2335 psi (16.10 MPa)** at the normal program (**03** §6.1) |
+| **04:00:40** | 3 s | *"RCS pressure reaches the setpoint of the pilot-operated relief valve (PORV) RC-R2. PORV opens. (Setpoint = 2255 psig)"* — **2255 psig (15.55 MPa)** (E6) | The relief valve lifts at **5 s, 2346 psi (16.175 MPa)**. Its setpoint here is **Press SP + 100 psi (0.69 MPa)** = **2335 psi (16.10 MPa)** at the normal program (**03** §6.1) |
 | **04:00:45** | 8 s | *"Reactor trips on high pressure. (Setpoint = 2355 psig)"* — **2355 psig (16.24 MPa)**; the reactimeter peak is **2346 psig (16.175 MPa)**, the strip chart **2435 psig (16.79 MPa)** (E7) | **The reactor trips at 43 s on over-temperature ΔT** — the declared divergence of §1.1. *(The historical peak and this plant's lift pressure share their digits by coincidence: different plants, different datum.)* |
 | **04:00:50** | 13 s | The valve is told to shut at **2205 psig (15.20 MPa)** and does not: *"Valve did not close."* The lamp is a solenoid indication — *"Light 'off' indicates solenoid deenergized. There is no actual position indicator."* (E12) | **PORV Stuck Open** was armed on the feed trip and **latches on the lift at 5 s**; **PORV Indicator Stuck Closed** lands on walkthrough step 6, which carries E6 and E12 together at E6's clock — **the sim pauses here too**. Until it lands the lamp reads honestly, which is what the crew had for their first thirteen seconds |
 | 04:00:52 | 15 s | Pressurizer level peaks at **255 in**; *"RCS parameters are normal."* (E17) | — |
 | **04:01:07** | 30 s | Relief-line high-temperature alarm at **239.2 °F (115.1 °C)**, dismissed: *"Alarms were not considered abnormal, because the PORV had previously opened."* (E20) | Tailpipe temperature rises above hot-leg temperature and stays there — the unalarmed indication that tells the truth (**03** §6.1, ~**302 °F (150 °C)** class while relief passes) |
-| 04:01:55 | 1 min 18 s | Both steam generators dry out: *"Indicates dryout. No feedwater was being admitted."* (E28) | At 1 min: **1705 psia (11.756 MPa)**, pressurizer level 67 %, RCS mass 98.5 % |
+| 04:01:55 | 1 min 18 s | Both steam generators dry out: *"Indicates dryout. No feedwater was being admitted."* (E28) | At 1 min: **1705 psi (11.756 MPa)**, pressurizer level 67 %, RCS mass 98.5 % |
 | **04:02:39** | 2 min 2 s | Safety injection actuates on its own — *"Actuation on low RCS pressure (setpoint 1600 psig.)"*, **1600 psig (11.03 MPa)** (E31) | Safety injection actuates at **65.5 s** on low pressurizer pressure, **1715 psi (11.824 MPa)** (**09** §2.0) |
 
 **The lesson of these two minutes.** Nothing on either board was lying about *itself*. The lamp
@@ -129,7 +129,7 @@ The standing condition, in the report's own words:
 | **04:05:07** | 4 min 30 s | *"Operator throttles makeup valves (MU-V16) to reduce injection flow."* Purpose: *"(a) to reduce rate of rise of pressurizer level (b) to prevent pump damage as RCS pressure drops."* (E35) | Injection is **On / Off** here, with no throttle valve (§6.0). Securing it is refused for **60 s** after actuation and until the reactor is tripped (P-4); the stop is **first accepted at 2.09 min** and was **accepted on the ride at 4.50 min** — the crew's clock works on this plant |
 | 04:05:15 | 4 min 38 s | One of three makeup pumps stopped, two valves shut, two throttled (E36) | No partial equivalent — one control, one decision |
 | **04:05:29** | 4 min 52 s | Letdown raised to its high limit as part of the *same* action: *"they stopped makeup pump MU-PlC and increased letdown flow to its high limit"* (§II.A); flow alarms above **160 gpm** six seconds later (E37, E38) | **Letdown Orifices A + B** — the maximum lineup on this plant, a net drain against charging (**03** §7.3) |
-| 04:05:37 | 5 min 0 s | Pressurizer level peaks at **377 in** (E39) | Level is already pegged at **100 %** here, and the plant reads **1045 psia (7.205 MPa)** with **97.2 %** of its mass still aboard at 4.5 min |
+| 04:05:37 | 5 min 0 s | Pressurizer level peaks at **377 in** (E39) | Level is already pegged at **100 %** here, and the plant reads **1045 psi (7.205 MPa)** with **97.2 %** of its mass still aboard at 4.5 min |
 | **04:06:28** | 5 min 51 s | *"Pressurizer level goes offscale high (greater than 400 inches)."* (E43) | — |
 
 ### 3.3 The coupling, on this plant's numbers
@@ -140,7 +140,7 @@ throttle at 4 min 30 s → level peaks at 5 min → off scale at 5 min 51 s. The
 
 On this plant the same divergence is **emergent physics, not a script**: at 4.5 minutes the
 pressurizer reads **100 % on 97.2 % of the plant's water**, while pressure has fallen from
-2235 psi (15.41 MPa) to **1045 psia (7.205 MPa)**. Steam forming in the hot leg pushes liquid up
+2235 psi (15.41 MPa) to **1045 psi (7.205 MPa)**. Steam forming in the hot leg pushes liquid up
 the surge line; the gauge measures the surge, not the inventory. Rising level with falling pressure is the
 signature — one of those two indications is about water and the other is about heat, and only
 their disagreement carries the diagnosis.
@@ -155,13 +155,13 @@ subcooling margin and the pressure trend with it.
 | Clock | Elapsed | TMI-2 (sourced) | This plant (measured) |
 |---|---|---|---|
 | **04:06:27** | 5 min 50 s | *"RCS pressure reaches minimum (~1350 psig), then begins to increase. Temperature reaches saturation."* — **1350 psig (9.31 MPa)**; *"Reaching saturation temperature means that steam voids can form in system"* (E42) | Board **subcooling margin 0.0 at 5 min**; the hot leg first reads above saturation at **2.7 min** |
-| **04:08:37** | 8 min | *"operator finds emergency feedwater block valves EF-V12A and EF-V12B shut and opens them"* (E49), on three cues — *"low OTSG level, low steam pressure, high emergency feedwater discharge pressure"*. The report's verdict: *"the 8-minute delay in restoring emergency flow did not directly affect the outcome of the accident-though it did serve to divert the attention of the operators"* (Vol. I) | Opening the aux feed block takes flow **0.000 → 1.000 within 30 s**; plant at **1049 psia (7.233 MPa)**, RCS mass **90.8 %** |
+| **04:08:37** | 8 min | *"operator finds emergency feedwater block valves EF-V12A and EF-V12B shut and opens them"* (E49), on three cues — *"low OTSG level, low steam pressure, high emergency feedwater discharge pressure"*. The report's verdict: *"the 8-minute delay in restoring emergency flow did not directly affect the outcome of the accident-though it did serve to divert the attention of the operators"* (Vol. I) | Opening the aux feed block takes flow **0.000 → 1.000 within 30 s**; plant at **1049 psi (7.233 MPa)**, RCS mass **90.8 %** |
 | **04:10:37** | 10 min | First reactor coolant pump high-vibration alarm — *"Indication of voids in system. Apparently not recognized."* (E56) | **RCP CAVITATION** stands from **2.58 min** — a step, not a ramp, crossing its threshold 20 s after the margin reaches zero. Indication only: no damage model, no automatic pump trip |
-| 04:30:37 | 30 min | RCS at or near saturation and staying there | **967 psia (6.667 MPa)**, RCS mass **53.8 %** |
+| 04:30:37 | 30 min | RCS at or near saturation and staying there | **967 psi (6.667 MPa)**, RCS mass **53.8 %** |
 | 04:57 | 57 min | — | **The subcooling margin pegs on its floor, −50.4 °F (−28 °C), and stays there to about 150 min.** That is this board's "the instrument has run out of scale" |
 | **05:13:37** | 1 h 13 min | Loop B pumps secured: *"Operator stops reactor coolant pump RC-P2B because of increasing vibration and decreasing flow and amperage"* (E99) | The cue has stood for **71 minutes** by now. Securing pumps is a real handswitch here |
 | 05:20:37 | 1 h 20 min | *"The operators now have adequate information to deduce that the PORV is open — (a) No reduction in outlet temperature, and (b) PORV outlet 70°F hotter than code safety outlets."* (E103) | The same comparison is on this board: tailpipe temperature against hot-leg temperature |
-| **05:41:37** | 1 h 41 min | Loop A pumps secured — *"The pump has been operating without adequate suction head."* (E111). Then: *"As soon as all the pumps were stopped, circulation of coolant decreased drastically, because natural circulation was blocked by steam."* (§II.A) | Forced flow stops. The primary **holds about 1020 psia (7.033 MPa)** through this window, on the auxiliary-feed level hold; the accumulators are **100 % full at 60 min** and have bled only to **86 % at 120 min** — on this plant they never dump |
+| **05:41:37** | 1 h 41 min | Loop A pumps secured — *"The pump has been operating without adequate suction head."* (E111). Then: *"As soon as all the pumps were stopped, circulation of coolant decreased drastically, because natural circulation was blocked by steam."* (§II.A) | Forced flow stops. The primary **holds about 1020 psi (7.033 MPa)** through this window, on the auxiliary-feed level hold; the accumulators are **100 % full at 60 min** and have bled only to **86 % at 120 min** — on this plant they never dump |
 | **06:11:37** | 2 h 11 min | Loop A hot leg **off the top of its scale** — *"TAVE will not be correctly shown."* (E119) | **The hot leg never pegs here.** Its detector spans **32 – 752 °F (0 – 400 °C)** and the whole ride's peak reading is **632.0 °F (333.3 °C)** at 232 min. The pegged instrument on this board is the **subcooling margin**, above |
 
 **The pumps are the hard lesson.** Vibration, falling flow and falling amperage all said the same
@@ -182,7 +182,7 @@ natural circulation, because the loops were full of steam.
 | **07:20:37** | 3 h 20 min | Injection restored by hand: *"ESF manually initiated. Makeup pump MU-P1C starts."* Post-accident: *"Rapid quenching probably caused major fuel damage."* (E167) | Injection restarts on one control |
 | ~07:27 – 07:30 | ~3 h 27 – 3 h 30 min | Not sustained: safety injection reset, the makeup pump stopped, the block valve shut again — the reason is rationing, not diagnosis: *"There was thus an inclination to use ES as little as possible (high pressure injection water is taken from the BWST)."* (§II.A) | This plant has no injection water inventory to ration — a declared simplification, and it removes the pressure the crew was under |
 | **07:41** | 3 h 41 min | Block valve **reopened again** (§II.A) | — |
-| **07:56** | 3 h 56 min | Safety injection actuates again, injection at maximum (§II.A) | At **260 min** the plant reads **1505 psia (10.377 MPa)**, RCS mass **78.0 %**, and it is alive |
+| **07:56** | 3 h 56 min | Safety injection actuates again, injection at maximum (§II.A) | At **260 min** the plant reads **1505 psi (10.377 MPa)**, RCS mass **78.0 %**, and it is alive |
 | 09:43 | 5 h 43 min | The RCS is repressurized and held between 2000 and 2200 psig *"by operation of the PORV block valve"* for the next hour and a half (§II.A) | The same control, used the same way |
 | **13:50:37** | 9 h 50 min | Hydrogen burn in containment, heard as an *"Audible 'thump'"*, **28 psig (0.193 MPa)** peak, read at the time as *"electrical noise"* (E273) | **Not modelled** — §6.0 |
 | **19:50:37** | 15 h 50 min | *"Start reactor coolant pump RC-P1A."* Post-accident: *"Adequate core cooling now has been established."* (E347) | A real handswitch |
@@ -215,12 +215,12 @@ rather than asserted.
 
 | Gap | The declaration |
 |---|---|
-| **Cladding heat-up while the core is uncovered** | Measured: the cladding reads **555 °F (290.6 °C) at 94 % uncovered** (`Blueprint/PWR2_VALIDATION.md` §83). The core is a homogeneous node that credits residual steam flow with cooling every rod, so an uncovered core here does not get hot. This is the model defect the whole damage chain below hangs from |
-| **Oxidation and hydrogen generation on this path** | The reaction **is** built and sourced — Baker-Just, mandated by 10 CFR 50 Appendix K (`engines/pwr2/pwr2_damage.js`). It self-gates on temperature: at 572 °F (300 °C) the law integrates to 0.07 mg/cm² in a year. With the cladding never heating, this path generates **no hydrogen at all** |
-| **The 13:50 hydrogen burn** | Not modelled. `ctmt_h2_burned` is a **registered static 0** in `engines/pwr2/pwr2_true_state.js`, and containment has **no recombiners** (`engines/pwr2/pwr2_containment.js`) — their capacity is in no document in the corpus, so none was invented. Containment spray, the fan coolers and the steam-line isolation that goes with them **are** built and auto-actuate on sourced containment-pressure setpoints since #784 — see **09** §3.0 — so a large break no longer only heats and pressurises; whether this specific TMI-2 path ever reaches the 30 psig actuation is not remeasured here |
+| **Cladding heat-up while the core is uncovered** | Measured: the cladding reads **555 °F (290.6 °C) at 94 % uncovered**. The core is a homogeneous node that credits residual steam flow with cooling every rod, so an uncovered core here does not get hot. This is the model defect the whole damage chain below hangs from |
+| **Oxidation and hydrogen generation on this path** | The reaction **is** built and sourced — Baker-Just, mandated by 10 CFR 50 Appendix K. It self-gates on temperature: at 572 °F (300 °C) the law integrates to 0.07 mg/cm² in a year. With the cladding never heating, this path generates **no hydrogen at all** |
+| **The 13:50 hydrogen burn** | Not modelled. `ctmt_h2_burned` is a **registered static 0**, and containment has **no recombiners** — their capacity is in no document in the corpus, so none was invented. Containment spray, the fan coolers and the steam-line isolation that goes with them **are** built and auto-actuate on sourced containment-pressure setpoints — see **09** §3.0 — so a large break no longer only heats and pressurises; whether this specific TMI-2 path ever reaches the 30 psig actuation is not remeasured here |
 | **Fuel damage on the TMI path** | The damage latch is a **cladding** temperature of **2200 °F (1204.4 °C)** — 10 CFR 50.46 criterion 1, *"the calculated maximum fuel element cladding temperature shall not exceed 2200F"*. It is a clad limit, not a fuel one, and the fuel runs far hotter than the clad in normal operation. **1200 °F (648.9 °C)** is a third quantity — GEND-061's onset of significant hydrogen generation. On this ride none of the three is reached |
-| **A quench tank / pressurizer relief tank** | There is none (**12** §13.0). Relief and safety discharge go **directly to the containment atmosphere** (`engines/pwr2/pwr2_engine.js`), where a real plant fills a relief tank and bursts its rupture disc first |
-| **The condensate polisher** | No polisher model — the board's polisher status is behavioural, not a resin condition, so the historical initiator is narrated rather than injected. **Ruled, not merely observed** *(OWNER RULING, 2026-09-10: "All decisions as recommended", ratifying #693's option A)*: modelling it was costed against giving it a failure-registry row and a board command, and declined on player complexity rather than on fidelity. The walkthrough's step 2 is that narration |
+| **A quench tank / pressurizer relief tank** | There is none (**12** §13.0). Relief and safety discharge go **directly to the containment atmosphere**, where a real plant fills a relief tank and bursts its rupture disc first |
+| **The condensate polisher** | No polisher model — the board's polisher status is behavioural, not a resin condition, so the historical initiator is narrated rather than injected. Modelling it was costed against giving it a failure-registry row and a board command, and declined on player complexity rather than on fidelity. The walkthrough's step 2 is that narration |
 | **A partial injection throttle** | Injection is one **On / Off** control merging the high- and low-head pumps (**03** §11.0). TMI-2's crew shut two makeup valves, throttled two more and stopped one of three pumps. Here the same decision is all or nothing, which makes it a starker choice than the crew faced |
 | **Offsite release and dose** | No source term, no release model, no radiation monitors. The simulation ends at fuel damage (**12** §13.0) |
 
@@ -228,7 +228,7 @@ rather than asserted.
 on one continuous full-stack ride from Hot Full Power on 2026-09-08. To 15 minutes that ride and
 the engine-direct rides agree within 3 %; at 30 minutes within 3.4 %. **Past 50 minutes the
 figures are the shipped plant's alone** — the auxiliary-feed level-hold channel throttles feed
-there, which holds the primary near 1020 psia (7.033 MPa) instead of letting it fall, and it is
+there, which holds the primary near 1020 psi (7.033 MPa) instead of letting it fall, and it is
 the reason the accumulators never dump. Numbers past 30 minutes were taken on a scripted ride
 whose holds are not a player's route; treat them as the shape of the ride, not as step targets.
 

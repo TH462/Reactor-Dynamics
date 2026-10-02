@@ -30,6 +30,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — #818 UX persona review, packages A–E
+- **A — shell** (`4a7040e0`, `ebc58128`, `469543ed`, `c979e394`): restart confirm is a sentence with Restart plant / Cancel (no 6 s timer); the speed badge reads `actual N×`; a walkthrough raising the clock says so; the default boot plant no longer overwrites a stored walkthrough save; an engine BLOCKED refusal reads as a plain-words Blocked line; CSV headers carry board units. **Inject Failure tab is Free Play only** *(OWNER RULING, 2026-10-01: "Hide the inject failures tab unless in free play")*.
+- **B — manuals and site copy** (this entry): developer text out of the packed Read Me First (maintainer notes moved to `Manuals/ISSUES_AND_FINDINGS.md` §0, which is not packed); full-power subcooling 73.8 → 42.7 °F (23.7 °C); 03 §14.3 load-cut figures re-measured (100 → 80 MWe, rods untouched: power ~93.5 %, Tavg +10.4 °F (5.8 °C) over Tref, dump ~47 % open) and the ΔREF readout documented; 09 P-4 feedwater isolation 552.2 → 554.0 °F (290.0 °C) with its sources and the AFW departure; cooldown-rate two-filter meter (basis UNVERIFIED); `psia` → `psi` set-wide (65 sites, 4 rounding fixes); E09 renamed Small-break LOCA (cold leg); 02 matches the shipped menu, tabs and step card. Manual Rev 24 (pending). `about.html` (the control room opens the Main Menu; walkthroughs moved out of "Coming next") and `physics.html` (water properties are a correlation set, not IAPWS-95 steam tables).
+- **C — walkthrough card** (`9e0c4bdf`): Continue pinned (hidden on 34/69 steps at 1600×1000 before, 0 after); Background folded; hold-progress lines; `predicts_alarms` "predicted by step N" tags; Startup Part 2 step 10b at 10× *(the owner's R2 ruling, 2026-10-01: rod buttons stay momentary — paraphrase, no verbatim quote on file)*.
+- **D — plant** (`77561d51`, `68b73e31`): P-4 + low-Tavg feedwater isolation at 554 °F (290.0 °C), non-latching, starting both AFW pumps as a declared departure *(OWNER RULING, 2026-10-01: "R1:a")*; cooldown-rate meter needs a 30 s fast filter to agree (`rate_tau_fast`, [tune]); `tref` / `tavg_tref_dev` instruments, ΔREF on ROD CONTROL and on the trend list; accumulator unit psig → psi (absolute); failure label Small-break LOCA (cold leg), id `large_loca` kept.
+- **E — free-play instructor** (`afc62b52`, `2eddd160`, `c58b115c`): debrief after a trip or injected failure, one toast, Retry / Dismiss; failures that wait for a plant event show Armed / Fired.
+
 ## [Alpha 1.8.1] — 2026-10-01
 
 ### Added

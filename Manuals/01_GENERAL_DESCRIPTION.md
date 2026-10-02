@@ -4,7 +4,7 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Plant:** **SLS-100** (Single Loop Simulated, 100 MWe)
 **Rating:** ≈ 100 MWe / ≈ 300 MWt — a compact **single-loop experimental PWR** (one reactor coolant pump, one U-tube steam generator, one main steam line). Small and generously margined by design, and reactor trips are reserved for genuine limits. The steam dump is sized at **40 %** of rated steam flow, the prototypical Westinghouse capacity: a **50 % loss of load** is absorbed with no trip and no relief lift, and a larger rejection is ridden out by the reactor itself running back, with the PORV as the backstop.  
-**Revision:** 23  
+**Revision:** 24  
 
 ---
 
@@ -22,12 +22,12 @@ A **Pressurized Water Reactor** keeps primary coolant water under high pressure 
 |-----------|---------------------------|
 | Electrical output | ≈ **100 MWe** |
 | Primary pressure | **2235 psi (15.41 MPa)** |
-| Average coolant temperature (Tavg) | ≈ **579.2 °F (304 °C)** |
-| Hot leg / cold leg | ≈ 609.8 / 550.4 °F (321 / 288 °C) (ΔT ≈ 59.4 °F / 33 °C at rated) |
+| Average coolant temperature (Tavg) | ≈ **580.3 °F (304.6 °C)** — on its program, Tref 580.1 °F (304.5 °C) |
+| Hot leg / cold leg | ≈ 609.8 / 550.9 °F (321.0 / 288.3 °C) (ΔT ≈ 58.9 °F / 32.7 °C at rated) |
 | Pressurizer (PZR) level | ≈ **61.5 %** |
 | Steam Generator level | ≈ **65 %** |
-| Secondary steam pressure | ≈ **819 psi (5.65 MPa)** |
-| Subcooling margin | ≈ **73.8 °F** (41 °C) |
+| Secondary steam pressure | ≈ **827 psi (5.70 MPa)** |
+| Subcooling margin | ≈ **42.7 °F** (23.7 °C) — taken at the hot leg, the hottest water in the loop; the board reads about 44 °F |
 
 **Why high primary pressure?** Subcooling margin (how far the coolant is from boiling) is the plant’s guarantee that the primary stays liquid. Lose pressure or overheat the coolant, and boiling (voids) begins — the lesson behind Three Mile Island.
 
@@ -108,7 +108,7 @@ This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Po
 | **2** | **Mode 2, Startup** | Startup | Critical, power **≤ 5 %**, RCS hot | After approach to criticality **[sim]** |
 | **3** | **Mode 3, Hot Standby** | Hot Standby | Subcritical, RCS **hot** (Tavg ≥ 350.6 °F (177 °C)) | `hot_zero_power` **[sim]** |
 | **4** | **Mode 4, Hot Shutdown** | Hot Shutdown | Subcritical, Tavg **between** 199.4 °F (93 °C) and 350.6 °F (177 °C) | Heatup / cooldown transit **[sim]** |
-| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS **cold** (Tavg ≤ 199.4 °F (93 °C)) | `cold_shutdown` **[sim]** — 122 °F (50 °C), 363 psi (2.50 MPa), RHR in service. Restored 2026-08-31 (#524): the water-property floor moved to 0.29 psi (0.002 MPa), so the cold secondary is representable. |
+| **5** | **Mode 5, Cold Shutdown** | Cold Shutdown | Subcritical, RCS **cold** (Tavg ≤ 199.4 °F (93 °C)) | `cold_shutdown` **[sim]** — 122 °F (50 °C), 363 psi (2.50 MPa), RHR in service. |
 | **6** | **Mode 6, Refueling** | Refueling | Head detensioned / refueling | **Out of scope** |
 
 > **Modes 3/4/5 are decided by TEMPERATURE alone, not by pressure.** A subcritical plant at
@@ -119,9 +119,9 @@ This trainer uses **commercial PWR MODE numbers**. In prose, say **Mode 1, At Po
 **Full commercial paths** (see `05_MODE_TRANSITIONS.md`) — both run **on integrated physics**, end to end on the board:
 
 - **Mode 5, Cold Shutdown → Mode 1, At Power** — procedure **PWR-T20**, starting from the `cold_shutdown` initial condition (**09 §11.0**).  
-- **Mode 1, At Power → Mode 5, Cold Shutdown** — procedure **PWR-T21**, down to a cold, depressurized plant on RHR (#524, restored 2026-08-31).  
+- **Mode 1, At Power → Mode 5, Cold Shutdown** — procedure **PWR-T21**, down to a cold, depressurized plant on RHR.  
 
-**NOTE:** the heatup runs on **real plant rates** (#419 — ride the long legs at time acceleration); on the cooldown side the depressurisation rate remains deliberately compressed. See `12_SIM_PHYSICS.md` §14.
+**NOTE:** the heatup runs on **real plant rates** — ride the long legs at time acceleration; on the cooldown side the depressurisation rate remains deliberately compressed. See **12** §14.
 
 **Sim-only everyday path:** Mode 3, Hot Standby ↔ Mode 1, At Power (**PWR-T03** / **PWR-T04**).
 
@@ -174,12 +174,12 @@ These are **never** called Mode 1, At Power / Mode 5, Cold Shutdown.
 |-------|------------|--------------|
 | Rod banks | Multiple banks + overlap | One control + one shutdown |
 | RCS loops | Multi-loop with individual RCPs | Single lumped loop — and this plant genuinely *is* single-loop |
-| Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[sim]** on integrated physics — Free Play can start in **Mode 5, Cold Shutdown**; the full loop is **PWR-T20** / **PWR-T21**. Heatup pacing is real since #419 (ride at time acceleration); the cooldown depressurisation leg remains compressed. |
-| Containment / dose | Full models | Partly modeled. Containment **pressure, temperature and sump level** exist — the building receives break and relief discharge, and break flow throttles against its rising pressure; **hydrogen** is generated by the oxidizing core and tracked in the building. **Engineered safeguards are auto-only, sourced, and no longer absent** (#784): safety injection backs up on **3.5 psig (18.1 psia / 0.125 MPa)** containment pressure, and the high-high at **30 psig (44.7 psia / 0.308 MPa)** starts containment spray, realigns the fan coolers and shuts the main steam isolation valve — **no board controls, no player levers** (**09** §3.0, **12** §12.4d). What this plant still does **not** have: **no hydrogen recombiners and no hydrogen burn** — their capacities are in no document in the corpus, so none was invented (**12** §12.4e; the fields are published permanently false so the absence is machine-readable). **The building has a way down now, but a limited one**: spray and the fan coolers are AC loads and stay dark in a station blackout, so an unpowered plant's containment still only heats and pressurizes. Nothing past fuel damage: no source term, no release, no dose. Core **damage and melt are** simulated — cladding failure at **2192 °F (1200 °C)**, fuel melt at **5072 °F (2800 °C)** |
+| Cold ops (Mode 5 / Mode 4) | Multi-hour heatup/cooldown | **[sim]** on integrated physics — Free Play can start in **Mode 5, Cold Shutdown**; the full loop is **PWR-T20** / **PWR-T21**. Heatup pacing is real (ride at time acceleration); the cooldown depressurisation leg remains compressed. |
+| Containment / dose | Full models | Partly modeled. Containment **pressure, temperature and sump level** exist — the building receives break and relief discharge, and break flow throttles against its rising pressure; **hydrogen** is generated by the oxidizing core and tracked in the building. **Engineered safeguards are automatic only:** safety injection backs up on **3.5 psig (18.1 psi absolute / 0.125 MPa)** containment pressure, and the high-high at **30 psig (44.7 psi absolute / 0.308 MPa)** starts containment spray, realigns the fan coolers and shuts the main steam isolation valve — **no board controls, no player levers** (**09** §3.0, **12** §12.4d). What this plant still does **not** have: **no hydrogen recombiners and no hydrogen burn** — no source document gives their capacities, so none was invented (**12** §12.4e). **The building has a way down now, but a limited one**: spray and the fan coolers are AC loads and stay dark in a station blackout, so an unpowered plant's containment still only heats and pressurizes. Nothing past fuel damage: no source term, no release, no dose. Core **damage and melt are** simulated — cladding failure at **2192 °F (1200 °C)**, fuel melt at **5072 °F (2800 °C)** |
 | Instrument channels | Redundant trains | Single sensors (can fail) — so instrument failures bite *harder* here than in a voting plant |
 | Point kinetics | Spatial power shape | Point model (lumped) |
 | Decay heat | Detailed groups | Two-term model (~7 % at scram after power run) |
-| Natural circulation | Buoyancy-driven flow on pump loss | **Modeled** (#325) — the steam generators sit above the core, so the hot/cold density difference drives flow when the RCPs stop. Flow follows the cube root of core heat and is **gated on a liquid-filled loop**: a voided loop circulates nothing. Magnitude is fitted to this plant, not to a published figure |
+| Natural circulation | Buoyancy-driven flow on pump loss | **Modeled** — the steam generators sit above the core, so the hot/cold density difference drives flow when the RCPs stop. Flow follows the cube root of core heat and is **gated on a liquid-filled loop**: a voided loop circulates nothing. Magnitude is fitted to this plant, not to a published figure |
 
 Where the model understates reality, training commentary and these manuals say so.
 

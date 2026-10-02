@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 23  
+**Revision:** 24  
 
 ---
 
@@ -21,9 +21,7 @@ Provide step-by-step instructions to launch the simulator, navigate the human-ma
 
 ### 2.2 Launch
 
-1. Open `index.html` in the project root, **or** serve the folder with a static server:
-   - `npx serve .`
-   - `python -m http.server` / `python3 -m http.server`
+1. From the home page, open the **PWR** control room — or open the offline download, a single HTML file that runs with no internet connection.
 2. Confirm the board fills the plant area with its **vital-parameter tiles** across the top, and that the right column shows the Instructor, the tool tabs, and the System Scanner.
 3. The Main Menu opens on every load. If it is closed, press **Main Menu** in the tools row; the plant is the Pressurized Water Reactor.
 
@@ -34,7 +32,7 @@ Provide step-by-step instructions to launch the simulator, navigate the human-ma
 | 1 | Press **Main Menu** in the tools row (it also opens on every load) |
 | 2 | Click **Free Play** |
 | 3 | Select the starting condition (or pick **Walkthroughs** or **Lessons** for a guided session) |
-| 4 | Starting conditions: **Hot Full Power**, **50 % Power**, **Hot Standby** (Mode 3), **Hot Shutdown** (Mode 4), or **Cold Shutdown** (Mode 5) |
+| 4 | Starting conditions: **Hot Full Power** (Mode 1), **50 % Power** (Mode 1), **At Power — power ascension** (Mode 1), **Hot Standby** (Mode 3), or **Cold Shutdown** (Mode 5) |
 | 5 | Press **Play** if paused; set speed **1×** until familiar |
 
 ---
@@ -142,7 +140,7 @@ something you did *not* choose to look at.
 |---------|--------|
 | **Play / Pause** | Start or freeze simulated time (diagram freezes when paused) |
 | **Speed** | Two tiers. **PLAY: 1×, 5×, 10×, 60×** — the full physics at its 0.02 s step, identical at every rung. **WARP: 600×, 3600×** — the same physics at a coarser 0.5 s step, for the long quiet evolutions: xenon, decay heat, boron, a heatup or cooldown |
-| **Achieved rate** | The readout beside the buttons shows the plant-time actually passing per second of wall clock. Green: keeping up with the request. Amber: behind it — the physics cannot finish the request in its share of a broadcast, which at 3600× is the ordinary state of most machines. Red: the page itself is stalling |
+| **Achieved rate** | The badge beside the buttons reads **actual N×** — the plant-time actually passing per second of wall clock. Green: keeping up with the request. Amber: behind it — the physics cannot keep up with the request, which at 3600× is the ordinary state of most machines. Red: the page itself is stalling |
 | **NOTE** | On PLAY the physics timestep stays 0.02 s and acceleration runs more steps per wall-clock second. On WARP the step is 0.5 s: over a sim hour every channel stays inside its own instrument noise of the 0.02 s plant (see **12** §2.1), and the buttons are **dark while the plant is in a transient** — WARP is refused then, and lets go on its own |
 
 **CAUTION:** High speed during approach to criticality or load rejection can leave you behind the plant. Use 1×–10× for startups and transients until proficient.
@@ -156,7 +154,7 @@ it is unavailable lands you at 60× with the same toast. A mission's own fast-fo
 WARP.
 
 **The plant can hold the clock.** Where the plant needs you and cannot let you skip past — today
-the accumulator arming window on a heatup, from the **665 psia (4.585 MPa)** cover gas until the
+the accumulator arming window on a heatup, from the **665 psi (4.585 MPa)** cover gas until the
 accumulator valve is open — the clock drops to **1×** and every speed button above it is refused,
 with the reason in the scanner bar under the board. Opening the valve releases it. This hold
 ignores the fast-forward dropout setting, because the point of it is that the window cannot be
@@ -170,7 +168,8 @@ thumb, because a rod step has to land while you can still read the rate — and 
 everything else. It also comes back down to
 **1×** the moment the step's
 check-off criterion is met, so a fast-forward cannot run the plant past the thing the next step is
-about. You keep the bar: any rung you press stands for the rest of that step, and the walkthrough
+about. When it raises the clock for a long wait, the line under the speed buttons says so —
+*Speeding up to N× — nothing to do for a while.* You keep the bar: any rung you press stands for the rest of that step, and the walkthrough
 takes the clock again at the next one. The step's own rung stays marked on the strip throughout,
 and pulses only while the plant is not on it.
 
@@ -230,14 +229,15 @@ the plant paused until you close it or start something.
    its starting and ending Mode; the next one to do is tagged **NEXT**); for Free Play, the
    starting condition and **Start Free Play**.
 
-Once the plant has run, every **Start** button asks for a second press before it replaces the
-plant you have.
+Once the plant has run, every **Start** (and **Reset**) asks before it replaces the plant you
+have: a line reads *This restarts the plant. Your current plant will be lost.* with **Restart
+plant** and **Cancel** beside it. Nothing happens until you press one.
 
 ### 5.2 Free Play vs training
 
 | Mode | Use |
 |------|-----|
-| **Free Play** | Operator-driven; inject failures from the **Inject Failure** tab; practice procedures |
+| **Free Play** | Operator-driven; inject failures from the **Inject Failure** tab, which appears only in Free Play; the Instructor debriefs you after a trip or failure (§8.2) |
 | **Walkthroughs** | Step-graded Startup and Shutdown parts, run from authored procedures |
 | **Lessons** | Short guided sessions with the Instructor (the full-power opener) |
 
@@ -248,14 +248,12 @@ Campaign missions and Scenarios are not offered in the Main Menu.
 | State ID | Label | Plant MODE | Board meaning |
 |----------|-------|------------|---------------|
 | `hot_full_power` | Hot Full Power | **Mode 1, At Power** | Critical ~100 %, ~100 MWe |
-| `50_percent` | 50 % Power | **Mode 1, At Power** | Critical mid-power (> 5 %) |
+| `50_percent` | 50 % Power | **Mode 1, At Power** | Critical, 50 % power, 50 MWe |
+| `low_power` | At Power — power ascension | **Mode 1, At Power** | Critical, about **10 %** power and **10 MWe** — the hand-off point between the startup and the power ascension |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
-| `hot_shutdown` | Hot Shutdown | **Mode 4, Hot Shutdown** | Subcritical, RCS **250 °F (121.1 °C) / 369 psi (2.545 MPa)** settled, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, PZR level 25 % |
 | `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS **122 °F (50 °C) / 363 psi (2.50 MPa)**, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, boron 918 ppm — the SG secondary rides at its own saturation, **1.8 psi (0.0127 MPa)** |
 
-> **THE COLD END IS MODE 5 (#524, landed 2026-08-31).** The water-property floor moved from 14.5 psi (0.1 MPa) to **0.29 psi (0.002 MPa)**, so a steam generator at or below Mode 5's **200 °F (93.3 °C)** boundary is representable and `cold_shutdown` loads. Take the plant up with **PWR-T20**, or run **PWR-T21** down from power — both run end to end on integrated physics again.
-
-**NOTE:** `5_percent` is the retired engine's initial condition. This engine **refuses it by name** — the picker's five states are the whole list.
+The cold end is **Mode 5, Cold Shutdown**. Take the plant up with **PWR-T20**, or run **PWR-T21** down from power; both run end to end. These five states are the whole list — there is no Mode 4, Hot Shutdown start; you pass through Mode 4 on the way.
 
 ---
 
@@ -285,8 +283,9 @@ tell. Run the **TMI-2 module** (campaign Act V, missions 27–29) to practise it
 
 ## 7.0 Tools tabs
 
-**There are five:** **Operate · Inject Failure · Graph · Physics · Settings.** Plant automation
-is not among them — it lives on the board (§7.3).
+The side panel's tabs are **Instructor** and **Indications**, plus **Inject Failure** in Free Play
+only — it is hidden while a walkthrough, lesson or mission runs. Settings, Help and Feedback sit
+in the top bar. Plant automation is not a tab — it lives on the board (§7.3).
 
 ### 7.1 Operate
 
@@ -297,11 +296,18 @@ is not among them — it lives on the board (§7.3).
 
 ### 7.2 Inject Failure
 
-- Browse injectable failures by category (coolant, power, safety, reactivity, instrument).
+**Free Play only.** The tab is hidden during walkthroughs, lessons and missions.
+
+- Browse injectable failures by category (coolant, power, safety, reactivity, instrument); each
+  carries a one-line description.
 - Inject / clear failures for drills.
 - Severity sliders where provided (SGTR leak rate, LOCA size, rod runaway rate, etc.).
+- **Armed / Fired.** Some failures wait for a plant event before they act — a PORV that sticks
+  on its next lift, a failure to scram, continuous rod withdrawal, a degraded injection or
+  auxiliary-feed failure. Injected, they read **Armed — …** until the event comes, then
+  **Fired — …**.
 
-See `07_ABNORMAL_EMERGENCY.md` for response procedures per failure.
+See **07** for the response procedure for each failure.
 
 ### 7.3 Plant automation (board AUTO controls — not a tab)
 
@@ -427,13 +433,20 @@ During missions:
 
 **NOTE:** Rewind restores a checkpoint; use it after a failed recovery or softlock.
 
+**In Free Play** the Instructor does not direct you, but after a **reactor trip** or an **injected
+failure** it writes a **debrief** in the Instructor tab, read off the instruments and alarms: what
+the board says happened (the trip and its recorded cause, the first alarms), the automatic actions
+with their times, five key readings and which way they are going, and whether the plant has held
+steady or is still changing. A toast points you at it. **Retry** rewinds the plant to the last checkpoint
+before the event — for a failure you injected or a trip you made by hand, that is the instant
+before it; **Dismiss** closes the debrief.
+
 ### 8.3 Walkthroughs and their prerequisite banner
 
-Any non-narrative procedure can be run as a **walkthrough** — a live, self-checking
-procedure against the plant. The **Walkthroughs** tab lists them; the Main Menu's Walkthroughs category lists
-the operating cycle as *Startup Part 1–3* and *Shutdown Part 1–3*, and its **Start** button loads the
-procedure's own starting condition first. The 📋
-button on a procedure card in the manual runs one against the plant as it sits. A running
+A **walkthrough** is a live, self-checking procedure run against the plant. Start one from the
+**Main Menu → Walkthroughs**, which lists the operating cycle as *Startup Part 1–3* and *Shutdown
+Part 1–3*; its **Start** button loads the procedure's own starting condition first. Lessons start
+the same way, from **Main Menu → Lessons**. A running
 walkthrough is drawn in the **Instructor** tab **one step at a time**, headed *Step X of N*, with
 the step's details open. Steps check themselves off the instruments while you operate; nothing
 is reset by starting one and no command is ever blocked. Every step waits for **Continue**,
@@ -469,9 +482,14 @@ underneath it:
 | Check-off criterion | The indication the step is graded on, in blue; it turns green when met. |
 | **Use …** | The board control this step drives, and the value to drive it to. |
 | ⏩ wait line | Roughly how long the step takes **in plant time**, and what the clock is doing about it — the walkthrough sets the rung itself, and the line reads *set the speed control to N×* only when you have taken the bar back (§4.1). |
-| **Continue ▶** | On every step. Dark until the instruments satisfy the step, lit when they do — press it to move on. |
-| **⏪ Rewind step** | Takes the plant and the walkthrough back to the start of the previous step. Off on the first step. |
-| Details | The step's reasoning, cautions and any extra notes — always open on the step you are on. |
+| Hold progress | On a step that needs the plant to stay put for a while, a line counts it — *Averaging… 13 of 30 plant-seconds* — and says when a disturbance restarted the count. |
+| **Continue ▶** | On every step, and pinned to the bottom of the card so it never scrolls out of sight; a fade above it means there is more text to scroll. Dark until the instruments satisfy the step, lit when they do — press it to move on. |
+| **⏪ Rewind step** | Beside Continue. Takes the plant and the walkthrough back to the start of the previous step. Off on the first step. |
+| **Background** | The step's reasoning, cautions and extra notes, folded shut when you arrive at the step. One click opens it; it stays open until you move to the next step. |
+
+When a step's text tells you an alarm is expected, that alarm's tile carries a small **predicted by
+step N** tag while the step is active. The alarm is still real — the tag tells you it is the one
+the procedure expected.
 
 The wait line appears on steps that hold three plant-minutes or longer, and the walkthrough
 presses that rung itself (§4.1). The suggested rung is
@@ -519,15 +537,15 @@ machine actually achieves is shown beside the speed buttons.
 |--------|------|
 | **Save** | Before risky free-play experiments |
 | **Load** | Restore a saved JSON state |
-| **Reset** | Return to selected initial condition |
+| **Reset** | Return to selected initial condition (asks you to confirm: **Restart plant** / **Cancel**) |
 | **Rewind** | Mission checkpoint restore after failure |
-| **Clear failures** | **Inject Failure** tab — end a drill without a full reset |
+| **Clear failures** | **Inject Failure** tab (Free Play) — end a drill without a full reset |
 
 ---
 
 ## 12.0 Training campaign overview (optional path)
 
-Campaign **“Zero to Operator”** (six acts, **34 missions** plus one bonus) takes a novice from board familiarization through TMI and a senior operator exam. Recommended order is the campaign list; Free Play is always available. The mission-by-mission map, with the procedure each one exercises, is `11_CAMPAIGN_CROSSWALK.md`.
+Campaign **“Zero to Operator”** (six acts, **34 missions** plus one bonus) takes a novice from board familiarization through TMI and a senior operator exam. Recommended order is the campaign list; Free Play is always available. The mission-by-mission map, with the procedure each one exercises, is chapter **11**.
 
 | Act | Missions | Theme |
 |-----|----------|-------|
@@ -538,7 +556,6 @@ Campaign **“Zero to Operator”** (six acts, **34 missions** plus one bonus) t
 | V | 3 | Three Mile Island — the TMI-2 module (Parts 1–3) |
 | VI | 2 | The Reckoning — compressed TMI + qualification exam |
 
-Details: `Blueprint/pwr_training_campaign.md` (design) and the Main Menu (runtime).
 
 ---
 
@@ -547,4 +564,3 @@ Details: `Blueprint/pwr_training_campaign.md` (design) and the Main Menu (runtim
 - `01_GENERAL_DESCRIPTION.md`  
 - `03_CONTROLS_AND_INDICATIONS.md`  
 - `04_NORMAL_OPERATIONS.md`  
-- `ISSUES_AND_FINDINGS.md`  

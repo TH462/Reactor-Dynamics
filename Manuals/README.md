@@ -3,9 +3,8 @@
 **Plant:** Pressurized Water Reactor (PWR)  
 **Trainer:** Reactor⚛️Dynamics educational plant simulator  
 **Document set:** Commercial-style operating manuals for training use  
-**Revision:** 23  
-**Date:** 2026-10-01  
-**Date:** 2026-07-30  
+**Revision:** 24  
+**Date:** 2026-10-02  
 
 ---
 
@@ -16,35 +15,32 @@ This folder contains the **operator’s manuals** for the PWR unit of Reactor⚛
 They cover:
 
 1. How to **use the simulator** (HMI, plant MODES, missions, tools).
-2. How to **operate the plant** (every control, normal evolutions, **Mode 1, At Power** through **Mode 5, Cold Shutdown** transitions — Mode 5 restored 2026-08-31, #524).
+2. How to **operate the plant** (every control, normal evolutions, **Mode 1, At Power** through **Mode 5, Cold Shutdown** transitions).
 3. How to **respond** to alarms, upsets, and accidents (including Three Mile Island).
 
 **Primary operator paths:** take the plant **Mode 4, Hot Shutdown → Mode 1, At Power** and **Mode 1, At Power → Mode 5, Cold Shutdown** (power operation to cold shutdown). See `05_MODE_TRANSITIONS.md` procedures **PWR-T20** and **PWR-T21**.
 
-These manuals are training documentation derived from `Blueprint/` design specs, the as-built engines/control layer, and the validated procedure data (`ui/manual_procedures.js`). **They are the PWR operator's manual** — the in-app Manual renders these same files (packed by `tools/pack_manuals.js`), so an edit here is an edit to the product. They are **not** licensing basis documents for a real nuclear plant.
+These manuals are written from the simulator as it is built, and they are the operator's manual for this plant: the in-app Manual shows exactly this text. They are training documents, **not** licensing basis documents for a real nuclear plant.
 
 ---
 
 ## Document map
 
-| File | Title | Use when… |
-|------|--------|-----------|
-| [`00_REVISION_HISTORY.md`](00_REVISION_HISTORY.md) | Revision history | Checking document status |
-| [`01_GENERAL_DESCRIPTION.md`](01_GENERAL_DESCRIPTION.md) | Plant general description | Learning what a PWR is and how this plant is modeled |
-| [`02_SIMULATOR_USER_GUIDE.md`](02_SIMULATOR_USER_GUIDE.md) | Simulator user guide | Starting the trainer, UI layout, free play vs missions |
-| [`03_CONTROLS_AND_INDICATIONS.md`](03_CONTROLS_AND_INDICATIONS.md) | Controls & indications | Operating any individual control or reading any gauge |
-| [`04_NORMAL_OPERATIONS.md`](04_NORMAL_OPERATIONS.md) | Normal operating procedures | Startup, power ops, shutdown, system control procedures |
-| [`05_MODE_TRANSITIONS.md`](05_MODE_TRANSITIONS.md) | MODE transition procedures | Mode 5, Cold Shutdown↔Mode 1, At Power, Mode 3, Hot Standby↔Mode 1, At Power, load/AUTO |
-| [`06_ALARM_RESPONSE.md`](06_ALARM_RESPONSE.md) | Alarm response procedures | Responding to each annunciator |
-| [`07_ABNORMAL_EMERGENCY.md`](07_ABNORMAL_EMERGENCY.md) | Abnormal & emergency procedures | Managing every modeled failure |
-| [`08_ACCIDENT_TMI.md`](08_ACCIDENT_TMI.md) | Accident study — TMI-2 | Studying the 1979 accident of information |
-| [`09_SETPOINTS_LIMITS.md`](09_SETPOINTS_LIMITS.md) | Setpoints & limits | Looking up trips, actuations, alarms, normal values |
-| [`10_GLOSSARY.md`](10_GLOSSARY.md) | Glossary | Looking up acronyms and terms |
-| [`11_CAMPAIGN_CROSSWALK.md`](11_CAMPAIGN_CROSSWALK.md) | Campaign ↔ manuals map | Matching missions to N/T/E procedures |
-| [`12_SIM_PHYSICS.md`](12_SIM_PHYSICS.md) | Simulation physics & model scope | Asking what the sim actually computes, what it simplifies, and what it does not model at all |
-| [`CAMPAIGN_MODE_ALIGNMENT_SPEC.md`](CAMPAIGN_MODE_ALIGNMENT_SPEC.md) | Campaign change spec | What to change in campaign code (not done yet) |
-| [`CAMPAIGN_MANUAL_DISCREPANCIES.md`](CAMPAIGN_MANUAL_DISCREPANCIES.md) | Discrepancies log | Manuals vs campaign gaps |
-| [`ISSUES_AND_FINDINGS.md`](ISSUES_AND_FINDINGS.md) | Issues & findings log | Known sim/doc/code gaps found while writing these manuals |
+| Chapter | Use when… |
+|---------|-----------|
+| [01 · Plant general description](01_GENERAL_DESCRIPTION.md) | Learning what a PWR is and how this plant is modeled |
+| [02 · Simulator user guide](02_SIMULATOR_USER_GUIDE.md) | Starting the trainer, the board layout, Free Play, Walkthroughs and Lessons |
+| [03 · Controls & indications](03_CONTROLS_AND_INDICATIONS.md) | Operating any individual control or reading any gauge |
+| [04 · Normal operating procedures](04_NORMAL_OPERATIONS.md) | Startup, power operation, shutdown, system control procedures |
+| [05 · Mode transition procedures](05_MODE_TRANSITIONS.md) | Mode 5, Cold Shutdown ↔ Mode 1, At Power; Mode 3, Hot Standby ↔ Mode 1, At Power; load changes |
+| [06 · Alarm response procedures](06_ALARM_RESPONSE.md) | Responding to each annunciator |
+| [07 · Abnormal & emergency procedures](07_ABNORMAL_EMERGENCY.md) | Managing every failure you can inject |
+| [08 · Accident study — TMI-2](08_ACCIDENT_TMI.md) | Studying the 1979 accident |
+| [09 · Setpoints & limits](09_SETPOINTS_LIMITS.md) | Looking up trips, actuations, alarms, normal values |
+| [10 · Glossary](10_GLOSSARY.md) | Looking up acronyms and terms |
+| [11 · Campaign ↔ manuals map](11_CAMPAIGN_CROSSWALK.md) | Matching missions to procedures |
+| [12 · Simulation physics & model scope](12_SIM_PHYSICS.md) | Asking what the sim actually computes, what it simplifies, and what it does not model at all |
+| [Revision history](00_REVISION_HISTORY.md) | Checking what changed in the manual set |
 
 ---
 
@@ -81,12 +77,12 @@ These manuals are training documentation derived from `Blueprint/` design specs,
 | **2** | **Mode 2, Startup** | Critical, power **≤ 5 %**, RCS hot | [sim] |
 | **3** | **Mode 3, Hot Standby** | Subcritical, RCS hot | [sim] |
 | **4** | **Mode 4, Hot Shutdown** | Subcritical, intermediate T | [sim] |
-| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | [sim] — `cold_shutdown` (#524, restored 2026-08-31) |
+| **5** | **Mode 5, Cold Shutdown** | Subcritical, cold | [sim] |
 | **6** | **Mode 6, Refueling** | Head detensioned / refueling | Out of scope |
 
 Do **not** confuse plant MODES with **turbine load modes** (Follow / Manual / Disconnected).
 
-**Campaign alignment:** the live “Zero to Operator” campaign does not yet use this naming or Mode 5 path. Required code changes are specified in [`CAMPAIGN_MODE_ALIGNMENT_SPEC.md`](CAMPAIGN_MODE_ALIGNMENT_SPEC.md). Mission ↔ procedure map: [`11_CAMPAIGN_CROSSWALK.md`](11_CAMPAIGN_CROSSWALK.md).
+Mission ↔ procedure map: [11 · Campaign ↔ manuals map](11_CAMPAIGN_CROSSWALK.md).
 
 ### Units
 
@@ -94,21 +90,17 @@ Do **not** confuse plant MODES with **turbine load modes** (Follow / Manual / Di
 
 | Quantity | US | SI | Conversion |
 |----------|----|----|------------|
-| Pressure | **psi** (absolute) | MPa | × 145.038, whole psi |
+| Pressure | **psi** — always absolute | MPa | × 145.038, whole psi |
 | Temperature | **°F** | °C | × 9/5 + 32, 1 dp |
 | Temperature **difference** | **°F** | °C | **× 9/5, no offset** — 1 dp |
 | Condenser vacuum | **inHg** | kPa | × 0.2953, 1 dp |
 | Level, power, flow | % / normalized — no conversion | | |
 
-**The difference row is not a footnote.** Subcooling margin, leg ΔT, DNB margin, control deadbands and cooldown *rates* are temperature **differences**: a subcooling margin of **73.8 °F** (41 °C) is what a healthy plant shows — applying the absolute rule instead would print 105.8 °F and make a thin margin look comfortable. Both forms appear in these manuals and both are checked mechanically — see below.
+**Every pressure is absolute.** The board and these manuals write **psi** and mean absolute pressure — the accumulator nitrogen, the containment and the steam generator included. A real plant's gauges mostly read **psig**, about 14.7 psi lower; where a manual quotes a real-plant document's number it keeps that document's **psig** and says so.
+
+**The difference row is not a footnote.** Subcooling margin, leg ΔT, DNB margin, control deadbands and cooldown *rates* are temperature **differences**: this plant at full power carries a subcooling margin of about **42.7 °F** (23.7 °C) — applying the absolute rule instead would print **74.7 °F** and make a thin margin look comfortable.
 
 Reactivity (pcm, Δk/k), startup rate (DPM), counts (cps), currents (A) and time have no US/SI distinction and are quoted once.
-
-**Every US (SI) pair is verified by `node test/run_manual_units.js`**, which re-derives the US value from the SI value and fails on any arithmetic error, any missing partner, and any temperature *difference* converted with the absolute rule. If you edit a number here, run it.
-
-**The convention is not just the manual's — it is the operator's, so it holds wherever the plant quotes a number to the player.** The same gate enforces it in the **live walkthrough and procedure steps** (`ui/manual_procedures.js`) and the **System Scanner's inspection copy** (`ui/diagram/board/pwr_board_inspect.js`): a step target reads *1194 psi (8.23 MPa)*, the PORV entry reads *2350 psi (16.20 MPa)*, the rod-AUTO deadband reads *±1.4 °F (±0.8 °C)*.
-
-Two things stay SI, deliberately: **engine command payloads** (`cmd: { mpa: 8.23 }` is an argument, not a reading) and **developer comments** in those source files.
 
 ### Instruments vs truth
 
@@ -116,7 +108,7 @@ Two things stay SI, deliberately: **engine command payloads** (`cmd: { mpa: 8.23
 
 ### Control names
 
-Controls are named by their **on-screen labels**, not internal command IDs. Internal commands appear only in appendix notes for developers/instructors.
+Controls are named by their **on-screen labels**. Internal command names appear only in the command cross-reference at the end of chapter 03.
 
 ---
 
@@ -124,36 +116,35 @@ Controls are named by their **on-screen labels**, not internal command IDs. Inte
 
 **New operator (first session)**
 
-1. `02_SIMULATOR_USER_GUIDE.md` — get the board running  
-2. `01_GENERAL_DESCRIPTION.md` — plant + **Modes 1–6** naming  
+1. **02** Simulator user guide — get the board running  
+2. **01** Plant general description — the plant and the **Mode 1–6** naming  
+3. **03** Controls & indications (skim)  
+4. **05** Mode transitions — **PWR-T20** (Mode 5, Cold Shutdown → Mode 1, At Power) and **PWR-T03** (Mode 3, Hot Standby → Mode 1, At Power)  
+5. **04** Normal operations — N01–N02, N04–N06, N14  
 
-3. `03_CONTROLS_AND_INDICATIONS.md` (skim)  
-4. `05_MODE_TRANSITIONS.md` — **PWR-T20** (Mode 5, Cold Shutdown → Mode 1, At Power) and **PWR-T03** (Mode 3, Hot Standby → Mode 1, At Power on the sim)  
-5. `04_NORMAL_OPERATIONS.md` — N01–N02, N04–N06, N14  
+**Mode 5, Cold Shutdown → Mode 1, At Power → Mode 5, Cold Shutdown (the full story)**
 
-**Mode 5, Cold Shutdown → Mode 1, At Power → Mode 5, Cold Shutdown (full commercial story)**
-
-1. `05` §3.0 **PWR-T20** (Mode 5, Cold Shutdown → Mode 1, At Power)  
-2. Operate in Mode 1, At Power (`04` power procedures)  
-3. `05` §4.0 **PWR-T21** (Mode 1, At Power → Mode 5, Cold Shutdown)  
+1. **05** §3.0 **PWR-T20** (Mode 5, Cold Shutdown → Mode 1, At Power)  
+2. Operate in Mode 1, At Power (**04** power procedures)  
+3. **05** §4.0 **PWR-T21** (Mode 1, At Power → Mode 5, Cold Shutdown)  
 
 **Before free-play power maneuvers (Mode 1, At Power)**
 
-- `03` (turbine load modes, feed, rods, CVCS)  
-- `04` power raise/lower, boron/xenon  
-- `09` setpoints  
+- **03** (turbine load modes, feed, rods, CVCS)  
+- **04** power raise/lower, boron  
+- **09** setpoints  
 
 **Before failure drills (typically Mode 1, At Power)**
 
-- `06` alarm philosophy  
-- `07` matching failure  
-- `08` if running TMI  
+- **06** alarm philosophy  
+- **07** the matching failure  
+- **08** if running TMI  
 
 ---
 
-## Relationship to in-product manuals
+## Where the numbers come from
 
-The live simulator also has an on-screen **Operator’s Manual** (`M` key / 📖 button) built from generated reference data and validated procedures. This `Manuals/` set is the **external, commercial-format** training library: broader narrative, mode transitions, full failure set, and commercial procedure formatting. Where numbers disagree, prefer engine/config values and note the discrepancy in `ISSUES_AND_FINDINGS.md`.
+Every number in this set is meant to match the simulator. Where a manual and the board disagree, the board is right and the manual is stale: tell us with **Feedback** in the top bar.
 
 ---
 
@@ -161,9 +152,9 @@ The live simulator also has an on-screen **Operator’s Manual** (`M` key / 📖
 
 | In scope | Out of scope / narrative only |
 |----------|-------------------------------|
-| Hot Standby and at-power operations | Cold shutdown heatup/cooldown *rates* |
-| Reactivity, pressure, level, feed, turbine | Multi-loop individual RCS loops (lumped model) |
-| All modeled failures and TMI, containment response and the hydrogen burn | Offsite dose / source-term / release models |
+| Mode 5, Cold Shutdown through full power, and back | Mode 6, Refueling |
+| Reactivity, pressure, level, feed, turbine | More than one reactor coolant loop (this plant has one) |
+| Every injectable failure, TMI, and the containment response | Offsite dose / source-term / release models |
 | ESF auto arms, RPS trips | Real-plant Tech Specs / licensing |
 
 This is an **educational lumped-parameter plant**, not a full-scope replica of a licensed US PWR.
