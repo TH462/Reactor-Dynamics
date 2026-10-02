@@ -2552,7 +2552,7 @@ var BASELINES = {
   // reds 14 against that committed file). 148 = 49 instruments × both directions + the
   // 49 name scans + the non-empty check; the count moves with the instrument set, and
   // updating it here is the acknowledgement.
-  'verify_manual_data.js':   { code: 0, score: '151checks 0failed' },   // 148 -> 151 (#386 stage 3): the ctmt_h2 analyzer joins the picker — the gate landed hours before the instrument and enforced its display entry, which is the sequencing it exists for
+  'verify_manual_data.js':   { code: 0, score: '157checks 0failed' },   // 151 -> 157 MEASURED (2026-10-02, #818): +6, three per-indication checks for the two new channels tref and tavg_tref_dev. // 148 -> 151 (#386 stage 3): the ctmt_h2 analyzer joins the picker — the gate landed hours before the instrument and enforced its display entry, which is the sequencing it exists for
 };
 
 /* Runners that write reports into Diagnostic/ as a side effect — an aggregate run

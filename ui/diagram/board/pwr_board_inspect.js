@@ -995,10 +995,9 @@
       'carries the plant after a turbine trip, and lowering its setpoint is how you cool the primary ' +
       'through the steam generator on a controlled cooldown.', CI, '12.3'),
     imrppqg6mcc: e('AUTO (steam dump)',
-      'Picks its mode when pressed, and the status line shows which: with the turbine tripped, STM ' +
-      'PRESS (the dump holds Steam Generator (SG) pressure at the dump setpoint); with the turbine ' +
-      'on line, TAVG (the dump opens only if the coolant runs hot). Press it again once the turbine ' +
-      'is on line to switch.',
+      'Picks the dump mode when pressed: STM PRESS with the turbine tripped, TAVG with it on line.',
+      'STM PRESS holds Steam Generator (SG) pressure at the dump setpoint; TAVG opens the dump only if the ' +
+      'coolant runs hot. The status line shows which. Press it again once the turbine is on line to switch. ' +
       'At power the generator sits about 825 psi (5.69 MPa) against a setpoint near 1020 psi (7.03 MPa), which is why the ' +
       'dump is shut: there is nothing to relieve. Drop the setpoint below actual pressure and it ' +
       'opens. A lowered setpoint is a target: the dump walks the pressure it holds down to it at ' +

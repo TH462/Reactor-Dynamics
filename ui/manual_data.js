@@ -621,8 +621,37 @@
           "boolean": false,
           "alarms": [
             "pzr_level_low",
-            "pzr_level_dev_low"
+            "pzr_level_dev_low",
+            "pzr_level_dev_high"
           ]
+        },
+        {
+          "id": "tavg_tref_dev",
+          "name": "Tavg − Tref (ΔREF)",
+          "measures": "Indicated Tavg minus its program. Zero is on program; positive means the coolant is hotter than the load calls for, which is what the steam dump and your rod moves act on. A failed Tavg transmitter moves it.",
+          "unit": "°C",
+          "range": [
+            -60,
+            60
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
+        },
+        {
+          "id": "tref",
+          "name": "Tref (Tavg Program)",
+          "measures": "The average coolant temperature the plant is programmed to hold at the present turbine load: 547 °F with no load, rising to 580 °F at full load. Not a sensor — it follows the load.",
+          "unit": "°C",
+          "range": [
+            250,
+            350
+          ],
+          "lag_s": 0,
+          "derived": false,
+          "boolean": false,
+          "alarms": []
         },
         {
           "id": "rod_limit_margin",
@@ -643,7 +672,7 @@
         {
           "id": "tavg_rate",
           "name": "Heatup/Cooldown Rate",
-          "measures": "Rate of change of indicated Tavg, damped to the hourly scale the Tech-Spec-class 100 °F/hr limit is written in. Quiet through a normal post-trip settle; a genuine overcooling transient crosses the alarm within a minute.",
+          "measures": "Rate of change of indicated Tavg, damped to the hourly scale the Tech-Spec-class 100 °F/hr limit is written in. After a trip from full power it reads past the alarm for about three minutes while the coolant really does cool fast; a sustained overcooling holds it there.",
           "unit": "°C/hr",
           "range": [
             -300,
@@ -1799,7 +1828,7 @@
         "accumulator_volume_pct": "Accumulator volume",
         "rhr_active": "Residual Heat Removal (RHR) aligned (hot-leg suction valve open)",
         "rhr_valve_open": "RHR hot-leg suction valve open (interlocked < 400 psi)",
-        "eccs_mode": "ECCS mode — HPI, LPI, RHR, or off",
+        "eccs_mode": "ECCS mode — standby, armed (actuated, above the pump shutoff heads so no flow), HHSI, LHSI, both, or RHR",
         "void_fraction_avg": "Core void fraction",
         "drum_level_pct": "Steam drum level",
         "channel_flow_pct": "Channel flow",
@@ -2877,7 +2906,7 @@
         "accumulator_volume_pct": "Accumulator volume",
         "rhr_active": "Residual Heat Removal (RHR) aligned (hot-leg suction valve open)",
         "rhr_valve_open": "RHR hot-leg suction valve open (interlocked < 400 psi)",
-        "eccs_mode": "ECCS mode — HPI, LPI, RHR, or off",
+        "eccs_mode": "ECCS mode — standby, armed (actuated, above the pump shutoff heads so no flow), HHSI, LHSI, both, or RHR",
         "void_fraction_avg": "Core void fraction",
         "drum_level_pct": "Steam drum level",
         "channel_flow_pct": "Channel flow",
@@ -4011,7 +4040,7 @@
         "accumulator_volume_pct": "Accumulator volume",
         "rhr_active": "Residual Heat Removal (RHR) aligned (hot-leg suction valve open)",
         "rhr_valve_open": "RHR hot-leg suction valve open (interlocked < 400 psi)",
-        "eccs_mode": "ECCS mode — HPI, LPI, RHR, or off",
+        "eccs_mode": "ECCS mode — standby, armed (actuated, above the pump shutoff heads so no flow), HHSI, LHSI, both, or RHR",
         "void_fraction_avg": "Core void fraction",
         "drum_level_pct": "Steam drum level",
         "channel_flow_pct": "Channel flow",
