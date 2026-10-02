@@ -3096,7 +3096,8 @@
     // Anything rendered but not keyed would freeze on screen — which is the failure mode
     // a dirty-check trades for the flicker, so it is the thing to get right.
     var tripCause = tripCauseLabel(s.rps_state && s.rps_state.last_trip_reason) || '';
-    var key = active.length ? (tripCause + '\u0002' + active.map(function (a) {
+    var predA = cklPredictedAlarms(s);   /* #818: "predicted by step N" tags, keyed so they come and go */
+    var key = active.length ? (tripCause + '\u0002' + JSON.stringify(predA) + '\u0002' + active.map(function (a) {
       return a.id + '\u0001' + a.state + '\u0001' + a.priority + '\u0001' +
         (a.base_priority || '') + '\u0001' + (alarmSeen[a.id] || 0);
     }).join('\u0002')) : '';
@@ -3136,7 +3137,8 @@
         ' data-scanner-detail="' + esc(alarmDetail(a)) + '"' + docAttr + '>' +
         '<div class="bar"></div><div class="body"><div class="label">' + label +
         '</div><div class="meta">' + cat + ' · ' + prioTxt + ' · ' + a.state.replace('active_', '') +
-        (stamp ? ' · <span class="alarm-t mono">' + stamp + '</span>' : '') + '</div></div>' +
+        (stamp ? ' · <span class="alarm-t mono">' + stamp + '</span>' : '') +
+        (predA[a.id] ? ' <span class="alarm-pred">predicted by step ' + predA[a.id] + '</span>' : '') + '</div></div>' +
         chip + '<div class="glyph">' + glyph + '</div></div>';
     }).join('');
   }
@@ -4943,6 +4945,71 @@
     industry: 'REACTOR TRIP — this procedure is not valid post-trip and the active step will not advance. Rewind to a pre-trip checkpoint, or exit the procedure.',
   };
 
+  /* IS ANY OF THE STEP HIDDEN BELOW THE FOLD? (#818, the persona review: Continue sat clipped inside
+   * this scroller with a 0 px scrollbar and no cue, on 3 of 17 heatup steps at 1600x1000.) The
+   * Continue / Rewind row is now pinned to the scroller's floor (`position: sticky` in shell.css), so
+   * the button is always on screen — and what can be hidden instead is TEXT behind it. `.ckl-more`
+   * says so: a fade and a "scroll for more" label on the pinned row, gone once the reader reaches
+   * the end. Measured off the scroller's own geometry, never a guess from the step's length. */
+  /* WHICH ACTIVE ALARMS THE CURRENT WALKTHROUGH STEP TOLD THE PLAYER TO EXPECT (#818) —
+   * `{ alarmId: stepNumber }` off the active step's authored `predicts_alarms`. The tile stays red;
+   * renderAlarms only adds a tag, and the tag goes when the step does. Read off the POOL like the
+   * step text; the snapshot supplies only which leg and step are live. */
+  function cklPredictedAlarms(s) {
+    var ck = s && s.instructor && s.instructor.checklist, out = {};
+    if (!ck || ck.complete || ck.step_index == null) return out;
+    var pool = (RD.MANUAL_PROCEDURES && RD.MANUAL_PROCEDURES[ui.engineKey]) || [];
+    var pr = null;
+    for (var i = 0; i < pool.length; i++) if (pool[i].id === ck.procedure_id) { pr = pool[i]; break; }
+    var st = pr && pr.steps && pr.steps[ck.step_index];
+    (st && st.predicts_alarms || []).forEach(function (id) { out[id] = ck.step_index + 1; });
+    return out;
+  }
+
+  function cklMoreCue(log) {
+    if (!log || !log.classList) return;
+    var more = log.scrollHeight - log.scrollTop - log.clientHeight > 4;
+    if (log.classList.contains('ckl-more') !== more) log.classList.toggle('ckl-more', more);
+  }
+
+  /* THE HOLD-PROGRESS LINE (#818). A row that needs PLANT TIME as well as a reading — the rods
+   * unmoved for N s, a steady window, a trailing mean — said nothing while the sim counted, so a
+   * player watching SOURCE RANGE sit on 7.0e2 saw a dark row and no reason. This prints the count
+   * the runtime is keeping (`prog`, InstructorLayer.holdProgress: plant-seconds off the grader's own
+   * bag) and says so when it starts again. Unmet rows only; a met row has nothing left to count. */
+  function cklProgLine(en, av) {
+    var p = av && av.prog;
+    if (!p || av.met || !(p.need > 0)) return '';
+    var el = Math.max(0, Math.min(p.need, Math.floor(p.el))), need = Math.round(p.need);
+    var restarted = p.restarts > 0 && el < need;
+    var t;
+    if (p.k === 'still') {
+      if (el >= need) return '';   /* the wait is served; what is left is the reading, which its own line shows */
+      t = 'Holding still… ' + el + ' of ' + need + ' plant-seconds' +
+          (restarted ? ' — started again when the ' + (en.p === 'control_bank_steps' || en.still_s > 0 ? 'rods' : 'control') + ' moved' : '');
+    } else if (p.k === 'steady') {
+      t = el < need ? 'Watching it settle… ' + el + ' of ' + need + ' plant-seconds of readings'
+                    : 'Still changing — this ticks once the last ' + need + ' plant-seconds read steady';
+    } else if (p.k === 'mean') {
+      var pd = PRED_DISPLAY[en.p];
+      t = (p.mean == null) ? 'Averaging… ' + el + ' of ' + need + ' plant-seconds'
+        : 'Average over the last ' + need + ' plant-seconds: ' + fmtPredValue(pd, p.mean) +
+          '. This ticks when the average reaches the target, so the reading has to stay there, not just touch it.';
+      if (restarted) t += ' (the clock went back, so the average started again)';
+    } else return '';
+    return '<div class="ckl-crit-when ckl-prog' + (restarted ? ' ckl-prog-reset' : '') + '">' + mesc(t) + '</div>';
+  }
+  /* ...and its render-key share: whole plant-seconds (5 s buckets on windows over a minute, so a
+   * long window repaints a dozen times rather than every broadcast), the restart count and, once a
+   * mean is full, the value AS PRINTED. A value outside the key never repaints (#392). */
+  function cklProgKey(a) {
+    var p = a && a.prog;
+    if (!p || a.met) return '';
+    var b = p.need > 60 ? 5 : 1;
+    return 'h' + Math.floor(Math.min(p.el, p.need) / b) + 'r' + p.restarts +
+      (p.mean != null ? 'm' + Number(p.mean).toPrecision(3) : '');
+  }
+
   function renderChecklist(s, ck) {
     cklSnap = s;
     var cur = $('cklRun');
@@ -4985,7 +5052,7 @@
        * "past the mark" line below appears when the rods step past prediction-minus-N while
        * `met` stays 0. Only a `below_1m` row carries a non-null `pred_1m`. */
       (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
-        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : ''); }).join(','),
+        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : '') + cklProgKey(a); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
@@ -5387,6 +5454,7 @@
                * last point), so the "3 short" half cannot be checked and the row ticks on the rods
                * being still alone — rather than stranding a player who never plotted. `no_1m` is
                * the runtime's verdict, never re-derived here. */
+              (!ordWait ? cklProgLine(en, av) : '') +
               (av.no_1m ? '<div class="ckl-crit-when">The 1/M plot shows no prediction, so this ticks ' +
                  'once the rods have been still a plant-minute.</div>' : '') +
               /* ...AND ONE PAST THE MARK SAYS WHERE THE MARK IS (quality pass, 2026-09-24). Measured in
@@ -5585,7 +5653,10 @@
             '">⏪ Rewind step</button>' +
           '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
             (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>' +
-          (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') + '</div>';
+          (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') +
+          /* the "more above" cue (#818): drawn always, shown by CSS only while #cklLog has text
+           * hidden behind this pinned row (`.ckl-more`, set by cklMoreCue) */
+          '<span class="ckl-more-cue" aria-hidden="true">▾ scroll for more</span>' + '</div>';
         h += '</div>';
       }
       var det = '';
@@ -5629,9 +5700,16 @@
        * the story block is the OTHER always-drawn supplementary field on this card, and two
        * supplementary blocks that look like two different kinds of thing is the confusion this
        * is fixing. */
+      /* COLLAPSED BY DEFAULT, ONE CLICK TO OPEN (#818 Tier 2, owner-approved). The card reads as the
+       * action line (`.ckl-txt`) and the one-line why (`.ckl-aim`); the Background paragraph stays a
+       * click away, never cut. A native <details>, so it is keyboard-reachable for free. The open state
+       * is remembered per step (`cklState.bgOpen`) because the card is rebuilt on every key change and
+       * a reader who opened it must not have it snap shut under them; a new step starts closed. */
       if (st.why) {
-        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
-          mesc(st.why) + '</div>';
+        var bgKey = pr.id + '#' + i;
+        det += '<details class="ckl-why" data-ckl-bg="' + mesc(bgKey) + '"' + (cklState.bgOpen === bgKey ? ' open' : '') + '>' +
+          '<summary class="ckl-why-lbl">Background</summary>' +
+          '<div class="ckl-why-body">' + mesc(st.why) + '</div></details>';
       }
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
@@ -5701,6 +5779,15 @@
     var prevLog = cklScroller();
     var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
+    /* the Background fold's open state survives the next rebuild (#818); opening or closing it
+     * changes what is hidden behind the pinned Continue row, so the cue is re-read too */
+    Array.prototype.forEach.call(cur.querySelectorAll('details[data-ckl-bg]'), function (d) {
+      d.addEventListener('toggle', function () {
+        var k = d.getAttribute('data-ckl-bg');
+        if (d.open) cklState.bgOpen = k; else if (cklState.bgOpen === k) cklState.bgOpen = null;
+        cklMoreCue(cklScroller());
+      });
+    });
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
@@ -5744,6 +5831,7 @@
     if (log) {
       cklAutoScroll = true;                          /* our own writes must not arm userScrolled */
       log.scrollTop = prevTop;                       /* the rebuild is invisible to the reader */
+      cklMoreCue(log);
       /* THE AUTO-SCROLL YIELDS TO A READER WHO HAS SCROLLED AWAY (#612, owner playtest
        * 2026-09-03: "the checklist scroll window keeps bouncing to the top and back to the step.
        * This makes it impossible to read the steps").
@@ -5760,6 +5848,7 @@
       if (!log.__cklScrollBound) {
         log.__cklScrollBound = true;
         log.addEventListener('scroll', function () {
+          cklMoreCue(log);                           /* #818: before the early return, every scroll */
           if (cklAutoScroll) return;                 /* our write, not theirs */
           var act = log.querySelector('.ckl-active');
           if (!act) { cklState.userScrolled = true; return; }

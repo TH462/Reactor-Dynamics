@@ -5591,6 +5591,34 @@ if (RUN_B) {
        'mean ' + (g.value != null ? g.value.toFixed(1) : g.value) + ', ' + bag.s.length + ' samples');
   })();
 }
+/* 2mo — THE CARD'S HOLD-PROGRESS NUMBERS (#818). `InstructorLayer.holdProgress` reads the plant-seconds a
+ * timed row has served off the grader's OWN bag and counts restarts, which is what the card's
+ * "Holding still… N of M plant-seconds — started again when the rods moved" and "Averaging… N of 30"
+ * lines print. Pure: a `still_s` row fed 0, 10, 20 then 3 s of stillness (a rod tap in between) must
+ * report el 3, need 60 and ONE restart; a `mean_s` row must report the window filling (el 14, no
+ * mean) and then the mean itself once the 30 s window is full.
+ * INJECTION-PROVEN: `p.restarts++` removed -> 2mo.1 red; the `p.mean = g.value` line removed -> 2mo.2 red. */
+if (RUN_B) {
+  (function () {
+    var IL = RD.InstructorLayer, ax = {}, en = { p: 'startup_rate_dpm', op: '~', v: 0.65, tol: 0.355, still_s: 60 };
+    function snap(t, v) { return { metadata: { sim_time: t }, instruments: {}, true_state: { sr_counts_cps: v } }; }
+    [0, 10, 20, 3].forEach(function (st, i) { ax.prog = IL.holdProgress(ax, en, { still: st, value: 0.4 }, snap(100 + i, 0)); });
+    var p1 = ax.prog;
+    ck('2mo.1 a `still_s` row reports plant-seconds served of its need, and counts the restart a rod move caused',
+       !!p1 && p1.k === 'still' && p1.el === 3 && p1.need === 60 && p1.restarts === 1, JSON.stringify(p1));
+    var mx = { bag: { s: [] } }, men = { p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30 }, mid = null, g;
+    function met(v, pr) { return v >= pr.v; }
+    for (var t = 0; t <= 31; t++) {
+      g = IL.gradeMean(mx.bag, snap(t, 700), men, met);
+      mx.prog = IL.holdProgress(mx, men, g, snap(t, 700));
+      if (t === 14) mid = mx.prog;
+    }
+    ck('2mo.2 a `mean_s` row reports its window filling, then the mean once the window is full',
+       !!mid && mid.k === 'mean' && mid.el === 14 && mid.mean == null && !!mx.prog && mx.prog.el === 30 &&
+       Math.abs(mx.prog.mean - 700) < 1e-9 && mx.prog.restarts === 0,
+       'at 14 s ' + JSON.stringify(mid) + '; at 31 s ' + JSON.stringify(mx.prog));
+  })();
+}
 if (RUN_B) {   /* gated 2026-09-22 (the split above) — this section carried NO gate at all
                 * before the split (it ran even under a single `only` proc filter), so RUN_B
                 * alone preserves that and stops it from ALSO running, a second time, in part A */
