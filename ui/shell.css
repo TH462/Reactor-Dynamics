@@ -2282,6 +2282,18 @@ select.num-input { width: auto; }
   outline-offset: 2px;
   box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.30);
   border-radius: 6px; position: relative; z-index: 4;
+  /* SLOW BREATH, BRIGHTNESS ONLY *(OWNER, 2026-10-02: "i also want the dashed action glow rings to
+     slowly pulse. they can have a base brightness to them so something of the glow is always
+     visible"; then "I meant both, it's hard for people to find what they are supposed to press or
+     check")*. Supersedes the 2026-09-27 "dashed and still" for this ring. 3.2 s against the press
+     glow's 1.2 s, and the dash and 1.5 px width stay, so "check" still reads apart from "press".
+     Never below half brightness. Runs under reduced motion too, as the owner asked (declared in
+     verify_reduced_motion). */
+  animation: cklCheckPulse 3.2s ease-in-out infinite;
+}
+@keyframes cklCheckPulse {
+  0%, 100% { outline-color: rgba(90, 240, 255, 0.50); box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.18); }
+  50%      { outline-color: rgba(90, 240, 255, 0.95); box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.34); }
 }
 /* THE CARD THAT HOLDS A LIT CONTROL *(OWNER, 2026-09-27, #809 item 3: "Lets make a dimmer glow thats
    for the panel that contains the control. keep the brighter solid glow for indications.")*. So the
@@ -3414,13 +3426,24 @@ select.num-input { width: auto; }
      ⚠ `.ckl-step-glow` IS A BOARD-SURFACE CLASS WEARING A CHECKLIST PREFIX. It is applied through
      `revealControl` to board TILES, and since #727 to the trip-block popover rows as well — it is
      not part of the walkthrough panel's own `.ckl-*` styling. Do not re-split it on the prefix. */
+  /* THE DASHED PRESS RING BREATHES SLOWLY *(OWNER, 2026-10-02: "i also want the dashed action glow
+     rings to slowly pulse. they can have a base brightness to them so something of the glow is always
+     visible" — confirmed as the PRESS ring, which is dashed only under this media query)*. A DECLARED
+     EXCEPTION to "nothing moves under reduced motion" (#740): colour/brightness only, never size or
+     position, 3.2 s a cycle, never darker than half brightness. Geometry (3 px dashed, offset 2 px)
+     is unchanged, so the #740 shape-distinctness claim still holds. verify_reduced_motion names it. */
   .ckl-step-glow {
-    animation: none;
+    animation: cklDashPulse 3.2s ease-in-out infinite;
     outline: 3px dashed rgba(90, 240, 255, 0.95);
     outline-offset: 2px;
     box-shadow: none;
   }
+  @keyframes cklDashPulse {
+    0%, 100% { outline-color: rgba(90, 240, 255, 0.50); }
+    50%      { outline-color: rgba(90, 240, 255, 0.95); }
+  }
   .ckl-step-glow.ckl-step-done {
+    animation: none;
     outline-width: 1px;
     box-shadow: none;
   }
