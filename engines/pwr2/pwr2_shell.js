@@ -1650,7 +1650,9 @@
             if (!def) return;
             out[id] = def.type === 'command_override'
               ? { type: def.type, category: def.category, display: def.display,
-                  severity_meta: def.severity_meta }
+                  severity_meta: def.severity_meta,
+                  /* the Inject Failure tab's player copy rides through the strip (#818) */
+                  blurb: def.blurb, armed_text: def.armed_text, fired_text: def.fired_text }
               : def;
           });
           /* THE ONE SEVERITY_META OVERRIDE (#662) — copied-with-one-override, the same idiom
@@ -1673,6 +1675,9 @@
               effect: out.continuous_rod_withdrawal.effect,
               severity_scales: out.continuous_rod_withdrawal.severity_scales,
               display: out.continuous_rod_withdrawal.display,
+              blurb: out.continuous_rod_withdrawal.blurb,
+              armed_text: out.continuous_rod_withdrawal.armed_text,
+              fired_text: out.continuous_rod_withdrawal.fired_text,
               severity_meta: { label: 'Withdrawal Rate', unit: 'steps/min',
                                min: +(rs.slow * 60).toFixed(1),
                                max: +(rs.fast * 60).toFixed(1),
@@ -1925,6 +1930,30 @@
     if (sf) Object.keys(sf).forEach(function (id) {
       if (sf[id] && !f[id]) out.push('instrument:' + id);
     });
+    return out;
+  };
+
+  /* ARMED OR FIRED (#818). Some injected failures change nothing until the plant does
+   * something: the PORV stick latches on the first lift (pwr2_pressurizer step 3), and at full
+   * power the first lift never comes — measured 2026-10-01, 15 plant-minutes at 2237-2247 psia
+   * (15.42-15.50 MPa) with the valve shut. The Failures tab showed only a red Clear button.
+   *
+   * Returns { id: true (armed, still waiting for its trigger) | false (fired) } for the
+   * injected rows whose effect waits on a plant event, and NOTHING for a failure that acts at
+   * once. Derived from plant state on every call, no latch — so a rewind or a file load
+   * reports what the restored plant is doing, and a condition that ends (high-pressure
+   * injection secured) honestly reads as waiting again. */
+  PWR2Engine.prototype.getFailureArming = function () {
+    var e = this.eng, on = engineActiveFailures(e), out = {};
+    function has(id) { return on.indexOf(id) >= 0; }
+    if (has('stuck_porv_open')) out.stuck_porv_open = !e.pz.porvStuck;
+    /* the trip latch stands under an ATWS — only the rod drop is failed (pwr2_engine :1861) */
+    if (has('failure_to_scram')) out.failure_to_scram = !e._lastTrip;
+    if (has('anticipatory_trip_failure')) out.anticipatory_trip_failure = !e.tb.tripped;
+    if (has('afw_failure')) out.afw_failure = !(e.aw.mdafwRunning || e.aw.tdafwRunning);
+    if (has('degraded_hpi')) out.degraded_hpi = !e.ec.hhsiRunning;
+    /* the runaway has no travel while the bank sits fully out (the shipped full-power IC) */
+    if (has('continuous_rod_withdrawal')) out.continuous_rod_withdrawal = e.rodSteps >= bankSteps() - 0.5;
     return out;
   };
 
