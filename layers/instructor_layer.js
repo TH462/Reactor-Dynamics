@@ -2942,7 +2942,9 @@
       var trend = Math.abs(r) < COACH.still[w.k] ? 'steady' : (r > 0 ? 'rising' : 'falling');
       items.push({ k: w.k, label: R ? w.I : w.L, value: w.val(v), trend: trend, rate: r });
     });
-    var s3 = 'Worth watching: ' + items.map(function (it) { return it.label.toLowerCase() + ' ' + it.value + ', ' + it.trend; }).join('; ') + '.';
+    /* mid-sentence: lower-case the first letter only, so a label's abbreviation ("SG") survives */
+    function mid(l) { return /^[A-Z]{2}/.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1); }
+    var s3 = 'Worth watching: ' + items.map(function (it) { return mid(it.label) + ' ' + it.value + ', ' + it.trend; }).join('; ') + '.';
 
     /* 4. SETTLED, OR STILL CHANGING */
     var s4, settled = c.settledAt != null;
@@ -2965,7 +2967,7 @@
       var spanWords = span >= 100 ? 'in the last ' + Math.round(span / 60) + ' minutes' : 'in the last ' + Math.round(span) + ' seconds';
       s4 = moving.length
         ? 'Still changing: ' + moving.map(function (it) {
-            return it.label.toLowerCase() + ' ' + (it.rate > 0 ? 'up ' : 'down ') + byK[it.k].delta(it.rate * span / 60, I[byK[it.k].id]);
+            return mid(it.label) + ' ' + (it.rate > 0 ? 'up ' : 'down ') + byK[it.k].delta(it.rate * span / 60, I[byK[it.k].id]);
           }).join(', ') + ' ' + spanWords + '.'
         : 'The readings have slowed. They count as steady once nothing has moved for ' + Math.round(COACH.settle_s / 60) + ' plant-minutes.';
     }
