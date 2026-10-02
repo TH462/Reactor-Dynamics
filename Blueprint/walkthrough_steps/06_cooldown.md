@@ -240,7 +240,7 @@ Suggested time warp: 60×.
 
 Suggested time warp: 600×.
 
-Note: Keep COOLDOWN RATE under 100 °F per hour; a reading of -83 is 83 °F per hour. If Cooldown Rate High comes in, lower HX SPLIT.
+Note: Keep COOLDOWN RATE under 100 °F per hour; a reading of -83 is 83 °F per hour. If Cooldown Rate High comes in, lower HX SPLIT. Once the spray is shut, SUBCOOLING MARGIN climbs back to about 150 °F or more.
 
 Background
 
@@ -276,7 +276,7 @@ Shut the spray and pressure sits where it is. This is the Cold Shutdown preset's
 
 Suggested time warp: 1×.
 
-Note: PRIMARY PRESSURE reads about 150 psi; it crept up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.
+Note: PRIMARY PRESSURE reads about 170 to 280 psi; it crept up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.
 
 Background
 

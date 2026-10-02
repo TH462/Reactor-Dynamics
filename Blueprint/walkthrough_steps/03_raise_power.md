@@ -208,11 +208,11 @@ Suggested time warp: 1×.
 
 Suggested time warp: 10×, while OUTPUT climbs.
 
-()8c. If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, 10 to 20 steps. Otherwise leave the rods.
+()8c. If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 573 °F, 10 to 20 steps. Otherwise leave the rods.
 
 Suggested time warp: 5×.
 
-Note: If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
+Note: Stop at 573 °F: the boron still arriving takes it to about 578 °F in step 9. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
 
 ()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
 

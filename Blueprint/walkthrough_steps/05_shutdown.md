@@ -26,7 +26,7 @@ Suggested time warp: 1×.
 
 Background
 
-The reactor follows the falling steam demand down by itself, so the scram comes from low power with the generator unloaded.
+OUTPUT drops to 0 MWe at once and the turbine trips; REACTOR POWER stays near 12 % until the scram, so the scram comes from low power with the generator unloaded.
 
 [HIGHLIGHTED: Load Setpoint (pulsing); Turbine Load, Generator Output (steady)]
 
@@ -48,7 +48,7 @@ Suggested time warp: 1×.
 
 Background
 
-A planned scram from low power: both rod banks drop into the core and the chain reaction stops in seconds. The fuel keeps making about 2 % of full power from decay; the next step checks where that heat goes.
+A planned scram from low power: both rod banks drop into the core and the chain reaction stops in seconds. The trip stops main feed and aux feed starts by itself, so AUX FEED WATER reads RUNNING. The fuel keeps making about 2 % of full power from decay; the next step checks where that heat goes.
 
 [HIGHLIGHTED: SCRAM (pulsing); Control Rod Position, Shutdown Rod Position, Reactor Power (steady)]
 

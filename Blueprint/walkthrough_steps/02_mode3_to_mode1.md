@@ -115,7 +115,7 @@ Background
 
 ()5a. Press MED, hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e2 or more, then watch it 5 seconds: it jumps about 15 % either way.
 
-Note: The clock goes to 10× once the rods move; expect about 10 seconds of holding, near CONTROL ROD POSITION 70 to 80. If the count only touches 7.0e2, or is short at 80, tap WITHDRAW once, wait half a plant-minute, and repeat.
+Note: The clock goes to 10× once the rods move; expect about 10 seconds of holding at about 7 steps a second, near CONTROL ROD POSITION 70 to 80. If the count only touches 7.0e2, or is short at 80, tap WITHDRAW once, wait half a plant-minute, and repeat.
 
 ()5b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point.
 
@@ -229,7 +229,7 @@ The source range counts single neutrons and trips the reactor above 1.0e5 counts
 
 *The prediction is good to about three steps, so the rods stop short of it.*
 
-()10a. Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.
+()10a. Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position. If 10a is already ticked, leave the rods and go to 10b.
 
 Suggested time warp: 1×.
 
@@ -239,7 +239,7 @@ Note: At SLOW the rods move about one step every 8 plant-seconds. This ticks the
 
 Suggested time warp: 10×.
 
-Note: The clock runs at 10× here, so the hold is about 10 to 15 seconds. The rods stop 12 to 14 steps past where 10a let go. STARTUP RATE reads high while they move and settles lower; the check-off comes a plant-minute after your last rod motion.
+Note: The clock runs at 10× here, so the hold is about 10 to 15 seconds. The rods stop 12 to 14 steps past the 10a position. STARTUP RATE reads high while they move and settles lower; the check-off comes a plant-minute after your last rod motion.
 
 
 
@@ -259,7 +259,7 @@ Critical means the chain reaction sustains itself; a steady positive STARTUP RAT
 
 Note: About 2 plant-minutes after the rods stopped in step 10.
 
-()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 12 steps, and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
+()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 15 seconds at 1× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
 
 Suggested time warp: 1×. While you wait for a read you can press 10× yourself; a tap is still one step.
 

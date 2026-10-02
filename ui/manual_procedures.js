@@ -2967,7 +2967,7 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30,
                    hl: ['Rod Speed — Normal', 'Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Press MED, hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e2 or more, then watch it 5 seconds: it jumps about 15 % either way.',
-                   note: 'The clock goes to 10× once the rods move; expect about 10 seconds of holding, near CONTROL ROD POSITION 70 to 80. If the count only touches 7.0e2, or is short at 80, tap WITHDRAW once, wait half a plant-minute, and repeat.',
+                   note: 'The clock goes to 10× once the rods move; expect about 10 seconds of holding at about 7 steps a second, near CONTROL ROD POSITION 70 to 80. If the count only touches 7.0e2, or is short at 80, tap WITHDRAW once, wait half a plant-minute, and repeat.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point.',
@@ -3591,7 +3591,7 @@
                     * prediction (never plotted, Clear, a rewind past the last point) keeps the 60 s stop and
                     * the card's "no prediction" line. */
                    reach_1m: 3.9,
-                   ask: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position.',
+                   ask: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position. If 10a is already ticked, leave the rods and go to 10b.',
                    note: 'At SLOW the rods move about one step every 8 plant-seconds. This ticks the moment the position is 3 short; let go there.',
                    wait_speed: 1,
                    label: 'CONTROL ROD POSITION 3 steps short of the 1/M prediction' },
@@ -3648,7 +3648,7 @@
                   * plant-minute after the last rod motion, so the moving-rod reading (runs high) cannot tick it. */
                  { p: 'startup_rate_dpm', op: '~', v: 0.65, tol: 0.355, still_s: 60,
                    ask: 'Hold WITHDRAW at SLOW until STARTUP RATE reads +0.5, then let go. A plant-minute later it should read +0.3 to +1.0: if lower, tap WITHDRAW once; if higher, tap INSERT once.',
-                   note: 'The clock runs at 10× here, so the hold is about 10 to 15 seconds. The rods stop 12 to 14 steps past where 10a let go. STARTUP RATE reads high while they move and settles lower; the check-off comes a plant-minute after your last rod motion.',
+                   note: 'The clock runs at 10× here, so the hold is about 10 to 15 seconds. The rods stop 12 to 14 steps past the 10a position. STARTUP RATE reads high while they move and settles lower; the check-off comes a plant-minute after your last rod motion.',
                    /* 10× (#818, the owner's R2 ruling 2026-10-01: rod buttons stay momentary). At 1× this hold
                     * was 85 to 95 wall-seconds of continuous mouse-down on the typical routes (138 from an
                     * undershoot). MEASURED, scratch copy of run_walkthrough_routes with the hold driven as a real
@@ -3736,7 +3736,7 @@
                    hl_watch: ['Intermediate Range'],
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
-                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 12 steps, and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
+                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 15 seconds at 1× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
                    note: 'STARTUP RATE reads negative while the rods go in and settles over two plant-minutes. INTER RANGE levels near 7e-9 A. The check-off comes two plant-minutes after your last rod motion.',
                    wait_speed: 1,
                    speed_text: '1×. While you wait for a read you can press 10× yourself; a tap is still one step.',
@@ -4492,8 +4492,8 @@
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 100 MW' },
                  { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, latch: true,
                    hl: ['Withdraw'], hl_watch: ['Tavg'],
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it settles on 578 °F, 10 to 20 steps. Otherwise leave the rods.',
-                   note: 'If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 573 °F, 10 to 20 steps. Otherwise leave the rods.',
+                   note: 'Stop at 573 °F: the boron still arriving takes it to about 578 °F in step 9. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 578)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, label: 'AVG COOLANT TEMPERATURE still between 573 and 583 °F' },
                  { p: 'control_bank_steps', op: '<', v: 600,
@@ -4967,7 +4967,7 @@
       steps: [
         { text: 'Take the load off the generator before the scram.',
           aim: 'The scram is meant to come with no electricity on the generator.',
-          why: 'The reactor follows the falling steam demand down by itself, so the scram comes from low power with the generator unloaded.',
+          why: 'OUTPUT drops to 0 MWe at once and the turbine trips; REACTOR POWER stays near 12 % until the scram, so the scram comes from low power with the generator unloaded.',
           control: 'Turbine Load', target: 'OUTPUT below 5 MWe',
           cmd: { action: 'set_load_target', mwe: 0 }, hold: 120, wait_hint: false,
           wait_speed: 1, speed_text: true,
@@ -4983,7 +4983,7 @@
          * still draws "5.0"); the tile falls 12.9 -> 2.8 % in 0.8 s, same broadcast either way. */
         { text: 'Shut the reactor down.',
           aim: 'Hot Standby is a shut-down reactor, and a scram gets it there in seconds.',
-          why: 'A planned scram from low power: both rod banks drop into the core and the chain reaction stops in seconds. The fuel keeps making about 2 % of full power from decay; the next step checks where that heat goes.',
+          why: 'A planned scram from low power: both rod banks drop into the core and the chain reaction stops in seconds. The trip stops main feed and aux feed starts by itself, so AUX FEED WATER reads RUNNING. The fuel keeps making about 2 % of full power from decay; the next step checks where that heat goes.',
           control: 'SCRAM', target: 'both rod positions 0 of 627; REACTOR POWER falling below 5 %',
           cmd: { action: 'scram' }, hold: 60, wait_hint: false,
           wait_speed: 1, speed_text: true,
@@ -5612,7 +5612,7 @@
           /* LAYMAN PASS 8 (2026-09-26) S-11: `speed_text: true` dropped — 11a and 11b each print their own
            * line, and the step-level one printed "600×." a second time under 11b. */
           wait_speed: 600,
-          note: 'Keep COOLDOWN RATE under 100 °F per hour; a reading of -83 is 83 °F per hour. If Cooldown Rate High comes in, lower HX SPLIT.',
+          note: 'Keep COOLDOWN RATE under 100 °F per hour; a reading of -83 is 83 °F per hour. If Cooldown Rate High comes in, lower HX SPLIT. Once the spray is shut, SUBCOOLING MARGIN climbs back to about 150 °F or more.',
           /* 11a split (#807 item 2, 2026-09-26): the raise was one clause of the spray substep and had no
            * check-off. Graded at the floor of the box's whole-% render of 8 (0.075); at entry it reads 7 (step 9). */
           accs_ordered: true,   // #807 review item 4: the spray press (11c) is not live before the margin (11b)
@@ -5687,7 +5687,7 @@
           aim: 'Confirming the end state catches a plant still above 199 °F or a pump still running.',
           why: 'Cold shutdown: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup walkthrough takes it back up.',
           wait_speed: 1, speed_text: true,
-          note: 'PRIMARY PRESSURE reads about 150 psi; it crept up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.',
+          note: 'PRIMARY PRESSURE reads about 170 to 280 psi; it crept up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.',
           accs: [{ p: 'tavg_c', op: '<', v: 92.5,
                    ask: 'Check AVG COOLANT TEMPERATURE reads below 199 °F.',
                    label: 'AVG COOLANT TEMPERATURE below 199 °F' },

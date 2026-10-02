@@ -849,7 +849,12 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   flex: 0 0 auto; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; position: relative;
 }
-.sim-top { display: flex; align-items: center; justify-content: space-between; }
+.sim-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; column-gap: 8px; }
+/* THE CLOCK WRAPS, IT IS NEVER OVERDRAWN (2026-10-02, #819 layman S-8). With TEST BUILD showing
+   (dev/preview channels) the brand is 303 px in a 338 px row at a 1600 px window, and `.brand`'s
+   min-width:0 let it run 53 px under the clock ("TEST BUILD 0:18"). Wrapping drops the clock to
+   its own line, right-aligned, only when the row cannot hold both; verify_flags_ui pins it. */
+.sim-top > .clock { margin-left: auto; white-space: nowrap; }
 .logo { font-weight: 800; letter-spacing: .01em; font-size: 15px; white-space: nowrap;
   color: var(--text); text-decoration: none; cursor: pointer; }
 .logo:hover { color: var(--text); opacity: 0.82; text-decoration: none; }

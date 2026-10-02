@@ -108,6 +108,27 @@ function pinChannel(ch) {
     if (await page.isVisible('#missionOverlay')) await page.click('#missionClose');
     return { ctx: ctx, page: page };
   }
+  /* THE HEADER CLOCK IS NEVER DRAWN UNDER THE TEST BUILD BADGE (2026-10-02, #819 layman S-8).
+   * At a 1600 px window on dev/preview the brand ran 53 px under #clock ("TEST BUILD 0:18"); the
+   * public channel hides the badge and never overlapped. Area of intersection of the two boxes,
+   * at three window widths, so a wrap that only works at one width still reads red. */
+  async function clockOverlap(page) {
+    var out = [];
+    for (var w of [1366, 1600, 1920]) {
+      await page.setViewportSize({ width: w, height: 1000 });
+      await page.waitForTimeout(150);
+      out.push(await page.evaluate(function (w) {
+        var t = document.querySelector('.logo-test'), c = document.getElementById('clock');
+        if (!t || !c) return { w: w, px: -1 };
+        var a = t.getBoundingClientRect(), b = c.getBoundingClientRect();
+        var ox = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+        var oy = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+        return { w: w, shown: getComputedStyle(t).display !== 'none', px: Math.round(ox * oy) };
+      }, w));
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    return out;
+  }
 
   // ------------------------------------------------------- the dev build
   var b = await build(null);
@@ -409,6 +430,9 @@ function pinChannel(ch) {
    * the row. The shipped plant is pwr2 (#523) and it is the only pool this claim is about. */
   var WT2 = SHELL.replace('engine=pwr&', 'engine=pwr2&');
   b = await build('dev', WT2);
+  var clk = await clockOverlap(b.page);
+  ck('dev (pwr2): TEST BUILD shows and the header clock is not drawn under it at 1366/1600/1920 px (#819 S-8)',
+    clk.every(function (r) { return r.shown && r.px === 0; }), JSON.stringify(clk));
   var walk2 = await openMission(b.page, 'walkthroughs');
   ck('dev (pwr2): the TMI-2 incident walkthrough is offered (#670)',
     (await b.page.$$('[data-wtstart="pwr_tmi2_incident"]')).length === 1,
@@ -979,6 +1003,9 @@ function pinChannel(ch) {
   // ------------------------------------ the public build (what `main` deploys)
   b = await build('public');
   ck('public: build reports the public channel', await b.page.evaluate(function () { return RD.Flags.baseChannel(); }) === 'public');
+  var clkP = await clockOverlap(b.page);
+  ck('public: no TEST BUILD badge, and nothing over the header clock (#819 S-8)',
+    clkP.every(function (r) { return !r.shown && r.px === 0; }), JSON.stringify(clkP));
   await openSettings(b.page);
   ck('public: Features row is not on screen', !(await b.page.isVisible('#featureRow')));
   await closeSettings(b.page);
