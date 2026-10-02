@@ -5571,7 +5571,7 @@
          * -85 at +42 min, never over 100, 199 degF at +120 min. Split and physics unchanged. */
         { text: 'Cool on RHR into Mode 5, inside the 100 °F per hour limit.',
           predicts_alarms: ['subcooling_low'], aim: 'HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.',
-          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 9 % the read-back climbs to about 85 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about two and a quarter hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 130 °F per hour. Turn it higher and you go over the 100 °F per hour limit: 12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm.',
+          why: 'HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 8 % the read-back climbs to about 85 °F per hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about two and a half hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, 120 to 140 °F per hour. Turn it higher and the margin goes: 9 % reads about 95 °F per hour, and 12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: false,
           /* HOLD 9000 -> 7200 s (#729), and 5400 was tried first — see the end of this note. 9000 s was authored for the 25 % split, which reaches
@@ -5592,8 +5592,15 @@
            * ground"): 12 -> 9 %. The player who types 12 once raised Cooldown Rate High (tile -110
            * degF/hr); at 9 % the tile peaks -83 to -90, Mode 5 in 131-142 plant-min. The replay types 9 once like the
            * player (no 7 -> 8 ramp): a 9600 s ramp overstayed Mode 5 with the spray still open and
-           * walked subcooling margin into the leg's own `subcooling_c < 5` guard (measured). */
-          cmd: { action: 'set_rhr_hx', pct: 9 }, hold: 9300,
+           * walked subcooling margin into the leg's own `subcooling_c < 5` guard (measured).
+           * RE-PACED 9 -> 8 % 2026-10-02 (#818 package G; the owner's ruled 95 degF/hr margin, not moved).
+           * Package D's feedwater isolation on trip + low Tavg leaves the chained cooldown on aux feed
+           * with the SG at ~38 % narrow range (0.75 of its mass) instead of ~65 % (1.0): less stored
+           * secondary heat for natural circulation to hand back, so step 11 cools faster -- chain tile
+           * peak -86.4 -> -95.1 degF/hr, true rate -138 -> -157, seed 42. The standalone leg was already
+           * at -93.5 before D. MEASURED at 8 %: tile peak -85.1 (standalone) / -85.7 (chain), Mode 5 in
+           * 140 / 147 plant-min, the leg ends at 184 / 278 psia. */
+          cmd: { action: 'set_rhr_hx', pct: 8 }, hold: 9300,
           /* the note's "if SUBCOOLING MARGIN falls below 20 degF, press OFF under SPRAY now", replayed
            * on the truth channel (11.1 degC); the live route presses it off the tile. */
           /* LAYMAN PASS 6 (2026-09-26, AGENT-DRAFTED) S-5 / S-2: the spray-off is its own substep
@@ -5610,12 +5617,12 @@
           wait_speed: 600,
           note: 'Keep COOLDOWN RATE under 100 °F per hour. The tile shows cooling as a minus number, so a reading of -83 is 83 °F per hour. If the Cooldown Rate High alarm comes in, lower HX SPLIT.',
           /* 11a split (#807 item 2, 2026-09-26): the raise was one clause of the spray substep and had no
-           * check-off. Graded at the floor of the box's whole-% render of 9 (0.085); at entry it reads 7 (step 9). */
+           * check-off. Graded at the floor of the box's whole-% render of 8 (0.075); at entry it reads 7 (step 9). */
           accs_ordered: true,   // #807 review item 4: the spray press (11c) is not live before the margin (11b)
-          accs: [{ p: 'rhr_hx_fraction', op: '>=', v: 0.085,
+          accs: [{ p: 'rhr_hx_fraction', op: '>=', v: 0.075,
                    hl: ['RHR — HX Split'], hl_watch: ['Residual Heat Removal (RHR)'],
-                   ask: 'Raise HX SPLIT to 9 %.',
-                   wait_speed: 1, label: 'HX SPLIT raised to 9 %' },
+                   ask: 'Raise HX SPLIT to 8 %.',
+                   wait_speed: 1, label: 'HX SPLIT raised to 8 %' },
                  /* #807 REVIEW ITEM 4 (2026-09-26): THE WATCH AND THE PRESS ARE TWO ROWS, IN ORDER. One row
                   * graded on the spray alone was MET by a press at step entry, and 'Pressurizer Spray — Off'
                   * pulsed from entry: the early press the record above says takes pressure past the RHR limit.

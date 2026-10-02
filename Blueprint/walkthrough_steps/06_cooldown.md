@@ -222,7 +222,7 @@ With RHR circulating, the reactor coolant pumps are only adding heat, so they co
 
 *HX SPLIT is the cooldown throttle now, and COOLDOWN RATE beside it shows what that choice is doing.*
 
-()11a. Raise HX SPLIT to 9 %.
+()11a. Raise HX SPLIT to 8 %.
 
 Suggested time warp: 1×.
 
@@ -244,7 +244,7 @@ Note: Keep COOLDOWN RATE under 100 °F per hour. The tile shows cooling as a min
 
 Background
 
-HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 9 % the read-back climbs to about 85 °F per hour in the first half hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about two and a quarter hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, near 130 °F per hour. Turn it higher and you go over the 100 °F per hour limit: 12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm.
+HX SPLIT is the cooldown rate now, and COOLDOWN RATE beside it is the read-back. At 8 % the read-back climbs to about 85 °F per hour, then eases off as the plant closes on the RHR sink, reaching Mode 5 in about two and a half hours; the read-back is smoothed over about ten minutes, so for the first few minutes the plant itself cools faster, 120 to 140 °F per hour. Turn it higher and the margin goes: 9 % reads about 95 °F per hour, and 12 % reads about 110 °F per hour and sets off the Cooldown Rate High alarm.
 
 [HIGHLIGHTED: RHR — HX Split, Pressurizer Spray — Off (pulsing); Residual Heat Removal (RHR), Pressurizer Spray (PZR), Subcooling Margin, Tavg (steady)]
 
@@ -792,3 +792,15 @@ MEASURED (route runner, seeds 42 / 7):
   176-178 psia. The OLD one-row form on the same press, never reopened: the leg still COMPLETES, but ends at
   453.7 psia, over the RHR suction interlock (2.76 MPa, 400 psia). The step's own "step 15 strands" record
   did NOT reproduce on this route. New route check: the leg ends under 400 psia (typical 174-193).
+
+## 2026-10-02 (#818 package G): 11a re-paced 9 % -> 8 %
+
+- **Why**: after package D (feedwater isolation on reactor trip with low Tavg), the chained cooldown
+  runs on aux feed with the steam generator at ~38 % narrow range (0.75 of its mass) instead of ~65 %
+  (1.0), so less stored secondary heat comes back through natural circulation and step 11 cools
+  faster. Chain, seed 42: COOLDOWN RATE tile peak -86.4 -> -95.1 °F/hr, true rate -138 -> -157,
+  failing the owner-ruled 95 °F/hr margin (2026-09-25, not moved). The standalone leg already read
+  -93.5 before D: the 9 % "about 85" in the Background was stale on both routes.
+- **Measured at 8 %** (seed 42): tile peak -85.1 °F/hr standalone, -85.7 chained; Mode 5 in 140 / 147
+  plant-min; the leg ends at 184 / 278 psia (under the 400 psia RHR suction interlock). The 120-140
+  °F/hr first-minutes figure is the engine 60 s rate on the same two runs (-122 / -142).

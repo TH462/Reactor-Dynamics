@@ -340,9 +340,9 @@ var ROUTES = {
     // across the whole hold (2026-09-24, the step 11 reword was measured on this route: COOLDOWN
     // RATE tile peak -106 degF/hr at +27 min, Mode 5 in 100 plant-min; the ramp peaks -83).
     steps: { 'cmd:set_pressure_setpoint': { policy: 'final' }, 'cmd:set_pressure_setpoint:2': { policy: 'final' },
-             /* step 11 as its note reads since the re-pace (2026-09-25): HX SPLIT 9 % typed once
+             /* step 11 as its note reads since the re-pace (2026-09-25): HX SPLIT 8 % typed once (9 % until 2026-10-02, #818 package G)
               * (`final`); if COOLDOWN RATE runs past 100 degF/hr (-55.6 degC/hr, the alarm), lower HX
-              * SPLIT (never fires on this route: tile peak -83 to -90); if SUBCOOLING MARGIN falls below 20
+              * SPLIT (never fires on this route: tile peak -85.1 standalone, -85.7 chained, 2026-10-02); if SUBCOOLING MARGIN falls below 20
               * degF (11.1 degC, the alarm), SPRAY OFF. */
              /* pass 6: the spray trigger's threshold is READ FROM THE CARD (`from_text`), and every
               * trigger is polled at 4 s of wall x the speed the card has set (`poll_wall_s`) */
@@ -368,7 +368,7 @@ var ROUTES = {
        * under SPRAY, press MANUAL under SPRAY with its box at 50 %" -- then the typical 30 degF shut.
        * Injection `spray_row_old_11` is the old one-row form on this same route. */
       { id: 'spray_off_at_entry', kind: 'press early', at: 'cmd:set_rhr_hx:2', set: {
-        base_spec: { policy: 'seq', cmds: [{ action: 'set_spray', open: false }, { action: 'set_rhr_hx', pct: 9 }] },
+        base_spec: { policy: 'seq', cmds: [{ action: 'set_spray', open: false }, { action: 'set_rhr_hx', pct: 8 }] },
         on: [{ ins: true, p: 'tavg_rate', op: '<', v: -55.6, cmd: { action: 'set_rhr_hx', pct: 6 } },
              { ins: true, p: 'subcooling_margin', op: '<', from_text: /SUBCOOLING MARGIN[^.]*?below (\d+) °F/, cmd: { action: 'set_spray', open: false } },
              { p: 'spray_flow_pct', op: '<', v: 1, after_s: 120, if_text: /If OFF is already lit under SPRAY/, cmd: { action: 'set_spray', open: true, pct: 50 } }] } },
