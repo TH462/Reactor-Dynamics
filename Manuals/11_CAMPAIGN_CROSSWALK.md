@@ -1,8 +1,8 @@
 # 11 — Campaign ↔ Manuals Crosswalk
 
 **Document:** PWR-XW-01  
-**Revision:** 23  
-**Campaign:** PWR — Zero to Operator (`ui/campaign_data.js`) — **34 missions + 1 bonus**  
+**Revision:** 24  
+**Campaign:** PWR — Zero to Operator — **34 missions + 1 bonus**  
 **Manuals:** this `Manuals/` set (MODE naming Rev 2)  
 
 Use this table to jump between a campaign mission and the matching operator procedure.  
@@ -19,7 +19,7 @@ Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** co
 | `hot_zero_power` | **Mode 3, Hot Standby** |
 | Heatup/cooldown transit | **Mode 4, Hot Shutdown** **[sim]** |
 | `hot_shutdown` | **Mode 4, Hot Shutdown** **[sim]** |
-| `cold_shutdown` | **Mode 5, Cold Shutdown** **[sim]** — restored 2026-08-31 (#524) |
+| `cold_shutdown` | **Mode 5, Cold Shutdown** **[sim]** — restored 2026-08-31 |
 
 ---
 
@@ -63,7 +63,7 @@ Campaign `teaches` and procedure titles now use the manuals' **Mode N, Name** co
 
 **Numbering note:** the Mode-5 missions carry letter suffixes (3a, 18a, 18b) to
 show where they sit in the play order without renumbering the base 1–31 map. The
-authoritative order is `ui/campaign_data.js`; the round trip
+round trip
 `3a → 4 … 18 → 18a → 18b` walks Mode 5 → 3 → 1 → 3 → 5 → 1.
 
 ---
