@@ -1658,6 +1658,7 @@ select.num-input { width: auto; }
 .fail-toggle:focus-visible { outline: 2px solid var(--normal); outline-offset: 1px; }
 .fail-row.active .fail-toggle { background: var(--critical); color: #fff; border-color: var(--critical); }
 /* #818: one plain line on what the failure does, and its armed/fired state */
+.fail-console-note { font-size: 11px; line-height: 1.35; color: var(--text-2); margin: 0 0 6px; padding: 4px 6px; border-left: 2px solid var(--border, #444); }
 .fail-desc { font-size: 11px; line-height: 1.35; color: var(--text-2); margin: 3px 0 0 62px; }
 .fail-arm { font-size: 11px; line-height: 1.35; margin: 3px 0 0 62px; }
 .fail-arm.armed { color: #e0b44a; }
@@ -2868,7 +2869,6 @@ details.ckl-why[open] > summary.ckl-why-lbl { margin-bottom: 3px; }
 /* ---- reset, in the session footer of the Plant & Mission window (#443) ---- */
 .mp-session { flex: 0 0 auto; padding: 10px 14px 12px; border-top: 1px solid var(--border); }
 .mp-reset { margin-top: 8px; }
-.mp-reset.mp-reset-armed { border-color: var(--caution); color: var(--caution); }
 /* the restart confirm (#818): the sentence and two real buttons, no timer, nothing that grows */
 .mp-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--caution); border-radius: 6px; background: rgba(245,158,11,.08); color: var(--text-1, inherit); font-size: 13px; }
 .mp-confirm > span { flex: 1 1 220px; }

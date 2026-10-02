@@ -66,6 +66,13 @@ function ck(name, ok, detail) {
   ck('Inject Failure: the Inject button is not drawn in the dim grey that read as disabled',
      rows.disabled === false && rows.color !== rows.grey, 'color ' + rows.color + ', grey ' + rows.grey + ', border ' + rows.border);
 
+  var note = await page.evaluate(function () {
+    var n = document.getElementById('failConsoleNote'), r = n && n.getBoundingClientRect();
+    return n ? { text: n.textContent, shown: !!(r && r.height > 0 && r.width > 0) } : null;
+  });
+  ck('Inject Failure: the pane says it is the instructor console view of the plant itself, not the board (Hard Rule 1, #818 review)',
+     !!note && note.shown && /Instructor's console/.test(note.text) && /board shows only the indications/.test(note.text), note && note.text);
+
   // ---------------------------------------------------------------- 2. armed, then fired
   await page.click('#fail-stuck_porv_open .fail-toggle');
   await ticks(5);
@@ -114,7 +121,7 @@ function ck(name, ok, detail) {
   ck('free play was idle before the event (the welcome text)', idle0);
   ck('the Instructor tab draws the debrief: four parts, five readings', !!deb && deb.lines === 4 && deb.watch === 5, deb && (deb.lines + ' parts, ' + deb.watch + ' readings'));
   ck('the debrief names the trip, the automatic actions and a live reading',
-     !!deb && /reactor tripped/.test(deb.text) && /auxiliary feedwater pumps started/.test(deb.text) && / psia \(/.test(deb.text), deb && deb.text.slice(0, 220));
+     !!deb && /reactor tripped/.test(deb.text) && /auxiliary feedwater pumps started/.test(deb.text) && /\d psi \(/.test(deb.text) && !/psia/.test(deb.text), deb && deb.text.slice(0, 220));
   ck('Retry is offered (a checkpoint exists before the injection)', !!deb && deb.retry);
   ck('the welcome it replaced is not folded into the message log above it', !!deb && deb.folded === 0, deb && deb.folded + ' folded messages');
 
@@ -133,6 +140,28 @@ function ck(name, ok, detail) {
   await ticks(2);
   var dis = await page.evaluate(function () { return { coach: !!document.querySelector('#instrCurrent .coach'), idle: !!document.querySelector('#instrCurrent .instr-idle') }; });
   ck('Dismiss: the welcome comes back and the debrief stays away for this event', !dis.coach && dis.idle);
+
+  // ---------------------------------------------------------------- 6. a refusal's toast (#818 review)
+  /* the plant is tripped (above); ride on until the post-trip feedwater isolation stands, then
+   * ask for a main feed restore — the engine refuses it in plant shorthand */
+  await ticks(150);
+  var tz = await page.evaluate(async function () {
+    RD.__dev.cmd({ action: 'isolate_feedwater', active: false });
+    await new Promise(function (ok) { setTimeout(ok, 300); });
+    function R(e) { if (!e) return null; var q = e.getBoundingClientRect(); return { l: q.left, t: q.top, r: q.right, b: q.bottom }; }
+    function ov(a, c) { return !!(a && c && a.l < c.r && c.l < a.r && a.t < c.b && c.t < a.b); }
+    var t = document.getElementById('appToast'), tr = R(t);
+    var tiles = ['ims2immon9z', 'ims2imn1nny', 'ims2immsvn6', 'ims2immk7ks'].map(function (id) { return R(document.querySelector('[data-item="' + id + '"]')); });
+    return { text: t ? t.textContent : '', shown: !!(t && /show/.test(t.className)), tilesFound: tiles.filter(Boolean).length,
+             overTile: tiles.some(function (q) { return ov(tr, q); }), overScanner: ov(tr, R(document.getElementById('scannerPanel'))) };
+  });
+  ck('a refusal in the Learning register spells its codes out on first use (main feedwater (MFW))',
+     tz.shown && /^⛔ Main feedwater \(MFW\) restore blocked/.test(tz.text) && !/MFW RESTORE BLOCKED/.test(tz.text), tz.text.slice(0, 120));
+  ck('the refusal toast covers neither the level/pressure/temperature tiles nor the scanner bar',
+     tz.shown && tz.tilesFound === 4 && !tz.overTile && !tz.overScanner,
+     'tiles found ' + tz.tilesFound + ', over a tile ' + tz.overTile + ', over the scanner ' + tz.overScanner);
+  var dref = await page.evaluate(function () { var e = document.querySelector('[data-item="bdTrefDev"]'); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; });
+  ck('the Tavg minus Tref readout reads to a tenth of a degree (the amber band starts at 1.4 degF)', !!dref && /ΔREF [+-]?\d+\.\d\b/.test(dref), dref);
   ck('no page errors', errs.length === 0, errs.join(' | '));
 
   await browser.close();

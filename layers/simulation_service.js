@@ -1383,11 +1383,12 @@
         /* THE RETRY POINT (#818). In free play, lay a checkpoint at the instant before a failure
          * is injected or the reactor is tripped by hand, so the debrief's Retry lands exactly
          * there rather than up to 20 s of wall time (and, at speed, many plant-minutes) earlier.
-         * Same gate as the sandbox cadence: never while an instructor occupant owns the ring. */
+         * Gated on the instructor's one free-play predicate: never while a scenario, guided
+         * procedure or RUNNING walkthrough owns the ring (a finished walkthrough is free play). */
         /* A re-inject is a severity-slider drag on a failure already in: not a new event, and
          * one checkpoint per drag step would flush the ring. */
         if ((command.action === 'inject_failure' || command.action === 'scram') &&
-            this.instructor && !this.instructor.mode && !this.instructor.checklist) {
+            this.instructor && this.instructor.isFreePlay && this.instructor.isFreePlay()) {
           var already = command.action === 'inject_failure' && this.layer && this.layer.getActiveFailures &&
             this.layer.getActiveFailures().some(function (f) { return f.id === command.failure_id; });
           if (!already) this._pushCheckpoint();

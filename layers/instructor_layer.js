@@ -2722,7 +2722,7 @@
    * A rewind (the clock going backwards) or a new history (timeline_epoch) drops it. */
   var COACH = {
     sample_s: 5,      // plant seconds between history samples
-    keep_s: 660,      // history kept
+    keep_s: 1200,     // history kept (three samples at 3600x span 720 s — see coachSteadyFor)
     trend_s: 120,     // a trend word is the change over the last two plant-minutes
     settle_s: 300,    // readings that have not moved for this long count as steady
     /* the most a reading may wander inside settle_s and still count as not moving */
@@ -2739,7 +2739,8 @@
   function cRound(v, d) { var m = Math.pow(10, d || 0); var r = Math.round(v * m) / m; return (r === 0 ? 0 : r).toFixed(d || 0); }
   function cTemp(c) { return cRound(c * 1.8 + 32) + ' °F (' + cRound(c) + ' °C)'; }
   function cDelta(c) { return cRound(c * 1.8) + ' °F (' + cRound(c) + ' °C)'; }
-  function cPress(mpa) { return cRound(mpa * COACH_PSI) + ' psia (' + cRound(mpa, 2) + ' MPa)'; }
+  /* "psi", the board's and the manual's convention (absolute, unmarked) — not "psia" (#818 review) */
+  function cPress(mpa) { return cRound(mpa * COACH_PSI) + ' psi (' + cRound(mpa, 2) + ' MPa)'; }
   function cPct(v) { return cRound(v) + ' %'; }
   function cRel(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60); }
   function cAbs(t) {
@@ -2827,8 +2828,20 @@
   }
   function coachSteadyFor(c, t, loose) {
     if (t - c.t0 < COACH.settle_s) return false;
-    var lo = t - COACH.settle_s, win = c.hist.filter(function (s) { return s.t >= lo - 1e-6; });
-    if (win.length < 3) return false;
+    /* THE WINDOW HOLDS THREE SAMPLES SPANNING settle_s WHATEVER THE BROADCAST SPACING (#818
+     * review). It used to be "the samples inside the last settle_s, at least 3" — at 3600x a
+     * broadcast is 360 plant-seconds, so the window never held more than one and "steady" was
+     * never said. Two samples bracketing settle_s were tried and REJECTED, measured: a manual trip
+     * from full power read steady at 21.0 plant-minutes at 3600x against 45.1 at 60x, because two
+     * end points cannot see the pressure controller cycling between them. So the window reaches
+     * back as far as it must to hold three samples (720 s at 3600x) and span settle_s (one
+     * sample at or before its start — at dense spacing that is the only addition). */
+    var win = [], i;
+    for (i = c.hist.length - 1; i >= 0; i--) {
+      win.unshift(c.hist[i]);
+      if (win.length >= 3 && t - c.hist[i].t >= COACH.settle_s - 1e-6) break;
+    }
+    if (win.length < 3 || win[win.length - 1].t - win[0].t < COACH.settle_s - 1e-6) return false;
     return Object.keys(COACH.band).every(function (k) {
       var mn = Infinity, mx = -Infinity;
       win.forEach(function (s) { var v = s.v[k]; if (isFinite(v)) { if (v < mn) mn = v; if (v > mx) mx = v; } });
@@ -2836,9 +2849,18 @@
     });
   }
 
+  /* THE ONE FREE-PLAY PREDICATE (#818 review). No scenario or guided procedure, and no walkthrough
+   * still RUNNING — a finished walkthrough leaves its card up but the plant is the player's again.
+   * The debrief below, the service's Retry checkpoint and the UI's Inject Failure tab all ask this
+   * one question (the snapshot carries it as `instructor.free_play`); three hand-written copies
+   * disagreed on a completed walkthrough — the tab came back, the debrief and Retry did not. */
+  InstructorLayer.prototype.isFreePlay = function () {
+    return !this.mode && !(this.checklist && !this.checklist.complete);
+  };
+
   InstructorLayer.prototype._coachStep = function (snap, t) {
-    /* free play only: a scenario, a guided procedure or a walkthrough owns the tab */
-    if (this.mode || this.checklist) { this._coach = null; this._coachPrev = null; return; }
+    /* free play only: a scenario, a guided procedure or a running walkthrough owns the tab */
+    if (!this.isFreePlay()) { this._coach = null; this._coachPrev = null; return; }
     var I = snap && snap.instruments;
     if (!I || I.core_exit_temp === undefined || I.subcooling_margin === undefined) {
       this._coach = null; this._coachPrev = null; return;
@@ -2922,12 +2944,18 @@
       s1.push('The reactor tripped ' + (lag == null ? 'at ' + cAbs(c.trip_t) : lag < 3 ? 'almost at once' : cRel(lag) + ' later') +
               (cw ? ', on ' + cw : '') + '.');
     }
+    /* A FAILURE THAT WAITS FOR A TRIGGER (#818 review, HARD RULE 1). Whether it has ACTED is the
+     * plant's truth (getFailureArming reads e.g. the PORV's stuck latch), and a debrief that said
+     * "armed, has not acted" — and fell silent once it had — told the player a stuck-open valve
+     * behind a position light failed CLOSED. What is known by construction is only that the
+     * player injected it and what sets it off; whether it has gone off is left to the
+     * indications (the notes below read the PORV light, the pressure, the levels). So this reads
+     * the CATALOG, never `active_failures[].armed`. */
     c.fails.forEach(function (f) {
-      var af = cur.fails[f.id], def = cat[f.id];
-      if (af && af.armed === true && def && def.armed_text) {
-        var m = /^(Armed|Waiting) — (.*?)\.?$/.exec(def.armed_text);
-        s1.push(m ? 'It is ' + m[1].toLowerCase() + ' and has not acted yet (' + m[2] + ').' : def.armed_text);
-      }
+      var def = cat[f.id];
+      if (!cur.fails[f.id] || !def || !def.armed_text) return;
+      var m = /^Armed — (.*?)\.?$/.exec(def.armed_text);
+      if (m) s1.push('It was armed when injected: it ' + m[1] + '. Whether it has acted shows only on the board.');
     });
     var firsts = c.alarms.filter(function (a) { return a.prio !== 'status'; }).slice()
       .sort(function (a, b) { return (a.t - b.t) || ((PRIO[a.prio] || 3) - (PRIO[b.prio] || 3)); }).slice(0, 3);
@@ -3054,6 +3082,7 @@
                                     pred_steps: this._oneOverMPredSteps(this._lastSnapshot) } : null,
       /* THE FREE-PLAY DEBRIEF (#818) — null unless free play has an event to explain. */
       coach: this._coachBlock(),
+      free_play: this.isFreePlay(),
       ui_policy: this.uiPolicy,
       highlight: this.mode === 'follow'
         ? (st && st.control ? { view: null, control_label: st.control, instrument_id: null } : null)

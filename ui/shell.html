@@ -307,6 +307,9 @@
         <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
           <!-- Inject Failure — built by app.js from M4's catalog -->
           <div class="tabpane" data-pane="failures">
+            <!-- #818 review (Hard Rule 1): the Armed / Fired lines read the PLANT, so the pane says
+                 whose view it is. The operator's board shows only the indications. -->
+            <div class="fail-console-note" id="failConsoleNote">Instructor's console: what you injected, and whether it has acted in the plant itself. The board shows only the indications.</div>
             <div id="failList"></div>
             <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. Indications and protection read the channel, not the physics (HR1)."
               data-scanner-detail="The plant keeps behaving correctly; only the reading changes. Use it to test how well you know the couplings: pressure and temperature move together, pressurizer level tracks Tavg, the steam generator is the only heat sink. Those relationships keep holding when one channel stops, which is how you find the bad channel.">▸ Advanced instrument failure (instrument × mode × value)</div>

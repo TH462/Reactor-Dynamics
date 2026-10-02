@@ -1955,11 +1955,24 @@
     if (has('stuck_porv_open')) out.stuck_porv_open = !e.pz.porvStuck;
     /* the trip latch stands under an ATWS — only the rod drop is failed (pwr2_engine :1861) */
     if (has('failure_to_scram')) out.failure_to_scram = !e._lastTrip;
-    if (has('anticipatory_trip_failure')) out.anticipatory_trip_failure = !e.tb.tripped;
+    /* FIRED only while it is SUPPRESSING a trip (#818 review): the turbine is tripped, the plant is
+     * above P-9 (where a turbine trip would trip the reactor) and the reactor has not tripped.
+     * Measured before: at hot zero power and hot shutdown the turbine is offline from the start, and
+     * `!e.tb.tripped` read Fired the instant it was injected — below P-9 the anticipatory trip is
+     * blocked anyway, so the failure has nothing to defeat there. */
+    if (has('anticipatory_trip_failure')) {
+      out.anticipatory_trip_failure = !(e.tb.tripped && !e.pt.reactor_trip &&
+                                        !!(e.rpsReport && e.rpsReport.p9_met));
+    }
     if (has('afw_failure')) out.afw_failure = !(e.aw.mdafwRunning || e.aw.tdafwRunning);
     if (has('degraded_hpi')) out.degraded_hpi = !e.ec.hhsiRunning;
-    /* the runaway has no travel while the bank sits fully out (the shipped full-power IC) */
-    if (has('continuous_rod_withdrawal')) out.continuous_rod_withdrawal = e.rodSteps >= bankSteps() - 0.5;
+    /* the runaway has no travel while the bank sits fully out (the shipped full-power IC), and
+     * no drive power while the reactor trip is latched — the breakers are open, the rods cannot
+     * move (pwr2_engine's !rodDrivePowered branch). Measured before (#818 review): injected after
+     * a trip it read "Acting — the control rods are pulling out" with the rods at 0. */
+    if (has('continuous_rod_withdrawal')) {
+      out.continuous_rod_withdrawal = e.rodSteps >= bankSteps() - 0.5 || e.pt.reactor_trip === true;
+    }
     return out;
   };
 
