@@ -5658,13 +5658,50 @@
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
           : st.wait_hint) + '</div>';
       }
-      /* NO BACKGROUND BLOCK, AND NO DONE-WHEN LINE UNDER AN ASK *(OWNER RULING, 2026-10-02, #819:
-       * "The problem is the subtext under the step. many steps have a very large block of text thats
-       * not necissary for the step. i dont want to limit steps length arbitrarily but i want to get
-       * rid of the subtext. check the step off not the subtext."; and "some steps may need a very
-       * short subtext for supplimental info ... the rest is not needed.")*. `st.why` is NOT drawn
-       * (the data stays in the step file). SUPERSEDES the same day's ruling "B" (Background always
-       * open) and the 2026-09-13/09-20 label rulings. Kept: `aim`, `note`, the warp line, story. */
+      /* #819 (2026-10-03): restored after 8052485b removed it — OWNER: "Where did the background boxes go? I didn't want to lose those." */
+      /* THE DETAILS PARAGRAPH IS LABELLED, SO IT READS AS EXTRA (#692 item 3, from the owner's
+       * 2026-09-09 sheet §B — he asked for it "presented as extra learning material rather than
+       * part of the step", and suggested a labelled bubble).
+       *
+       * It had no label at all. Since #660 item 3 the active step's details are ALWAYS OPEN, so
+       * the `why` arrives as an unheaded grey paragraph hanging under the instruction with
+       * nothing saying it is optional — the same visual weight as the `note`, which carries
+       * contingencies the player does have to act on. A label is what separates "read this to
+       * act" from "read this to understand".
+       *
+       * IT IS "Background", FULL STOP *(OWNER, 2026-09-20, #796 item 2: "Remove '-Not an Action'
+       * from every background title from every walkthrough step.")*. This SUPERSEDES the label he
+       * chose on 2026-09-13 ("Info-box label - a", over "Why this step - background, not an
+       * action"), which settled his instruction of that day: "I also want to make the
+       * informational text block more obvious that it's not a work step but just there for
+       * education. Put it in its own box, move it slightly away from the work steps and label it
+       * so it's obvious what it is."
+       *
+       * THE BOX IS WHAT CARRIES THE NEGATIVE NOW, AND IT ALREADY DID. The old argument for the
+       * clause was that the legend should state the negative as well as the category, because a
+       * question-shaped label ("Why this step") leaves a player scanning for what to press to read
+       * the block before learning it is not for them. But the 2026-09-13 instruction was answered
+       * by THREE things at once — its own box, set apart from the action rows, AND a legend — and
+       * the two reviewers who met the result both reported the block as unambiguous background.
+       * With the box doing that work the clause was a negation restating what the layout says, on
+       * every step, in a 10 px legend that has to stay short.
+       *
+       * THE GUIDE STILL CALLS THE FIELD "why" and F2 still governs what goes in it — this is the
+       * LEGEND the player reads, not a rename of the authoring key.
+       *
+       * The legend borrows `.ckl-story-l > span`'s idiom — small, upper case, muted — because
+       * the story block is the OTHER always-drawn supplementary field on this card, and two
+       * supplementary blocks that look like two different kinds of thing is the confusion this
+       * is fixing. */
+      /* ALWAYS OPEN, NEVER A FOLD *(OWNER RULING, 2026-10-02, #819: asked "(a) keep the fold /
+       * (b) revert to Background always open", replied "B"; and 2026-10-01: "we dont need to hide
+       * the background. we just need to clean up the steps and subtext to be more streamlined and
+       * concise.")*. #818 package C made this a <details> closed on arrival; the answer to unread
+       * subtext is SHORTER subtext (#819), not hidden subtext. Do not re-fold it. */
+      if (st.why) {
+        det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
+          mesc(st.why) + '</div>';
+      }
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
          * should have the why section automatically open.")*. The "other steps keep the toggle"

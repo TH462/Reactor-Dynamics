@@ -20,7 +20,7 @@
  *           the why where you put it. i choose a.")*: the italic line directly under `text` and
  *           ABOVE the substep rows (`.ckl-aim`, ui/app.js), in the what / why / how format of
  *           `Blueprint/CHECKLIST_WRITING_GUIDE.md` §16. One sentence or two, never an action —
- *           the action is the substeps' `ask`, `why` is no longer drawn (#819). `run_style`
+ *           the action is the substeps' `ask`, the long form is `why` (Background). `run_style`
  *           scans it like `text` (vague, modal, percent, bare MW, no SI).
  *   speed_text OPTIONAL string | true — THE STEP'S ONE "Suggested time warp" LINE, for a step
  *           whose substeps share a rung (the format: "once per step, or under a substep only when
@@ -36,9 +36,9 @@
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
  *   hold    seconds to run after the command  acc      {p,op,v[,tol]} checked at END of the step
  *   saw     {p,op,v} true at least once during the step   note  caution / what to watch
- *   why     OPTIONAL layman's teaching prose (#244 items 2/9). NOT DRAWN since #819 (OWNER
- *           RULING 2026-10-02: "get rid of the subtext"); the six standard walkthroughs carry
- *           none. Never load-bearing: harnesses ignore it.
+ *   why     OPTIONAL layman's teaching prose (#244 items 2/9) — the card's collapsible
+ *           fourth block. `text` stays the concise action; `why` carries the what-and-why
+ *           for someone new to the sim. Never load-bearing: harnesses ignore it.
  *   hl      OPTIONAL array of control/indication labels the step glows on hover, when the
  *           step's own `control` isn't the (only) thing to look at. Falls back to `[control]`.
  *           IT MEANS "ACT ON THIS" (#685) — the active step draws it with the PULSING
