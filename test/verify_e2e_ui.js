@@ -5453,8 +5453,7 @@ async function testWalkthroughPanelChrome(page) {
       cklBtns: box('#cklBtns'),
       stopInBtns: !!document.querySelector('#cklBtns [data-ckl-stop]'),
       stopInCard: !!document.querySelector('#cklRun [data-ckl-stop]'),
-      why: box('.ckl-active .ckl-why'),
-      whyLbl: box('.ckl-active .ckl-why-lbl'),
+      whyCount: document.querySelectorAll('.ckl-active .ckl-why, .ckl-active .ckl-why-lbl').length,
       ackRow: box('.ckl-active .ckl-ack-row'),
       stepTxt: box('.ckl-active .ckl-txt'),
       /* the element that actually SCROLLS the row (not always #cklLog — see cklScroller in ui/app.js):
@@ -5471,16 +5470,12 @@ async function testWalkthroughPanelChrome(page) {
         var rc = el.getBoundingClientRect();
         return { top: Math.round(rc.top), bottom: Math.round(rc.bottom), id: el.id || el.className };
       })(),
-      ackAfterWhy: (function () {
-        var w = document.querySelector('.ckl-active .ckl-why'), a = document.querySelector('.ckl-active .ckl-ack-row');
-        return !!(w && a && (w.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING));
-      })(),
     };
   });
-  /* positive control: the card really is drawn, with a why on the active step — without this
+  /* positive control: the card really is drawn, on the active step — without this
    * every "is A below B" test below passes vacuously on a panel that rendered nothing */
-  if (!r.stepTxt || !r.why || !r.ackRow || !r.instrBody) {
-    throw new Error('#687 control: the active walkthrough step did not render its text/why/buttons — ' +
+  if (!r.stepTxt || !r.ackRow || !r.instrBody) {
+    throw new Error('#687 control: the active walkthrough step did not render its text/buttons — ' +
                     JSON.stringify(r));
   }
 
@@ -5526,38 +5521,23 @@ async function testWalkthroughPanelChrome(page) {
   log.push('End walkthrough: bottom ' + r.cklBtns.bottom + ' vs panel floor ' + r.instrBody.bottom +
            ', below the transcript (' + r.instrLog.bottom + ')');
 
-  /* ---- item 3: Rewind + Continue BELOW the why, not above it ---------------------------- */
-  /* REFITTED FOR #818, SAID SO PER HARD RULE 10. Since #818 the row is pinned to the floor of the
-   * scrolling #cklLog (`position: sticky`) so Continue is on screen on every step; on a step taller
-   * than the log the why box legitimately passes UNDER the pinned row, and the old geometric form
-   * (`ackRow.top >= why.bottom`) went red on exactly that (722 vs 753, 2026-10-01). The owner's #687
-   * claim is READING ORDER — the buttons come after the why — so that is asserted on the DOM, and the
-   * geometric form still binds unless the row is the pinned one at the log floor. Against the OLD
-   * (unpinned) card: order true, and the row sat below the why, so it passes there too. */
-  if (!r.ackAfterWhy) {
-    throw new Error('#687 item 3: Rewind/Continue precedes the why block in reading order');
-  }
-  var pinned = r.logBox && Math.abs(r.ackRow.bottom - r.logBox.bottom) <= 2;
-  if (r.ackRow.top < r.why.bottom && !pinned) {
-    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
-      'why block (bottom ' + r.why.bottom + ') and is not the row pinned at the log floor (' +
-      (r.logBox ? r.logBox.bottom : 'no log') + ')');
-  }
-  /* "Continue is on screen" itself is NOT asserted here: this fixture's step does not outgrow its
-   * scroller once the sticky rule is removed (injection run 2026-10-01 stayed green), so a check
-   * here could not fail. verify_ckl_relevance's tall-step check carries that claim, injection-proven. */
+  /* ---- item 3: Rewind + Continue BELOW the step text ------------------------------------- */
+  /* #819 (OWNER RULING 2026-10-02): the Background block is no longer drawn, so the order check
+   * "buttons come after the why" and item 4 "the why is LABELLED" asserted an element that is gone.
+   * Item 3 keeps the half that still exists (buttons under the numbered step text); item 4 is
+   * INVERTED to assert no Background block on the active step. Injection 2026-10-02: re-add the
+   * `st.why` branch -> item 4 red. */
   if (r.ackRow.top < r.stepTxt.bottom) {
     throw new Error('#687 item 3: Rewind/Continue is drawn above the numbered step text');
   }
-  log.push('buttons: step text ends ' + r.stepTxt.bottom + ' -> why ends ' + r.why.bottom +
-           ' -> Rewind/Continue at ' + r.ackRow.top + '-' + r.ackRow.bottom +
+  log.push('buttons: step text ends ' + r.stepTxt.bottom + ' -> Rewind/Continue at ' + r.ackRow.top + '-' + r.ackRow.bottom +
            ' (scroller ' + (r.logBox ? r.logBox.id + ' ' + r.logBox.top + '-' + r.logBox.bottom : 'none') + ')');
 
-  /* ---- item 4: the why is LABELLED (landed at #692; pinned here so it cannot silently go) */
-  if (!r.whyLbl || !r.whyLbl.text) {
-    throw new Error('#687 item 4: the why block carries no visible label — it reads as another step');
+  /* ---- item 4 (#819): NO Background block on the active step */
+  if (r.whyCount !== 0) {
+    throw new Error('#819: the active step still draws a Background block (' + r.whyCount + ' .ckl-why nodes)');
   }
-  log.push('why label: "' + r.whyLbl.text + '"');
+  log.push('no Background block drawn on the active step (#819)');
 
   /* ---- the header comes back, and the row goes, when the run ends ----------------------- */
   await page.evaluate(function () { document.querySelector('#cklBtns [data-ckl-stop]').click(); });
