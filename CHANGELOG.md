@@ -30,7 +30,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.8.2-rc1] — 2026-10-02
+## [Alpha 1.8.2-rc2] — 2026-10-02
+
+### Changed — walkthrough rings breathe (`497b2fc5`)
+
+- The dashed check ring, and the press ring's reduced-motion fallback, pulse brightness over 3.2 s (outline 0.50 → 0.95), never fully dim *(OWNER, 2026-10-02: "I meant both, it's hard for people to find what they are supposed to press or check")*. Supersedes 2026-09-27 "dashed and still". `verify_reduced_motion` 20/20.
 
 ### Changed — #819 walkthrough step text
 
