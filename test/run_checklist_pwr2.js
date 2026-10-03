@@ -550,18 +550,9 @@ if (!only && RUN_B) {
   })();
 
 
-  /* 2g. every pwr2 step has expandable details (#607 item 5) */
-  (function () {
-    var missing = [];
-    POOL.forEach(function (p) {
-      (p.steps || []).forEach(function (st, i) {
-        if (!st.why) missing.push(p.id + ' step ' + (i + 1));
-      });
-    });
-    ck('every pwr2 checklist step has a details paragraph (#607 item 5)',
-       missing.length === 0,
-       missing.length ? 'MISSING: ' + missing.join(', ') : POOL.reduce(function (n, p) { return n + (p.steps || []).length; }, 0) + ' steps');
-  })();
+  /* 2g. RETIRED (#819; OWNER RULING, 2026-10-03: "A" — retire both): asserted every pwr2 step carries a `why` (the Background
+   * block, #607 item 5). The card no longer draws `why` (8052485b) and #819 cuts the
+   * subtext, so the field is being deleted, and a check that it exists would pin dead text. Nothing the player sees depended on it. */
 
   /* 2i. THE ACCUMULATOR WINDOW HOLDS THE CLOCK (#619 item 13, owner: "There is a point the
    * user will get stuck between step 7 and 8 if they do not open the accumulator valve in the
@@ -4430,7 +4421,7 @@ if (!only && RUN_B) {
       'pwr_tmi2_incident:9': 'hpi_active', 'pwr_tmi2_incident:13': 'rcp_cavitating',
     };
 
-    var live = {}, ts = {}, lineup = {}, nObs = 0, noWhy = [];
+    var live = {}, ts = {}, lineup = {}, nObs = 0;
     POOL.forEach(function (proc) {
       (proc.steps || []).forEach(function (st, idx) {
         var accs = (st.accs && st.accs.length) ? st.accs : (st.acc ? [st.acc] : []);
@@ -4448,7 +4439,6 @@ if (!only && RUN_B) {
           /* de-duplicated: `pwr_heatup` 11 grades tavg_c in both `acc` and `saw` */
           var ps = bins.instrument.filter(function (p, i) { return bins.instrument.indexOf(p) === i; });
           live[key] = ps.join(',');
-          if (!st.why) noWhy.push(key);
         }
         if (bins.true_state) ts[key] = bins.true_state.join(',');
         if (bins.control_state || bins.rps_state) {
@@ -4476,10 +4466,9 @@ if (!only && RUN_B) {
        Object.keys(lineup).length + ' grade a lineup fact, ' + Object.keys(ts).length +
        ' a true_state field');
 
-    ck('2af.2 every observation step graded on a live quantity carries a `why` for when it does not verify (#667 item 1)',
-       noWhy.length === 0,
-       noWhy.length ? 'NO `why`: ' + noWhy.join(', ')
-         : 'all ' + Object.keys(live).length + ' carry one (e.g. pwr_raise_power step 9)');
+    /* 2af.2 RETIRED (#819; OWNER RULING, 2026-10-03: "A" — retire both): it required a `why` on every live-quantity observation step.
+     * The card stopped drawing `why` at 8052485b, so the check pinned text no player can see; the
+     * pinned SET (2af.1) is what still catches a new losable observation step. */
 
     var dTS = cmpMap(ts, TRUE_STATE_EXPECTED);
     ck('2af.3 the true_state-graded observation rows — the grey band — are the pinned set (#667 item 1)',
