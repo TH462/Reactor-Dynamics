@@ -46,7 +46,7 @@ the control, do the one thing, and tell from a named tile whether it is done.
 
 ## 2. The rendering contract — what the player actually has in front of them
 
-> **#819 (OWNER RULING, 2026-10-02): the renderer no longer draws Background (`why`) or the done-when line under an `ask`.** *"The problem is the subtext under the step. many steps have a very large block of text thats not necissary for the step ... check the step off not the subtext."* Allowed subtext: `aim`, a one-line `note` (e.g. "Expect it near CONTROL ROD POSITION 205"), the time-warp line. So **the `ask` itself must carry the target value the check waits for** - there is no second line to say it. `why` data may stay in the file; it is not shown. Where this section describes a Background block or a done-when under an ask, it is superseded.
+> **#819: the renderer no longer draws Background (`why`) or the done-when line under an `ask`** *(OWNER RULING, 2026-10-02: "The problem is the subtext under the step. many steps have a very large block of text thats not necissary for the step ... check the step off not the subtext.")*. Allowed subtext: `aim`, a one-line `note` (e.g. "Expect it near CONTROL ROD POSITION 205"), the time-warp line. So **the `ask` itself must carry the target value the check waits for** - there is no second line to say it. The six standard walkthroughs carry no `why`; TMI-2 keeps its own, undrawn, pending its concise pass. Where this section describes a Background block or a done-when under an ask, it is superseded.
 
 Write for the container, not for the page. The running panel is about 340 px wide (about 42
 characters a line). Measured on the shipped build (`ui/app.js` `renderChecklist`):
@@ -870,7 +870,7 @@ say what must be there, never what may not be.**
 
 ## 16. What / why / how — the step shape (2026-09-24)
 
-> **#819 (OWNER RULING, 2026-10-02): the renderer no longer draws Background (`why`) or the done-when line under an `ask`.** *"The problem is the subtext under the step. many steps have a very large block of text thats not necissary for the step ... check the step off not the subtext."* Allowed subtext: `aim`, a one-line `note` (e.g. "Expect it near CONTROL ROD POSITION 205"), the time-warp line. So **the `ask` itself must carry the target value the check waits for** - there is no second line to say it. `why` data may stay in the file; it is not shown. Where this section describes a Background block or a done-when under an ask, it is superseded.
+> **#819: the renderer no longer draws Background (`why`) or the done-when line under an `ask`** *(OWNER RULING, 2026-10-02: "The problem is the subtext under the step. many steps have a very large block of text thats not necissary for the step ... check the step off not the subtext.")*. Allowed subtext: `aim`, a one-line `note` (e.g. "Expect it near CONTROL ROD POSITION 205"), the time-warp line. So **the `ask` itself must carry the target value the check waits for** - there is no second line to say it. The six standard walkthroughs carry no `why`; TMI-2 keeps its own, undrawn, pending its concise pass. Where this section describes a Background block or a done-when under an ask, it is superseded.
 
 *(OWNER, 2026-09-24: "My general thought is that first line is the general 'what we are doing in
 this step' and the substeps are 'how to do this'."; OWNER RULING, 2026-09-24: "I like putting the

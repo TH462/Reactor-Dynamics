@@ -1481,15 +1481,15 @@
          * CLAUSE OF HIS #755 EDIT NOT TAKEN, and it is flagged on the issue rather than silently
          * dropped. His spelled-out form is 23 words against `run_style`'s W2 cap of 20 (scored
          * since #692), and the pool's form is exactly 20. Relaxing W2 to fit one step would
-         * quieten a gate to take a wording; the `why` below carries his spelled-out
-         * "Residual Heat Removal (RHR)" gloss unchanged, which is the half of the edit that had
-         * room. If he wants the full spelling, W2's cap is what moves, by his ruling. */
+         * quieten a gate to take a wording; the `why` that carried his spelled-out
+         * "Residual Heat Removal (RHR)" gloss was cut by the #819 subtext ruling (2026-10-02,
+         * Background is no longer drawn). If he wants the full spelling, W2's cap is what moves, by his ruling. */
         /* 2026-09-24 (wt-heatup): the owner's line split into GOAL (`text`) and ACTION (`ask`),
          * per the walkthrough step format (Blueprint/walkthrough_steps/02_mode3_to_mode1.md). The
          * word-cap note above now applies to the `ask`; the goal line is his opening clause. */
         obs('Confirm the plant is cold and shut down.',
           null, null, null,
-          'In Cold Shutdown (Mode 5) the water is far below boiling and pressure is low. Residual Heat Removal (RHR) carries the fuel\'s small leftover heat, and both rod banks are fully in.',
+          null,
           [{ p: 'pump_flow_pct', op: '>', v: 90 }, { p: 'shutdown_bank_pct', op: '>=', v: 98 }, { p: 'plant_mode', op: '<', v: 5 }],
           /* 'Primary Pressure', not 'Plant Pressure' — both resolve to `ims2immsvn6`, but the
            * board engraves PRIMARY PRESSURE and every other step in this leg uses that spelling
@@ -1508,8 +1508,7 @@
            * number (natural circulation reads about 4 % with the pumps stopped), so "reads OFF" is
            * the card's OFF lamp, whose source is `rcp_running` (pwr_board_wiring `imrsjy59pnu`).
            * The rod tiles draw integer steps. Measured on each route: see the step file's Notes. */
-          { aim: 'The heatup begins from a known state: cold, depressurized, pumps stopped, every rod in.',
-            wait_speed: 1, speed_text: true,
+          { wait_speed: 1, speed_text: true,
             accs: [{ p: 'tavg_c', op: '<', v: 93.05,
                      ask: 'Check AVG COOLANT TEMPERATURE reads below 200 °F.',
                      label: 'AVG COOLANT TEMPERATURE below 200 °F' },
@@ -1525,7 +1524,6 @@
                    { cont: true, p: 'shutdown_bank_steps', op: '<', v: 1,
                      label: 'SHUTDOWN ROD POSITION 0 of 627' }] }),
         { text: 'Start the reactor coolant pumps.',
-          why: 'A shut-down reactor makes almost no heat, but the pumps\' work ends up in the water as friction, enough to warm the whole plant. Real crews heat up this way, reactor never critical.',
           control: 'RCP ON/OFF', target: 'RCP FLOW above 90 %',
           predicts_alarms: ['subcooling_low'], aim: 'With the reactor kept shut down, the pumps are what heat the plant.',
           wait_speed: 1, speed_text: true,
@@ -1536,7 +1534,7 @@
                     * cooldown's spray shut late (19 psia at the seam): Tavg 194 -> 203 degF, SUBCOOLING
                     * MARGIN 25.1 degF by step 8; the reviewer, at 17-18 psi, got the alarm. From 50 psia
                     * the same steps hold 83 degF; from 240 psia (the fixed cooldown) 198 degF. */
-                   note: 'Only if PRIMARY PRESSURE reads under about 25 psi here, as it can after a cooldown: pump heat carries AVG COOLANT TEMPERATURE to about 205 °F and can bring in the Low Subcooling Margin alarm. Expected: step 9\'s heaters clear it.',
+                   note: 'If PRIMARY PRESSURE reads under about 25 psi, the Low Subcooling Margin alarm can come in; step 9\'s heaters clear it.',
                    label: 'RCP FLOW above 90 %' }],
           /* NOT THE PUMP ITSELF — THE CARD AND THE ON BUTTON *(OWNER, 2026-09-14, #755 item 6:
            * "mode 5->3 step 2 shouldn't highlight the pump itself. it should highlight the pump
@@ -1560,7 +1558,6 @@
           /* "about 9 plant-minutes" is MEASURED, not scaled (#668): 627 steps at the sourced
            * fast drive of 72 steps/min is 522.5 s = 8.7 min, verified on the engine at 71.99
            * steps/min. It read "about 10" against the pre-#668 drive's 595.4 s. */
-          why: 'The shutdown bank never steers the reactor. It stays fully out while the plant runs, so a trip (SCRAM) drops it in and shuts the reactor down hard. The control bank and boron do the steering.',
           aim: 'The shutdown bank is the trip reserve: out first, and it stays out.',
           control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 627 of 627',
           cmd: { action: 'rod_nudge', group_id: 'shutdown_rods', steps: 627, speed: 'fast' }, hold: 660, wait_hint: false,
@@ -1601,7 +1598,7 @@
                     * WITHDRAW did nothing -- the rod drive refuses every move while the reactor trip
                     * is latched (pwr2_engine.js rodDriveDoor). The cooldown's 16d now resets it; this
                     * line is for a player who arrives any other way. */
-                   note: 'If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once; if PRESS TO ARM, leave it. One click runs the bank to 627 of 627 in about 9 plant-minutes; a second click stops it.',
+                   note: 'If SCRAM reads PRESS TO RESET, press it once first. Click WITHDRAW only once; a second click stops the bank.',
                    wait_speed: 1, label: 'SHUTDOWN ROD POSITION counting up' },
                  { p: 'shutdown_bank_steps', op: '>=', v: 615,
                    hl_watch: ['Shutdown Rod Position'],
@@ -1645,10 +1642,9 @@
          * `run_manual_controls`' distinct-element check. That fallback now asks
          * `stepAsksForPress` first; see the note on `stepHlLabels`. */
         { text: 'Confirm the turbine is tripped.',
-          why: 'The cold plant starts with the turbine tripped. A turbine taking any steam on pump heat would carry away the heat you are building up.',
           aim: 'A tripped turbine takes no steam, so pump heat stays in the plant.',
           wait_speed: 1, speed_text: true,
-          note: 'TRIP is also a button that trips the turbine; here the turbine is already tripped, so only read the lamp. UNLOAD walks the load to zero; TRIP shuts the steam valves.',
+          note: 'Only read the TRIP lamp; do not press TRIP.',
           control: 'Turbine Load', target: 'TRIP lit, OUTPUT 0 MWe',
           hold: 10,
           accs: [{ p: 'turbine_tripped', op: '>', v: 0,
@@ -1708,7 +1704,6 @@
          * mode and off" — pwr_board_wiring `imrmssr9ihq`). Graded on the card's RUNNING word
          * (`afw_pump_running`, the instrument the word reads), not on the press. */
         { text: 'Put auxiliary feed in AUTO to hold steam generator level.',
-          why: 'The steam generator is the boiler. Main feed needs a steam load to run, so the small aux feed pump carries it until about 1 % power. AUTO holds level near 33 %, letting water in only below 38 %.',
           control: 'AFW', target: 'AUX FEED WATER reads RUNNING',
           cmd: { action: 'set_afw', active: true, pump: 'mdafw' }, hold: 5,
           aim: 'Once the steam generator boils, its level falls; aux feed has to be holding it already.',
@@ -1749,7 +1744,6 @@
          * below) — as the steady watch treatment. This step authors no `control` at all, so
          * unlike the turbine verify it needed nothing from `stepHlLabels`' fallback. */
         { text: 'Confirm the steam dump is closed.',
-          why: 'The steam dump sends steam to the condenser. Shut, the steam side bottles up the heat. DUMP SETPOINT already reads 1020 psi but does nothing until AUTO, pressed later once the steam side is hot.',
           aim: 'Steam the dump lets out is pump heat leaving the plant.',
           wait_speed: 1, speed_text: true,
           /* 6a (2026-09-25, phase 2) is NOT 6b written twice. The card's MANUAL word and its CLOSE
@@ -1797,7 +1791,6 @@
          * ride, which reads the flow AND the RHR lineup together. A `letdown_orifice_a` tick
          * alone would pass on a plant whose cross-connect was still carrying everything. */
         { text: 'Open the letdown orifices before the pressure climb shuts the RHR path.',
-          why: 'Charging always pumps water in, so letdown must always let it out. Letdown now goes through RHR, which shuts itself at 600 psi during the climb. With the orifices shut, the plant would fill solid: water all the way up the pressurizer, no steam space left.',
           aim: 'Above 600 psi, the orifices are the only way water leaves the loop.',
           wait_speed: 1, speed_text: true,
           control: 'Letdown Orifices (CVCS)', target: 'A+B 7 % lit; LETDOWN reads above 0 gpm',
@@ -1810,7 +1803,6 @@
           accs: [
             { p: 'letdown_orifices_ab', op: '>', v: 0,
               ask: 'Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.',
-                   note: 'Letdown is the path water leaves the reactor loop by; the orifices are two fixed holes in that path.',
               label: 'A+B 7 % lit',
               hl: ['Letdown — A+B 7%'], hl_watch: ['Letdown Orifices (CVCS)', 'Letdown Flow'] },
           ],
@@ -1865,12 +1857,11 @@
          * so it goes in service while nothing is happening. That is also the lineup order
          * `pwr_cooldown` leaves the plant in (#624). */
         { text: 'Put pressurizer spray in service before the heaters start the climb.',
-          why: 'The pressurizer is half water, half steam and sets loop pressure: heaters boil water to raise it, spray condenses steam to lower it. Spray is the only brake on the climb the next step starts.',
           control: 'Pressurizer Spray (PZR)', target: 'AUTO lit under SPRAY',
           cmd: { action: 'set_spray', auto: true }, hold: 10,
           aim: 'A brake goes in service before the climb it has to stop.',
           wait_speed: 1, speed_text: true,
-          note: 'Nothing moves yet: spray opens only above the SET PZR PRESSURE box, and the cold plant starts more than 1300 psi below it.',
+          note: 'Expect no change on the board yet.',
           accs: [{ p: 'spray_auto', op: '>', v: 0,
                    ask: 'Press AUTO under SPRAY on the PRESSURIZER (PZR) card and check AUTO is lit.',
                    label: 'AUTO lit under SPRAY' }],
@@ -1962,7 +1953,6 @@
          * is held is still the one that says open the valve. Neither number is re-litigated
          * here — read the #608 and #627 paragraphs above before moving either. */
         { text: 'Raise PRIMARY PRESSURE to the 665 psi accumulator window on the heaters.',
-          why: 'SET PZR PRESSURE already reads 1700 psi, its lowest, so the heaters run full until near it. Pressure stops there because above 1972 psi emergency injection re-arms, and with the steam side cold it would fire on a healthy plant.',
           predicts_alarms: ['rhr_not_aligned', 'pzr_level_dev_high'], aim: 'The accumulator valve opens only between 665 and 1615 psi, so pressure comes up first.',
           control: 'Pressurizer Heaters (PZR)', target: 'AUTO lit under HEATER; PRIMARY PRESSURE climbing to 665 psi',
           cmd: { action: 'set_heater', auto: true }, hold: 2700, wait_hint: false,
@@ -1980,7 +1970,7 @@
                * alarms stay. MEASURED (typical / rewind_mid_heaters / pressure_sp_high, seed 42): Shutdown
                * Cooling Not In Service at 599 psi, Pressurizer Level Above Program at 700 psi, cleared by
                * step 12's entry. Each would otherwise read as a fault. */
-              note: 'At 665 psi the clock drops to 1× for the next step. Expected alarms: Shutdown Cooling Not In Service near 600 psi; Pressurizer Level Above Program near 700 psi, which clears itself.',
+              note: 'Expected alarms: Shutdown Cooling Not In Service and Pressurizer Level Above Program. At 665 psi the clock drops to 1×.',
               hl: [], hl_watch: ['Primary Pressure'],
               wait_speed: 600, label: 'PRIMARY PRESSURE at 665 psi, the accumulator window' },
           ],
@@ -2061,10 +2051,9 @@
          * highlight vocabulary — `hl` draws a CYAN pulsing halo, rgba(90,240,255,…), since #743.
          * Named by BEHAVIOUR rather than colour so a palette change cannot make it wrong again. */
         { text: 'Open the accumulator valve while PRIMARY PRESSURE is inside its window.',
-          why: 'The accumulators are borated-water tanks pushed by nitrogen at 665 psi. They fire if loop pressure falls below that, so they stay isolated while cold. Above 1615 psi the plant removes the valve\'s power.',
           aim: 'Open, the accumulators inject by themselves if loop pressure is lost.',
           wait_speed: 1, speed_text: true,
-          note: 'The valve symbol sits just above the ACCUMULATORS tile, left of ECCS INJ FLOW. Above 1615 psi it locks; the ACCUMULATORS caution is expected until pressure passes 1000 psi. Missed the window: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.',
+          note: 'Above 1615 psi the valve locks. Missed it: press OFF under HEATER and MANUAL under SPRAY at 100 %, open the valve below 1615 psi, then put both back in AUTO.',
           control: 'Accumulator valve', target: 'ACCUMULATORS tile no longer reads ISOLATED',
           cmd: { action: 'open_accumulator_valve' }, hold: 10,
           accs: [{ p: 'accumulator_valve_open', op: '>', v: 0,
@@ -2076,7 +2065,6 @@
          * acceptance line, both of which render — but the numbered instruction, which is what a
          * player reads first, said only "watch Tavg". A step that waits on a number names it. */
         { text: 'Heat the plant to 542 °F on pump heat alone.',
-          why: 'The pumps do the work: AVG COOLANT TEMPERATURE climbs and REACTOR POWER stays at zero. PRESSURIZER LEVEL rises as the water expands, to about 44 % near 280 °F, then level control lets the extra out and it falls back to about 25 % by 435 °F, its program for a plant this cool. STEAM PRESS climbs toward 1020 psi; the next step hands it to the steam dump.',
           predicts_alarms: ['pzr_pressure_lolo', 'pzr_pressure_low', 'turbine_trip'], aim: 'Hot Standby needs near-operating temperature; the pumps get there without the reactor.',
           wait_speed: 3600, speed_text: true,
           control: '(observe)', target: 'AVG COOLANT TEMPERATURE 542 °F or higher, REACTOR POWER still 0 %',
@@ -2090,7 +2078,7 @@
                     * 42, both heatups -- `pzr_pressure_lolo` (1800 psia, critical outside Modes 4-5)
                     * and `pzr_pressure_low` raise in this step at 1726 psia as the plant enters Mode 3
                     * with the pressure setpoint at its 1700 psi floor; the step ends at 1715 psia. */
-                   note: 'Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 14), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F; that is expected.',
+                   note: 'Expected near the end: Pressurizer Pressure Very Low, Pressurizer Pressure Low and Turbine Trip / Low Steam Demand alarms.',
                    label: 'AVG COOLANT TEMPERATURE 542 °F or higher' }],
           /* ⚠ AND THE LONG RIDE DECLARES THE ONE THE RIDE ITSELF CAUSES (same 2026-09-14 ruling).
            * This is the leg's longest hold — 40,000 s — i.e. exactly where the player is at 600x.
@@ -2160,8 +2148,7 @@
          * passes on the wrong plant: flow > 0 is satisfied by a cross-connect still in service,
          * and RHR out is satisfied by a plant with no letdown path at all. */
         { text: 'Confirm letdown now leaves only through the orifices.',
-          why: 'The RHR suction valve shut itself when PRIMARY PRESSURE passed 600 psi, an interlock. Letdown now leaves only through the orifices, about 11 gpm here. Zero means water in and nothing out.',
-          aim: 'Charging keeps pumping in, so a letdown path not flowing fills the pressurizer solid, with no steam space left.',
+          aim: 'Charging keeps pumping in; with no letdown the pressurizer fills solid.',
           wait_speed: 1, speed_text: true,
           accs: [
             { p: 'rhr_active', op: '<', v: 1,
@@ -2220,10 +2207,9 @@
          * in-service controller from a shut one. The EFFECT is asserted in the Mode 3
          * confirmation below, which reads the atmospheric dump valve and the header pressure. */
         { text: 'Hand STEAM PRESS to the steam dump to hold.',
-          why: 'The plant now makes more heat than it needs, and the dump sends the excess to the condenser. Without it the ATMOS DUMP vents steam to the sky. Real plants hold pressure this way whenever the turbine is off.',
           control: 'Steam Dump', target: 'AUTO lit on the STEAM DUMP card, status reading STM PRESS',
           cmd: { action: 'set_steam_dump', mode: 'auto' }, hold: 10,
-          aim: 'Pump heat has STEAM PRESS at about 1020 psi, or past it with the ATMOS DUMP venting, and something has to hold it.',
+          aim: 'Something has to hold STEAM PRESS, or the ATMOS DUMP vents steam to the sky.',
           wait_speed: 1, speed_text: true,
           /* 13a (OWNER RULING, 2026-09-25, selected "Both A and B" — option text, not his words): the
            * DUMP SETPOINT box is checked BEFORE AUTO. Measured on one plant (cooldown walkthrough,
@@ -2247,7 +2233,6 @@
           hl: ['Steam Dump — Auto'],
           hl_watch: ['Steam Dump', 'Steam Dump Status', 'SG Pressure', 'Dump Setpoint'] },
         { text: 'Bring PRIMARY PRESSURE up to normal operating pressure.',
-          why: 'Crossing 1972 psi re-arms emergency injection. It is safe now: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this waited for the heatup.',
           aim: 'With the steam side hot, passing 1972 psi will not fire emergency injection.',
           /* no step-level `speed_text` since #809 item 8 split this into 14a (1x) and 14b (600x): each
            * substep prints its own rung, and the step line repeated 14b's "600x" (layman 2026-09-28) */
@@ -2311,7 +2296,6 @@
          * full heatup. The mode it selects is the shell's to prove. */
         { text: 'Confirm Hot Standby.',
           aim: 'This catches a pressure that never came up or steam venting to the sky.',
-          why: 'Hot Standby (Mode 3) is hot and at pressure, reactor shut down. STEAM PRESS near 1020 psi with the ATMOS DUMP shut means the steam dump, not the sky, carries the heat.',
           /* THE MODE CONFIRMATION WAS A DEAD FIELD (#739, 2026-09-13). This step carried BOTH an
            * `acc` and an `accs`, and `instructor_layer.js` `_gradeStep` is
            * `if (st.accs && st.accs.length) {...} else if (st.acc) {...}` — the `accs` branch wins,
@@ -2379,7 +2363,7 @@
            * (2026-09-24, wt-heatup: the done-when is now the row's own `label`, so it IS authorable;
            * the note moved onto the row with the step's action. Grading was regraded the same day, below.) */
           null, null,
-          'No gauge reads how shut down a reactor is. The signs are SOURCE RANGE steady at background and STARTUP RATE at zero. With the control bank in and cold boron, the core is far from critical.',
+          null,
           null, ['Source Range', 'Startup Rate', 'Control Rod Position', 'Boron Status'],
           /* REGRADED ON THE BOARD (OWNER RULING, 2026-09-24, selected "Grade board readings": "Grade
            * SOURCE RANGE and STARTUP RATE after a measurement pass, so the check-off matches what the
@@ -2415,7 +2399,7 @@
           { hold: 60, wait_hint: false,   /* the replay must see the 30 s window full: 2x (#809; was 120 for 90 s) */
             aim: 'The startup that follows assumes a core a long way from critical.',
             wait_speed: 10, speed_text: true,
-            note: 'SOURCE RANGE wanders a little; steady means not climbing, watched for half a plant-minute. STARTUP RATE flickers between about −0.01 and +0.01. A rod out or DILUTING: stop and find what moved.',
+            note: 'Steady means not climbing for about half a plant-minute. If it climbs, stop and find what moved.',
             /* #807 item 5 (OWNER: "make the read source range counts steady checkoff looser so it
              * checks off quickly instead of waiting 10 plant minutes"). 600 s / 1.2 % -> 90 s / 8 %.
              * MEASURED from this step's own arrival (states saved off the typical route, seeds 42/7/123):
@@ -2462,7 +2446,7 @@
          * is not zero. 'Reactor Power' was added to the board vocabulary in the same change. */
         obs('Confirm the heatup made no fission power.',
           null, null, null,
-          'Zero power is the point of a pump-heat heatup. Power above 0 % means something pulled the control bank or diluted the boron.',
+          null,
           null, ['Reactor Power', 'Control Bank', 'Boron'],
           { aim: 'Any power means a chain reaction, not the pumps, did the heating.',
             wait_speed: 1, speed_text: true,
@@ -2547,8 +2531,7 @@
          * no `hold` on ONE snapshot (it read +0.02), and a 10 s hold to give it ticks moved the
          * replay's 1/M prediction 213 -> 212 and reddened four downstream step-9/10/12 checks. */
         { text: 'Verify the plant is in Hot Standby (Mode 3).',
-          predicts_alarms: ['turbine_trip'], aim: 'The startup begins from a known state: hot, at pressure, reactor shut down.',
-          why: 'In Hot Standby (Mode 3) the plant is at operating temperature and pressure with the reactor shut down: pumps running, shutdown rods fully out.',
+          predicts_alarms: ['turbine_trip'],
           past: { p: 'power_pct', op: '>', v: 1 },
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'tavg_c', op: '~', v: 285.83, tol: 1.66,
@@ -2569,7 +2552,7 @@
                  { p: 'shutdown_bank_steps', op: '>=', v: 626.5,
                    ask: 'Check SHUTDOWN ROD POSITION reads 627 of 627.',
                    label: 'SHUTDOWN ROD POSITION 627 of 627' }],
-          note: 'STARTUP RATE is in decades per minute (DPM): 1.0 means power grows tenfold a minute. The Turbine Trip / Low Steam Demand alarm is expected.',   /* OWNER RULING 2026-09-25 "A" (#653 layman pass 5 S-2) */
+          note: 'The Turbine Trip / Low Steam Demand alarm is expected.',   /* OWNER RULING 2026-09-25 "A" (#653 layman pass 5 S-2) */
           hl_watch: ['Startup Rate', 'Tavg', 'Primary Pressure', 'Reactor Coolant Pumps (RCP)', 'Boron Concentration'] },
         /* THE NUMBER CAME OUT *(OWNER RULING, 2026-09-14/15: selected "Drop the number entirely")*.
          * This `why` said "boron is already near 719 ppm", which is true of ONE of the two routes
@@ -2668,8 +2651,7 @@
          * and the step ticks at once. */
         { text: 'Dilute boron to the estimated critical concentration, 719 ppm.',
           aim: 'Less boron lets the reactor go critical with the rods low in their travel.',
-          why: 'Boron absorbs neutrons. Diluting it weakens its hold so the rods can take the reactor critical about a third of the way out (step 208 of 627). Boron is slow and sets the starting point; rods are fast and do the fine work. Real crews never add reactivity two ways at once: the rods stay still while boron is diluted. They also pause a dilution each time it doubles the SOURCE RANGE count, a pause this walkthrough leaves out. Coming from the Mode 5 to Mode 3 walkthrough the count roughly triples: expected, because the core is being brought near critical on purpose.',
-          note: 'Coming from the Mode 5 to Mode 3 walkthrough this takes about 2 plant-hours. The Hot Standby preset starts at 719 ppm, so the step ticks at once.',
+          note: 'From the Mode 5 to Mode 3 walkthrough, expect about 2 plant-hours.',
           control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down, then MIXING, then HOLD; BORON CHEM tracking live',
           /* 90, not 65 (#749). MEASURED end to end on the full stack: 917.6 → 718.7 ppm takes
            * 88.4 plant-minutes (850 at +28.4, 800 at +50.0, 760 at +68.4, 740 at +78.4, 725 at
@@ -2705,7 +2687,7 @@
                   * Standby preset nothing is in transit and it reads HOLD on arrival. */
                  { p: 'boron_status_hold', op: '~', v: 1, tol: 0.5,
                    hl_watch: ['Boron Status'],
-                   ask: 'Wait for BORON STATUS to read HOLD. MIXING means the dilution is still reaching the reactor.',
+                   ask: 'Wait for BORON STATUS to read HOLD.',
                    label: 'BORON STATUS reads HOLD' }],
           hl: ['Boron ON', 'Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         /* CONFIRM, NOT ACT *(OWNER, 2026-09-03, #619 item 16: "mode 3 CL has me put SG feed in
@@ -2738,7 +2720,6 @@
          * which is the claim. */
         { text: 'Line up the steam generator (SG) before taking the reactor critical.',
           aim: 'Once the reactor makes power, its heat has to leave through the steam generator.',
-          why: 'In AUTO the steam dump holds steam pressure at 1020 psi, where water boils at 547 °F, so the reactor water holds at 547 °F. Auxiliary feed replaces the water boiled off, up to about 1 % power; main feed takes over there.',
           control: 'AFW', target: 'AUX FEED WATER reads RUNNING; STEAM DUMP AUTO lit, DUMP SETPOINT 1020 psi',
           hold: 5,
           wait_speed: 1, speed_text: true,
@@ -2770,11 +2751,10 @@
          * first count target, and the per-step targets carry it in the always-visible line. */
         { text: 'Take the 1/M baseline point before any rod moves.',
           aim: 'Every later 1/M value divides this count by a new one.',
-          why: '1/M divides the starting SOURCE RANGE count by the current one. As counts climb it falls toward zero, and where the line would cross zero is the critical rod position. The panel fits the last three points.',
           control: '1/M Plot', target: 'point 1 plotted',
           accs: [{ cmd: 'plot_1m_point',
                    ask: 'Press 1/M PLOT on the ROD CONTROL card, then press Plot point.',
-                   note: '1/M is one over multiplication: the first count divided by the latest, falling toward zero as the reactor nears critical. Count targets are SOURCE RANGE readings in shorthand: 7.0e2 is 700 counts a second, 1.4e3 is 1,400. The 1/M PLOT window hides STEAM GENERATOR LEVEL and pause: close it with its ✕ between points.',
+                   note: 'Close the 1/M PLOT window with its ✕ between points: it hides STEAM GENERATOR LEVEL and pause.',
                    wait_speed: 1, label: 'Baseline point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* GLOW THE BUTTON, NOT THE BOX THAT OPENS IT (#735, owner playtest #724 items 4 and 5:
@@ -2821,7 +2801,6 @@
            * selected "Fix the text AND say why (Recommended)")* — this is the text half; the
            * card's one-line reason on an out-of-turn press is ui/app.js. */
           /* the step-level `note` moved into 5a's own `note` (2026-09-23 reconcile) — his 5a note is the one sentence below; the rod-speed and early-plot sentences it used to carry are NOT in his file and went with it (recorded in the step file's Notes). */
-          why: 'Only SOURCE RANGE counts show how close a shut-down core is to critical; rod position does not. The first two points usually predict critical too high, because rods near the bottom of the core are worth little per step.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e2 (700 counts a second); point 2 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 94, speed: 'normal' }, hold: 300,
           /* THE COUNT IS WRITTEN THE WAY THE METER WRITES IT *(OWNER, #724 item 6: "Whenever the
@@ -2968,11 +2947,11 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 695, mean_s: 30,
                    hl: ['Rod Speed — Normal', 'Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Press MED, hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e2 or more. If the 30-second average shown below stays under 7.0e2, tap WITHDRAW once and wait half a plant-minute; repeat until it reaches 7.0e2.',
-                   note: 'The clock goes to 10× once the rods move; expect about 10 seconds of holding at about 7 steps a second, near CONTROL ROD POSITION 70 to 80. The count jumps about 15 % either way, so the check-off waits for its 30-second average, not a touch.',
+                   note: 'Expect it near CONTROL ROD POSITION 70 to 80. 7.0e2 is 700 counts a second.',
                    label: 'SOURCE RANGE reads 7.0e2 (700 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point.',
-                   note: 'That takes about half a plant-minute after the rods stop; longer if BORON still reads above 719 ppm.',
+                   note: 'About half a plant-minute after the rods stop.',
                    label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
           /* CONTROL ROD POSITION IS WHAT THE 1/M PANEL'S PREDICTION IS A NUMBER ON (#735, owner
@@ -2987,7 +2966,6 @@
            * the authored string said 10× a SECOND time in the same line. Same defect on step 5.
            * An authored hint earns its place only by carrying a fact the generated line cannot —
            * step 7's rod-speed caution, step 8's "come back to 10× for the next step". */
-          why: 'Closer to critical each rod step is worth more, so the line steepens and the prediction usually moves in. It can move out first if an early point caught the count on a jump. It still reads high.',
           control: 'Control Bank', target: 'SOURCE RANGE above 1.4e3 (1,400 counts a second); point 3 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 63, speed: 'normal' }, hold: 300,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
@@ -2998,7 +2976,7 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 1350, mean_s: 30,   // the 1.4e3 band's lower edge — see step 5's RENDER BAND block
                    hl: ['Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 1.4e3 or more.',
-                   note: 'Expect CONTROL ROD POSITION 150 to 155. If the count only touches 1.4e3, or is short at 155, tap WITHDRAW once, wait half a plant-minute, and repeat.',
+                   note: 'Expect it near CONTROL ROD POSITION 150 to 155.',
                    label: 'SOURCE RANGE reads 1.4e3 (1,400 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and read the predicted rod position.',
@@ -3027,7 +3005,6 @@
            * substep and its note carries "watch the position, not the clock" — the rung the old
            * string argued for, now set rather than argued. */
           wait_hint: false,
-          why: 'While STARTUP RATE is still falling the counts are still climbing, and a point plotted then puts the predicted crossing too far out. Now that the prediction is useful, the wait matters.',
           control: 'Control Bank', target: 'SOURCE RANGE above 3.0e3 (3,000 counts a second); point 4 plotted',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 31, speed: 'normal' }, hold: 420,
           /* ONE WARP FOR BOTH SUBSTEPS (#807 item 9, 2026-09-26) — see step 5. */
@@ -3037,7 +3014,7 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 2950, mean_s: 30,   // the 3.0e3 band's lower edge — see step 5's RENDER BAND block
                    hl: ['Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 3.0e3 or more.',
-                   note: 'Expect CONTROL ROD POSITION 190 to 192. If the count only touches 3.0e3, or is short at 192, tap WITHDRAW one step at a time, letting STARTUP RATE settle between taps.',
+                   note: 'Expect it near CONTROL ROD POSITION 190 to 192.',
                    label: 'SOURCE RANGE reads 3.0e3 (3,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and read the prediction again.',
@@ -3080,12 +3057,11 @@
         { text: 'Take the final 1/M point, the one the approach to critical is built on.',
           aim: 'This point decides where the rods stop, so it gets the longest wait.',
           wait_hint: false,
-          why: 'This is the last plotted point: another pull would land past critical, so single rod steps take over. STARTUP RATE is the speedometer, and any positive reading with the rods still means the chain reaction is growing.',
           /* ONE WARP FOR BOTH SUBSTEPS (2026-09-25): his 8a and 8b share 10×, so it is the step's
            * rung, drawn once, with the Note after it; neither head carries a speed or a note. */
           wait_speed: 10, moving_speed: 5,   // OWNER RULING 2026-09-28 (option D): "In step 8 5x while the rods move."
           speed_text: '5× while the rods move, then 10×, set by itself.',
-          note: 'After a pull to about 205 this wait is 5½ to 6½ plant-minutes. Plotting before +0.03 puts the prediction too far out.',
+          note: 'The wait for +0.03 is 5½ to 6½ plant-minutes.',
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           /* THE SETTLE IS 600 s, NOT 150 *(OWNER RULING, 2026-09-14/15, on options put as
            * "rewrite step 8's settle / rewrite step 9 / both": selected "Rewrite both")*.
@@ -3172,7 +3148,7 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
                    hl: ['Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
-                   note: 'Expect it near CONTROL ROD POSITION 205; do not hold past 205. If the count only touches 7.0e3, or is short at 205, tap one step at a time, letting STARTUP RATE settle. Stay at least 3 steps below the 1/M prediction.',
+                   note: 'Expect it near CONTROL ROD POSITION 205.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.',
@@ -3196,7 +3172,6 @@
          * needs the count) and before the final pulls. */
         { text: 'Block the source range trip at P-6, the permission to block it.',
           aim: 'Once critical, the count climbs past the source range trip within minutes.',
-          why: 'The source range counts single neutrons and trips the reactor above 1.0e5 counts a second. When INTER RANGE reads 1.0e-10 A the two ranges overlap, and the plant permits the block: P-6 PERMISSIVE. On a real plant P-6 usually comes after criticality; this core’s strong source lights it first, near rod position 198.',
           control: 'Trip Blocks', target: 'SR HIGH FLUX reads BLOCKED; SOURCE RANGE off',
           cmd: { action: 'set_trip_block', trip_id: 'sr_high', blocked: true }, hold: 10,
           wait_hint: false, wait_speed: 1,
@@ -3208,7 +3183,7 @@
                  { p: 'sr_high_blocked', op: '>', v: 0,
                    hl: ['Trip Blocks'],
                    ask: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SR HIGH FLUX row. Check it reads BLOCKED and SOURCE RANGE reads a dash, then press TRIP BLOCKS to close.',
-                   note: 'Skip this and the reactor trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving in the next step. INTER RANGE and STARTUP RATE carry the reading from here.',
+                   note: 'Skip this and the reactor trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving in the next step.',
                    label: 'SR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'], hl_watch: ['Intermediate Range', 'Source Range'] },
         /* SPELL IT OUT *(OWNER, 2026-09-03, #619 item 21: "uses acronym (SUR) without spelling
@@ -3347,7 +3322,6 @@
            * of what ships. What the tail carried is not lost from the LEG: step 10's note still says
            * the plant behaves the same at any speed and that SOURCE RANGE hands over above 1.0e5,
            * step 11 still teaches the hand-over, and step 8's Background still defines the rate. */
-          why: 'Critical means the chain reaction sustains itself; a steady positive STARTUP RATE with the rods still is how a crew declares it. Below about 1 % power nothing takes reactivity back out, so how far past critical the rods stop sets how fast power climbs; crews keep the rate under 1.0, usually near 0.5.',
           control: 'Control Bank', target: 'STARTUP RATE +0.3 to +1.0 with the rods still',
           /* THE DWELL GETS A SPEED, AND IT IS MEASURED *(OWNER, 2026-09-14: "We could mention that
            * dwell in the walkthrough and have the user put it at 5 or 10x speed. We should test this
@@ -3593,7 +3567,6 @@
                     * the card's "no prediction" line. */
                    reach_1m: 3.9,
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position. If 10a is already ticked, leave the rods and go to 10b.',
-                   note: 'At SLOW the rods move about one step every 8 plant-seconds. This ticks the moment the position is 3 short; let go there.',
                    wait_speed: 1,
                    label: 'CONTROL ROD POSITION 3 steps short of the 1/M prediction' },
                  /* 9b: ONE TARGET RATE, READ FIVE MINUTES AFTER A TAP *(OWNER, #807 item 10, 1.8.0-rc6
@@ -3649,7 +3622,7 @@
                   * plant-minute after the last rod motion, so the moving-rod reading (runs high) cannot tick it. */
                  { p: 'startup_rate_dpm', op: '~', v: 0.65, tol: 0.355, still_s: 60,
                    ask: 'Hold WITHDRAW at SLOW until STARTUP RATE reads +0.5, then let go. A plant-minute later it should read +0.3 to +1.0: if lower, tap WITHDRAW once; if higher, tap INSERT once.',
-                   note: 'The clock runs at 10× here, so the hold is about 10 to 15 seconds. The rods stop 12 to 14 steps past the 10a position. STARTUP RATE reads high while they move and settles lower; the check-off comes a plant-minute after your last rod motion.',
+                   note: 'Expect to hold WITHDRAW about 10 to 15 seconds at 10×.',
                    /* 10× (#818, the owner's R2 ruling 2026-10-01: rod buttons stay momentary). At 1× this hold
                     * was 85 to 95 wall-seconds of continuous mouse-down on the typical routes (138 from an
                     * undershoot). MEASURED, scratch copy of run_walkthrough_routes with the hold driven as a real
@@ -3719,7 +3692,6 @@
          * 120 s as 11b) and asks for the comparison with the 1/M prediction. */
         { text: 'Level power near 1.0e-8 A and record the critical rod position.',
           aim: 'Putting back the steps pulled past critical holds power there, exactly critical.',
-          why: 'At 1.0e-8 A power is too low to warm the water, so only the rods set reactivity: STARTUP RATE at 0 with the rods still means exactly critical. A core short of critical also settles at 0 here, which is why step 10 went past first.',
           control: 'Control Bank', target: 'INTER RANGE near 1.0e-8 A, STARTUP RATE −0.02 to +0.02 with the rods still',
           wait_hint: false,
           /* the replay levels when INTER RANGE gets there, not at step entry (an insert at entry levels
@@ -3738,7 +3710,7 @@
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
                    ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 15 seconds at 1× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
-                   note: 'STARTUP RATE reads negative while the rods go in and settles over two plant-minutes. INTER RANGE levels a little under 1.0e-8 A. The check-off comes two plant-minutes after your last rod motion.',
+                   note: 'Expect INTER RANGE to level a little under 1.0e-8 A.',
                    wait_speed: 1,
                    speed_text: '1×. While you wait for a read you can press 10× yourself; a tap is still one step.',
                    hl: ['Insert', 'Rod Speed — Normal'], hl_watch: ['Startup Rate', 'Control Rod Position'],
@@ -3771,20 +3743,19 @@
          * 12c is `<` 0.105: the tile's "+0.10" render floor. */
         { text: 'Raise power to the point of adding heat, about 1 %.',
           aim: 'From about 1 % the core warms the water, and warmer water holds the climb back.',
-          why: 'Warmer water slows this reactor, so once power warms the water the climb slows itself: STARTUP RATE falls with the rods still. That is the point of adding heat. INTER RANGE shows the climb four decades before REACTOR POWER does.',
           control: 'Control Bank', target: 'REACTOR POWER 1 % or more; STARTUP RATE +0.10 or less',
           wait_hint: false, wait_speed: 10, wait_est_s: false,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'slow' }, hold: 1800,
           accs_ordered: true,
           accs: [{ p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 60,
-                   ask: 'Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.',
-                   note: 'Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.',
+                   ask: 'Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.',
+                   note: 'Do not tap while you wait for the read: every tap starts the plant-minute over.',
                    wait_speed: 10,
                    hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Control Rod Position'],
                    label: 'STARTUP RATE +0.15 or more, rods still a plant-minute' },
                  { p: 'power_pct', op: '>=', v: 0.9500000000000001,   /* the "1.0" render floor: 0.95 itself draws "0.9" (binary; run_checklist_pwr2 2ab.4) */
                    ask: 'Leave the rods alone until REACTOR POWER reads 1.0 % or more.',
-                   note: 'About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs.',
+                   note: 'Expect 20 to 26 plant-minutes, most of it with REACTOR POWER at 0.0 %.',
                    /* 60x *(OWNER, #809 item 11, 2026-09-27: "walkthrough mode 3-1 step 12b should be at 60x
                     * warp.")*. MEASURED (tools/glance_rung.js pwr_startup 12, seed 42, the whole step): worst
                     * REACTOR POWER change inside one 2.5 s glance — 10x 0.106 % true / 0.172 % indicated, 60x
@@ -3902,14 +3873,13 @@
          * in its own substep (`accs[].hl`), and "leave the rods alone" is gone (no rod action here). */
         { text: 'Put main feed in service and secure auxiliary feed.',
           aim: 'Auxiliary feed carries the steam generator only to about 1 % power.',
-          why: 'Real crews pause the climb here, start a main feed pump by hand and secure auxiliary feed once it holds level. Its AUTO aims for 65 %; switched on far below that, it rushes cold water in, cooling the reactor water about 10 °F, and power jumps from 1 % to about 4 %. Manual flow to 60 % leaves AUTO 5 points.',
           control: 'Feed Pumps', target: 'SG FEED AUTO lit, STEAM GENERATOR LEVEL near 65 %; AUX FEED WATER reads STANDBY',
           cmd: { action: 'set_feed_pump_speed', pct: 5 }, hold: 1200,
           wait_hint: false, wait_speed: 10, wait_est_s: false,
           accs_ordered: true,
           accs: [{ p: 'sg_level_pct', op: '>=', v: 59.5,
                    ask: 'Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.',
-                   note: 'Typing starts the main feed pumps in MAN at that flow; MAN alone starts them at full speed. At 50 gpm level reaches 60 % in about 10 plant-minutes while REACTOR POWER drifts up to about 2½ % by itself. If it stops rising for 3 plant-minutes, type 100.',
+                   note: 'If STEAM GENERATOR LEVEL stops rising for 3 plant-minutes, type 100.',
                    wait_speed: 10,
                    hl: ['SG Feed Rate'], hl_watch: ['SG Level', 'Feed Flow', 'Reactor Power'],   // FEED FLOW, not the card (#809 quality pass)
                    label: 'STEAM GENERATOR LEVEL 60 % or more, main feed in MAN' },
@@ -3921,7 +3891,7 @@
                    label: 'SG FEED AUTO lit' },
                  { cmd: { action: 'set_afw', active: false }, p: 'afw_pump_running', op: '<', v: 0.5,
                    ask: 'Press STOP on the AUX FEED WATER card and check the card reads STANDBY.',
-                   note: 'In STANDBY the aux feed pumps restart by themselves if STEAM GENERATOR LEVEL falls to 17 %, and the same signal trips the reactor.',
+                   note: 'A STEAM GENERATOR LEVEL of 17 % trips the reactor.',
                    wait_speed: 1,
                    hl: ['AFW — Stop'], hl_watch: ['AFW', 'SG Level'],
                    label: 'AUX FEED WATER reads STANDBY' }],
@@ -3930,7 +3900,6 @@
           hl_watch: ['SG Level', 'Feed Pumps', 'Feed Flow', 'AFW', 'Reactor Power'] },
         { text: 'Raise power past 5 %, into Mode 1, At Power.',
           aim: 'Mode 1 begins at 5 %, and the steps after this one need power higher still.',
-          why: 'The warming water now holds power back, so each rod step buys a new steady level, about half a percent of power, rather than a runaway.',
           control: 'Control Bank', target: 'REACTOR POWER above 5 %',
           /* 5×, AND IT IS THE ROD PULL THAT DECIDES IT *(OWNER, 2026-09-20, #796 item 5:
            * "walkthrough mode 3-1 step 13 should also suggest a warp seting. probably 5x.")*. The
@@ -3976,7 +3945,7 @@
            * +45 s, `>= 5.05` at +47 s; the step ends at 10.57 %. Two plant-seconds. */
           accs: [{ p: 'power_pct', op: '>=', v: 5.05,
                    ask: 'Press SLOW. Tap WITHDRAW twice (2 steps), then wait one plant-minute while STARTUP RATE rises and falls back. Repeat until REACTOR POWER reads above 5 %.',
-                   note: 'Expect about 4 pulls over 3 to 4 plant-minutes. Power keeps climbing after the last pull, and passes 8½ % once the turbine takes load.',
+                   note: 'Expect about 4 pulls over 3 to 4 plant-minutes.',
                    wait_speed: 5, label: 'REACTOR POWER above 5 %' }],
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         /* "MWe", NOT HIS "MW" (2026-09-25): his 14b and 17b write a bare "MW", and N6
@@ -3984,7 +3953,6 @@
          * step file's Notes as shortened, not waived; the board's own LOAD/OUTPUT legend is "MW". */
         { text: 'Put the turbine on line and let the reactor follow it up.',
           aim: 'From here the turbine leads and the reactor follows, with no rod motion.',
-          why: 'LATCH readies the turbine to take steam. As the generator takes load it draws more steam, the water cools, and cooler water raises power: the reactor follows the turbine to about 10 %. That coupling is the central idea of this plant.',
           control: 'Turbine Load', target: 'OUTPUT near 10 MW',
           cmd: { action: 'set_load_target', mwe: 10 }, hold: 240, wait_hint: false,
           /* ORDERED SINCE 2026-09-23: his 14a is LATCH and 14b is LOAD, and the second cannot be
@@ -3997,7 +3965,7 @@
                                          ask: 'Press LATCH on the TURBINE-GENERATOR card.', wait_speed: 1,
                    label: 'Turbine latched' },
                  { p: 'mwe_output', op: '>', v: 8, hl: ['Load Setpoint'], hl_watch: ['Generator Output'],
-                                                   ask: 'Set LOAD to 10 MW and wait for the generator to read above 8 MW.', wait_speed: 10,
+                                                   ask: 'Set LOAD to 10 MW and wait for OUTPUT to read above 8 MW.', wait_speed: 10,
                    label: 'OUTPUT above 8 MW' },
                  /* 14c (2026-09-27-develop-a): the dump to average-temperature mode once the turbine carries
                   * the steam. NRC HRTD Westinghouse Technology Manual §19.4 (ML11223A342): "When the steam dump
@@ -4008,8 +3976,7 @@
                   * (startup_rest/COMPARISON.md B9). Graded on the card's word (instructor `steam_dump_tavg_mode`). */
                  { cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_tavg_mode', op: '>', v: 0,
                    hl: ['Steam Dump — Auto'], hl_watch: ['Steam Dump Status'],
-                   ask: 'Press AUTO on the STEAM DUMP card again, although it is already lit: with the turbine on line, that press switches its status from STM PRESS to TAVG.',
-                   note: 'With the turbine on line, AUTO selects average-temperature mode: the dump opens only if the reactor water runs hot, as after a turbine trip. Real crews switch once the turbine carries the steam and the dump valves have shut.',
+                   ask: 'Press AUTO on the STEAM DUMP card again, although it is already lit, and check its status reads TAVG.',
                    wait_speed: 1,
                    label: 'STEAM DUMP status reads TAVG' }],
           hl: ['Turbine — Latch', 'Load Setpoint', 'Steam Dump — Auto'], hl_watch: ['Turbine Load', 'Generator Output', 'Steam Dump Status'] },
@@ -4023,7 +3990,6 @@
          * "between there and about 9 ½ % it … goes out again" already named this threshold. */
         { text: 'Block the first startup trip, IR HIGH FLUX.',
           aim: 'Left live, this trip shuts the reactor down at 25 % on the way up.',
-          why: 'Two trips exist only to protect a startup, at 25 % and 35 % power. They would trip the reactor on the way to full power, so they are blocked one at a time, and the plant unblocks them if power falls.',
           control: 'Trip Blocks', target: 'IR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'ir_high', blocked: true }, hold: 10,
           /* GRADED ON THE LINEUP, NOT ON THE PRESS (#731, owner playtest #724 item 13). These two
@@ -4047,22 +4013,19 @@
           accs: [{ p: 'power_pct', op: '>=', v: 8.45,
                    hl_watch: ['Reactor Power'],
                    ask: 'Wait for REACTOR POWER to read 8.5 % or more.',
-                   note: 'Below 8 % the BLOCK button refuses the press (P-10 PERMISSIVE); 8.5 % leaves margin. If power stays under 8 % for two seconds, the block drops out.',
                    wait_speed: 1, label: 'REACTOR POWER 8.5 % or more' },
                  { p: 'ir_high_blocked', op: '>', v: 0,
                    hl: ['Trip Blocks'], hl_watch: ['Reactor Power'],
                    ask: 'Press TRIP BLOCKS on the ROD CONTROL card and BLOCK on the IR HIGH FLUX row (IR is INTER RANGE). Check the row reads BLOCKED.',
-                   note: 'If the block drops out, let power rise and press it again. The SR HIGH FLUX row warns that releasing it would trip the reactor: leave it blocked.',
+                   note: 'If the block drops out, let power rise and press it again.',
                    wait_speed: 1, label: 'IR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'], hl_watch: ['Reactor Power'] },
         { text: 'Block the second startup trip, PR HIGH (LOW SETPT).',
           aim: 'Left live, this trip shuts the reactor down at 35 %.',
-          why: 'Above 8 % power the 115 % trip catches a runaway, so the 35 % trip is no longer needed. Each block is a separate press: blocking one trip never quietly blocks the other.',
           control: 'Trip Blocks', target: 'PR HIGH (LOW SETPT) reads BLOCKED on the TRIP BLOCKS panel',
           cmd: { action: 'set_trip_block', trip_id: 'pr_low_setpoint', blocked: true }, hold: 10,
           accs: [{ p: 'pr_low_setpoint_blocked', op: '>', v: 0,   /* see step 15 — #731 */
-                   ask: 'Press TRIP BLOCKS, then BLOCK on the PR HIGH (LOW SETPT) row. Check both IR HIGH FLUX and PR HIGH (LOW SETPT) read BLOCKED, then press TRIP BLOCKS to close.',
-                   note: 'Any click outside the panel closes it, Continue included. Close it when done: it covers the rod buttons. PR is POWER RANGE.',
+                   ask: 'Press TRIP BLOCKS, then BLOCK on the PR HIGH (LOW SETPT) row (PR is POWER RANGE). Check both IR HIGH FLUX and PR HIGH (LOW SETPT) read BLOCKED, then press TRIP BLOCKS to close.',
                    wait_speed: 1, label: 'PR HIGH (LOW SETPT) reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'] },
         /* 9 %, NOT 10 % *(OWNER RULING, 2026-09-23: selected "Keep 10 MWe, grade 9 %" — option text:
@@ -4082,7 +4045,6 @@
          * waits for the turbine's own ramp, which is the plant finishing what step 14 asked. */
         { text: 'Verify the plant is in Mode 1, At Power.',
           aim: 'Confirming the end state catches a dropped trip block or a generator without load.',
-          why: 'The reactor is critical, the generator carries load, and both startup trips are blocked. From here the climb to full power is the turbine leading and the rods following.',
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'power_pct', op: '>=', v: 9.05,
                    hl_watch: ['Reactor Power'],
@@ -4146,6 +4108,7 @@
          * first since 2026-09-24 (b), see the block above step 4. No predicate changed; steps 1
          * and 12 moved from `obs` `acc` to a one-row `accs`. */
         { text: 'Confirm the plant the startup handed over is ready to climb.',
+          aim: 'The climb starts from the startup\'s plant: critical, on the grid, startup trips blocked.',
           /* THE OPENING CONFIRM NO LONGER GRADES ON THE TURBINE (#664, 2026-09-08). It used to
            * accept on `mwe_output > 5`, which is a dead end for the one player this leg most
            * needs to help: a turbine trip anywhere in the ascension leaves OUTPUT at 0.0 MWe and
@@ -4158,8 +4121,7 @@
            * gate on a plant that is doing nothing wrong. Mode 1, At Power is what "the plant the
            * startup hands over" actually means, it is true from the first broadcast, and the
            * 10 % row is already the leg's own precondition banner. */
-          why: 'Both startup trips must be blocked. Left live, the climb trips the reactor at 25 %, then 35 %.',
-          aim: 'The climb starts from the startup\'s plant: critical, on the grid, startup trips blocked.',
+          note: 'Left unblocked, these trip the reactor at 25 %, then 35 %.',
           past: { p: 'power_pct', op: '>', v: 40 },
           wait_speed: 1, speed_text: true,
           /* PHASE 2 (2026-09-25): 1b and 1c were read-only in the old single `ask`; each is now its
@@ -4225,11 +4187,10 @@
            * evidence in player-facing prose). It is recorded here instead, because it is the reason
            * this step exists and deleting it would leave the claim unmeasured: from 40 %, left
            * tripped the climb scrams at 49.2 %; put back on line the same climb runs to 71 %. */
-          why: 'A tripped turbine takes no steam, so the heat goes to the steam dumps. It also trips the reactor once REACTOR POWER passes 50 %, or 8 % with the condenser gone.',
           control: 'Turbine Load', target: 'OUTPUT above 8 MWe',
           cmd: { action: 'latch_turbine' }, hold: 240, wait_hint: false,
           aim: 'Raising LOAD does nothing until the turbine takes steam.',
-          note: 'LATCH is refused while the trip\'s cause remains; the card names it. After LATCH, OUTPUT returns to the last LOAD set.',
+          note: 'LATCH is refused while the trip\'s cause remains; the card names it.',
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'turbine_tripped', op: '<', v: 1,
                    hl: ['Turbine — Latch'],
@@ -4255,7 +4216,6 @@
            * SINCE 2026-09-25 `low_power` IS XENON-FREE and boots at 718.5 ppm, the startup's own
            * handover (owner ruling "Rebuild the preset"): the move is 59 ppm, 663 ppm at 24.1
            * plant-min and 660.5 at 25.2 after the press (MEASURED, seed 42, 10x). */
-          why: 'Every percent of power costs reactivity as the fuel and water heat up. Rods alone would end deep in the core, so real plants dilute boron for the bulk and trim with rods. Dilution slows as it nears the target.',
           control: 'Boron control', target: 'BORON target reads 660 ppm, ON lit',
           /* `wait_hint` ("The dilution keeps working between stages. Start it now.") dropped
            * 2026-09-24: 3a's note already says it in his words, and a string hint would print a
@@ -4277,7 +4237,7 @@
            * be true NOW is that the operator set the setpoint; that the plant actually got there
            * is checked at the end of the climb, on the verify step. */
           aim: 'Boron carries most of the climb and takes about 45 plant-minutes, so it starts first.',
-          note: 'BORON starts near 719, a 59 ppm move. It runs in the background while you take the stages.',
+          note: 'BORON starts near 719 ppm and moves in the background; do not wait for it.',
           wait_speed: 1, speed_text: true,
           /* PHASE 2 (2026-09-25): 3a grades the ON lamp (`boron_auto_on`, as pwr_startup 2a). The
            * channel is defaultOn, so it is met on entry on every route — a confirm, "press ON only
@@ -4354,7 +4314,6 @@
          * at the same second as unordered (MEASURED, both seeds). Bands unchanged. */
         { text: 'Take the first stage to 30 MWe, load leading and rods following.',
           aim: 'The turbine asks for power first; rods then restore the temperature for that load.',
-          why: 'Raising LOAD draws steam and cools the water; colder water adds reactivity, so power follows the turbine up while the temperature sags. Pulling rods then warms the water back into its band. PERIOD on the NIS card is the time power takes to change by a factor of about 2.7; thousands of seconds means power is nearly steady.\n\nReal plants switch rod control to automatic near 15 %; this simulator keeps rods manual by design.',   /* OWNER DIRECTIVE 2026-08-30: "I want to keep rod control manual" (2026-09-27-develop-a) */
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
@@ -4376,12 +4335,12 @@
                   * stage 5, 561-563 degF): conditional, as 10-11 are (ruling 2026-09-25 "Make them conditional"). */
                  { p: 'mwe_output', op: '>=', v: 29.5,   /* rc8f (2026-09-27): the tile draws OUTPUT with r0 (whole MW), so 'reach N MW' is met at its render floor N-0.5 -- the old '> N-2' ticked while the tile read N-2 or N-1 (the #749 trap). 7b (90 MW) is the exception, see there */
                    hl_watch: ['Generator Output', 'Tavg'],
-                   ask: 'Wait for OUTPUT to reach 30 MW. AVG COOLANT TEMPERATURE sags meanwhile; the next line answers it.',
+                   ask: 'Wait for OUTPUT to reach 30 MW.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 30 MW' },
                  { p: 'tavg_c', op: '~', v: 295.306, tol: 6.694, latch: true,   /* 551.5-575.6 degF: the floor is the tile's green-segment floor, rendered (rc8f layman pass 10 S-2) */
                    hl: ['Rod Speed — Normal', 'Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 552 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 552 °F or more, 20 to 25 steps. Otherwise leave the rods.',
-                   note: 'MED is the middle speed on the ROD CONTROL card. The green segment under the reading is the band, about 552 to 561 °F here. The tile keeps rising a minute after each pull. Keep it under 590 °F on every stage: the plant trips on temperature before power.',
+                   note: 'Keep it under 590 °F on every stage: the plant trips on temperature before power.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 552 and 576 °F (green from 552)' },
                  { cont: true, p: 'power_pct', op: '>', v: 28, label: 'REACTOR POWER near 30 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE still between 550 and 576 °F' }],
@@ -4392,9 +4351,7 @@
            * only here: steps 5, 6 and 8 CONTINUE at the speed this step selects and get no ring. */
           hl: ['Load Setpoint', 'Rod Speed — Normal', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the second stage to 50 MWe the same way.',
-          predicts_alarms: ['rod_limit_approach', 'pzr_pressure_low'], aim: 'Same order: the turbine leads, the rods follow.',
-          why: 'The insertion limit rises with power; boron carries the climb, so the bank sits low and the limit catches it. Xenon starts building now: boron handles it over hours, rods over minutes.',
-          control: 'Control Bank', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band, near 562 °F',
+          predicts_alarms: ['rod_limit_approach', 'pzr_pressure_low'],           control: 'Control Bank', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band, near 562 °F',
           cmd: { action: 'set_load_target', mwe: 50 }, hold: 480, wait_hint: false,
           /* rc8f layman pass 10 S-1 (2026-09-27): MEASURED raised inside this leg's stages -- the layman's route at the end of step 5 (warpInfo 'Dropped to real time -- new alarm: Control Rods -- Approaching Insertion Limit', bank 238-253, the power-dependent limit catching the boron-held bank), the typical and chained routes in step 6 (rod_limit_approach + rod_limit at 564.3 / 554.4 degF). The note explains it; the clock no longer drops on it. */
           expect_alarms: ['rod_limit_approach', 'rod_limit'],
@@ -4406,20 +4363,19 @@
                    wait_speed: 1, label: 'LOAD set to 50 MW' },
                  { p: 'mwe_output', op: '>=', v: 49.5,
                    hl_watch: ['Generator Output', 'Tavg'],
-                   ask: 'Wait for OUTPUT to reach 50 MW. AVG COOLANT TEMPERATURE sags meanwhile; the next line answers it.',
+                   ask: 'Wait for OUTPUT to reach 50 MW.',
                    note: 'If AVG COOLANT TEMPERATURE sags well below its band, Pressurizer Pressure Low can come in: make the pulls on the next line.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 50 MW' },
                  { p: 'tavg_c', op: '~', v: 298.972, tol: 7.028, latch: true,   /* 557.5-582.8 degF, green-segment floor (rc8f pass 10 S-2) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 558 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 558 °F or more, 20 to 25 steps. Otherwise leave the rods.',
-                   note: 'The green segment is about 558 to 568 °F here. Control Rods — Approaching Insertion Limit can come in from this stage, even while you withdraw. That is expected.',
+                   note: 'Control Rods — Approaching Insertion Limit can come in from this stage, even while you withdraw: expected.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 558 and 583 °F (green from 558)' },
                  { cont: true, p: 'power_pct', op: '>', v: 47, label: 'REACTOR POWER near 50 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 297, tol: 9, label: 'AVG COOLANT TEMPERATURE still between 550 and 583 °F' }],
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the third stage to 75 MWe the same way.',
           predicts_alarms: ['rod_limit_approach', 'rod_limit'], aim: 'The band climbs with load, so each pull aims a little higher.',
-          why: 'If the temperature is still below the band once the pull is done, the pull was short: withdraw a few more steps before adding megawatts.',
           control: 'Control Bank', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE inside its band, near 570 °F',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 480, wait_hint: false,
           /* rc8f layman pass 10 S-1 (2026-09-27): MEASURED raised inside this leg's stages -- the layman's route at the end of step 5 (warpInfo 'Dropped to real time -- new alarm: Control Rods -- Approaching Insertion Limit', bank 238-253, the power-dependent limit catching the boron-held bank), the typical and chained routes in step 6 (rod_limit_approach + rod_limit at 564.3 / 554.4 degF). The note explains it; the clock no longer drops on it. */
@@ -4432,19 +4388,18 @@
                    wait_speed: 1, label: 'LOAD set to 75 MW' },
                  { p: 'mwe_output', op: '>=', v: 74.5,
                    hl_watch: ['Generator Output', 'Tavg'],
-                   ask: 'Wait for OUTPUT to reach 75 MW. AVG COOLANT TEMPERATURE sags meanwhile; the next line answers it.',
+                   ask: 'Wait for OUTPUT to reach 75 MW.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 75 MW' },
                  { p: 'tavg_c', op: '~', v: 301.944, tol: 5.556, latch: true,   /* 565.5-585.5 degF, green-segment floor (rc8f pass 10 S-2) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 566 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 566 °F or more, about 30 steps. Otherwise leave the rods.',
-                   note: 'The green segment is about 566 to 575 °F here. Control Rods — Approaching Insertion Limit, then Control Rods — Insertion Limit, come in this stage: expected.',
+                   note: 'Control Rods — Approaching Insertion Limit, then Control Rods — Insertion Limit, come in this stage: expected.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 566 and 585 °F (green from 566)' },
                  { cont: true, p: 'power_pct', op: '>', v: 70, label: 'REACTOR POWER near 75 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 300, tol: 7.5, label: 'AVG COOLANT TEMPERATURE still between 558 and 585 °F' }],
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the fourth stage to 90 MWe with a smaller pull.',
           aim: 'Near full power the 103 % rod stop is close, so pulls get smaller.',
-          why: 'Above 103 % power the plant stops the rods; at 115 % it trips the reactor. 100 MWe of LOAD lands REACTOR POWER near 101 %, so small pulls keep you clear.',
           control: 'Control Bank', target: 'OUTPUT 90 MWe; AVG COOLANT TEMPERATURE inside its band, near 575 °F',
           cmd: { action: 'set_load_target', mwe: 90 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
@@ -4455,12 +4410,12 @@
                    wait_speed: 1, label: 'LOAD set to 90 MW' },
                  { p: 'mwe_output', op: '>=', v: 89.5,   /* WAS > 86, NOT moved to the 89.5 render floor (rc8f, 2026-09-27): MEASURED at 89.5, latched or not, run_walkthrough_routes band_floor lit Continue 3.0 s at 22.7 min then dropped it (the later OUTPUT tick lands inside the AVG COOLANT TEMPERATURE sag). Open -- TUNING_LOG 2026-09-27-develop-b */
                    hl_watch: ['Generator Output', 'Tavg'],
-                   ask: 'Wait for OUTPUT to reach 90 MW. AVG COOLANT TEMPERATURE sags meanwhile; the next line answers it.',
+                   ask: 'Wait for OUTPUT to reach 90 MW.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 90 MW' },
                  { p: 'tavg_c', op: '~', v: 303.056, tol: 4.444, latch: true,   /* 569.5-585.5 degF, green-segment floor (rc8f pass 10 S-2) */
                    hl: ['Withdraw', 'Insert'], hl_watch: ['Tavg'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 570 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 570 °F or more, 15 to 20 steps. Otherwise leave the rods.',
-                   note: 'The green segment is about 570 to 580 °F here. If LOAD changes by itself, the turbine ran back on high temperature: hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
+                   note: 'If LOAD changes by itself, the turbine ran back on high temperature: hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 570 and 585 °F (green from 570)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE still between 564 and 585 °F' }],
           /* + `Insert` (#735): this step's note carries a contingency — "If LOAD changes by itself,
@@ -4469,7 +4424,6 @@
           hl: ['Load Setpoint', 'Withdraw', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output'] },
         { text: 'Take the last stage to full load and settle the temperature on 578 °F.',
           aim: '578 °F is this plant\'s full-power temperature.',
-          why: 'REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.',
           control: 'Control Bank', target: 'OUTPUT 100 MWe; AVG COOLANT TEMPERATURE 578 °F',
           cmd: { action: 'set_load_target', mwe: 100 }, hold: 900, wait_hint: false,
           /* 10 -> 5 STEPS SINCE LAYMAN PASS 7 (2026-09-26): the old cmd-kind 8b was satisfied by a bare
@@ -4490,12 +4444,12 @@
                   * 572-582 degF, not the 573-583 its label and pass 6 named; a slow pull ticked at 572.4. */
                  { p: 'mwe_output', op: '>=', v: 99.5,
                    hl_watch: ['Generator Output', 'Tavg'],
-                   ask: 'Wait for OUTPUT to reach 100 MW. AVG COOLANT TEMPERATURE sags meanwhile; the next line answers it.',
+                   ask: 'Wait for OUTPUT to reach 100 MW.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 100 MW' },
                  { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, latch: true,
                    hl: ['Withdraw'], hl_watch: ['Tavg'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 573 °F or more, 10 to 20 steps. Otherwise leave the rods.',
-                   note: 'Stop at 573 °F: the boron still arriving takes it to about 578 °F in step 9. REACTOR POWER can read up to about 103 % just after the step to 100 MW, then settles near 101 %. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.',
+                   note: 'Stop at 573 °F: the boron still arriving takes it to about 578 °F. If CONTROL ROD POSITION stops during a pull, wait for REACTOR POWER under 103 %, then pull again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 578)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, label: 'AVG COOLANT TEMPERATURE still between 573 and 583 °F' },
                  { p: 'control_bank_steps', op: '<', v: 600,
@@ -4526,9 +4480,8 @@
          * both re-grade rather than latch — see the note in instructor_layer's _gradeAccs. */
         { text: 'Confirm full power, with the boron dilution done.',
           aim: 'The climb is not finished until the dilution has fully arrived.',
-          why: 'Full power, with almost no xenon yet. The last of the dilution still arriving warms the plant, so a few rod steps in hold AVG COOLANT TEMPERATURE. As xenon builds, the plant settles with less boron and the bank high, 606 of 627 steps.',
           control: 'Boron control', target: 'BORON CHEM 663 ppm or below',
-          note: 'Read BORON CHEM twice: leave with too much boron and AVG COOLANT TEMPERATURE sinks over hours, taking PZR LEVEL with it. This walkthrough ends here; xenon, a neutron absorber the fuel makes, cools the plant over two plant-days and gets its own walkthrough, still to come.',
+          note: 'This walkthrough ends here. Xenon, which cools the plant over two plant-days, gets its own walkthrough, still to come.',
           hold: 600,   /* rc8f pass 10: the replay graded 9b at 663.22 ppm when step 5's pull moved 15 -> 20 and stages 6-8 met sooner; the player waits 21-27 plant-min here (below), so the replay waits too */
           wait_speed: 5, speed_text: true,   // 1 -> 5 (#807 item 2, 2026-09-26): 9b waits 21-27 plant-min for BORON on the holdup plant (route seeds 42/7/123)
           accs: [{ p: 'power_pct', op: '>', v: 96,
@@ -4597,7 +4550,6 @@
       steps: [
         { text: 'Start adding boron before any load comes off.',
           aim: 'Shedding power hands reactivity back, so slow boron has to be working already.',
-          why: 'Coming down is the climb in reverse. Each percent of power shed hands reactivity back as the fuel cools and the water thickens. Boron carries most of it out; rods trim the rest.',
           control: 'Boron control', target: 'BORON reads 719 ppm, ON lit',
           /* MEASURED (#753, full stack from this leg's own initial condition): 612.3 ppm to 719 is
            * 106.7 ppm at a flat 3.00 ppm/min: 35.3 plant-minutes to 718 ppm and 35.6 to the 719 the
@@ -4660,7 +4612,6 @@
          * Out of band, not dangerous — the dangerous part was the check-off. */
         { text: 'Take the first load off the turbine and let the reactor follow it down.',
           aim: 'The reactor follows the turbine: load comes off first, rods follow.',
-          why:'Less steam drawn leaves the heat nowhere to go: the water warms, and warmer water walks power down by itself. Insert first and you starve a reactor still asked for full steam, walking the steam generator down.',
           control: 'Turbine Load', target: 'OUTPUT 75 MWe',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 300, wait_hint: false,
           /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-5: a LOAD cut lands at once on PWR2 (raises
@@ -4689,16 +4640,15 @@
                  { p: 'power_pct', op: '<', v: 95,
                    ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down, below 95 %.',
                    wait_speed: 5,
-                   note: 'The inserts hold AVG COOLANT TEMPERATURE under about 587 °F. Continue can light at 75 MW before the last insert; step 3 finishes that trim.',
+                   note: 'The inserts hold AVG COOLANT TEMPERATURE under about 587 °F.',
                    label: 'REACTOR POWER below 95 %' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Bring AVG COOLANT TEMPERATURE back into its band with the rods.',
           aim: 'The load drop left the reactor hot, and the plant cannot fix that alone.',
-          why:'The green band is the temperature the plant should hold at its power: 578 °F at 100 %, 547 °F at no load. After a load drop the reactor sits above it until rods take reactivity out.',
           control: 'Rod Speed', target: 'AVG COOLANT TEMPERATURE back inside the band; OUTPUT still 75 MWe',
           cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 300, wait_hint: false,
           wait_speed: 5, speed_text: true,
-          note: 'About 10 to 20 steps. Stop once in the band: the tile trails the rods and the boration keeps walking it down. PRIMARY PRESSURE sags to about 2200 psi; faster pulls sag it toward the 1775 psi low-pressure trip.',
+          note: 'Stop once in the band, about 10 to 20 steps: faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.',
           /* MEASURED at the end of this hold (40 steps in, 300 s): Tavg 570.7 degF (299.28 degC)
            * against a 571.8 degF programme — 1.1 degF inside a band whose half width is
            * 5.0 degF (`tavg_c < 302.7` is the band's own top edge: pwr_board_wiring `tavgBand`
@@ -4737,7 +4687,6 @@
         { text: 'Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
           predicts_alarms: ['rod_limit_approach'],
           aim: 'Each drop is the same pair of moves: turbine first, rods second.',
-          why:'STEAM GENERATOR LEVEL dips and recovers on each drop; that is normal, and SG FEED in AUTO handles it.',
           control: 'Turbine Load', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 50 }, hold: 720, wait_hint: false,
           /* OWNER RULING 2026-09-26 (selected "Walk them too": "5 MW per plant-minute with inserts,
@@ -4783,13 +4732,12 @@
                    note: 'The inserts hold AVG COOLANT TEMPERATURE under about 580 °F.',
                    label: 'REACTOR POWER below 70 %' },
                  { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
-                   note: 'About 20 to 30 steps at MED in all, the inserts after each cut included. Control Rods — Approaching Insertion Limit can come in during these inserts if the bank ended the climb low. The limit falls with power, so it goes out by itself as the load comes off; keep to the 3-step inserts.',
+                   note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-step inserts.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 569 °F' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
           aim: 'Lower power needs smaller rod moves as the band walks down.',
-          why:'The band is walking back down toward 547 °F. A plant left hot at low load sends the difference to the condenser through the steam dump.',
           control: 'Turbine Load', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band',
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 600, wait_hint: false,
           /* OWNER RULING 2026-09-26 ("Walk them too"), as step 4: 5 MW a plant-minute, then 30. */
@@ -4819,7 +4767,6 @@
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
           aim: '15 MWe, about 12 % power, is where the shutdown walkthrough trips the reactor.',
-          why:'A scram from full power is a thermal shock. At about 12 % the trip is gentle, and the steam generator still has steam to dump afterwards.',
           control: 'Turbine Load', target: 'OUTPUT 15 MWe; REACTOR POWER near 12 %',
           cmd: { action: 'set_load_target', mwe: 15 }, hold: 900, wait_hint: false,
           /* OWNER RULING 2026-09-26 ("Walk them too"), as step 4: 5 MW a plant-minute, then 15. */
@@ -4873,7 +4820,7 @@
                    label: 'OUTPUT settled near 15 MW' },
                  { p: 'power_pct', op: '<', v: 40, ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 557 °F, insert 3 steps at MED. Check REACTOR POWER reads below 40 %.',
                    wait_speed: 5,
-                   note: 'The inserts hold AVG COOLANT TEMPERATURE under about 565 °F. Power keeps falling as the boration finishes; the rod trims take it to about 12 %.',
+                   note: 'The inserts hold AVG COOLANT TEMPERATURE under about 565 °F.',
                    label: 'REACTOR POWER below 40 %' },
                  /* ROD TRIM GRADED (#739) — see step 4 for the derivation and the three-way
                   * discrimination run. Band top at the measured 0.1495 steam flow is 291.60 degC;
@@ -4888,7 +4835,7 @@
                   * shipping leg. Said as "below the band" in an earlier draft, which overstated the
                   * margin fourfold (#741 quality pass). */
                  { p: 'tavg_c', op: '<', v: 291.38, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
-                   note: 'About 10 to 15 steps at MED in all. Stop here; the shutdown walkthrough takes over.',
+                   note: 'About 10 to 15 steps at MED in all.',
                    wait_speed: 5,
                    label: 'AVG COOLANT TEMPERATURE below 557 °F' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
@@ -4970,7 +4917,6 @@
       steps: [
         { text: 'Take the load off the generator before the scram.',
           aim: 'The scram is meant to come with no electricity on the generator.',
-          why: 'OUTPUT drops to 0 MWe at once and the turbine trips; REACTOR POWER stays near 12 % until the scram, so the scram comes from low power with the generator unloaded.',
           control: 'Turbine Load', target: 'OUTPUT below 5 MWe',
           cmd: { action: 'set_load_target', mwe: 0 }, hold: 120, wait_hint: false,
           wait_speed: 1, speed_text: true,
@@ -4986,7 +4932,6 @@
          * still draws "5.0"); the tile falls 12.9 -> 2.8 % in 0.8 s, same broadcast either way. */
         { text: 'Shut the reactor down.',
           aim: 'Hot Standby is a shut-down reactor, and a scram gets it there in seconds.',
-          why: 'A planned scram from low power: both rod banks drop into the core and the chain reaction stops in seconds. The trip stops main feed and aux feed starts by itself, so AUX FEED WATER reads RUNNING. The fuel keeps making about 2 % of full power from decay; the next step checks where that heat goes.',
           control: 'SCRAM', target: 'both rod positions 0 of 627; REACTOR POWER falling below 5 %',
           cmd: { action: 'scram' }, hold: 60, wait_hint: false,
           wait_speed: 1, speed_text: true,
@@ -5046,7 +4991,6 @@
          * for 120 s with AUTO never pressed, met and Continue lit on the first broadcast after the
          * press (the turbine is tripped, so AUTO selects pressure mode). */
         { text: 'Put the decay heat on the steam dump: Mode 3, Hot Standby.',
-          why: 'REACTOR POWER does not show the decay heat, about 2 % of full power. With the turbine tripped, AUTO puts the steam dump in pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.',
           predicts_alarms: ['cooldown_rate_high'], aim: 'With the turbine off line, the steam dump is where the decay heat leaves.',
           hold: 120, wait_hint: false,
           wait_speed: 10, speed_text: true,
@@ -5057,7 +5001,7 @@
                  { p: 'power_pct', op: '<', v: 0.95,
                    hl_watch: ['Reactor Power'],
                    ask: 'Check REACTOR POWER reads below 1 %.',
-                   note: 'Cooldown Rate High (>100 °F/hr) may come in about a minute after the trip, or not at all. Either is expected: the coolant is settling to its no-load temperature.',
+                   note: 'Cooldown Rate High (>100 °F/hr) may come in about a minute after the trip, or not at all: either is expected.',
                    label: 'REACTOR POWER below 1 %' },
                  { p: 'steam_pressure_mpa', op: '~', v: 7.0327, tol: 0.0378,
                    hl_watch: ['SG Pressure'],
@@ -5065,7 +5009,7 @@
                    label: 'STEAM PRESS 1015 to 1025 psi' },
                  { p: 'steam_dump_valve_pct', op: '>', v: 0.5,
                    hl_watch: ['Steam Dump Opening'],
-                   ask: 'Check the STEAM DUMP is open a little.',
+                   ask: 'Check the STEAM DUMP is open, above 0 %.',
                    label: 'STEAM DUMP open, carrying the decay heat' }],
           hl: ['Steam Dump — Auto'], hl_watch: ['Steam Dump', 'Steam Dump Status', 'Reactor Power', 'SG Pressure', 'Steam Dump Opening'] },
       ],
@@ -5108,7 +5052,6 @@
          * 1× then 5×). Record: the step file's Notes, "Bring-down record — 2026-09-25". */
         { text: 'Add the boron a cold core needs before any cooling starts.',
           aim: 'Cold water makes the chain reaction easier, so the boron goes in first.',
-          why: 'Hot, the core is shut down on about 719 ppm. At 122 °F it needs about 920 ppm for the same margin, so the boron goes in before the cold arrives.',
           control: 'Boron control', target: 'BORON reads 920 ppm, ON lit',
           /* 3 ppm A MINUTE IS THE PLANT'S OWN NUMBER, AND IT IS FLAT (#753, re-measured 2026-09-14
            * after the figure was filed as refuted). BORATION AND DILUTION ARE NOT THE SAME SHAPE:
@@ -5144,7 +5087,7 @@
           wait_hint: false,
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }, hold: 3900,
           wait_speed: 600, speed_text: true,
-          note: 'About 55 plant-minutes to 880 ppm, 65 coming from full power. Do not start cooling until BORON CHEM reads 880 ppm.',
+          note: 'Do not start cooling until BORON CHEM reads 880 ppm.',
           accs: [{ p: 'boron_auto_on', op: '>', v: 0,
                    hl: ['Boron ON'],
                    ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
@@ -5160,7 +5103,6 @@
           hl: ['Boron ON', 'Boron Target'], hl_watch: ['Boron Status', 'Boron Concentration'] },
         { text: 'Bring pressure under the point where the low-pressure protection can be blocked.',
           aim: 'The plant only lets you block its low-pressure protection below 1972 psi.',
-          why: 'On a running plant falling pressure means a leak, so two protections trip on it. They can only be blocked below 1972 psi. This step only unlocks the next one; it is not the depressurization.',
           control: 'Pressure SP', target: 'PRIMARY PRESSURE below 1972 psi',
           /* `< 13.6` (1972.5 psi, which PRIMARY PRESSURE prints as "1972") -> `< 13.593` (1971.5 psi,
            * the floor of "1971"), so the row cannot tick on a tile still reading 1972. */
@@ -5170,12 +5112,11 @@
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'pressure_mpa', op: '<', v: 13.593,
                    ask: 'Lower SET PZR PRESSURE to 1900 psi and wait for PRIMARY PRESSURE to read below 1972 psi.',
-                   note: 'Pressure Relief Valve Open and Pressurizer Pressure Low come in: expected. The relief valve closes by itself after about ten plant-seconds.',
+                   note: 'Pressure Relief Valve Open and Pressurizer Pressure Low come in: expected.',
                    label: 'PRIMARY PRESSURE below 1972 psi' }],
           hl: ['Pressure SP'], hl_watch: ['Primary Pressure'] },
         { text: 'Block the protection that would read the cooldown as a leak.',
           aim: 'Left on, it would trip the reactor and start the emergency injection pumps.',
-          why: 'To the protection, pressure falling on a hot plant looks exactly like a leak. STOP keeps the injection pump idle; it does not disarm safety injection, which would still start the pump.',
           control: 'Trip Blocks', target: 'PZR PRESS LO-LO and SI REACTOR TRIP read BLOCKED on the TRIP BLOCKS panel; ECCS STOP lit',
           cmd: { action: 'set_trip_block', trip_id: 'lo_press', blocked: true }, hold: 30,
           /* GRADED ON THE LINEUP, NOT ON THE PRESS (#731, 2026-09-13). These two were `cmd`-kind
@@ -5239,7 +5180,6 @@
                    p: 'lo_press_blocked', op: '>', v: 0,
                    hl: ['Trip Blocks'],
                    ask: 'Press TRIP BLOCKS on the ROD CONTROL card, then press BLOCK on the PZR PRESS LO-LO row. Check the row reads BLOCKED.',
-                   note: 'Both rows read P-11 PERMISSIVE: P-11 is the plant\'s permission to block them, and it comes only below 1972 psi, which is why step 2 came first.',
                    label: 'PZR PRESS LO-LO reads BLOCKED' },
                  { cmd: { action: 'set_trip_block', trip_id: 'si_trip', blocked: true },
                    p: 'si_trip_blocked', op: '>', v: 0,
@@ -5288,7 +5228,6 @@
          * AUTO never pressed leaves the row unmet (see 06_cooldown.md Notes). */
         { text: 'Cool the plant on the steam dump to where RHR can take over.',
           aim: 'The steam pressure the dump holds sets the temperature the reactor water follows down.',
-          why: 'Lower steam pressure means a lower boiling point, and the reactor water follows it down. At 120 psi steam boils at about 341 °F, where RHR can take over. STEAM PRESS falls fast at first and slowly near the end. The controller holds about 60 °F per hour, under the 100 °F per hour limit; a real operator paces this by hand, here the controller does it.',
           control: 'Dump SP', target: 'STEAM DUMP status STM PRESS; DUMP SETPOINT 120 psi; AVG COOLANT TEMPERATURE below 347 °F',
           wait_hint: false,
           /* ONE ENTRY SINCE 2026-09-28 (OWNER RULING, quoted on pwr2_dumpctl.js RAMP: the automatic ramp).
@@ -5308,23 +5247,21 @@
           accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0,
                    hl: ['Steam Dump — Auto'], hl_watch: ['Steam Dump Status'],
                    ask: 'Check STEAM DUMP AUTO is lit and its status reads STM PRESS. If not, press AUTO until it reads STM PRESS.',
-                   note: 'If the status reads TAVG, the dump holds temperature and ignores DUMP SETPOINT.',
                    wait_speed: 1, label: 'STEAM DUMP AUTO lit, status STM PRESS' },
                  /* 4b: the box renders whole psi, so "120" is [119.5, 120.5) psi = 0.8274 +/- 0.0035 MPa. */
                  { p: 'steam_dump_setpoint', op: '~', v: 0.8274, tol: 0.0035,
                    hl: ['Dump Setpoint'],
                    ask: 'Type 120 into DUMP SETPOINT.',
-                   note: 'The dump walks STEAM PRESS down to 120 by itself at about 60 °F per hour; its status reads RAMPING meanwhile. The clock moves to 60× by itself.',
+                   note: 'STEAM DUMP status reads RAMPING while it walks STEAM PRESS down to 120 psi by itself.',
                    wait_speed: 1, label: 'DUMP SETPOINT reads 120 psi' },
                  { p: 'tavg_c', op: '<', v: 174.72,
                    hl_watch: ['Tavg', 'SG Pressure'],
                    ask: 'Wait for AVG COOLANT TEMPERATURE to read below 347 °F.',
-                   note: 'COOLDOWN RATE holds near -60, which is 60 °F per hour. Low Coolant Temperature (near 530 °F) and Shutdown Cooling Not In Service are expected. About three and a half hours.',
+                   note: 'Low Coolant Temperature and Shutdown Cooling Not In Service come in: expected.',
                    label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
           hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg', 'SG Pressure'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',
           aim: 'The setpoint box stops at 1700 psi; below that, pressure comes down by hand.',
-          why: 'Below 1700 psi the heaters have nothing to hold. A real cooldown leaves the setpoint there and lowers pressure with the spray.',
           control: 'Pressure SP', target: 'SET PZR PRESSURE 1700 psi; PRIMARY PRESSURE below 1770 psi',
           cmd: { action: 'set_pressure_setpoint', mpa: 11.83 }, hold: 1500,
           ramp: [{ action: 'set_pressure_setpoint', arg: 'mpa', points: [13.1, 11.83] }],
@@ -5380,7 +5317,6 @@
          * sentence of the `note` is now for. */
         { text: 'Hand pressure control from the heaters to the spray.',
           aim: 'The spray lowers pressure only once the heaters stop boiling the water back.',
-          why: 'Spray condenses steam in the pressurizer and pressure falls. Lowering pressure spends SUBCOOLING MARGIN, how far the reactor water is below boiling, and it has to stay positive.',
           control: 'Pressurizer Heaters (PZR)', target: 'OFF lit under HEATER; SPRAY MANUAL at 50 %; PRIMARY PRESSURE below 1615 psi',
           cmd: { action: 'set_heater', power_pct: 0 }, hold: 240,
           /* THE 50 % IS GRADED NOW (#739, 2026-09-13). The step warned in its own `note` that a
@@ -5437,29 +5373,27 @@
                  { p: 'pressure_mpa', op: '<', v: 11.131,
                    hl_watch: ['Primary Pressure'],
                    ask: 'Wait for PRIMARY PRESSURE to read below 1615 psi.',
-                   note: 'At 100 % a high pressurizer fills and the spray shuts itself off. At 50 % pressure falls about 3 psi a second.',
+                   note: 'At 50 % pressure falls about 3 psi a second.',
                    wait_speed: 5, label: 'PRIMARY PRESSURE below 1615 psi' }],
           hl: ['Pressurizer Heater — Off', 'Pressurizer Spray — Manual'], hl_watch: ['Pressurizer Heaters (PZR)', 'Pressurizer Spray (PZR)', 'Primary Pressure'] },
         /* "green ring" -> "pulsing ring" — the sibling of the heatup step, same #653 S-8 fix. */
         { text: 'Isolate the accumulators while pressure is inside their window.',
           aim: 'Closed inside the window, the tanks stay full for the next heatup.',
-          why: 'The heatup\'s window, in reverse. Above 1615 psi the valve has no power; below 665 psi the nitrogen in the tanks pushes their water into the plant.',
           control: 'Accumulator valve', target: 'ACCUMULATORS tile reads ISOLATED and 100 %',
           cmd: { action: 'close_accumulator_valve' }, hold: 30,
           wait_speed: 1, speed_text: true,
-          note: 'The valve sits just above the ACCUMULATORS tile, left of ECCS INJ FLOW. At 50 % spray the window is about 8 plant-minutes.',
+          note: 'At 50 % spray the window is about 8 plant-minutes.',
           accs: [{ p: 'accumulator_valve_open', op: '<', v: 0.5,
                    ask: 'Close the accumulator valve while PRIMARY PRESSURE is 1615 to 665 psi, and check the ACCUMULATORS tile reads ISOLATED.',
                    label: 'ACCUMULATORS tile reads ISOLATED' }],
           hl: ['Accumulator valve'], hl_watch: ['Accumulators', 'Primary Pressure'] },
         { text: 'Bring pressure under the RHR limit on the spray.',
           aim: 'RHR cannot be aligned above 440 psi; the spray takes pressure that low.',
-          why: 'ALIGN on the RHR card refuses above 440 psi. Shut the spray now and pressure bounces back over that. SUBCOOLING MARGIN stays well above 100 °F on this spray.',
           control: '(observe)', target: 'PRIMARY PRESSURE below 413 psi; PRESSURIZER LEVEL below 80 %',
           /* `< 2.85` (413.4 psi, printed "413") -> `< 2.844` (412.5 psi, the floor of "412"). */
           hold: 1200, wait_hint: false,
           wait_speed: 60, speed_text: true,
-          note: 'About 10 to 13 plant-minutes. If PRESSURIZER LEVEL climbs past 80 %, lower SPRAY.',
+          note: 'If PRESSURIZER LEVEL climbs past 80 %, lower SPRAY.',
           accs: [{ p: 'pressure_mpa', op: '<', v: 2.844,
                    ask: 'Wait for PRIMARY PRESSURE to read below 413 psi.',
                    label: 'PRIMARY PRESSURE below 413 psi' }],
@@ -5471,7 +5405,6 @@
           hl_watch: ['Pressurizer Spray (PZR)', 'Primary Pressure', 'Pressurizer Level'] },
         { text: 'Put RHR in service as the cooldown loop.',
           aim: 'From here to cold, RHR carries the heat out of the plant.',
-          why: 'ALIGN opens RHR\'s suction valve, allowed only below 440 psi. HX SPLIT, the share of the loop through the heat exchanger, is now the cooldown throttle; 7 % is a gentle start.',
           control: 'Residual Heat Removal (RHR)', target: 'ALIGN lit on the RHR card; HX SPLIT 7 %',
           cmd: { action: 'set_rhr', active: true }, hold: 60,
           /* HX SPLIT IS GRADED NOW (#739, 2026-09-13), AND #739's OWN REASON FOR IT WAS WRONG.
@@ -5525,7 +5458,6 @@
          * it. Only this step did. */
         { text: 'Take the reactor coolant pumps off now that RHR is circulating.',
           aim: 'With RHR circulating, the reactor coolant pumps are only adding heat.',
-          why: 'The spray stays on: the hot pressurizer shell keeps boiling water off and pushing pressure up. With the heaters off and the setpoint stopped at 1700 psi, the spray is all that removes that heat.',
           control: 'RCP ON/OFF', target: 'RCP FLOW falling',
           cmd: { action: 'set_rcp', running: false }, hold: 60,
           wait_speed: 1, speed_text: true,
@@ -5534,7 +5466,7 @@
            * The `why` still says why it stays; step 11's 11c is where it comes off. */
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50,
                    hl: ['RCP — Off'],
-                   ask: 'Press OFF on the RCP FLOW card and check the pumps coast down.',
+                   ask: 'Press OFF on the RCP FLOW card and check RCP FLOW falls below 50 %.',
                    label: 'Pumps coasting down' }],
           /* THE CARD, NOT ALSO THE PUMP *(OWNER, 2026-09-09 playtest, #684 §D: "When the RCP is
            * highlighted it should highlight the RCP card not the pump. Currently both get
@@ -5572,7 +5504,6 @@
          * -85 at +42 min, never over 100, 199 degF at +120 min. Split and physics unchanged. */
         { text: 'Cool on RHR into Mode 5, inside the 100 °F per hour limit.',
           predicts_alarms: ['subcooling_low'], aim: 'HX SPLIT is the cooldown throttle; COOLDOWN RATE shows what it is doing.',
-          why: 'At 8 % COOLDOWN RATE climbs to about 85 °F per hour, then eases off, reaching Mode 5 in about two and a half hours. 9 % reads about 95 °F per hour; 12 % reads about 110 °F per hour and sets off Cooldown Rate High. A higher HX SPLIT cools faster and spends SUBCOOLING MARGIN faster.',
           control: 'Residual Heat Removal (RHR)', target: 'AVG COOLANT TEMPERATURE below 199 °F',
           wait_hint: false,
           /* HOLD 9000 -> 7200 s (#729), and 5400 was tried first — see the end of this note. 9000 s was authored for the 25 % split, which reaches
@@ -5616,7 +5547,7 @@
           /* LAYMAN PASS 8 (2026-09-26) S-11: `speed_text: true` dropped — 11a and 11b each print their own
            * line, and the step-level one printed "600×." a second time under 11b. */
           wait_speed: 600,
-          note: 'Keep COOLDOWN RATE under 100 °F per hour; a reading of -83 is 83 °F per hour. If Cooldown Rate High comes in, lower HX SPLIT. Once the spray is shut, SUBCOOLING MARGIN climbs back to about 150 °F or more.',
+          note: 'Keep COOLDOWN RATE under 100 °F per hour (it reads negative); if Cooldown Rate High comes in, lower HX SPLIT.',
           /* 11a split (#807 item 2, 2026-09-26): the raise was one clause of the spray substep and had no
            * check-off. Graded at the floor of the box's whole-% render of 8 (0.075); at entry it reads 7 (step 9). */
           accs_ordered: true,   // #807 review item 4: the spray press (11c) is not live before the margin (11b)
@@ -5642,8 +5573,8 @@
                   * ticks on the first "32". */
                  { p: 'subcooling_c', op: '<', v: 18.0555,
                    hl_watch: ['Subcooling Margin', 'Pressurizer Spray (PZR)'],
-                   ask: 'Wait for SUBCOOLING MARGIN to fall to 32 °F, then get ready: the spray comes off at 30 °F, on the next line.',
-                   note: 'The spray keeps taking SUBCOOLING MARGIN down; left on, Low Subcooling Margin comes in at 20 °F. Shutting it much earlier than 30 °F lets pressure climb back over the RHR limit. If OFF is already lit under SPRAY, type 50 in its box, press Enter, then press MANUAL. The clock moves to 60× by itself once HX SPLIT is raised.',
+                   ask: 'Wait for SUBCOOLING MARGIN to fall to 32 °F.',
+                   note: 'Shut the spray much earlier than 30 °F and pressure climbs back over the RHR limit. If OFF is already lit under SPRAY, type 50 in its box, press Enter, then press MANUAL.',
                    wait_speed: 60, speed_text: '60×: at 600× the margin can fall 10 °F between two glances.', label: 'SUBCOOLING MARGIN down to 32 °F' },
                  { p: 'spray_flow_pct', op: '<', v: 1,
                    hl: ['Pressurizer Spray — Off'], hl_watch: ['Subcooling Margin'],
@@ -5660,7 +5591,6 @@
          * shutting it at Mode 5 moves pressure +1 psi per 5 plant-minutes. */
         { text: 'Shut the spray now that the plant is cold.',
           aim: 'The pressurizer shell has given up its stored heat, so the spray has nothing left to remove.',
-          why: 'Shut the spray and pressure sits where it is. This is the Cold Shutdown preset\'s lineup: heaters off, spray in hand and shut.',
           control: 'Pressurizer Spray (PZR)', target: 'OFF lit under SPRAY',
           cmd: { action: 'set_spray', open: false }, hold: 60,
           wait_speed: 1, speed_text: true,
@@ -5691,10 +5621,8 @@
          * pwr_cooldown typical, seed 42, 176 psia at step 13; the --all chain 277 psia; the layman read 267
          * (its own HX SPLIT 8 -> 6 deviation aside). "about 150" was under both, so the note gives the span. */
         { text: 'Confirm the plant is in Mode 5, Cold Shutdown.',
-          aim: 'Confirming the end state catches a plant still above 199 °F or a pump still running.',
-          why: 'Cold shutdown: water below 199 °F, pumps off, RHR carrying the heat, pressure low with the spray shut. The heatup walkthrough takes it back up.',
           wait_speed: 1, speed_text: true,
-          note: 'PRIMARY PRESSURE reads about 170 to 280 psi; it crept up after the spray shut, which is expected. ALIGN on the RHR card is checked in step 15.',
+          note: 'PRIMARY PRESSURE reads about 170 to 280 psi.',
           accs: [{ p: 'tavg_c', op: '<', v: 92.5,
                    ask: 'Check AVG COOLANT TEMPERATURE reads below 199 °F.',
                    label: 'AVG COOLANT TEMPERATURE below 199 °F' },
@@ -5715,7 +5643,6 @@
          * `< 99` never). */
         { text: 'Confirm the accumulators are still full and isolated.',
           aim: 'The next heatup opens the tanks again; empty, they are a missing safety system.',
-          why: 'You isolated the tanks so they would not empty into a depressurized plant. They must still be full when the next heatup opens them inside its window.',
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'accumulator_volume_pct', op: '>=', v: 99.5,
                    ask: 'Check the ACCUMULATORS tile reads 100 % and ISOLATED.',
@@ -5727,7 +5654,6 @@
          * step on both routes; a player who shut the split to 0 is exactly who this row is for. */
         { text: 'Confirm RHR is carrying the heat.',
           aim: 'RHR is the only thing removing heat now.',
-          why: 'If RHR\'s suction valve shut, the decay heat would have nowhere to go.',
           wait_speed: 1, speed_text: true,
           accs: [{ p: 'rhr_valve_open', op: '>', v: 0,
                    ask: 'Check ALIGN is lit on the RHR card.',
@@ -5751,7 +5677,6 @@
          * a `~` row, so a player who retypes it un-ticks it. */
         { text: 'Leave the plant lined up for the next heatup.',
           aim: 'A dump left at 120 psi cools the plant again when the next heatup starts.',
-          why: 'Left at 120 psi, the dump would pull STEAM PRESS below 1020 psi and cool the plant just as the heatup needs it held. Resetting the scram moves nothing; it gives the rod drive its power back for the heatup.',
           control: 'Shutdown Bank', target: 'SHUTDOWN ROD POSITION 0 of 627; STEAM DUMP CLOSE lit; DUMP SETPOINT 1020 psi; SCRAM reset',
           /* The INSERT is the STEP `cmd`, not a row `cmd`: a row carrying a `cmd` is latched met by
            * the press itself (`_accsCmdWatch`), so 16a ticked with the bank at 577 of 627 on the
@@ -5759,7 +5684,7 @@
           cmd: { action: 'rod_nudge', group_id: 'shutdown_rods', steps: -627, speed: 'fast' },
           hold: 660, wait_hint: false,
           wait_speed: 60, speed_text: true,
-          note: 'One INSERT click runs the bank in by itself, about 9 plant-minutes. The round trip is complete.',
+          note: 'One INSERT click runs the bank in by itself, about 9 plant-minutes.',
           accs: [
                  /* 16a since layman pass 6 (2026-09-26, AGENT-DRAFTED, S-8): the reset comes FIRST, because the
            * INSERT below is refused while the trip is latched (ROD DRIVE BLOCKED, pwr2_engine.js).
