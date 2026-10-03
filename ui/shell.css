@@ -2499,13 +2499,13 @@ select.num-input { width: auto; }
    substep indent) and the secondary text token, so it reads as the reason for the whole step and
    not as a substep's tip. */
 .ckl-aim { font-size: 12.5px; font-style: italic; line-height: 1.4; color: var(--text-2); margin: 2px 0 4px; }
-/* An authored line break in a note or Background is a line break on the card (2026-09-25, the
+/* An authored line break in a note is a line break on the card (2026-09-25, the
    pwr_startup 9b reading list, one reading per line). No shipped string carried a newline. */
 .ckl-crit-note, .ckl-step-note { white-space: pre-line; }
 /* THE INCIDENT WALKTHROUGH'S NARRATIVE BLOCK (#670 Phase 1) — clock, what the crew saw, what
    they knew, what they did — ABOVE the numbered instruction. Quieter than the instruction and
    louder than a .ckl-sub: it is the reason the step exists, but the step is still the thing to
-   do. The left rule borrows .ckl-why's idiom so the two read as the same kind of writing (one
+   do. The left rule borrowed the Background block's idiom (.ckl-why, removed #819) so the two read as the same kind of writing (one
    history, one plant lesson) rather than as two competing headlines. Every color is a token, so
    it follows the board's theme; nothing here is authored per-walkthrough. */
 .ckl-story {

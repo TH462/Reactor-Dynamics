@@ -20,7 +20,7 @@
  *           the why where you put it. i choose a.")*: the italic line directly under `text` and
  *           ABOVE the substep rows (`.ckl-aim`, ui/app.js), in the what / why / how format of
  *           `Blueprint/CHECKLIST_WRITING_GUIDE.md` §16. One sentence or two, never an action —
- *           the action is the substeps' `ask`, the long form is `why` (Background). `run_style`
+ *           the action is the substeps' `ask`, `why` is no longer drawn (#819). `run_style`
  *           scans it like `text` (vague, modal, percent, bare MW, no SI).
  *   speed_text OPTIONAL string | true — THE STEP'S ONE "Suggested time warp" LINE, for a step
  *           whose substeps share a rung (the format: "once per step, or under a substep only when
@@ -36,9 +36,9 @@
  *   target  the value/limit to drive to      cmd      command issued (rod group 'control'/'shutdown' resolved)
  *   hold    seconds to run after the command  acc      {p,op,v[,tol]} checked at END of the step
  *   saw     {p,op,v} true at least once during the step   note  caution / what to watch
- *   why     OPTIONAL layman's teaching prose (#244 items 2/9) — the card's collapsible
- *           fourth block. `text` stays the concise action; `why` carries the what-and-why
- *           for someone new to the sim. Never load-bearing: harnesses ignore it.
+ *   why     OPTIONAL layman's teaching prose (#244 items 2/9). NOT DRAWN since #819 (OWNER
+ *           RULING 2026-10-02: "get rid of the subtext"); the six standard walkthroughs carry
+ *           none. Never load-bearing: harnesses ignore it.
  *   hl      OPTIONAL array of control/indication labels the step glows on hover, when the
  *           step's own `control` isn't the (only) thing to look at. Falls back to `[control]`.
  *           IT MEANS "ACT ON THIS" (#685) — the active step draws it with the PULSING
@@ -1790,7 +1790,7 @@
          * THE EFFECT IS ASSERTED, not just the write — see the confirmation step after the
          * ride, which reads the flow AND the RHR lineup together. A `letdown_orifice_a` tick
          * alone would pass on a plant whose cross-connect was still carrying everything. */
-        { text: 'Open the letdown orifices before the pressure climb shuts the RHR path.',
+        { text: 'Open the letdown orifices before the pressure climb shuts the residual heat removal (RHR) path.',
           aim: 'Above 600 psi, the orifices are the only way water leaves the loop.',
           wait_speed: 1, speed_text: true,
           control: 'Letdown Orifices (CVCS)', target: 'A+B 7 % lit; LETDOWN reads above 0 gpm',
@@ -2677,7 +2677,7 @@
                    label: 'BORON target reads 719 ppm' },
                  { p: 'boron_ppm', op: '~', v: 719, tol: 10.49,   /* 709 to 729 as the whole-ppm tile draws it (owner "B", 2026-09-26: tightened from 679-759 so step 5 starts after the dilution, #653 pass 7 S-2) */
                    hl_watch: ['Boron Concentration'],
-                   ask: 'Wait for boron concentration to read between 709 and 729 ppm.',
+                   ask: 'Wait for BORON CHEM to read 709 to 729 ppm.',
                    label: 'BORON CHEM 709 to 729 ppm' },
                  /* AND THE DILUTION HAS FINISHED ARRIVING (#807 review, 2026-09-26). The makeup path
                   * holds the dose for minutes: on the chained plant the tile crosses 729 with ~8-10 ppm
@@ -5005,7 +5005,7 @@
                    label: 'REACTOR POWER below 1 %' },
                  { p: 'steam_pressure_mpa', op: '~', v: 7.0327, tol: 0.0378,
                    hl_watch: ['SG Pressure'],
-                   ask: 'Check STEAM PRESS is holding near 1020 psi.',
+                   ask: 'Check STEAM PRESS is holding at 1015 to 1025 psi.',
                    label: 'STEAM PRESS 1015 to 1025 psi' },
                  { p: 'steam_dump_valve_pct', op: '>', v: 0.5,
                    hl_watch: ['Steam Dump Opening'],
@@ -5188,7 +5188,7 @@
                    label: 'SI REACTOR TRIP reads BLOCKED' },
                  { cmd: { action: 'set_hpi', active: false },
                    hl: ['ECCS — Stop'],
-                   ask: 'Press STOP on the ECCS card, even if it is already lit.',
+                   ask: 'Press STOP on the ECCS (emergency core cooling) card, even if it is already lit.',
                    label: 'STOP pressed on the ECCS card' }],
           hl: ['Trip Blocks', 'ECCS — Stop'], hl_watch: ['HPI/LPI'] },
         /* THE DUMP MUST BE IN PRESSURE MODE, AND THE CHAIN DOES NOT LEAVE IT THERE (layman playtest
@@ -5226,7 +5226,7 @@
          * leg's step 3 now requires PRESS) — and that is the plant's true state, not a hollow tick:
          * the step's Continue waits on 4b. Injection: the dump put in TAVG before this step and
          * AUTO never pressed leaves the row unmet (see 06_cooldown.md Notes). */
-        { text: 'Cool the plant on the steam dump to where RHR can take over.',
+        { text: 'Cool the plant on the steam dump to where residual heat removal (RHR) can take over.',
           aim: 'The steam pressure the dump holds sets the temperature the reactor water follows down.',
           control: 'Dump SP', target: 'STEAM DUMP status STM PRESS; DUMP SETPOINT 120 psi; AVG COOLANT TEMPERATURE below 347 °F',
           wait_hint: false,
