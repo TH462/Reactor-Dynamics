@@ -292,7 +292,10 @@
     if (frameMs > 0 && frameMs < 2000) animEma = animEma ? (animEma * 0.85 + frameMs * 0.15) : frameMs;
     var nominal = 1000 / FLOW_FPS;
     /* A hidden tab's timers are throttled by the browser, not by this machine — never count it. */
-    var visible = !document.visibilityState || document.visibilityState === 'visible';
+    /* Focus too (review, 2026-10-04): an occluded or background window can report 'visible'
+     * while the browser throttles its frames, and the latch is permanent. */
+    var visible = (!document.visibilityState || document.visibilityState === 'visible') &&
+      (!document.hasFocus || document.hasFocus());
     if (visible && frameMs < 2000 && animEma > 1000 / PAINT_LOCK_FPS) {
       if (!slowSinceMs) slowSinceMs = now;
       else if (now - slowSinceMs >= PAINT_LOCK_HOLD_MS) { flowMode = 'paint'; return; }
