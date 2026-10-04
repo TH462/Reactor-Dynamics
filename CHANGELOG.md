@@ -30,7 +30,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.8.2-rc3] — 2026-10-02
+## [Alpha 1.8.2] — 2026-10-03
 
 ### Changed — walkthrough rings breathe (`497b2fc5`)
 
