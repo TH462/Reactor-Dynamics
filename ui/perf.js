@@ -308,6 +308,8 @@
         visibility: visibilitySummary(),
         raf: { last: lastRafBurst, paint_broadcast_ratio: broadcasts > 0 ? (paints / broadcasts) : null },
         loaf: loafSummary(),
+        // #613: 'paint' once the pipe-flow clock has latched to the app's paint on a slow machine
+        flow_mode: (typeof window !== 'undefined' && window.StdPipe && window.StdPipe.flowMode) ? window.StdPipe.flowMode() : null,
       };
       out.verdict = verdict(out);
       return out;

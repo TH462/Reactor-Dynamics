@@ -149,6 +149,7 @@
  *   --software       launch with --disable-gpu-rasterization --disable-gpu-compositing
  *   --swiftshader    launch with --disable-gpu: SwiftShader WebGL + software compositing, the
  *                    owner's work-PC state (#613)
+ *   --latethrottle=N CPU throttle applied after load, before settle (#613 latch probe)
  *   --rasterthreads=N  --num-raster-threads=N (a starved raster pool, e.g. a virtual desktop)
  *   --vw=1500 --vh=950  viewport (the owner's is 1920x931)
  *   --headed         run headed (raster path differs from headless; slower, but closer)
@@ -173,7 +174,7 @@ var ROOT = path.join(__dirname, '..');
 function parseArgs(argv) {
   var o = {
     init: 'hot_full_power', inject: '', secs: 15, settle: 5, speed: 10, ff: 10,
-    ab: '', throttle: 0, software: false, swiftshader: false, headed: false, vw: 1500, vh: 950, rasterthreads: 0, label: '', json: '', trace: '',
+    ab: '', throttle: 0, software: false, swiftshader: false, headed: false, vw: 1500, vh: 950, rasterthreads: 0, lateThrottle: 0, label: '', json: '', trace: '',
   };
   for (var i = 0; i < argv.length; i++) {
     var a = argv[i];
@@ -183,6 +184,7 @@ function parseArgs(argv) {
     if (k === 'help') { console.log(helpText()); process.exit(0); }
     else if (k === 'software' || k === 'headed' || k === 'swiftshader') o[k] = true;
     else if (k === 'secs' || k === 'settle' || k === 'speed' || k === 'ff' || k === 'throttle' || k === 'vw' || k === 'vh' || k === 'rasterthreads') o[k] = +v;
+    else if (k === 'latethrottle') o.lateThrottle = +v;
     else if (k in o) o[k] = v == null ? '' : v;
     else { console.error('unrecognised option: --' + k); process.exit(2); }
   }
@@ -206,6 +208,13 @@ var KNOBS = {
   /* #613: the owner asked whether merging pipes, tees and crosses into one-piece pipes would
    * help. Hiding the 9 fitting tiles (8 Tee, 1 Cross) outright is the UPPER BOUND on what
    * merging them away can save: merging keeps their pixels, this removes them too. */
+  /* #613: force the pipe-flow clock into paint-locked mode (std_pipe latches it by itself
+   * below 12 fps; this skips the 3 s wait so the effect can be measured on a fast box). */
+  paintlock: {
+    css: '',
+    apply: function () { if (window.StdPipe && StdPipe._forcePaintLock) StdPipe._forcePaintLock(); return { mode: window.StdPipe && StdPipe.flowMode() }; },
+    verify: function () { var m = window.StdPipe && StdPipe.flowMode(); return { mode: m, took: m === 'paint' }; },
+  },
   nofittings: {
     css: '',
     apply: function () {
@@ -1087,6 +1096,8 @@ async function main() {
       if (K.apply) out.applied[kn] = await page.evaluate(K.apply);
     }
 
+    // --latethrottle=N: CPU throttle applied AFTER load (a heavy --throttle times the boot out)
+    if (o.lateThrottle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: o.lateThrottle });
     await page.waitForTimeout(o.settle * 1000);
 
     /* The window. RD.Perf is reset here so its summary covers exactly the traced span and can
