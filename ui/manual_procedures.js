@@ -4154,7 +4154,6 @@
            * gate on a plant that is doing nothing wrong. Mode 1, At Power is what "the plant the
            * startup hands over" actually means, it is true from the first broadcast, and the
            * 10 % row is already the leg's own precondition banner. */
-          note: 'Left unblocked, these trip the reactor at 25 %, then 35 %.',
           past: { p: 'power_pct', op: '>', v: 40 },
           wait_speed: 1, speed_text: true,
           /* PHASE 2 (2026-09-25): 1b and 1c were read-only in the old single `ask`; each is now its
