@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+- **CI pinned to `ubuntu-24.04`** (both jobs in `gates.yml`): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19, and the font-metric and float-branch fixtures were fitted to 24.04.
+
 ## [Alpha 1.8.2] — 2026-10-03
 
 ### Changed — walkthrough rings breathe (`497b2fc5`)
