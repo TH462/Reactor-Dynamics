@@ -203,6 +203,26 @@ function helpText() {
  * every one of these has a verify at all. */
 
 var KNOBS = {
+  /* #613: the owner asked whether merging pipes, tees and crosses into one-piece pipes would
+   * help. Hiding the 9 fitting tiles (8 Tee, 1 Cross) outright is the UPPER BOUND on what
+   * merging them away can save: merging keeps their pixels, this removes them too. */
+  nofittings: {
+    css: '',
+    apply: function () {
+      var d = window.RD_PWR_BOARD_DOC, ids = [];
+      (d && d.items || []).forEach(function (i) { if (i.comp === 'Tee' || i.comp === 'Cross') ids.push(i.id); });
+      var st = document.createElement('style');
+      st.textContent = ids.map(function (id) { return '[data-item="' + id + '"]'; }).join(',') + '{display:none!important}';
+      document.head.appendChild(st);
+      window.__fitIds = ids;
+      return { fittings: ids.length };
+    },
+    verify: function () {
+      var ids = window.__fitIds || [], hidden = 0;
+      ids.forEach(function (id) { var e = document.querySelector('[data-item="' + id + '"]'); if (e && getComputedStyle(e).display === 'none') hidden++; });
+      return { fittings: ids.length, hidden: hidden, took: ids.length > 0 && hidden === ids.length };
+    },
+  },
   nofilter: {
     css: '*, *::before, *::after { filter: none !important; }',
     /* Count elements still reporting a computed filter. The SVG presentation attribute is the
