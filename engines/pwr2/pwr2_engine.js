@@ -1892,6 +1892,12 @@
      * block]: close the regulating valve AND trip the turbine ("to protect the turbine
      * against excessive moisture carryover", WTSM 3.2). Level-held while latched. */
     if (ptr.fwi) { eng.fw.isolated = true; eng.tb.tripped = true; }
+    /* P-4 + low Tavg feedwater isolation (#818, OWNER RULING 2026-10-01 "R1:a") [sourced —
+     * protection's P4FWI block]: close the feed regulating valves while the signal stands. No
+     * turbine trip of its own (the reactor trip already holds it, P-4 item 1), no feed-pump
+     * trip and no AFW start (WTSM 12.3.6.2 / 12.3.7.1 — AFW follows on low-low level). LIVE,
+     * not latched: when it clears the valves stay shut until the operator restores feed. */
+    if (ptr.fwi_lo_tavg) eng.fw.isolated = true;
 
     /* ---- THE CONTAINMENT ENGINEERED SAFETY FEATURES (#784) ----------------------------------
      * The caller's half again: `pwr2_protection.js` decided WHETHER on sourced setpoints and

@@ -79,13 +79,20 @@ var SIGNALS = [
   { key: 'critical alarm',                tag: 'div',    cls: ['alarm-tile', 'unack', 'crit'], anim: 'alarmCritFlash' },
   { key: 'protection latch (ACTUATED)',   tag: 'button', cls: ['bd-btn', 'bd-actuated'],       anim: 'bdActuatedFlash' },
   { key: 'trip-block message',            tag: 'button', cls: ['bd-btn', 'bd-msg', 'bd-unack'], anim: 'bdMsgFlash' },
-  { key: 'walkthrough: act on this',      tag: 'div',    cls: ['ckl-step-glow'],               anim: 'cklGlow' },
+  /* `reduceAnim`: the ONE declared exception to claim 1 *(OWNER, 2026-10-02: "i also want the dashed
+   * action glow rings to slowly pulse. they can have a base brightness to them so something of the glow
+   * is always visible")* — a brightness-only breath on the dashed ring; its geometry is unchanged. */
+  { key: 'walkthrough: act on this',      tag: 'div',    cls: ['ckl-step-glow'],               anim: 'cklGlow', reduceAnim: 'cklDashPulse' },
   /* #755 item 19 (2026-09-14). The PRESSED state is a third walkthrough signal and it had to be
    * declared here or it would have been invisible to both claims — the house trap this file's own
    * header names, and the one `bd-refused` fell through. Under reduced motion "act on this" and
    * "you did it" are both static, so without a width of its own the pair would be identical. */
   { key: 'walkthrough: act on this (pressed)', tag: 'div', cls: ['ckl-step-glow', 'ckl-step-done'], anim: null },
   { key: 'walkthrough: watch this',       tag: 'div',    cls: ['ckl-watch-glow'],              anim: null },
+  /* The CHECK ring (#809 item 4) was missing from this hand-maintained list. Since 2026-10-02 it
+   * breathes slowly in every mode, the owner's words: "I meant both, it's hard for people to find
+   * what they are supposed to press or check" — so it is declared here, positive leg and exception. */
+  { key: 'walkthrough: check this',       tag: 'div',    cls: ['ckl-check-glow'],              anim: 'cklCheckPulse', reduceAnim: 'cklCheckPulse' },
   { key: 'highlight bus',                 tag: 'div',    cls: ['instr-glow'],                  anim: 'instrGlow' },
   /* #743. The recommended speed rung is the one signal here whose treatment is an INSET, and that
    * is load-bearing rather than stylistic: `.speed` is `overflow: hidden`, so an outer ring on a
@@ -178,8 +185,8 @@ function probeAll() {
   var reduce = await pReduce.evaluate(probeAll(), SIGNALS);
 
   /* CLAIM 1 — nothing moves. */
-  var stillMoving = SIGNALS.filter(function (s) { return reduce[s.key].anim !== 'none'; });
-  ck('no attention signal animates under prefers-reduced-motion',
+  var stillMoving = SIGNALS.filter(function (s) { return reduce[s.key].anim !== (s.reduceAnim || 'none'); });
+  ck('no attention signal animates under prefers-reduced-motion, except the one declared reduceAnim',
     stillMoving.length === 0,
     stillMoving.length ? stillMoving.map(function (s) { return s.key + '=' + reduce[s.key].anim; }).join(', ')
       : SIGNALS.length + ' signals checked, all static');
@@ -187,8 +194,9 @@ function probeAll() {
   /* The six #740 was filed for, named individually so a regression says WHICH. */
   ['gauge alarm value', 'armed button', 'retired-board scram', 'system slot alarm dot',
    'walkthrough: act on this', 'highlight bus'].forEach(function (k) {
-    ck('  …including "' + k + '", one of the six that ignored it when #740 was filed',
-      reduce[k].anim === 'none', reduce[k].anim);
+    var want = (SIGNALS.filter(function (s) { return s.key === k; })[0] || {}).reduceAnim || 'none';
+    ck('  …including "' + k + '", one of the six that ignored it when #740 was filed (expects ' + want + ')',
+      reduce[k].anim === want, reduce[k].anim);
   });
 
   /* CLAIM 2 — the fallback is geometry, not hue. Compared on shape alone; no colour is read. */

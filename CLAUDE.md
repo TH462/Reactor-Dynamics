@@ -970,8 +970,9 @@ gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
   session from the owner's edits from your own leftovers, which is why it may only WARN AND ASK.
   A lane tag is an agent SAYING where it is, and `gh issue list --label status-wip-workbench`
   answers *who is in that tree and on what*. It does not replace the sweep (an agent can work
-  without touching an issue), so run both. **A tagged issue in your lane that you did not tag is
-  a positive — warn and ask, same as the file check.**
+  without touching an issue), so run both. **A STALE tag is not occupancy** *(OWNER DIRECTIVE,
+  2026-10-02, on #811 — untouched 3 days, work released, tree clean: "Next time don't use that as
+  an indication that the worktree is occupied.")*: clear it, say so, carry on.
 
   **ONE `--label` is fine; THREE are not** — `gh` ANDs repeated `--label`, so the all-lanes
   sweep must be `--search 'label:a,b,c'`. `Blueprint/LANES.md` §2 for what that cost.

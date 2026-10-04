@@ -1097,7 +1097,7 @@
     // between 47 cm2 and there latches mid-blowdown. If a design-basis LOCA is ever wanted, the
     // work starts in pwr2_core, not here. Full measurements: PWR2_VALIDATION.md §119.
     large_loca:                  { type: 'physics_parameter', category: 'coolant', effect: 'primary_leak', severity_scales: 'leak_rate', leak_scale: 0.04,
-                                   severity_meta: { label: 'Break Size', unit: '% (100 % = a 3.1 in² / 20 cm² hole)', min: 0, max: 100, default: 40 }, display: 'Large LOCA (Cold-Leg Break)' },
+                                   severity_meta: { label: 'Break Size', unit: '% (100 % = a 3.1 in² / 20 cm² hole)', min: 0, max: 100, default: 40 }, display: 'Small-break LOCA (cold leg)' },  /* #818: the name follows the RULED size (#580, 100 % = 20 cm2 / 3.1 in2, a small break); id `large_loca` kept for saves, campaigns and scenarios */
     continuous_rod_withdrawal:   { type: 'physics_parameter', category: 'reactivity', effect: 'rod_withdrawal_runaway', severity_scales: 'withdraw_rate',
                                    severity_meta: { label: 'Withdrawal Rate', unit: 'steps/s', min: 0, max: 24, default: 12 }, display: 'Continuous Rod Withdrawal' },
     stuck_rod_on_scram:          { type: 'physics_parameter', category: 'reactivity', effect: 'stuck_control_rod', severity_scales: 'worth_fraction_held',
@@ -1120,6 +1120,55 @@
     // the single-channel PI-8 trip reads the same lie (the deception teaching point).
     pzr_level_sensor_low:        { type: 'instrument', category: 'instrument', instrument_id: 'pzr_level', mode: 'stuck', stuck_value: 20.0, display: 'Pressurizer Level Sensor Failed Low' },
   };
+
+  /* WHAT EACH FAILURE DOES, IN ONE LINE (#818). The Inject Failure tab listed names only, and
+   * several names are codes to a newcomer. `blurb` is the Learning-register line under the name
+   * (about 15 words, no unexplained abbreviations). `armed_text` / `fired_text` exist only for
+   * the failures that wait for a plant event before they act — the engine reports which state
+   * each is in (PWR2Engine.getFailureArming), and the tab shows the matching line, so a
+   * failure injected at full power that has not acted yet no longer looks like a dead button.
+   * Each line describes the SHIPPED plant (PWR2), measured 2026-10-01 from hot full power. */
+  var PWR_FAILURE_COPY = {
+    continuous_rod_withdrawal: { blurb: 'The control rods pull out on their own and keep going. Slider sets the speed.',
+      armed_text: 'Armed — pulls the control rods out whenever they can move and are not already fully out.',
+      fired_text: 'Fired — the control rods are pulling out on their own.' },
+    failure_to_scram: { blurb: 'The reactor trip signal comes in, but the control rods do not drop.',
+      armed_text: 'Armed — keeps the rods out the next time the reactor trips.',
+      fired_text: 'Fired — the reactor tripped and the rods did not drop.' },
+    anticipatory_trip_failure: { blurb: 'A turbine trip no longer trips the reactor along with it.',
+      armed_text: 'Armed — takes effect the next time the turbine trips at power.',
+      fired_text: 'Fired — the turbine is tripped and did not trip the reactor.' },
+    large_loca: { blurb: 'A reactor coolant pipe breaks and coolant pours into containment. Slider sets hole size.' },
+    sgtr: { blurb: 'A steam generator tube breaks; reactor coolant leaks into the steam side.' },
+    rcp_seal_leak: { blurb: 'The reactor coolant pump seal leaks a small, steady flow into containment.' },
+    stuck_porv_open: { blurb: 'The pressurizer relief valve sticks open the next time it opens.',
+      armed_text: 'Armed — sticks open the next time pressure lifts the valve.',
+      fired_text: 'Fired — the relief valve has lifted and is stuck open.' },
+    rcp_trip: { blurb: 'The reactor coolant pump stops, and flow through the core coasts down.' },
+    stuck_open_spray: { blurb: 'The pressurizer spray valve sticks fully open, pulling pressure down.' },
+    failed_pzr_heaters: { blurb: 'The pressurizer heaters stop working, so they cannot add heat to hold pressure.' },
+    loss_of_feedwater: { blurb: 'The main feedwater pumps stop; the steam generator gets no more feed.' },
+    sg_overfeed: { blurb: 'Main feedwater runs far too high, overfilling the steam generator.' },
+    turbine_trip: { blurb: 'The turbine trips offline. At power, the reactor trips with it.' },
+    loss_of_condenser_vacuum: { blurb: 'The condenser cooling-water pumps stop, so condenser vacuum is lost.' },
+    loss_of_offsite_power: { blurb: 'The grid is lost: the main pumps stop and diesel generators power the safety equipment.' },
+    station_blackout: { blurb: 'All AC power is lost — the grid and the diesel generators both.' },
+    degraded_hpi: { blurb: 'High-pressure injection delivers only part of its flow. Slider sets how much is lost.',
+      armed_text: 'Armed — takes effect the next time high-pressure injection starts.',
+      fired_text: 'Fired — high-pressure injection is running at reduced flow.' },
+    afw_failure: { blurb: 'Auxiliary feedwater cannot deliver any flow when it is needed.',
+      armed_text: 'Armed — takes effect the next time auxiliary feedwater starts.',
+      fired_text: 'Fired — the auxiliary feedwater pumps are running, but no flow gets through.' },
+    porv_indicator_stuck_closed: { blurb: 'The relief valve position light reads CLOSED, whatever the valve is really doing.' },
+    tavg_sensor_failure: { blurb: 'The average coolant temperature reading slowly drifts away from the real value.' },
+    pzr_level_sensor_stuck: { blurb: 'The pressurizer level reading freezes where it is.' },
+    pzr_level_sensor_low: { blurb: 'The pressurizer level reading fails to 20 %, whatever the real level.' },
+  };
+  Object.keys(PWR_FAILURE_COPY).forEach(function (id) {
+    var d = PWR_FAILURES[id], c = PWR_FAILURE_COPY[id];
+    if (!d) return;
+    for (var k in c) d[k] = c[k];
+  });
 
   // Interlocks (M4 §4b) — condition-latched command blocks, from instruments
   // (HR1). The rod-withdrawal block is the startup-forgiveness guard: when the

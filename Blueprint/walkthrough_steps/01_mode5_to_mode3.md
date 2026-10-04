@@ -30,7 +30,7 @@ Suggested time warp: 1×.
 
 Background
 
-In Cold Shutdown (Mode 5) the water is far below boiling, pressure is low, the Residual Heat Removal (RHR) loop is carrying the small amount of heat the fuel still makes, and both rod banks are fully inserted.
+In Cold Shutdown (Mode 5) the water is far below boiling and pressure is low. Residual Heat Removal (RHR) carries the fuel's small leftover heat, and both rod banks are fully in.
 
 [HIGHLIGHTED: Tavg, Primary Pressure, Residual Heat Removal (RHR), Control Rod Position, Shutdown Rod Position (steady)]
 
@@ -44,11 +44,11 @@ In Cold Shutdown (Mode 5) the water is far below boiling, pressure is low, the R
 
 Suggested time warp: 1×.
 
-Note: Coming from a cooldown with PRIMARY PRESSURE under about 25 psi, heat from the pumps carries AVG COOLANT TEMPERATURE to about 205 °F and can bring in the Low Subcooling Margin alarm. Both are expected: the heaters raise pressure at step 9 and the alarm clears.
+Note: Only if PRIMARY PRESSURE reads under about 25 psi here, as it can after a cooldown: pump heat carries AVG COOLANT TEMPERATURE to about 205 °F and can bring in the Low Subcooling Margin alarm. Expected: step 9's heaters clear it.
 
 Background
 
-A shut-down reactor makes very little heat. The running pumps make heat of their own: the work that drives the water around the loop ends up in it as friction. That is enough to warm the whole plant. Real crews heat up exactly this way, with the reactor never critical.
+A shut-down reactor makes almost no heat, but the pumps' work ends up in the water as friction, enough to warm the whole plant. Real crews heat up this way, reactor never critical.
 
 [HIGHLIGHTED: RCP — On (pulsing); RCP ON/OFF (steady)]
 
@@ -56,13 +56,13 @@ A shut-down reactor makes very little heat. The running pumps make heat of their
 
 3. Withdraw the shutdown bank all the way out.
 
-*Once out, the shutdown bank is the reserve that drops in on a trip, so it comes out first and stays out.*
+*The shutdown bank is the trip reserve: out first, and it stays out.*
 
 ()3a. Press FAST on the ROD CONTROL card, then click WITHDRAW under SHUTDOWN once and check SHUTDOWN ROD POSITION starts counting up.
 
 Suggested time warp: 1×.
 
-Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once first: no rod moves while the reactor trip is latched. PRESS TO ARM means no trip is latched; leave it. One click starts the shutdown bank and it runs to 627 of 627 by itself, about 9 plant-minutes. Clicking WITHDRAW again stops it early.
+Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once; if PRESS TO ARM, leave it. One click runs the bank to 627 of 627 in about 9 plant-minutes; a second click stops it.
 
 ()3b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
 
@@ -70,9 +70,7 @@ Suggested time warp: 60×.
 
 Background
 
-The shutdown bank is a set of control rods that is never used to steer the reactor. It stays fully withdrawn whenever the plant is running, so that on a reactor trip (SCRAM) it drops into the core and shuts the reactor down hard.
-
-It comes out first during a startup and stays out. Power and temperature are steered with the control bank and boron.
+The shutdown bank never steers the reactor. It stays fully out while the plant runs, so a trip (SCRAM) drops it in and shuts the reactor down hard. The control bank and boron do the steering.
 
 [HIGHLIGHTED: Rod Speed — Fast, Shutdown Bank — Withdraw (pulsing); Shutdown Rod Position (steady)]
 
@@ -80,7 +78,7 @@ It comes out first during a startup and stays out. Power and temperature are ste
 
 4. Confirm the turbine is tripped.
 
-*A tripped turbine takes no steam, so the heat the pumps make stays in the plant.*
+*A tripped turbine takes no steam, so pump heat stays in the plant.*
 
 ()4a. Check TRIP is lit on the TURBINE-GENERATOR card.
 
@@ -88,11 +86,11 @@ It comes out first during a startup and stays out. Power and temperature are ste
 
 Suggested time warp: 1×.
 
-Note: TRIP is a lamp to read here, not a button to press. UNLOAD is not TRIP: UNLOAD walks the load setting to zero, TRIP shuts the steam valves.
+Note: TRIP is also a button that trips the turbine; here the turbine is already tripped, so only read the lamp. UNLOAD walks the load to zero; TRIP shuts the steam valves.
 
 Background
 
-The cold plant starts with the turbine tripped. It matters because a turbine taking any steam on pump heat would carry away the very heat you are trying to build up.
+The cold plant starts with the turbine tripped. A turbine taking any steam on pump heat would carry away the heat you are building up.
 
 [HIGHLIGHTED: Turbine — Trip, Turbine Load, Generator Output (steady)]
 
@@ -100,7 +98,7 @@ The cold plant starts with the turbine tripped. It matters because a turbine tak
 
 5. Put auxiliary feed in AUTO to hold steam generator level.
 
-*Once the water in the steam generator starts to boil, its level starts to fall, and auxiliary feed has to be holding it by then.*
+*Once the steam generator boils, its level falls; aux feed has to be holding it already.*
 
 ()5a. Press AUTO on the AUX FEED WATER card and check the card reads RUNNING.
 
@@ -108,9 +106,7 @@ Suggested time warp: 1×.
 
 Background
 
-The steam generator is the boiler: reactor water heats it on one side and steam comes off the other. The big main feed pumps need a certain steam load before they can run steadily, so they stay stopped through the heatup and Hot Standby. The small auxiliary feed pump carries the steam generator until then.
-
-In AUTO it holds STEAM GENERATOR LEVEL near 33 %. It lets water in only once level falls below 38 %, so while nothing is boiling it runs with its valve shut. Main feed takes over during the reactor startup, at about 1 % power.
+The steam generator is the boiler. Main feed needs a steam load to run, so the small aux feed pump carries it until about 1 % power. AUTO holds level near 33 %, letting water in only below 38 %.
 
 [HIGHLIGHTED: AFW — Auto (pulsing); AFW, SG Level (steady)]
 
@@ -118,7 +114,7 @@ In AUTO it holds STEAM GENERATOR LEVEL near 33 %. It lets water in only once lev
 
 6. Confirm the steam dump is closed.
 
-*Any steam the dump lets out is pump heat leaving the plant.*
+*Steam the dump lets out is pump heat leaving the plant.*
 
 ()6a. Check the STEAM DUMP card reads MANUAL with CLOSE lit. If AUTO is lit, press CLOSE.
 
@@ -128,7 +124,7 @@ Suggested time warp: 1×.
 
 Background
 
-The steam dump sends steam straight to the condenser instead of the turbine. Kept shut, the steam side bottles up and the pump heat stays in the plant. The DUMP SETPOINT box already reads 1020 psi, but that number does nothing until AUTO is pressed, which a later step does once the steam side is hot.
+The steam dump sends steam to the condenser. Shut, the steam side bottles up the heat. DUMP SETPOINT already reads 1020 psi but does nothing until AUTO, pressed later once the steam side is hot.
 
 [HIGHLIGHTED: Steam Dump — Close, Steam Dump, Steam Dump Status, Steam Dump Valve, Steam Dump Opening (steady)]
 
@@ -136,7 +132,7 @@ The steam dump sends steam straight to the condenser instead of the turbine. Kep
 
 7. Open the letdown orifices before the pressure climb shuts the RHR path.
 
-*Once pressure passes 600 psi, the orifices are the only way water leaves the loop.*
+*Above 600 psi, the orifices are the only way water leaves the loop.*
 
 ()7a. Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.
 
@@ -144,7 +140,7 @@ Suggested time warp: 1×.
 
 Background
 
-Water is always being pumped into the reactor loop (charging), so it always needs a way out (letdown). Right now letdown leaves through the RHR loop, and that path closes itself at 600 psi once the heaters start the pressure climb. The letdown orifices, two fixed holes, are the only way out after that; with them shut the plant would slowly fill solid.
+Charging always pumps water in, so letdown must always let it out. Letdown now goes through RHR, which shuts itself at 600 psi during the climb. With the orifices shut, the plant would fill solid.
 
 [HIGHLIGHTED: Letdown — A+B 7% (pulsing); Letdown Orifices (CVCS), Letdown Flow (steady)]
 
@@ -152,17 +148,17 @@ Water is always being pumped into the reactor loop (charging), so it always need
 
 8. Put pressurizer spray in service before the heaters start the climb.
 
-*A brake goes in service before the climb it has to stop, not during it.*
+*A brake goes in service before the climb it has to stop.*
 
 ()8a. Press AUTO under SPRAY on the PRESSURIZER (PZR) card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
-Note: Nothing moves yet. The spray only opens when pressure runs above the SET PZR PRESSURE box, and the cold plant starts more than 1300 psi below it.
+Note: Nothing moves yet: spray opens only above the SET PZR PRESSURE box, and the cold plant starts more than 1300 psi below it.
 
 Background
 
-The pressurizer is a tank of half water, half steam that sets the pressure of the reactor loop: heaters inside the pressurizer boil water to create steam and raise pressure, spray condenses steam to lower it. The cold plant starts with both off. Spray goes in first because it is the only brake on the climb the next step starts, and a control you want in service before you need it is one you put in service while nothing is happening.
+The pressurizer is half water, half steam and sets loop pressure: heaters boil water to raise it, spray condenses steam to lower it. Spray is the only brake on the climb the next step starts.
 
 [HIGHLIGHTED: Pressurizer Spray — Auto (pulsing); Pressurizer Spray (PZR) (steady)]
 
@@ -170,7 +166,7 @@ The pressurizer is a tank of half water, half steam that sets the pressure of th
 
 9. Raise PRIMARY PRESSURE to the 665 psi accumulator window on the heaters.
 
-*The accumulator valve can only be opened between 665 and 1615 psi, so pressure has to come up into that window first.*
+*The accumulator valve opens only between 665 and 1615 psi, so pressure comes up first.*
 
 ()9a. Press AUTO under HEATER on the PRESSURIZER (PZR) card and check AUTO is lit.
 
@@ -180,15 +176,11 @@ Suggested time warp: 1×.
 
 Suggested time warp: 600×.
 
-Note: At 665 psi the clock drops to 1× until the accumulator valve in the next step is open. Two alarms are expected, not faults: Shutdown Cooling Not In Service near 600 psi, and Pressurizer Level Above Program near 700 psi, which clears by itself during the heat-up.
+Note: At 665 psi the clock drops to 1× for the next step. Expected alarms: Shutdown Cooling Not In Service near 600 psi; Pressurizer Level Above Program near 700 psi, which clears itself.
 
 Background
 
-The heaters boil water in the pressurizer, and that steam sets the pressure of the whole reactor loop. The SET PZR PRESSURE box already reads 1700 psi, the lowest it goes, so the heaters run at full power until pressure nears it.
-
-Pressure stops at 1700 psi rather than going straight to normal because of an automatic gate at 1972 psi. Above it the emergency injection pumps re-arm, and with the steam side still cold they would fire on a healthy plant.
-
-On the way up the plant passes 665 psi, the accumulator window the next step needs.
+SET PZR PRESSURE already reads 1700 psi, its lowest, so the heaters run full until near it. Pressure stops there because above 1972 psi emergency injection re-arms, and with the steam side cold it would fire on a healthy plant.
 
 [HIGHLIGHTED: Pressurizer Heater — Auto (pulsing); Pressurizer Heaters (PZR), Primary Pressure (steady)]
 
@@ -196,17 +188,17 @@ On the way up the plant passes 665 psi, the accumulator window the next step nee
 
 10. Open the accumulator valve while PRIMARY PRESSURE is inside its window.
 
-*With the valve open, the accumulators stand ready to inject by themselves if loop pressure is ever lost.*
+*Open, the accumulators inject by themselves if loop pressure is lost.*
 
 ()10a. Open the accumulator valve while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.
 
 Suggested time warp: 1×.
 
-Note: The valve symbol sits just above the ACCUMULATORS tile, to the left of ECCS INJ FLOW; it pulses while this step is up. Above 1615 psi the valve locks, and the ACCUMULATORS caution is expected until pressure passes 1000 psi. If the window is missed: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
+Note: The valve symbol sits just above the ACCUMULATORS tile, left of ECCS INJ FLOW. Above 1615 psi it locks; the ACCUMULATORS caution is expected until pressure passes 1000 psi. Missed the window: press OFF under HEATER and MANUAL under SPRAY at 100 %, wait for PRIMARY PRESSURE below 1615 psi, open the valve, then put both back in AUTO.
 
 Background
 
-The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. They fire by themselves if loop pressure ever falls below that pressure, which is why they are kept isolated while the plant is cold. Above 1615 psi the plant removes power from the valve, so it has to be opened before that point.
+The accumulators are borated-water tanks pushed by nitrogen at 665 psi. They fire if loop pressure falls below that, so they stay isolated while cold. Above 1615 psi the plant removes the valve's power.
 
 [HIGHLIGHTED: Accumulator valve (pulsing); Accumulators, Primary Pressure (steady)]
 
@@ -214,17 +206,17 @@ The accumulators are tanks of borated water pushed by nitrogen gas at 665 psi. T
 
 11. Heat the plant to 542 °F on pump heat alone.
 
-*Hot Standby needs the water near its operating temperature, and the pumps get it there without the reactor.*
+*Hot Standby needs near-operating temperature; the pumps get there without the reactor.*
 
 ()11a. Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.
 
 Suggested time warp: 3600×.
 
-Note: Near the end the red Pressurizer Pressure Very Low alarm comes in, with Pressurizer Pressure Low. Both are expected: PRIMARY PRESSURE is held near 1700 psi on purpose, and step 14 raises it. The Turbine Trip / Low Steam Demand alarm comes in too: expected, the turbine stays tripped until the startup puts it on line. At 3600× the tile can read up to about 10 °F past 542 °F by the time the clock slows: expected.
+Note: Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 14), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F; that is expected.
 
 Background
 
-The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEVEL rising as the water expands, and REACTOR POWER staying at zero. On the steam side, STEAM PRESS climbs toward 1020 psi as the water in the steam generator heats up; the next step hands that pressure to the steam dump to hold.
+The pumps do the work: AVG COOLANT TEMPERATURE climbs and REACTOR POWER stays at zero. PRESSURIZER LEVEL rises as the water expands, to about 44 % near 280 °F, then level control lets the extra out and it falls back to about 25 % by 435 °F, its program for a plant this cool. STEAM PRESS climbs toward 1020 psi; the next step hands it to the steam dump.
 
 [HIGHLIGHTED: Tavg, Primary Pressure, SG Pressure (steady)]
 
@@ -232,7 +224,7 @@ The pumps are doing the work now. Watch AVG COOLANT TEMPERATURE, PRESSURIZER LEV
 
 12. Confirm letdown now leaves only through the orifices.
 
-*Charging keeps pumping water in, so a letdown path that is not flowing fills the plant solid.*
+*Charging keeps pumping in, so a letdown path not flowing fills the plant solid.*
 
 ()12a. Check ISOLATE is lit on the RHR card.
 
@@ -242,7 +234,7 @@ Suggested time warp: 1×.
 
 Background
 
-The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE passed 600 psi during the climb; that is an interlock, not something you do. Letdown now leaves only through the orifices you opened earlier, about 11 gpm at this pressure. If it reads zero, water is going in and nothing is coming out.
+The RHR suction valve shut itself when PRIMARY PRESSURE passed 600 psi, an interlock. Letdown now leaves only through the orifices, about 11 gpm here. Zero means water in and nothing out.
 
 [HIGHLIGHTED: Letdown Orifices (CVCS), Residual Heat Removal (RHR), Letdown Flow (steady)]
 
@@ -250,7 +242,7 @@ The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE 
 
 13. Hand STEAM PRESS to the steam dump to hold.
 
-*Pump heat has brought STEAM PRESS up to about 1020 psi, or past it with the ATMOS DUMP venting the extra, and from here something has to hold it there.*
+*Pump heat has STEAM PRESS at about 1020 psi, or past it with the ATMOS DUMP venting, and something has to hold it.*
 
 ()13a. Check DUMP SETPOINT reads 1020 psi. If it does not, set it to 1020 psi.
 
@@ -258,11 +250,9 @@ The Residual Heat Removal (RHR) suction valve shut itself when PRIMARY PRESSURE 
 
 Suggested time warp: 1×.
 
-Note: The dump now holds STEAM PRESS at the 1020 psi in the DUMP SETPOINT box.
-
 Background
 
-From here the plant makes more heat than it needs, and the steam dump sends the excess to the condenser. Without it the steam side keeps climbing until the ATMOS DUMP valve opens and vents steam to the sky for the rest of the heatup. Real plants run the dump in this pressure-holding mode whenever the turbine is off.
+The plant now makes more heat than it needs, and the dump sends the excess to the condenser. Without it the ATMOS DUMP vents steam to the sky. Real plants hold pressure this way whenever the turbine is off.
 
 [HIGHLIGHTED: Steam Dump — Auto (pulsing); Steam Dump, Steam Dump Status, SG Pressure, Dump Setpoint (steady)]
 
@@ -270,7 +260,7 @@ From here the plant makes more heat than it needs, and the steam dump sends the 
 
 14. Bring PRIMARY PRESSURE up to normal operating pressure.
 
-*With the steam side hot, PRIMARY PRESSURE can pass 1972 psi without firing the emergency injection.*
+*With the steam side hot, passing 1972 psi will not fire emergency injection.*
 
 ()14a. Set SET PZR PRESSURE to 2235 psi.
 
@@ -282,7 +272,7 @@ Suggested time warp: 600×.
 
 Background
 
-This is the second half of the pressure climb. Crossing 1972 psi re-arms the emergency injection, and that is safe now because the steam side is hot: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this step waited for the heatup to finish.
+Crossing 1972 psi re-arms emergency injection. It is safe now: STEAM PRESS sits near 1020 psi, far above the 328 psi that would trigger it. That is why this waited for the heatup.
 
 [HIGHLIGHTED: Pressure SP (pulsing); Primary Pressure (steady)]
 
@@ -290,7 +280,7 @@ This is the second half of the pressure climb. Crossing 1972 psi re-arms the eme
 
 15. Confirm Hot Standby.
 
-*Confirming the end state catches a pressure that never came up or a steam side venting to the sky.*
+*This catches a pressure that never came up or steam venting to the sky.*
 
 ()15a. Check AVG COOLANT TEMPERATURE reads 544 to 549 °F.
 
@@ -304,7 +294,7 @@ Suggested time warp: 1×.
 
 Background
 
-Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. STEAM PRESS holding near 1020 psi with the ATMOS DUMP shut says the steam dump is carrying the heat, not the sky.
+Hot Standby (Mode 3) is hot and at pressure, reactor shut down. STEAM PRESS near 1020 psi with the ATMOS DUMP shut means the steam dump, not the sky, carries the heat.
 
 [HIGHLIGHTED: Tavg, Primary Pressure, SG Pressure, ADV (steady)]
 
@@ -312,7 +302,7 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. ST
 
 16. Confirm the reactor stayed shut down.
 
-*The startup that follows assumes a core a long way from critical, so that is confirmed before handing over.*
+*The startup that follows assumes a core a long way from critical.*
 
 ()16a. Check SOURCE RANGE counts read steady.
 
@@ -324,11 +314,11 @@ Hot Standby (Mode 3) is hot and at pressure with the reactor still shut down. ST
 
 Suggested time warp: 10×.
 
-Note: SOURCE RANGE wanders a little with nothing moving; steady means it is not climbing, and the check-off watches it for half a minute of plant time. STARTUP RATE on a shut-down core flickers between about −0.01 and +0.01. A rod out or BORON STATUS reading DILUTING means something is adding reactivity: stop and find out what moved.
+Note: SOURCE RANGE wanders a little; steady means not climbing, watched for half a plant-minute. STARTUP RATE flickers between about −0.01 and +0.01. A rod out or DILUTING: stop and find what moved.
 
 Background
 
-There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE counts holding at a steady background instead of climbing, and STARTUP RATE sitting at zero. With the control bank in and boron at the cold concentration, the core is a long way from critical.
+No gauge reads how shut down a reactor is. The signs are SOURCE RANGE steady at background and STARTUP RATE at zero. With the control bank in and cold boron, the core is far from critical.
 
 [HIGHLIGHTED: Source Range, Startup Rate, Control Rod Position, Boron Status (steady)]
 
@@ -336,17 +326,17 @@ There is no gauge for "how shut down" a reactor is. The signs are SOURCE RANGE c
 
 17. Confirm the heatup made no fission power.
 
-*Any power at all would mean a chain reaction, not the pumps, was doing the heating.*
+*Any power means a chain reaction, not the pumps, did the heating.*
 
 ()17a. Check REACTOR POWER reads 0.0 %.
 
 Suggested time warp: 1×.
 
-Note: If it is not, stop and find out what moved: the control bank or BORON.
+Note: If not, stop and find what moved: the control bank or BORON.
 
 Background
 
-Power at zero is the whole point of a pump-heat heatup: the friction of the running pumps warmed the plant, not a chain reaction. Power above 0 % means something pulled the control bank or diluted the boron.
+Zero power is the point of a pump-heat heatup. Power above 0 % means something pulled the control bank or diluted the boron.
 
 [HIGHLIGHTED: Reactor Power, Control Bank, Boron (steady)]
 
@@ -750,3 +740,7 @@ at 696 psia 0.1 plant-min later). Record: `Diagnostic/CHECKLIST_PLAYTEST_2026-09
 ### #808 item A — 2026-09-27 (develop-d): step 5 is AUX FEED, not main feed
 
 Mode 3 runs on the motor-driven aux feed pump, main feed secured (OWNER: "Yes", 2026-09-27, on the #808 proposal). AUX FEED WATER AUTO now starts that pump on the 33 % level hold (coordinator's call, 2026-09-27, within the owner's #591 item 2 wording "automatic mode and off"). Source and numbers: `ui/manual_procedures.js` at this step.
+
+### Concise pass — 2026-10-02 (#819)
+
+2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 153 -> 115 (2606 -> 1950 over 17 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare). develop text carried in (pool wins): step 2 note "Only if PRIMARY PRESSURE reads under about 25 psi here"; step 4 note "TRIP is also a button"; step 11 Background PRESSURIZER LEVEL to about 44 % near 280 °F, back to about 25 % by 435 °F. Step 13 note removed (draft). Two drafted aim lines (steps 5, 13) said "must", which the style gate bans (W16): now "has to".

@@ -166,6 +166,24 @@
 
   <details class="log-entry" open>
     <summary class="log-head">
+      <h2>Free-play debrief, feedwater isolation, shorter walkthroughs</h2>
+      <span class="log-ver mono">Alpha 1.8.2</span>
+      <time class="log-date mono" datetime="2026-10-03">3 October 2026</time>
+    </summary>
+    <ul>
+      <li><span class="log-tag added">Added</span><strong>Free-play debrief.</strong> After a trip or an injected failure the Instructor tab says what the alarms show, what the automatic systems did and which readings to watch, with Retry.</li>
+      <li><span class="log-tag added">Added</span><strong>Feedwater isolation on a trip.</strong> Reactor tripped and average coolant temperature below 554 °F isolates main feed and starts both auxiliary feed pumps.</li>
+      <li><span class="log-tag added">Added</span><strong>ΔREF on the ROD CONTROL card.</strong> Average coolant temperature minus its program; Tref and Tavg − Tref are on the trend list.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Walkthroughs.</strong> Shorter steps: one-line notes, and each check ticks on its instruction; Continue always on screen; hold checks show their progress; predicted alarms are tagged. Started from the Main Menu only — the side-panel Walkthroughs tab is gone. The rings marking what to press or check pulse slowly.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Inject Failure.</strong> Shown in free play only; each failure has a one-line description, and failures that wait for a plant event read Armed, then Fired. "Large LOCA" is now "Small-break LOCA (cold leg)".</li>
+      <li><span class="log-tag changed">Changed</span><strong>Controls.</strong> Restart asks with Restart plant / Cancel; the speed badge reads "actual N×"; a refused command is explained in plain words.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Saves and alarms.</strong> Closing the Main Menu no longer erases a saved walkthrough; Cooldown Rate High no longer stays lit for six minutes after every trip.</li>
+      <li><span class="log-tag fixed">Fixed</span><strong>Operator manual.</strong> Full-power subcooling margin (42.7 °F), the load-cut figures and the feedwater isolation setpoint corrected; developer notes removed.</li>
+    </ul>
+  </details>
+
+  <details class="log-entry">
+    <summary class="log-head">
       <h2>Continue where you left off, and a new Main Menu</h2>
       <span class="log-ver mono">Alpha 1.8.1</span>
       <time class="log-date mono" datetime="2026-10-01">1 October 2026</time>

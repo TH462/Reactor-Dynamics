@@ -24,6 +24,12 @@
  * Cold Shutdown (Mode 5) in the Plant & Mission window and read it again. Measured on the
  * pre-fix build, the second read is byte-identical to the first.
  *
+ * SINCE #818 (owner ruling 2026-10-01) THE SIDE TAB AND ITS GREYING ARE GONE: the list is Main
+ * Menu -> Walkthroughs, which loads each leg's own starting condition and grades nothing. The
+ * #606 grey/white checks went with their subject; the order checks read the Main Menu; every
+ * section after them starts its walkthrough through a route a player still has (see the
+ * helpers). The file keeps its name because run_all keys its baseline on it.
+ *
  * Run: node test/verify_ckl_relevance.js
  */
 'use strict';
@@ -58,20 +64,49 @@ async function startFreePlay(page) {
   });
   if (armed) await page.click('[data-mfree]', { timeout: 4000 });
 }
-/* The list as the PLAYER sees it: one row per procedure, whether it is greyed, and the gate
- * sentence under it. Read off the rendered DOM — the point of the gate is that the render is
- * where the staleness lived. */
+/* THE WALKTHROUGH LIST IS THE MAIN MENU'S (#818, owner ruling 2026-10-01): the side panel's
+ * Walkthroughs tab is gone, so every start below goes through a route a player still has.
+ *   startFromMenu  - Main Menu -> Walkthroughs -> Start. Loads the leg's OWN starting condition
+ *                    first (`from`), so it is used only where that IC is the one the section had
+ *                    already loaded - the start is then equivalent to the old in-place one.
+ *   startAsItSits  - the Manual's Procedures (live) page, the Walkthrough button. Starts on the
+ *                    plant as it sits, no reset - the old tab's semantics, and the only player
+ *                    route left to a walkthrough whose entry conditions the plant does not meet. */
+async function openWalkthroughList(page) {
+  var open = await page.evaluate(function () { var o = document.getElementById('missionOverlay'); return !!o && !o.hidden; });
+  if (!open) await page.click('#mainMenuBtn', { timeout: 4000 });
+  await page.waitForTimeout(250);
+  await page.click('[data-mmode="walkthroughs"]', { timeout: 4000 });
+  await page.waitForTimeout(250);
+}
+async function closeMenu(page) {
+  var open = await page.evaluate(function () { var o = document.getElementById('missionOverlay'); return !!o && !o.hidden; });
+  if (open) await page.click('#missionClose', { timeout: 4000 });
+}
+async function startFromMenu(page, id) {
+  await openWalkthroughList(page);
+  var sel = '#missionOverlay [data-wtstart="' + id + '"]';
+  await page.click(sel, { timeout: 4000 });
+  /* every Start asks twice once the plant has run (#816) — the second press confirms */
+  var armed = await page.evaluate(function (s) {
+    var b = document.querySelector(s), ov = document.getElementById('missionOverlay');
+    return !!b && b.getAttribute('data-armed') === '1' && !!ov && !ov.hidden;
+  }, sel);
+  if (armed) await page.click(sel, { timeout: 4000 });
+}
+async function startAsItSits(page, id) {
+  await page.click('#manualBtn', { timeout: 4000 });
+  await page.click('#manualNav [data-msec="procedures"]', { timeout: 4000 });
+  await page.waitForTimeout(300);
+  await page.click('#manualContent [data-checklist="' + id + '"]', { timeout: 4000 });
+}
+/* The Main Menu's walkthrough list as the PLAYER sees it, in drawn order. */
 function readMenu(page) {
   return page.evaluate(function () {
-    return [].map.call(document.querySelectorAll('#cklMenu button[data-ckl-start]'), function (b) {
-      return { id: b.getAttribute('data-ckl-start'),
-               gated: b.classList.contains('ckl-gated'),
-               gate: ((b.querySelector('.ckl-gate') || {}).textContent || '') };
+    return [].map.call(document.querySelectorAll('#missionOverlay [data-wtrow]'), function (r) {
+      return { id: r.getAttribute('data-wtrow') };
     });
   });
-}
-function sig(rows) {
-  return rows.map(function (r) { return r.id + (r.gated ? '-' : '+') + r.gate; }).join(';');
 }
 
 (async function () {
@@ -97,44 +132,21 @@ function sig(rows) {
     await page.waitForTimeout(1200);
     await startFreePlay(page);                  // Free Play, the engine's own default IC
     await page.waitForTimeout(2500);
-    await page.click('#tabbar [data-tab="checklists"]');
-    await page.waitForTimeout(900);
+    await openWalkthroughList(page);
     var atPower = await readMenu(page);
-    var heatM1 = atPower.filter(function (r) { return r.id === 'pwr_heatup'; })[0];
-    var raiseM1 = atPower.filter(function (r) { return r.id === 'pwr_raise_power'; })[0];
-    var lowerM1 = atPower.filter(function (r) { return r.id === 'pwr_lower_power'; })[0];
-    /* SINCE #653 (2026-09-07) THE ASCENSION IS GREY HERE TOO, on purpose: it carries a
-     * `control_bank_steps < 600` precondition ("this checklist follows the startup checklist,
-     * not a power preset"), and the Hot Full Power preset boots above it. Warns, never blocks —
-     * the click test below still proves that. The rampdown is the leg that must read WHITE at
-     * power.
-     *
-     * ⚠ THE REASON WRITTEN HERE WAS STALE AND THE CHECK COULD NOT CATCH IT (#752 unit 3). It
-     * said the preset "boots the control bank on its top stop (627), where every WITHDRAW in
-     * that leg is a no-op" — true when #653 wrote it, and false since #704 moved the at-power
-     * initial conditions off the upper stop. MEASURED on this tree: `hot_full_power` boots at
-     * **606 / 627** with boron 612.3 ppm at 100.00 % power, and is still at 606 ten minutes
-     * later. The precondition is unchanged and still bites (606 > 600, by 6 steps), so the check
-     * passes either way — which is exactly why nothing but a reader could find this. The bank
-     * DOES have 21 steps of travel at Hot Full Power; it is not pinned. */
-    ck('Mode 1 boot: the list is populated; the Mode 5 heatup and the ascension (preset bank at 606, above its 600 precondition) are greyed, the rampdown is white',
-       atPower.length >= 5 && heatM1 && heatM1.gated && raiseM1 && raiseM1.gated && lowerM1 && !lowerM1.gated,
-       atPower.length + ' rows; heatup ' + (heatM1 && heatM1.gated ? 'grey' : 'WHITE') +
-       ', raise_power ' + (raiseM1 && raiseM1.gated ? 'grey' : 'WHITE') +
-       ', lower_power ' + (lowerM1 && lowerM1.gated ? 'GREY' : 'white'));
-
-    /* THE INCIDENT WALKTHROUGH IS THE ROW THAT MUST BE WHITE AT FULL POWER (#670 Phase 2).
-     * It starts from Hot Full Power and its only entry condition is REACTOR POWER above 90 %,
-     * so at the Mode 1 boot it is offered and at Mode 5 it is greyed (asserted by the "every
-     * other leg is greyed" check below, which counts exactly one white row). It is also the
-     * LAST row, by category rather than by luck — see the CYCLE literal. */
-    var tmiM1 = atPower.filter(function (r) { return r.id === 'pwr_tmi2_incident'; })[0];
-    ck('Mode 1 boot: the TMI-2 incident walkthrough is listed, LAST, and white (#670)',
-       !!tmiM1 && !tmiM1.gated && atPower[atPower.length - 1].id === 'pwr_tmi2_incident',
-       tmiM1 ? (tmiM1.gated ? 'GREYED: ' + tmiM1.gate : 'white') + ', position ' +
-               (atPower.map(function (r) { return r.id; }).indexOf('pwr_tmi2_incident') + 1) +
-               ' of ' + atPower.length
-             : 'row missing from the list');
+    await closeMenu(page);
+    /* THE #606 GREYING CHECKS WENT WITH THE TAB (#818). The side list greyed a leg whose entry
+     * conditions the live plant did not meet and printed the gate; the Main Menu list does not
+     * grade (its Start loads each leg's own starting condition), so "heatup grey at Mode 1",
+     * "the list re-grades on the plant switch" and the two Mode 5 grey/white checks lost their
+     * subject and were removed with it. What survives is what the Main Menu still claims: the
+     * list is populated, in the operating-cycle order, the same at every plant, incident last. */
+    ck('Mode 1 boot: the Main Menu walkthrough list is populated',
+       atPower.length >= 5, atPower.length + ' rows');
+    ck('Mode 1 boot: the TMI-2 incident walkthrough is listed, LAST (#670)',
+       atPower.length > 0 && atPower[atPower.length - 1].id === 'pwr_tmi2_incident',
+       'position ' + (atPower.map(function (r) { return r.id; }).indexOf('pwr_tmi2_incident') + 1) +
+       ' of ' + atPower.length);
 
     /* ---- 2. the player switches to Cold Shutdown (Mode 5) ------------------------------ */
     /* Through the Plant & Mission window, which is the only path a player has to a different
@@ -148,13 +160,9 @@ function sig(rows) {
     await page.waitForTimeout(200);
     await startFreePlay(page);
     await page.waitForTimeout(3000);
-    await page.click('#tabbar [data-tab="checklists"]');
-    await page.waitForTimeout(1200);
+    await openWalkthroughList(page);
     var mode5 = await readMenu(page);
-
-    ck('THE LIST RE-GRADES ON THE PLANT SWITCH (#606 — this was byte-identical before)',
-       sig(mode5) !== sig(atPower),
-       sig(mode5) === sig(atPower) ? 'IDENTICAL to the Mode 1 list' : 'verdict changed');
+    await closeMenu(page);
 
     /* THE ORDER IS THE OPERATING CYCLE *(OWNER, 2026-09-02, #606: "the checklists should be
      * in a logical order. ie, starting in mode 5 it should start with mode 5 to mode 3 and end
@@ -171,8 +179,8 @@ function sig(rows) {
      * the pool's declaration order, which run_checklist_pwr2 independently gates against the
      * `next` chain — so if this list and that chain ever disagree, one of the two reddens. */
     /* THE TMI-2 INCIDENT WALKTHROUGH LISTS AFTER ALL SIX (#670 Phase 2). Its category is
-     * `incident`, which is last in `CKL_CAT_ORDER`, so it cannot land between two cycle legs
-     * however the pool is later re-typed. Written into the literal for the reason the paragraph
+     * `incident`; since #818 the list is the Main Menu's, whose Incidents group follows Startup
+     * and Shutdown, so it cannot land between two cycle legs however the pool is later re-typed. Written into the literal for the reason the paragraph
      * above gives — reading the expected order off the pool would assert nothing. */
     var CYCLE = ['pwr_heatup', 'pwr_startup', 'pwr_raise_power', 'pwr_lower_power',
                  'pwr_shutdown', 'pwr_cooldown', 'pwr_tmi2_incident'];
@@ -183,20 +191,12 @@ function sig(rows) {
        atPower.map(function (r) { return r.id; }).join(',') === order.join(','),
        atPower.map(function (r) { return r.id; }).join(' -> '));
 
-    var heat = mode5.filter(function (r) { return r.id === 'pwr_heatup'; })[0];
-    ck('Mode 5: the Mode 5 heatup is the WHITE row',
-       heat && !heat.gated, heat ? (heat.gated ? 'greyed: ' + heat.gate : 'white') : 'row missing');
-    ck('Mode 5: every other leg is greyed AND states its gate',
-       mode5.filter(function (r) { return !r.gated; }).length === 1 &&
-       mode5.every(function (r) { return r.gated ? !!r.gate : true; }),
-       mode5.filter(function (r) { return !r.gated; }).map(function (r) { return r.id; }).join(',') + ' white');
-
     /* ---- 3. a greyed row is still startable, and says why ------------------------------ */
     /* WARN, NEVER BLOCK (owner ruling 2026-08-06) *(and OWNER, 2026-09-02: "you should still
      * be able to click on the non relevant checklist but it should say its not applicable to
      * the current mode at the top")*. The cooldown is the honest subject: it is greyed at
      * Mode 5 because the plant is already cold. */
-    await page.click('#cklMenu button[data-ckl-start="pwr_cooldown"]');
+    await startAsItSits(page, 'pwr_cooldown');   // the Manual's Walkthrough button: no reset (#818)
     await page.waitForTimeout(2500);
     var banner = await page.evaluate(function () {
       var log = document.querySelector('#cklLog');
@@ -240,7 +240,7 @@ function sig(rows) {
        lay.scrollers.length <= 1,
        lay.scrollers.length ? lay.scrollers.join(' > ') : 'none scrollable');
 
-    ck('a greyed checklist still STARTS when clicked (warn, never block)', banner.running);
+    ck('a walkthrough whose entry conditions are unmet still STARTS when clicked (warn, never block)', banner.running);
     ck('and it names the mode the plant is actually in, at the top',
        !!banner.text && /Not applicable in Mode 5, Cold Shutdown/.test(banner.text),
        banner.text ? banner.text.slice(0, 80) : 'no caution banner');
@@ -290,9 +290,7 @@ function sig(rows) {
      * this assertable when nothing else about a live advance was. */
     await page.click('[data-ckl-stop]').catch(function () {});
     await page.waitForTimeout(400);
-    await page.click('#tabbar [data-tab="checklists"]');   // the list is its own tab now (#660 item 15)
-    await page.waitForTimeout(300);
-    await page.click('#cklMenu button[data-ckl-start="pwr_heatup"]');
+    await startFromMenu(page, 'pwr_heatup');   // reloads cold_shutdown, the IC this section is on
     await page.waitForTimeout(3500);
     /* EVERY STEP WAITS FOR CONTINUE since #660 item 16: the opening confirm satisfies itself on
      * the cold plant and lights the button; the player's press is part of this fixture now. */
@@ -382,7 +380,10 @@ function sig(rows) {
       return { hasWhy: !!w, lbl: l ? l.textContent.trim() : null,
                body: w ? w.textContent.replace(/\s+/g, ' ').trim().length : 0,
                borders: cs ? [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth] : null,
-               marginTop: cs ? parseFloat(cs.marginTop) : null };
+               marginTop: cs ? parseFloat(cs.marginTop) : null,
+               /* #819: the Background block is NOT a fold — its text is drawn on arrival */
+               fold: w ? { tag: w.tagName, hasDetails: !!(w.closest('details') || w.querySelector('details')),
+                           h: w.getBoundingClientRect().height } : null };
     });
     var lblOk = !!whyLbl.lbl && whyLbl.lbl.length >= 4 && whyLbl.lbl.length <= 40 &&
                 whyLbl.lbl.length < whyLbl.body;
@@ -395,6 +396,13 @@ function sig(rows) {
        whyLbl.hasWhy && allBordered && whyLbl.marginTop >= 10,
        whyLbl.hasWhy ? ('borders ' + JSON.stringify(whyLbl.borders) + ', margin-top ' + whyLbl.marginTop + 'px')
                      : 'no .ckl-why on the active step');
+
+    /* ALWAYS OPEN, NEVER A FOLD *(OWNER RULING, 2026-10-02, #819: "B" = "revert to Background always
+     * open", reversing #818 package C's closed-on-arrival <details>)*. The box must be drawn at more
+     * than one line tall with no <details> around or inside it. Inverted from #818's fold check. */
+    ck('...and it is OPEN on arrival — drawn in full, not a fold (#819, owner ruling 2026-10-02)',
+       !!whyLbl.fold && whyLbl.fold.tag !== 'DETAILS' && !whyLbl.fold.hasDetails && whyLbl.fold.h >= 40,
+       JSON.stringify(whyLbl.fold));
 
     /* ---- 5. EVERY PIXEL OF A NUMBER TILE TYPES INTO ITS BOX (#615) --------------------- */
     /* Owner playtest 2026-09-03: "I'm unable to type into any field (number boxes and the
@@ -457,9 +465,7 @@ function sig(rows) {
     await page.waitForTimeout(200);
     await startFreePlay(page);
     await page.waitForTimeout(2600);
-    await page.click('#tabbar [data-tab="checklists"]');
-    await page.waitForTimeout(700);
-    await page.click('button[data-ckl-start="pwr_lower_power"]');
+    await startFromMenu(page, 'pwr_lower_power');   // its `from` is hot_full_power, the IC loaded above
     await page.waitForTimeout(2200);
     function readRw(pg) {
       return pg.evaluate(function () {
@@ -518,9 +524,7 @@ function sig(rows) {
     await page.waitForTimeout(200);
     await startFreePlay(page);
     await page.waitForTimeout(2600);
-    await page.click('#tabbar [data-tab="checklists"]');
-    await page.waitForTimeout(700);
-    await page.click('button[data-ckl-start="pwr_heatup"]');
+    await startAsItSits(page, 'pwr_heatup');   // AT FULL POWER, so no reset: the Manual's route (#818)
     await page.waitForTimeout(2200);
     var si = await page.evaluate(function () {
       var el = document.getElementById('cklRun');
@@ -534,22 +538,24 @@ function sig(rows) {
                      : (si.bad.length ? si.bad.length + ' offending line(s): ' + si.bad.join(' | ').slice(0, 200)
                                       : 'clean over ' + si.len + ' chars' + (si.hasBanner ? ', precondition banner drawn' : ', NO banner — fixture may have stopped covering the banner path')));
 
-    /* ---- 5b. "← All walkthroughs" LANDS ON A LIST, WITH A WALKTHROUGH LOADED (layman pass 5
+    /* ---- 5b. "All walkthroughs" LANDS ON A LIST, WITH A WALKTHROUGH LOADED (layman pass 5
      * S-2, 2026-09-25). The card's own back button switched to the Walkthroughs tab and the tab
-     * was EMPTY until Close: the list was hidden whenever a checklist was in the snapshot, a
-     * #607 rule from when the list and the card shared one pane. Read on the PAINTED list — the
-     * picker row visible AND at least one start button inside it visible. */
+     * was EMPTY until Close. Since #818 the list is the Main Menu's, so the button opens Main
+     * Menu -> Walkthroughs. SAME CLAIM, new host: the list is painted (visible Start buttons) while
+     * the walkthrough is still loaded behind it - read off the service, since the menu covers
+     * the card. */
     await page.click('#cklRun [data-ckl-list]');
     await page.waitForTimeout(500);
     var back = await page.evaluate(function () {
       function vis(el) { if (!el) return false; var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
-      var on = document.querySelector('#tabbar button.on');
-      var btns = [].filter.call(document.querySelectorAll('#instrCklRow [data-ckl-start]'), vis);
-      return { tab: on && on.getAttribute('data-tab'), row: vis(document.getElementById('instrCklRow')), starts: btns.length };
+      var ov = document.getElementById('missionOverlay');
+      var btns = [].filter.call(document.querySelectorAll('#missionOverlay [data-wtstart]'), vis);
+      var c = RD.__dev.service().instructor.getSnapshotBlock().checklist;
+      return { menu: !!ov && !ov.hidden, starts: btns.length, loaded: !!c };
     });
-    ck('"← All walkthroughs" on a running card opens the Walkthroughs tab WITH its list drawn (layman pass 5 S-2)',
-       back.tab === 'checklists' && back.row && back.starts > 0, JSON.stringify(back));
-    await page.click('#tabbar [data-tab="instructor"]');
+    ck('"All walkthroughs" on a running card opens Main Menu -> Walkthroughs WITH its list drawn, the run still loaded (layman pass 5 S-2, #818)',
+       back.menu && back.starts > 0 && back.loaded, JSON.stringify(back));
+    await closeMenu(page);
     await page.waitForTimeout(300);
 
     /* ---- 6. THE LETTERED SUBSTEP ROWS, ON THE RENDERED PANEL (#741) --------------------
@@ -610,9 +616,7 @@ function sig(rows) {
         await page.waitForTimeout(200);
         await startFreePlay(page).catch(function () {});
         await page.waitForTimeout(2600);
-        await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
-        await page.waitForTimeout(700);
-        await page.click('button[data-ckl-start="zz_row_probe"]', { timeout: 4000 });
+        await startFromMenu(page, 'zz_row_probe');   // `from` = the IC free play just loaded
         await page.waitForTimeout(2200);
         return page.evaluate(function () {
           var card = document.querySelector('.ckl-step.ckl-active');
@@ -640,9 +644,9 @@ function sig(rows) {
          !!base && base[0].met === true && base[1].met === false && base[2].met === false &&
          /✓/.test(base[0].text) && /○/.test(base[1].text),
          base ? 'met flags ' + JSON.stringify(base.map(function (r) { return r.met; })) : 'no rows');
-      ck('...and a row with an `ask` draws the instruction AND its done-when, two lines',
-         !!base && base[1].when === 'The first done-when' && /Do the first thing\./.test(base[1].text) &&
-         base[0].when === null && base[2].when === null,
+      ck('...and a row with an `ask` draws the instruction and NO done-when line (#819, owner ruling 2026-10-02: check the step off, not the subtext)',
+         !!base && base[1].when === null && /Do the first thing\./.test(base[1].text) &&
+         !/The first done-when/.test(base[1].text) && base[0].when === null && base[2].when === null,
          base ? 'row 1b when=' + JSON.stringify(base[1].when) : 'no rows');
 
       /* THREE FIXTURE VARIANTS, each against a different renderer branch: `hidden`, the
@@ -677,9 +681,9 @@ function sig(rows) {
          /·/.test(ordr[2].text) && !/○/.test(ordr[2].text),
          ordr ? 'row 1c wait=' + ordr[2].wait + ' when=' + JSON.stringify(ordr[2].when) +
                 ' text ' + JSON.stringify(ordr[2].text.slice(0, 34)) : 'no rows');
-      ck('...and the row the player is ON keeps the live treatment: not muted, ask + done-when',
-         !!ordr && ordr[0].met === true && ordr[1].wait === false && ordr[1].when === 'The first done-when' &&
-         /○/.test(ordr[1].text) && /Do the first thing\./.test(ordr[1].text) &&
+      ck('...and the row the player is ON keeps the live treatment: not muted, the ask and no done-when (#819)',
+         !!ordr && ordr[0].met === true && ordr[1].wait === false && ordr[1].when === null &&
+         !/The first done-when/.test(ordr[1].text) && /○/.test(ordr[1].text) && /Do the first thing\./.test(ordr[1].text) &&
          base[2].wait === false,
          ordr ? 'row 1b wait=' + ordr[1].wait + ' when=' + JSON.stringify(ordr[1].when) +
                 '; UNORDERED row 1c wait=' + base[2].wait : 'no rows');
@@ -728,9 +732,7 @@ function sig(rows) {
       await page.waitForTimeout(200);
       await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
-      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
-      await page.waitForTimeout(700);
-      await page.click('button[data-ckl-start="zz_tall_probe"]', { timeout: 4000 });
+      await startFromMenu(page, 'zz_tall_probe');   // `from` = the IC free play just loaded
       await page.waitForTimeout(2200);
       /* THE REAL CONTINUE BUTTON, once the step's own acceptance has lit it — the app's own
        * advance path, so the scroll under test is the one a player triggers.
@@ -804,9 +806,7 @@ function sig(rows) {
       await page.waitForTimeout(200);
       await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
-      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
-      await page.waitForTimeout(700);
-      await page.click('button[data-ckl-start="zz_tall_ready"]', { timeout: 4000 });
+      await startFromMenu(page, 'zz_tall_ready');   // `from` = the IC free play just loaded
       await page.waitForTimeout(2200);
       await page.mouse.move(300, 500);
       await page.waitForSelector('.ckl-step.ckl-active .ckl-ack:not([disabled])', { timeout: 15000 }).catch(function () {});
@@ -834,8 +834,15 @@ function sig(rows) {
       await page.waitForSelector('.ckl-step.ckl-active .wt-continue.ready', { timeout: 15000 }).catch(function () {});
       await page.waitForTimeout(1200);
       var g1 = await page.evaluate(geoFn);
-      ck('#653 pass 3: the tall step opens NOT ready, with its Continue row below the log floor (anti-vacuity)',
-         !!g0 && /^2\./.test(g0.head) && !g0.ready && g0.actH > g0.clientH + 40 && g0.rowBot > g0.logBot,
+      /* #818 INVERTED THE FIRST HALF. It asserted the Continue row opened BELOW the log floor — the
+       * defect the persona review filed (Continue hidden on 3 of 17 heatup steps at 1600x1000), held
+       * here as the fixture's anti-vacuity. The row is now pinned to the log's floor (`position:
+       * sticky`), so the claim is the opposite: the step is still TALLER than the log (anti-vacuity
+       * kept), and its Continue row is ON SCREEN inside the log on entry, before anything scrolls.
+       * INJECTION-PROVEN 2026-10-01: the sticky rule deleted from shell.css -> this check red. */
+      ck('#653 pass 3 / #818: the tall step opens NOT ready, taller than the log, with its Continue row already on screen at the log floor',
+         !!g0 && /^2\./.test(g0.head) && !g0.ready && g0.actH > g0.clientH + 40 &&
+         g0.rowBot <= g0.logBot + 1 && g0.rowTop >= g0.logTop - 1,
          g0 ? JSON.stringify(g0) : 'the fixture did not advance to step 2');
       ck('...and when Continue lights, the row is scrolled into the log without the pointer in it',
          !!g1 && g1.ready && g1.rowBot <= g1.logBot + 1 && g1.rowTop >= g1.logTop - 1,
@@ -882,9 +889,7 @@ function sig(rows) {
       await page.waitForTimeout(250);
       await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(3000);
-      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
-      await page.waitForTimeout(700);
-      await page.click('button[data-ckl-start="zz_oot_probe"]', { timeout: 4000 });
+      await startFromMenu(page, 'zz_oot_probe');   // `from` = the IC free play just loaded
       await page.waitForTimeout(1800);
       await page.evaluate(function () { if (window.RD.OneOverM) window.RD.OneOverM.open(); });
       await page.waitForTimeout(500);
@@ -946,9 +951,7 @@ function sig(rows) {
         await page.waitForTimeout(200);
         await startFreePlay(page).catch(function () {});
         await page.waitForTimeout(2600);
-        await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
-        await page.waitForTimeout(700);
-        await page.click('button[data-ckl-start="zz_substep_probe"]', { timeout: 4000 });
+        await startFromMenu(page, 'zz_substep_probe');   // `from` = the IC free play just loaded
         await page.waitForTimeout(2200);
         return page.evaluate(function () {
           var card = document.querySelector('.ckl-step.ckl-active');
@@ -1035,9 +1038,7 @@ function sig(rows) {
       await page.waitForTimeout(200);
       await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
-      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
-      await page.waitForTimeout(700);
-      await page.click('button[data-ckl-start="zz_aim_probe"]', { timeout: 4000 });
+      await startFromMenu(page, 'zz_aim_probe');   // `from` = the IC free play just loaded
       await page.waitForTimeout(2200);
       var r = await page.evaluate(function () {
         var card = document.querySelector('.ckl-step.ckl-active');
@@ -1092,9 +1093,7 @@ function sig(rows) {
       await page.waitForTimeout(200);
       await startFreePlay(page).catch(function () {});
       await page.waitForTimeout(2600);
-      await page.click('#tabbar [data-tab="checklists"]', { timeout: 4000 });
-      await page.waitForTimeout(700);
-      await page.click('button[data-ckl-start="zz_1m_probe"]', { timeout: 4000 });
+      await startFromMenu(page, 'zz_1m_probe');   // `from` = the IC free play just loaded
       await page.waitForTimeout(1500);
       async function plant(d) {
         var bank = await page.evaluate(function (d) {

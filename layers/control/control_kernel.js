@@ -1227,7 +1227,14 @@
   };
 
   ControlLayer.prototype.getActiveFailures = function () {
-    return this.activeFailures.map(function (f) { return { id: f.id, severity: f.severity }; });
+    /* `armed` (#818) only where the engine reports one: true = injected and still waiting for
+     * its trigger, false = fired. Absent for a failure that acts at once. */
+    var arm = (this.engine && this.engine.getFailureArming) ? this.engine.getFailureArming() : null;
+    return this.activeFailures.map(function (f) {
+      var o = { id: f.id, severity: f.severity };
+      if (arm && typeof arm[f.id] === 'boolean') o.armed = arm[f.id];
+      return o;
+    });
   };
 
   ControlLayer.prototype.getRpsState = function () {
@@ -1352,6 +1359,11 @@
       var def = failures[id];
       var entry = { id: id, display: def.display, category: def.category || 'safety_system' };
       if (def.severity_meta) entry.severity_meta = def.severity_meta;
+      /* player-facing copy for the Inject Failure tab (#818): one line on what it does, and
+       * the armed/fired wording for a failure that waits for a trigger */
+      if (def.blurb) entry.blurb = def.blurb;
+      if (def.armed_text) entry.armed_text = def.armed_text;
+      if (def.fired_text) entry.fired_text = def.fired_text;
       out.push(entry);
     }
     return out;

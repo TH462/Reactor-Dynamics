@@ -88,7 +88,8 @@
   // US MODE IS UNCHANGED BY CONSTRUCTION. Every US entry reproduces the arithmetic and the
   // rounding that was inline before, and the unit STRING in US mode comes from the authored
   // item (`item.unit`), never from this table — so the board's three authored spelling
-  // quirks (`F` not `°F`, `GPM` uppercase on two items, `psig` on the accumulator) survive
+  // quirks (`F` not `°F`, `GPM` uppercase on two items) survive — the accumulator's `psig` is
+  // gone (#818: it labelled an ABSOLUTE 4.585 MPa as gauge; DOC_PATCHES now spells it `psi`)
   // untouched, and switching SI→US restores them rather than leaving this table's guess.
   // `u.US` below is documentation and the fallback for a caller with no authored string.
   //
@@ -495,7 +496,10 @@
     var t = s.true_state || {};
     var held = t.rod_stop === true || t.runback_active === true;
     var col = bindVal <= 0 ? '#ff6a4d' : ((held || bindVal < stop) ? BD_WARN : BD_OK);
-    return { text: bindName + ' ' + bindVal.toFixed(1), color: col };
+    /* 'MGN' (#818): the tile read "OPΔT 15.7 %" — the ΔT itself, to a fresh reader. It is the
+     * MARGIN to that trip line; fontSize 13 -> 12 on the item pays for the four characters
+     * inside the ~110 px corner budget measured above. */
+    return { text: bindName + ' MGN ' + bindVal.toFixed(1), color: col };
   }
 
   // ---- the ROD status word: REMOVED, and why it is not coming back ------------------
@@ -1121,6 +1125,18 @@
     // different things — OTΔT is DNB, OPΔT is linear heat rate — and which one is closing is
     // the diagnosis. Corner idiom and geometry copied from bdRodStatus/bdFeedStatus: rAnchor,
     // so `left` is the RIGHT edge, card right minus 5; `top` is card top plus 13.
+    /* Tavg AGAINST ITS PROGRAM — the ROD CONTROL card's top-right corner (#818). The manual has
+     * always told the player to "note Tavg against T-ref on the rod-control card" (03 §17.2) and
+     * there was no T-ref on the board at all: after a 100 -> 80 MWe cut Tavg sat 10.4 degF above
+     * program with nothing to say so. ONE signed number — the deviation the rod controller acts
+     * on — not two temperatures: Tavg already has its tile, and a second copy of it would be
+     * duplicate authority (Q4). The corner is the one the #306 status word vacated ("The corner
+     * is free", the removal note above); same rAnchor idiom as bdDtMargin: card right 525 - 5,
+     * card top 190 + 10. Reads `instruments.tavg_tref_dev` (indicated Tavg minus the plant's
+     * Tavg program, HR1). */
+    { id: 'bdTrefDev', kind: 'value',
+      name: 'Tavg minus Tref — indicated average temperature against its program  ·  sim: in.tavg_tref_dev, °C in',
+      left: 520, top: 200, value: '—', unit: 'F', color: '#9fb3c4', fontSize: 11, rAnchor: true },
     { id: 'bdDtMargin', kind: 'value',
       name: 'Core ΔT margin to the nearer of the OTΔT / OPΔT trip lines  ·  sim: in.otdt_margin / in.opdt_margin, % of rated ΔT',
       // top 234, NOT the 243 copied from bdRodStatus. MEASURED: at 243 the rendered box runs a
@@ -1142,7 +1158,7 @@
       // right 785 minus 5 = 780, card top 190 plus 10 = 200. MEASURED clear both ways — the
       // 'NUC INSTR (NIS)' title is 15 characters of 11 px mono ending near x 637, and the
       // SOURCE RANGE / STARTUP RATE boxes below start at y 220.
-      left: 780, top: 200, value: '—', unit: '%', color: '#5aad7c', fontSize: 13, rAnchor: true },
+      left: 780, top: 200, value: '—', unit: '%', color: '#5aad7c', fontSize: 12, rAnchor: true },
     /* THE LETDOWN CARD'S STATUS WORD (#624 / #619 item 24, 2026-09-04) — the word behind the
      * dark lamps. See `letdownStatus`: ISOLATED while the 17 % low-level cut stands, NORMAL
      * while letdown is delivering, SHUT otherwise.
@@ -1508,6 +1524,19 @@
     },
     ims89lnqmip: function (s) { return feedStatus(s); },                                              // SG feed controller status (#214)
     bdLetdownStatus: function (s) { return letdownStatus(s); },                                        // letdown status word (#624 item 24)
+    bdTrefDev: function (s) {                                                                          // Tavg - Tref (#818)
+      var v = IN(s).tavg_tref_dev;
+      if (v == null || !isFinite(v)) return { text: 'ΔREF —', unit: '' };
+      /* ONE DECIMAL, not the tempd family's whole degrees (#818 review): the amber band starts at
+       * 0.8 degC = 1.44 degF, so "+1" could sit either side of it. */
+      var fm = fam('tempd'), d = fm ? fmtNum(fm.to(v), 1) : null;
+      if (d == null) return { text: 'ΔREF —', unit: '' };
+      var sgn = (+d > 0) ? '+' : '';
+      if (+d === 0) d = '0.0';   /* never '-0.0' — the paired-string trap (#436) */
+      /* amber outside the rod controller's own lockup band (the board's Tavg-band constant) */
+      var band = (_CTL.TAVG_DEADBAND_C || 0.8);
+      return { text: 'ΔREF ' + sgn + d, unit: uStr('tempd', 'F'), color: Math.abs(v) > band ? BD_WARN : '#9fb3c4' };
+    },
     bdDtMargin: function (s) { return dtMargin(s); },                                                  // core ΔT margin, OTΔT/OPΔT (#311)
     imrppyp0wfo: function (s) { return accN2Press(s); },   // accumulator N2 cover-gas pressure
     imrppztrng1: function (s) { return IN(s).accumulators_discharging ? 'INJECTING' : (accIsolated(s) ? 'ISOLATED' : 'ARMED'); }, // accumulator status
@@ -3678,7 +3707,7 @@
       'ims2immsvn6' /* Plant Pressure */, 'ims2immon9z' /* Pressurizer Level */,
     ],
     rods: [
-      'ims14ylw4az' /* REACTOR/ROD CONTROL card: SCRAM, banks, rod speed, trip blocks */,
+      'ims14ylw4az' /* REACTOR/ROD CONTROL card: SCRAM, banks, rod speed, trip blocks */, 'bdTrefDev' /* its Tavg-Tref corner readout (#818) */,
       'ims2hvqbvee', 'imrpk4pjcpd', 'ims15i4eyhf', 'ims2hnpzc1t' /* control rod position */,
       'ims2hvv0wgo', 'imrpnzfsfcx', 'ims15i60dd8', 'ims2hnyt0jk' /* shutdown rod position */,
     ],
@@ -4652,6 +4681,13 @@
        * card's own selfTest requires the bottom row to be LEVEL. Taking ROD AUTO's slot
        * means taking the row it was levelled into. */
       bdOneOverM: { props: { left: 340, top: 388, width: 80, height: 30 } },
+      /* ACCUMULATOR N2 PRESSURE UNIT (#818). The authored tile said `psig` over
+       * dP(accumulator_pressure_mpa) = 4.585 MPa, which is ABSOLUTE (pwr2 carries absolute
+       * pressures throughout) — a 14.7 psi mislabel. `psi` is this board's convention for an
+       * absolute pressure on every other tile, and the manual calls the same figure "665 psia
+       * (4.58 MPa) cover gas" (04). Unit only; the number is unchanged. */
+      imrppyp0wfo: { props: { unit: 'psi',
+        name: 'accumulator panel n2 pressure indication  ·  sim: true_state.accumulator_pressure_mpa →psi (absolute, the board convention)' } },
       /* THE NIS CARD RE-LAID OUT WITHOUT ITS TWO BUTTONS (#598 items 7/9/10; owner, 2026-09-05:
        * "adjust the indications in the NUC INSTR card to get rid of the gap where the 1/m plot
        * and the source range on/off buttons used to be. make it look nice.").

@@ -407,7 +407,14 @@ async function testSteamFeedPair(page) {
   // point rather than a refit to the new one (HR10): the check still passes on the old
   // drain rate, so nothing was weakened to accommodate the change. The ASSERTION below is
   // untouched — feed must track the TOTAL steam draw, and 0 gpm against 64 still fails.
-  var tripped = await read('&inject=turbine_trip&ff=600');
+  /* ff 600 -> 1800 (#818). The turbine trip scrams the reactor (P-9), and since #818 the
+   * P-4 + low-Tavg feedwater isolation (WTSM 12.3.6.1) shuts main feed once Tavg is under
+   * 554 degF, so the SG is fed by AFW, which refills toward its 33 % program and does NOT match
+   * the steam draw until it gets there: at 600 s it read feed 17 vs steam 28 gpm (MEASURED).
+   * At 1800 s the level sits on program and the mass balance holds again. The #206 claim and
+   * both discriminants are unchanged — a governor-only STEAM FLOW still reads ~0 here. The
+   * feed readout is now AFW-carried, which is the plant being right after a trip. */
+  var tripped = await read('&inject=turbine_trip&ff=1800');
   log.push('turbine tripped: steam=' + tripped.steam + ' feed=' + tripped.feed +
            ' gov=' + tripped.gov + ' dump=' + tripped.dump);
   if (!(num(tripped.gov) < 20)) throw new Error('turbine_trip did not shut the governor (gov=' + tripped.gov + ')');
@@ -587,6 +594,58 @@ async function testRefusalReachesTheScanner(page) {
     process.exitCode = 1;
   }
   return log.join(String.fromCharCode(10)) + String.fromCharCode(10);
+}
+
+/* A LATCHED TRIP REFUSES THE ROD DRIVE, AND THE PLAYER READS WHY (#818). The engine throws
+ * "ROD DRIVE BLOCKED: ... [sourced, Ginna ...]"; it used to draw as "Command error" with the
+ * bracketed citation in the player's face. Drives a real scram + a real rod command through the
+ * shell's cmd() and reads what is DRAWN: the Scanner line and the toast. */
+async function testBlockedRodRefusalWording(page) {
+  await page.goto('http://127.0.0.1:' + PORT + '/ui/shell.html?engine=pwr2&dev=1',
+    { waitUntil: 'networkidle', timeout: 90000 });
+  await dismissMission(page);
+  await waitBoardLive(page);
+  var r = await page.evaluate(async function () {
+    RD.__dev.cmd({ action: 'scram' });
+    await new Promise(function (ok) { setTimeout(ok, 600); });   // the trip latches on the next tick
+    var res = RD.__dev.cmd({ action: 'rod_nudge', group_id: 'control', steps: -5, speed: 'normal' });
+    await new Promise(function (ok) { setTimeout(ok, 200); });
+    var p = document.querySelector('#scannerPanel'), t = document.querySelector('#appToast');
+    return { type: res && res.type, scan: p ? p.innerText.replace(/\s+/g, ' ') : '', toast: t ? t.textContent : '' };
+  });
+  var bad = r.type !== 'blocked' || !/Blocked/.test(r.scan) || /Command error/.test(r.scan) ||
+    !/Rods can't move: the reactor trip is latched/.test(r.scan) || /sourced|ML\d{8}/.test(r.scan + r.toast) ||
+    !/Rods can't move/.test(r.toast);
+  if (bad) {
+    console.error('FAIL: a latched-trip rod refusal must draw as a Blocked line in plain words, on the Scanner AND the toast (#818): ' + JSON.stringify(r).slice(0, 400));
+    process.exitCode = 1;
+  } else console.log('  latched-trip rod refusal reads as Blocked, no citation: ' + r.toast.slice(0, 60));
+  /* #818 CSV UNITS: the export's headers carry the board's unit and the values are in it. */
+  var csv = await page.evaluate(function () { return RD.__dev.buildCsv(); });
+  var lines = csv.split(String.fromCharCode(10)), hdr = lines[0].split(','), ti = hdr.findIndex(function (h) { return /\((°F|psi)\)/.test(h); });
+  var tv = ti >= 0 && lines.length > 1 ? parseFloat(lines[lines.length - 1].split(',')[ti]) : NaN;
+  if (!(ti >= 0 && tv > 100)) {
+    console.error('FAIL: CSV export must carry the unit in the header and convert the value (US board): headers ' + hdr.join('|') + ' value ' + tv + ' (#818)');
+    process.exitCode = 1;
+  } else console.log('  CSV header ' + hdr[ti] + ' = ' + tv.toFixed(1));
+  /* #818 7b: the Inject Failure tab is free play only; open on it, start a walkthrough -> hidden and
+   * the Instructor is shown; end it -> back. */
+  var ft = await page.evaluate(async function () {
+    function st() { var b = document.querySelector('#tabbar [data-tab="failures"]'), on = document.querySelector('#tabbar button.on');
+      return { hidden: !b || b.offsetParent === null, active: on && on.getAttribute('data-tab') }; }
+    var wait = function () { return new Promise(function (o) { setTimeout(o, 500); }); };
+    document.querySelector('#tabbar [data-tab="failures"]').click(); await wait();
+    var free = st();
+    RD.__dev.cmd({ action: 'start_checklist', procedure_id: 'pwr_heatup' }); await wait();
+    var run = st();
+    RD.__dev.cmd({ action: 'stop_checklist' }); await wait();
+    return { free: free, run: run, after: st() };
+  });
+  if (!(!ft.free.hidden && ft.free.active === 'failures' && ft.run.hidden && ft.run.active !== 'failures' && !ft.after.hidden)) {
+    console.error('FAIL: Inject Failure tab must hide while a walkthrough runs (falling back off it) and return after: ' + JSON.stringify(ft));
+    process.exitCode = 1;
+  } else console.log('  Inject Failure tab hides during a walkthrough and returns');
+  return JSON.stringify(r) + String.fromCharCode(10);
 }
 
 /* THE TRIP BLOCKS POPOVER MUST NEVER REACH THE BOARD (#670 operator pass, S-1).
@@ -2874,12 +2933,10 @@ async function testWalkthroughEventPause(page) {
    * touches. So the Continue button EXISTS in the DOM (a raw querySelector finds it and #627
    * never needed more) but is not VISIBLE, and Playwright's .click() below would hang on
    * "element is not visible" — measured. Reach it exactly the way a player would after
-   * starting a checklist from elsewhere: open the Walkthroughs tab and click the
-   * already-running procedure's own entry, which hits `startChecklist`'s "already running"
+   * starting a checklist from elsewhere: press the
+   * already-running procedure's own launcher (the Manual's Walkthrough button since #818), which hits `startChecklist`'s "already running"
    * branch (sets the view to 'run' and switches to the Instructor tab) rather than restarting it. */
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
-  await page.click('[data-ckl-start="pwr_heatup"]');
+  await pressManualWalkthrough(page, 'pwr_heatup');
   // The Continue button must be ON SCREEN (not just in the DOM) for the click below to
   // land — same wait #627 uses: the Instructor tab active, with the checklist rendered.
   await page.waitForFunction(function () {
@@ -3084,9 +3141,7 @@ async function testWalkthroughHoldReleasedOnExit(page) {
 
   // ---- gap 3: picking a DIFFERENT walkthrough (startChecklist, ui/app.js ~4805) -------
   await armPausedWalkthrough();
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="pwr_startup"]', { timeout: 10000 });
-  await page.click('[data-ckl-start="pwr_startup"]');
+  await pressManualWalkthrough(page, 'pwr_startup');
   await page.waitForTimeout(500);
   var r3 = await assertGenuinelyRunning('starting a different walkthrough over a paused one');
   log.push('New walkthrough: plant runs again, sim_time advancing past ' + r3.simTime.toFixed(2) + ', .bd-frozen cleared');
@@ -3326,9 +3381,7 @@ async function testSpeedRungGlowRendered(page) {
     } catch (e) { return { ok: false, msg: String(e) }; }
   });
   if (!started.ok) throw new Error('#743 fixture: start_checklist failed — ' + started.msg);
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="pwr_heatup"]', { timeout: 10000 });
-  await page.click('[data-ckl-start="pwr_heatup"]');
+  await pressManualWalkthrough(page, 'pwr_heatup');
   await page.waitForFunction(function () {
     var b = document.querySelector('#tabbar button.on');
     return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step');
@@ -3910,9 +3963,7 @@ async function testWatchGlowRendered(page) {
      * once, to put `cklState.view` into 'run'; the flag then stays put across a second
      * `start_checklist`, so every later leg is reached by the command alone. */
     if (viaCard) {
-      await page.click('#tabbar [data-tab="checklists"]');
-      await page.waitForSelector('[data-ckl-start="' + pid + '"]', { timeout: 10000 });
-      await page.click('[data-ckl-start="' + pid + '"]');
+      await pressManualWalkthrough(page, pid);
     }
     await page.waitForFunction(function (p) {
       var b = document.querySelector('#tabbar button.on');
@@ -5230,14 +5281,24 @@ async function testCssTransitions(page) {
   return log.join('\n') + '\n';
 }
 
+/* PRESS A WALKTHROUGH'S OWN START ON THE PLANT AS IT SITS (#818). These fixtures start the
+ * checklist by command and then press its launcher, which lands in startChecklist()'s "already
+ * running" branch (view 'run', Instructor tab) - or, for a different id, starts it in place. The
+ * Walkthroughs tab that held that launcher is gone (owner ruling 2026-10-01); the Manual's
+ * Procedures (live) page carries the same button (`data-checklist`, same startChecklist(), no
+ * reset). The Main Menu's Start is NOT equivalent: it reloads the leg's own starting condition. */
+async function pressManualWalkthrough(page, procId) {
+  var open = await page.evaluate(function () { var o = document.getElementById('manualOverlay'); return !!o && !o.hidden; });
+  if (!open) await page.click('#manualBtn');
+  await page.click('#manualNav [data-msec="procedures"]');
+  await page.waitForSelector('#manualContent [data-checklist="' + procId + '"]', { timeout: 15000, state: 'attached' });
+  await page.evaluate(function (p) { document.querySelector('#manualContent [data-checklist="' + p + '"]').click(); }, procId);
+}
 /* START A WALKTHROUGH AND LAND ON ITS CARD — the three-step dance every walkthrough check in
  * this file repeats. `start_checklist` alone is not enough: the run card is drawn behind
- * `cklState.view === 'run'`, a UI-local flag only `startChecklist()` sets, so the Walkthroughs
- * tab's own entry has to be clicked. It is clicked THROUGH THE PAGE rather than by
- * `page.click`, because a leg whose preconditions are unmet wears `.ckl-gated` and is HIDDEN —
- * Playwright's actionability check waits for visibility and times out, while the delegated
- * `data-ckl-start` listener at document.body does not care (measured: pwr_startup, 26 polls
- * against a hidden button). */
+ * `cklState.view === 'run'`, a UI-local flag only `startChecklist()` sets, so the leg's own
+ * launcher has to be pressed — the Manual's Walkthrough button since the Walkthroughs tab went
+ * (#818); see pressManualWalkthrough. */
 async function startWalkthrough(page, procId) {
   var started = await page.evaluate(function (p) {
     try {
@@ -5249,9 +5310,7 @@ async function startWalkthrough(page, procId) {
     } catch (e) { return { ok: false, msg: String(e) }; }
   }, procId);
   if (!started.ok) throw new Error('fixture: start_checklist ' + procId + ' failed — ' + started.msg);
-  await page.click('#tabbar [data-tab="checklists"]');
-  await page.waitForSelector('[data-ckl-start="' + procId + '"]', { timeout: 15000, state: 'attached' });
-  await page.evaluate(function (p) { document.querySelector('[data-ckl-start="' + p + '"]').click(); }, procId);
+  await pressManualWalkthrough(page, procId);
   await page.waitForFunction(function () {
     var b = document.querySelector('#tabbar button.on');
     return !!b && b.getAttribute('data-tab') === 'instructor' && !!document.querySelector('.ckl-step.ckl-active');
@@ -5398,6 +5457,24 @@ async function testWalkthroughPanelChrome(page) {
       whyLbl: box('.ckl-active .ckl-why-lbl'),
       ackRow: box('.ckl-active .ckl-ack-row'),
       stepTxt: box('.ckl-active .ckl-txt'),
+      /* the element that actually SCROLLS the row (not always #cklLog — see cklScroller in ui/app.js):
+       * the nearest ancestor that overflows, else #cklLog */
+      logBox: (function () {
+        var a = document.querySelector('.ckl-active .ckl-ack-row'), el = a && a.parentElement;
+        while (el && el !== document.body) {
+          var oy = getComputedStyle(el).overflowY;
+          if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1) break;
+          el = el.parentElement;
+        }
+        if (!el || el === document.body) el = document.getElementById('cklLog');
+        if (!el) return null;
+        var rc = el.getBoundingClientRect();
+        return { top: Math.round(rc.top), bottom: Math.round(rc.bottom), id: el.id || el.className };
+      })(),
+      ackAfterWhy: (function () {
+        var w = document.querySelector('.ckl-active .ckl-why'), a = document.querySelector('.ckl-active .ckl-ack-row');
+        return !!(w && a && (w.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING));
+      })(),
     };
   });
   /* positive control: the card really is drawn, with a why on the active step — without this
@@ -5450,15 +5527,31 @@ async function testWalkthroughPanelChrome(page) {
            ', below the transcript (' + r.instrLog.bottom + ')');
 
   /* ---- item 3: Rewind + Continue BELOW the why, not above it ---------------------------- */
-  if (r.ackRow.top < r.why.bottom) {
-    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
-      'why block (bottom ' + r.why.bottom + ')');
+  /* REFITTED FOR #818, SAID SO PER HARD RULE 10. Since #818 the row is pinned to the floor of the
+   * scrolling #cklLog (`position: sticky`) so Continue is on screen on every step; on a step taller
+   * than the log the why box legitimately passes UNDER the pinned row, and the old geometric form
+   * (`ackRow.top >= why.bottom`) went red on exactly that (722 vs 753, 2026-10-01). The owner's #687
+   * claim is READING ORDER — the buttons come after the why — so that is asserted on the DOM, and the
+   * geometric form still binds unless the row is the pinned one at the log floor. Against the OLD
+   * (unpinned) card: order true, and the row sat below the why, so it passes there too. */
+  if (!r.ackAfterWhy) {
+    throw new Error('#687 item 3: Rewind/Continue precedes the why block in reading order');
   }
+  var pinned = r.logBox && Math.abs(r.ackRow.bottom - r.logBox.bottom) <= 2;
+  if (r.ackRow.top < r.why.bottom && !pinned) {
+    throw new Error('#687 item 3: Rewind/Continue (top ' + r.ackRow.top + ') is drawn ABOVE the ' +
+      'why block (bottom ' + r.why.bottom + ') and is not the row pinned at the log floor (' +
+      (r.logBox ? r.logBox.bottom : 'no log') + ')');
+  }
+  /* "Continue is on screen" itself is NOT asserted here: this fixture's step does not outgrow its
+   * scroller once the sticky rule is removed (injection run 2026-10-01 stayed green), so a check
+   * here could not fail. verify_ckl_relevance's tall-step check carries that claim, injection-proven. */
   if (r.ackRow.top < r.stepTxt.bottom) {
     throw new Error('#687 item 3: Rewind/Continue is drawn above the numbered step text');
   }
   log.push('buttons: step text ends ' + r.stepTxt.bottom + ' -> why ends ' + r.why.bottom +
-           ' -> Rewind/Continue at ' + r.ackRow.top);
+           ' -> Rewind/Continue at ' + r.ackRow.top + '-' + r.ackRow.bottom +
+           ' (scroller ' + (r.logBox ? r.logBox.id + ' ' + r.logBox.top + '-' + r.logBox.bottom : 'none') + ')');
 
   /* ---- item 4: the why is LABELLED (landed at #692; pinned here so it cannot silently go) */
   if (!r.whyLbl || !r.whyLbl.text) {
@@ -5942,6 +6035,8 @@ async function main() {
     fs.writeFileSync(path.join(SCRATCH, 'esf-arm-buttons.log'), ebLog);
     var rfLog = await testRefusalReachesTheScanner(page);
     fs.writeFileSync(path.join(SCRATCH, 'refusal-scanner.log'), rfLog);
+    var brLog = await testBlockedRodRefusalWording(page);
+    fs.writeFileSync(path.join(SCRATCH, 'blocked-rod-wording.log'), brLog);
     var tbLog = await testTripBlockPopoverStaysOffTheBoard(page);
     fs.writeFileSync(path.join(SCRATCH, 'trip-block-overlay.log'), tbLog);
     var tdLog = await testTripBlockPopoverDismissesOnOutsideClick(page);

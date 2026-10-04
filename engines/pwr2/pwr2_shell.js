@@ -792,6 +792,11 @@
             'safety injection (' + (e.pt.si_cause || 'SI') + '). Secure the ECCS first, ' +
             'then restore main feed.');
         }
+        if (e.pt.fwi_lo_tavg) {
+          throw new Error('MFW RESTORE BLOCKED — feedwater isolation on reactor trip with low ' +
+            'Tavg is standing (Tavg below the 554 °F (290 °C) setpoint with the reactor trip ' +
+            'breakers open). It clears when the reactor trip is reset or Tavg recovers.');
+        }
         if (e.pt.fwi) {
           var leftF = resetDelayS() - e.pt.fwi_t;
           if (leftF > 0) {
@@ -1401,6 +1406,7 @@
      * alignment button would keep spinning on a dead bus. */
     ex.rhr_running = e.rh ? e.rh.running === true : undefined;
     ex.safety_relief_active = !!e.pz.safetyOpen;
+    ex.tref_c = ts.tref_c;   /* #818: the Tavg program the rods and dump hold to — tavg_tref_dev */
     ex.mfw_isolated = this.eng.fw.isolated === true;   /* REAL since the feed train (2026-08-21) */
     /* LIVE since #507 wave 1 — the CVCS lab sample (they were pinned null/false/0 while no
      * sample machinery existed) */
@@ -1650,7 +1656,9 @@
             if (!def) return;
             out[id] = def.type === 'command_override'
               ? { type: def.type, category: def.category, display: def.display,
-                  severity_meta: def.severity_meta }
+                  severity_meta: def.severity_meta,
+                  /* the Inject Failure tab's player copy rides through the strip (#818) */
+                  blurb: def.blurb, armed_text: def.armed_text, fired_text: def.fired_text }
               : def;
           });
           /* THE ONE SEVERITY_META OVERRIDE (#662) — copied-with-one-override, the same idiom
@@ -1673,6 +1681,9 @@
               effect: out.continuous_rod_withdrawal.effect,
               severity_scales: out.continuous_rod_withdrawal.severity_scales,
               display: out.continuous_rod_withdrawal.display,
+              blurb: out.continuous_rod_withdrawal.blurb,
+              armed_text: out.continuous_rod_withdrawal.armed_text,
+              fired_text: out.continuous_rod_withdrawal.fired_text,
               severity_meta: { label: 'Withdrawal Rate', unit: 'steps/min',
                                min: +(rs.slow * 60).toFixed(1),
                                max: +(rs.fast * 60).toFixed(1),
@@ -1928,6 +1939,43 @@
     return out;
   };
 
+  /* ARMED OR FIRED (#818). Some injected failures change nothing until the plant does
+   * something: the PORV stick latches on the first lift (pwr2_pressurizer step 3), and at full
+   * power the first lift never comes — measured 2026-10-01, 15 plant-minutes at 2237-2247 psia
+   * (15.42-15.50 MPa) with the valve shut. The Failures tab showed only a red Clear button.
+   *
+   * Returns { id: true (armed, still waiting for its trigger) | false (fired) } for the
+   * injected rows whose effect waits on a plant event, and NOTHING for a failure that acts at
+   * once. Derived from plant state on every call, no latch — so a rewind or a file load
+   * reports what the restored plant is doing, and a condition that ends (high-pressure
+   * injection secured) honestly reads as waiting again. */
+  PWR2Engine.prototype.getFailureArming = function () {
+    var e = this.eng, on = engineActiveFailures(e), out = {};
+    function has(id) { return on.indexOf(id) >= 0; }
+    if (has('stuck_porv_open')) out.stuck_porv_open = !e.pz.porvStuck;
+    /* the trip latch stands under an ATWS — only the rod drop is failed (pwr2_engine :1861) */
+    if (has('failure_to_scram')) out.failure_to_scram = !e._lastTrip;
+    /* FIRED only while it is SUPPRESSING a trip (#818 review): the turbine is tripped, the plant is
+     * above P-9 (where a turbine trip would trip the reactor) and the reactor has not tripped.
+     * Measured before: at hot zero power and hot shutdown the turbine is offline from the start, and
+     * `!e.tb.tripped` read Fired the instant it was injected — below P-9 the anticipatory trip is
+     * blocked anyway, so the failure has nothing to defeat there. */
+    if (has('anticipatory_trip_failure')) {
+      out.anticipatory_trip_failure = !(e.tb.tripped && !e.pt.reactor_trip &&
+                                        !!(e.rpsReport && e.rpsReport.p9_met));
+    }
+    if (has('afw_failure')) out.afw_failure = !(e.aw.mdafwRunning || e.aw.tdafwRunning);
+    if (has('degraded_hpi')) out.degraded_hpi = !e.ec.hhsiRunning;
+    /* the runaway has no travel while the bank sits fully out (the shipped full-power IC), and
+     * no drive power while the reactor trip is latched — the breakers are open, the rods cannot
+     * move (pwr2_engine's !rodDrivePowered branch). Measured before (#818 review): injected after
+     * a trip it read "Acting — the control rods are pulling out" with the rods at 0. */
+    if (has('continuous_rod_withdrawal')) {
+      out.continuous_rod_withdrawal = e.rodSteps >= bankSteps() - 0.5 || e.pt.reactor_trip === true;
+    }
+    return out;
+  };
+
   PWR2Engine.prototype.getControlState = function () {
     var e = this.eng, ts = this._ts;
     return {
@@ -2111,7 +2159,8 @@
        * isolation drivers (the hi-hi latch and the feed module's held-SI isolation). */
       si_actuated: e.pt.si === true,
       afas_actuated: e.pt.afas_mdafw === true || e.pt.afas_tdafw === true,
-      fwi_actuated: e.pt.fwi === true || (e.pt.si === true && e.fw.isolated === true),
+      fwi_actuated: e.pt.fwi === true || e.pt.fwi_lo_tavg === true ||
+                    (e.pt.si === true && e.fw.isolated === true),
       heaters_shed: ts.pzr_heaters_shed === true,
       condensate_pump_running: ts.condensate_pump_running === true,
       steam_demand_mwe: e.tb.load_target_mwe,

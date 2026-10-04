@@ -29,6 +29,26 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-10-02-develop-a (#818 package B: manual + site copy pass; the plant changes of package D recorded)
+
+All numbers MEASURED on `68b73e31`, `node test/measure_stack.js --plant=pwr2`, full stack, `hot_full_power`, 10 plant-minutes settled unless noted.
+
+**Post-trip feedwater isolation (package D, `77561d51`).** Logic sourced (WTSM 12.3.6.1, ML11223A310: *"Low Tavg (564°F) coincident with a reactor trip (permissive P-4)"*); not latched (WTSM 12.2, ML11223A301 — P-4 seals in only SI and P-14). Setpoint DERIVED: source 564 °F is 7 °F (3.9 °C) over its 557 °F no-load (WAT 05, ML11216A094) → 547 + 7 = **554.0 °F (290.0 °C)**, read on indicated Tavg (the manual had printed 552.2 °F). Ginna TS Bases B 3.3.2 Function 5 has no such function. **AFW start on it is a DECLARED DEPARTURE**: the source starts AFW on SG lo-lo after the trip SHRINK. Manual trip from full power: Tavg crosses 554 °F between +30 s and +42 s; MFW isolated and both AFW pumps running at +42 s; AFW flow from ~+9 min (level hold); SG settles ~35 %; Tavg min ~548 °F (286.7 °C) inst — no overcooling.
+
+**OPEN PLANT QUESTION — the SG SWELLS on a trip where the source plant's shrinks.** 64.72 % → 70.77 % at +21 s, 70.57 % at +30 s (package D measured 65.0 → 69.7 % at +33 s). WAT 05 Transient 5.11 item 9: *"Steam generator level shrinks to below the bottom of the narrow-range indicating range."* The AFW start above stands in for the shrink-driven lo-lo start; remove it if the SG ever reproduces the shrink. Not filed as an issue: this entry is the record until someone takes the SG level model on.
+
+**Cooldown-rate meter (package D).** A second, two-pole fast filter, `rate_tau_fast` = 30 s ([tune], `engines/pwr/pwr_config.js` `tavg_rate`), must agree in sign with the 600 s rate; the reading is the smaller magnitude. **Basis UNVERIFIED** — nothing in the corpus says how a plant computer forms this rate; WTSM 3.2 Table 3.2-10 (ML11223A213) only separates "Reactor trip from 100% power" from "Cooldown at <100 degF/hr". Trip from full power: reading peaks −85.3 °C/hr = **−154 °F/hr** at +42 s; below the −55.6 °C/hr (−100 °F/hr) line between +3m00 and +3m12.
+
+**Load cut, rods untouched (03 §14.3 was wrong).** 100 → 80 MWe: generator 80 MWe by +1 min; reactor power 93.2–93.7 % for 40 plant-min (manual printed 81.8 %); Tavg 583.0–584.6 °F vs Tref 573.4 °F (300.8 °C), ΔREF **+10.4 °F (5.8 °C)** (printed 17 °F); steam dump 38.8–53.1 % open throughout. Then −60 control-bank steps at +10 min: Tavg 583.9 → 577.3 °F (−6.6 °F / 3.67 °C, 0.11 °F per step), power 93.5 → 79.1 %, dump 0 %.
+
+**Other re-measured manual numbers.** Full-power subcooling margin 42.6 °F true / 44.0 °F indicated (manual: 73.8 °F); Thot 609.8 °F, Tcold 550.9 °F, Tavg 580.3–580.4 °F, steam 827 psi (5.70 MPa), PZR 61.42 %. `low_power` IC: 9.6 %, 10 MWe, Mode 1. Cold-leg LOCA failure at severity 1.0: trip at +6 s on OTΔT, 760 psi at 2 min, accumulators empty by ~8 min.
+
+**Traps worth keeping.**
+- **`measure_stack` prints an INSTRUMENT's raw SI when it does not know the dimension.** `tavg_rate` [inst] came out as `-85.31` with no unit — that is °C/hr, i.e. −154 °F/hr. Read as °F/hr it says the post-trip alarm never lights, contradicting package D's "lit to ~3m40". Same for `tavg_tref_dev` and `tref` (°C). Check the unit before you contradict a measurement.
+- **Making a unit explicit can wake a dormant gate.** `run_manual_units` did not parse `psia`; rewriting 65 sites as `psi` exposed four pairs that had always been mis-rounded (`665 psi (4.58 MPa)` → 664.27). Re-run the units gate after any unit-word sweep.
+- **Rev 23 was already sealed by the 1.8.1 release** — extending it reddened `run_released_frozen`. "Extend the pending row" means the newest UNSEALED row; when none exists, open the next number (Rev 24 here).
+- **The packer has no per-section exclusion**, so maintainer text in a packed chapter is player text. Non-packed home: `Manuals/ISSUES_AND_FINDINGS.md` §0. About 100 inline issue numbers remain in 04/09/12 prose — a further pass is owed.
+
 ## Session log — 2026-09-27-develop-h (#808 review + layman pass on pwr_startup: aux feed STOP, the step 13 gpm cutoff, stated times)
 
 All numbers full stack, seed 42, `hot_zero_power` unless named. Scratch harnesses (a copy of `run_walkthrough_routes` with an env-driven step 13 policy; a service + board-driver script) were deleted after use.

@@ -441,6 +441,10 @@
     // it before every snapshot assemble because only M5 can see the rewind ring (#660
     // items 17-18). Never trust a stale value — it is rewritten every broadcast.
     this._rewindReady = false;
+    // The free-play debrief (#818): derived from the snapshots it watches, never saved.
+    this._coach = null;               // the event being explained, or null
+    this._coachPrev = null;           // what the board read on the previous broadcast
+    this._coachSeq = this._coachSeq || 0;
   };
 
   // Re-point at the (possibly rebuilt) layer below. Deliberately does NOT clear
@@ -613,6 +617,34 @@
     return g;
   };
 
+  /* HOW FAR A TIMED ROW HAS GOT (#818, persona review: "must stay, not just touch" with nothing on the
+   * card to say the sim was counting). Four row kinds need plant time, not just a reading, before they
+   * can tick: `stopped` and `still_s` (the rods unmoved for N s), `steady` (a full trailing window
+   * whose drift is in band) and `mean_s` (a full trailing window whose MEAN meets the row). This reads
+   * the progress off the SAME bag the grader just updated — never a second sampler (#605) — and
+   * reports `{ k, el, need, restarts }` in plant-seconds, plus `mean` once a `mean_s` window is full.
+   * `restarts` counts the times `el` fell back (the rods moved, or the clock went back), so the card
+   * can say the count started again instead of silently jumping down. Display only: no grading
+   * decision reads it. */
+  InstructorLayer.holdProgress = function (ax, en, g, snapshot) {
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var p = null, s;
+    if ((en.op === 'stopped' || en.still_s > 0) && g && typeof g.still === 'number') {
+      p = { k: 'still', el: g.still, need: en.op === 'stopped' ? ((en.v > 0) ? en.v : STOPPED_DEFAULT_S) : en.still_s };
+    } else if (en.op === 'steady' && ax.bag && (s = ax.bag.s) && s.length && t != null) {
+      var W = (en.window > 0) ? en.window : STEADY_WINDOW_S;
+      p = { k: 'steady', el: Math.min(W, t - s[0].t), need: W };
+    } else if (en.mean_s > 0 && ax.bag && (s = ax.bag.s) && s.length && t != null) {
+      p = { k: 'mean', el: Math.min(en.mean_s, t - s[0].t), need: en.mean_s };
+      if (p.el >= en.mean_s && g && typeof g.value === 'number') p.mean = g.value;
+    }
+    if (!p) return null;
+    var prev = ax.prog;
+    p.restarts = (prev && prev.restarts) || 0;
+    if (prev && prev.k === p.k && p.el < prev.el - 0.5) p.restarts++;
+    return p;
+  };
+
   InstructorLayer.prototype.unload = function () {
     var reg = this.register;
     this._clear();
@@ -629,6 +661,7 @@
     if (this.mode === 'scenario') this._stepScenario(snapshot, simTime);
     else if (this.mode === 'follow') this._stepFollow(snapshot, simTime);
     if (this.checklist) this._stepChecklist(snapshot);
+    this._coachStep(snapshot, simTime);
     if (!this._heldPass) this._continueRequested = false;    // a Continue click satisfies at most one pass
     this._heldPass = false;                                   // ...that ran the flow (reading hold, #811)
   };
@@ -2422,6 +2455,7 @@
           InstructorLayer.applyStill(g, ax.stillBag, snapshot, en);
         }
         ax.obs = g.value; ax.graded_by = g.graded_by;
+        ax.prog = InstructorLayer.holdProgress(ax, en, g, snapshot);   /* #818: the card's "holding… N of M s" */
         ax.streak = g.met ? ax.streak + 1 : 0;
         /* A `reach_1m` verdict reads the operator's own step counter against a printed number — exact,
          * no instrument noise to debounce — so it ticks on the FIRST broadcast it holds, which is the
@@ -2665,6 +2699,351 @@
     return { type: 'blocked', code: 'GATED_BY_INSTRUCTOR', message: text };
   };
 
+  // ================================================================ free-play debrief (#818)
+  /* WHAT JUST HAPPENED, IN FREE PLAY. Before this, a trip or an injected failure in free play
+   * left the Instructor tab showing its welcome text — measured on fe99ea88, a 100 % Large LOCA
+   * from full power: the tab was unchanged at 0:26, 1:17 and 7:09 while the board filled with
+   * eighteen alarms.
+   *
+   * The shape is the reviewers' agreed one (#818): no live verdict, a short debrief of 2-4
+   * lines — what the alarms and indications say happened, what the automatic systems did, the
+   * parameters worth watching with their present values, and whether the readings have
+   * settled. The instructor gives context and never directs (#212): every sentence below is an
+   * observation of the board, never an instruction the player could fail to follow.
+   *
+   * HARD RULE 1: everything here is read from `instruments`, `alarms`, the protection system's
+   * own latch and trip record (`rps_state`) and the list of failures the player injected
+   * (`active_failures`) — never from `true_state`. A failed instrument fools this debrief
+   * exactly as it fools the player, which is the honest behaviour for a voice that reads the
+   * board. (run_coach gates the absence of `true_state` in this section.)
+   *
+   * The event starts on the protection system's trip latch rising or a new injected failure,
+   * whichever comes first; later trips and failures fold into it until the readings settle.
+   * A rewind (the clock going backwards) or a new history (timeline_epoch) drops it. */
+  var COACH = {
+    sample_s: 5,      // plant seconds between history samples
+    keep_s: 1200,     // history kept (three samples at 3600x span 720 s — see coachSteadyFor)
+    trend_s: 120,     // a trend word is the change over the last two plant-minutes
+    settle_s: 300,    // readings that have not moved for this long count as steady
+    /* the most a reading may wander inside settle_s and still count as not moving */
+    /* MEASURED 2026-10-01, full stack from hot full power: after a manual trip the pressure
+     * controller cycles about 15-30 psi per 5 min for the better part of an hour and
+     * pressurizer level converges at 1-3 % per 5 min, so these bands call a post-trip plant
+     * steady after about 50 plant-minutes, a tube rupture once its steam generator stops
+     * filling (~40 min), and a large break once the pressure stops falling (~25-30 min). */
+    band: { p: 30 / 145.038, pz: 2, sg: 1.5, cet: 2 / 1.8, scm: 2 / 1.8 },
+    /* the per-minute rate under which a reading's trend word is "steady" */
+    still: { p: 10 / 145.038, pz: 0.5, sg: 0.5, cet: 1 / 1.8, scm: 1 / 1.8 },
+  };
+  var COACH_PSI = 145.038;
+  function cRound(v, d) { var m = Math.pow(10, d || 0); var r = Math.round(v * m) / m; return (r === 0 ? 0 : r).toFixed(d || 0); }
+  function cTemp(c) { return cRound(c * 1.8 + 32) + ' °F (' + cRound(c) + ' °C)'; }
+  function cDelta(c) { return cRound(c * 1.8) + ' °F (' + cRound(c) + ' °C)'; }
+  /* "psi", the board's and the manual's convention (absolute, unmarked) — not "psia" (#818 review) */
+  function cPress(mpa) { return cRound(mpa * COACH_PSI) + ' psi (' + cRound(mpa, 2) + ' MPa)'; }
+  function cPct(v) { return cRound(v) + ' %'; }
+  function cRel(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60); }
+  function cAbs(t) {
+    t = Math.max(0, Math.floor(t));
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    return 'T+' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  /* The five readings the debrief names. `delta` words a change over the measured window; a
+   * temperature DIFFERENCE converts x9/5 with no offset. */
+  var COACH_WATCH = [
+    { k: 'cet', id: 'core_exit_temp', L: 'Core exit temperature', I: 'Core exit temp', val: cTemp,
+      delta: function (d) { return cDelta(Math.abs(d)); } },
+    { k: 'scm', id: 'subcooling_margin', L: 'Subcooling margin', I: 'Subcooling margin', val: cDelta,
+      delta: function (d) { return cDelta(Math.abs(d)); } },
+    { k: 'p', id: 'primary_pressure', L: 'Reactor coolant pressure', I: 'Pressurizer pressure', val: cPress,
+      delta: function (d) { return cRound(Math.abs(d) * COACH_PSI) + ' psi (' + cRound(Math.abs(d), 2) + ' MPa)'; } },
+    { k: 'pz', id: 'pzr_level', L: 'Pressurizer level', I: 'Pressurizer level', val: cPct,
+      delta: function (d, v) { var n = Math.abs(d) < 2 ? 1 : 0; return 'from ' + cRound(v - d, n) + ' % to ' + cRound(v, n) + ' %'; } },
+    { k: 'sg', id: 'sg_level', L: 'Steam generator level', I: 'SG narrow-range level', val: cPct,
+      delta: function (d, v) { var n = Math.abs(d) < 2 ? 1 : 0; return 'from ' + cRound(v - d, n) + ' % to ' + cRound(v, n) + ' %'; } },
+  ];
+  /* What the automatic systems did — each an indication that was OFF just before the event. */
+  var COACH_ACTIONS = [
+    { k: 'trip', L: 'reactor trip', I: 'reactor trip', on: function (I, rp) { return !!(rp && rp.scrammed); } },
+    { k: 'turbine', L: 'turbine trip', I: 'turbine trip', on: function (I) { return I.turbine_tripped === true; } },
+    { k: 'dumps', L: 'steam dumps opened', I: 'steam dumps open', on: function (I) { return I.steam_dump_valve > 5; } },
+    { k: 'porv', L: 'pressurizer relief valve opened', I: 'PORV open', on: function (I) { return I.porv_indicator === 'open'; } },
+    { k: 'si', L: 'safety injection (emergency core cooling) started', I: 'safety injection', on: function (I) { return I.hpi_active === true; } },
+    { k: 'afw', L: 'auxiliary feedwater pumps started', I: 'AFW pumps start', on: function (I) { return I.afw_pump_running === true; } },
+    { k: 'fwiso', L: 'main feedwater isolated', I: 'feedwater isolation', on: function (I) { return I.mfw_isolated === true; } },
+    { k: 'msiv', L: 'main steam isolated', I: 'MSIV closure', on: function (I) { return I.msiv_open === false; } },
+    { k: 'acc', L: 'accumulators injecting', I: 'accumulator injection', on: function (I) { return I.accumulators_discharging === true; } },
+    { k: 'spray', L: 'containment spray started', I: 'containment spray', on: function (I) { return I.ctmt_spray_active === true; } },
+    { k: 'sgsafety', L: 'steam generator safety valves lifted', I: 'SG safeties lifted', on: function (I) { return I.sg_safety_open === true; } },
+  ];
+  /* The protection system's own trip record (`rps_state.last_trip_reason`, the PWR2
+   * protection table's id) in each register. */
+  var COACH_TRIP_CAUSE = {
+    ot_delta_t: ['the overtemperature trip (the core\'s temperature rise was too high for the present pressure)', 'overtemperature delta-T'],
+    op_delta_t: ['the overpower trip (the core\'s temperature rise showed too much power)', 'overpower delta-T'],
+    hi_pzr_press: ['high pressurizer pressure', 'high pressurizer pressure'],
+    lo_pzr_press: ['low pressurizer pressure', 'low pressurizer pressure'],
+    sr_high_flux: ['a high source-range neutron level', 'source range high flux'],
+    ir_high_flux: ['a high intermediate-range neutron level', 'intermediate range high flux'],
+    hi_flux_lo: ['high neutron power (low setting)', 'power range high flux, low setpoint'],
+    hi_flux_hi: ['high neutron power', 'power range high flux, high setpoint'],
+    lo_flow: ['low reactor coolant flow', 'low loop flow'],
+    hi_pzr_level: ['high pressurizer level', 'high pressurizer level'],
+    sg_lolo_level: ['very low steam generator level', 'steam generator low-low level'],
+    turbine_trip: ['the turbine trip (at power, a turbine trip trips the reactor too)', 'turbine trip (P-9)'],
+    safety_injection: ['the safety injection signal', 'safety injection'],
+    manual: ['the manual trip button', 'manual trip'],
+    'manual scram': ['the manual trip button', 'manual trip'],
+  };
+  function coachRead(snap, t) {
+    var af = snap.active_failures || [], fails = {};
+    af.forEach(function (f) { if (f && f.id) fails[f.id] = f; });
+    var al = {};
+    (snap.alarms || []).forEach(function (a) { if (a && a.state && a.state !== 'clear') al[a.id] = a; });
+    var rp = snap.rps_state || {};
+    /* COPIES, not references: an engine may hand back the same instruments object every
+     * broadcast and update it in place, which would make "just before the event" read the
+     * present (measured: every automatic action but the trip went unreported). */
+    var I = {}, src = snap.instruments || {};
+    for (var k in src) I[k] = src[k];
+    return { t: t, epoch: snap.metadata ? snap.metadata.timeline_epoch : null, I: I,
+             rp: { scrammed: !!rp.scrammed, last_trip_reason: rp.last_trip_reason || null }, scrammed: !!rp.scrammed, fails: fails, failIds: af.map(function (f) { return f.id; }), alarms: al };
+  }
+  function coachSample(I) {
+    return { p: I.primary_pressure, pz: I.pzr_level, sg: I.sg_level, cet: I.core_exit_temp, scm: I.subcooling_margin };
+  }
+  /* change per plant-minute over the last trend_s, from the history plus the present reading */
+  function coachBack(c, t, span) {
+    var back = null;
+    for (var i = c.hist.length - 1; i >= 0; i--) { if (c.hist[i].t <= t - span + 1e-6) { back = c.hist[i]; break; } }
+    if (!back && c.hist.length) back = c.hist[0];
+    return back && t - back.t > 1 ? back : null;
+  }
+  function coachRate(c, k, now, t, span) {
+    var back = coachBack(c, t, span || COACH.trend_s);
+    if (!back) return 0;
+    var v0 = back.v[k], v1 = now[k];
+    if (!isFinite(v0) || !isFinite(v1)) return 0;
+    return (v1 - v0) / ((t - back.t) / 60);
+  }
+  function coachSteadyFor(c, t, loose) {
+    if (t - c.t0 < COACH.settle_s) return false;
+    /* THE WINDOW HOLDS THREE SAMPLES SPANNING settle_s WHATEVER THE BROADCAST SPACING (#818
+     * review). It used to be "the samples inside the last settle_s, at least 3" — at 3600x a
+     * broadcast is 360 plant-seconds, so the window never held more than one and "steady" was
+     * never said. Two samples bracketing settle_s were tried and REJECTED, measured: a manual trip
+     * from full power read steady at 21.0 plant-minutes at 3600x against 45.1 at 60x, because two
+     * end points cannot see the pressure controller cycling between them. So the window reaches
+     * back as far as it must to hold three samples (720 s at 3600x) and span settle_s (one
+     * sample at or before its start — at dense spacing that is the only addition). */
+    var win = [], i;
+    for (i = c.hist.length - 1; i >= 0; i--) {
+      win.unshift(c.hist[i]);
+      if (win.length >= 3 && t - c.hist[i].t >= COACH.settle_s - 1e-6) break;
+    }
+    if (win.length < 3 || win[win.length - 1].t - win[0].t < COACH.settle_s - 1e-6) return false;
+    return Object.keys(COACH.band).every(function (k) {
+      var mn = Infinity, mx = -Infinity;
+      win.forEach(function (s) { var v = s.v[k]; if (isFinite(v)) { if (v < mn) mn = v; if (v > mx) mx = v; } });
+      return !(mx - mn > COACH.band[k] * (loose || 1));
+    });
+  }
+
+  /* THE ONE FREE-PLAY PREDICATE (#818 review). No scenario or guided procedure, and no walkthrough
+   * still RUNNING — a finished walkthrough leaves its card up but the plant is the player's again.
+   * The debrief below, the service's Retry checkpoint and the UI's Inject Failure tab all ask this
+   * one question (the snapshot carries it as `instructor.free_play`); three hand-written copies
+   * disagreed on a completed walkthrough — the tab came back, the debrief and Retry did not. */
+  InstructorLayer.prototype.isFreePlay = function () {
+    return !this.mode && !(this.checklist && !this.checklist.complete);
+  };
+
+  InstructorLayer.prototype._coachStep = function (snap, t) {
+    /* free play only: a scenario, a guided procedure or a running walkthrough owns the tab */
+    if (!this.isFreePlay()) { this._coach = null; this._coachPrev = null; return; }
+    var I = snap && snap.instruments;
+    if (!I || I.core_exit_temp === undefined || I.subcooling_margin === undefined) {
+      this._coach = null; this._coachPrev = null; return;
+    }
+    var prev = this._coachPrev;
+    var epoch = snap.metadata ? snap.metadata.timeline_epoch : null;
+    if (prev && (t < prev.t - 1e-6 || epoch !== prev.epoch)) { this._coach = null; prev = null; }
+    var cur = coachRead(snap, t);
+    if (!prev) { this._coachPrev = cur; return; }   // a baseline: anything already standing is not news
+    var newTrip = cur.scrammed && !prev.scrammed;
+    var newFails = cur.failIds.filter(function (id) { return !prev.fails[id]; });
+    var c = this._coach;
+    if (newTrip || newFails.length) {
+      if (!c || c.settledAt != null) {
+        /* an injection happened at the instant of the previous broadcast; a trip somewhere in
+         * the interval since, so it is stamped when it is first seen */
+        c = this._coach = { seq: ++this._coachSeq, t0: newFails.length ? prev.t : t, before_t: prev.t, pre: prev,
+                            trip_t: null, trip_cause: null, fails: [], actions: {}, alarms: [],
+                            seen: {}, hist: [], lastSample: -Infinity, settledAt: null };
+        Object.keys(prev.alarms).forEach(function (id) { c.seen[id] = true; });
+      }
+      newFails.forEach(function (id) { c.fails.push({ id: id, t: prev.t }); });   // injected between the two broadcasts
+    }
+    if (c) {
+      if (cur.scrammed && c.trip_t == null && (newTrip || c.pre.scrammed === false)) {
+        c.trip_t = t; c.trip_cause = cur.rp.last_trip_reason || null;
+      }
+      COACH_ACTIONS.forEach(function (a) {
+        if (c.actions[a.k] == null && a.on(cur.I, cur.rp) && !a.on(c.pre.I, c.pre.rp)) c.actions[a.k] = t;
+      });
+      Object.keys(cur.alarms).forEach(function (id) {
+        if (c.seen[id]) return;
+        c.seen[id] = true;
+        var a = cur.alarms[id];
+        c.alarms.push({ label: a.tile_label || id, prio: a.priority, t: t });
+      });
+      if (t - c.lastSample >= COACH.sample_s - 1e-6) {
+        c.hist.push({ t: t, v: coachSample(cur.I) });
+        c.lastSample = t;
+        while (c.hist.length && c.hist[0].t < t - COACH.keep_s) c.hist.shift();
+      }
+      var nowS = coachSample(cur.I);
+      /* hysteresis: once steady, it takes twice the movement to call it changing again, so a
+       * controller cycling at the edge of a band does not flip the line back and forth */
+      var loose = c.settledAt != null ? 2 : 1;
+      var steady = coachSteadyFor(c, t, loose) && Object.keys(COACH.still).every(function (k) {
+        return !(Math.abs(coachRate(c, k, nowS, t)) >= COACH.still[k] * loose);
+      });
+      if (steady && c.settledAt == null) c.settledAt = t;
+      else if (!steady) c.settledAt = null;
+    }
+    this._coachPrev = cur;
+  };
+
+  InstructorLayer.prototype._coachCatalog = function () {
+    var cat = {};
+    try {
+      var list = (this.below && this.below.getFailureCatalog) ? this.below.getFailureCatalog() : [];
+      list.forEach(function (f) { cat[f.id] = f; });
+    } catch (e) { /* no catalog: the failure is named by its id */ }
+    return cat;
+  };
+
+  InstructorLayer.prototype._coachBlock = function () {
+    var c = this._coach, cur = this._coachPrev;
+    if (!c || !cur) return null;
+    var R = this.register === 'industry' ? 1 : 0, I = cur.I, t = cur.t;
+    var cat = this._coachCatalog();
+    function name(id) { return (cat[id] && cat[id].display) || String(id).replace(/_/g, ' '); }
+    var PRIO = { critical: 0, warning: 1, caution: 2 };
+
+    /* 1. WHAT THE BOARD SAYS HAPPENED */
+    var s1 = [];
+    if (c.fails.length) {
+      s1.push('You injected ' + c.fails.map(function (f) { return name(f.id); }).join(' and ') + ' at ' + cAbs(c.fails[0].t) + '.');
+    }
+    if (c.trip_t != null) {
+      var cause = COACH_TRIP_CAUSE[c.trip_cause];
+      var cw = cause ? cause[R] : (c.trip_cause ? String(c.trip_cause).replace(/_/g, ' ') : null);
+      var lag = c.fails.length ? c.trip_t - c.fails[0].t : null;
+      s1.push('The reactor tripped ' + (lag == null ? 'at ' + cAbs(c.trip_t) : lag < 3 ? 'almost at once' : cRel(lag) + ' later') +
+              (cw ? ', on ' + cw : '') + '.');
+    }
+    /* A FAILURE THAT WAITS FOR A TRIGGER (#818 review, HARD RULE 1). Whether it has ACTED is the
+     * plant's truth (getFailureArming reads e.g. the PORV's stuck latch), and a debrief that said
+     * "armed, has not acted" — and fell silent once it had — told the player a stuck-open valve
+     * behind a position light failed CLOSED. What is known by construction is only that the
+     * player injected it and what sets it off; whether it has gone off is left to the
+     * indications (the notes below read the PORV light, the pressure, the levels). So this reads
+     * the CATALOG, never `active_failures[].armed`. */
+    c.fails.forEach(function (f) {
+      var def = cat[f.id];
+      if (!cur.fails[f.id] || !def || !def.armed_text) return;
+      var m = /^Armed — (.*?)\.?$/.exec(def.armed_text);
+      if (m) s1.push('It was armed when injected: it ' + m[1] + '. Whether it has acted shows only on the board.');
+    });
+    var firsts = c.alarms.filter(function (a) { return a.prio !== 'status'; }).slice()
+      .sort(function (a, b) { return (a.t - b.t) || ((PRIO[a.prio] || 3) - (PRIO[b.prio] || 3)); }).slice(0, 3);
+    s1.push(firsts.length ? 'First alarms: ' + firsts.map(function (a) { return a.label; }).join(', ') + '.'
+                          : 'No alarms have come in.');
+    var notes = [], pre = c.pre.I, sinceTrip = c.trip_t != null ? t - c.trip_t : null;
+    if (sinceTrip != null && sinceTrip > 10 && I.power_range > 5) notes.push('Reactor power still reads ' + cPct(I.power_range) + ' after the trip.');
+    if (I.subcooling_margin <= 0) notes.push('Subcooling margin is gone: the reactor coolant has reached boiling.');
+    var dCp = (I.containment_pressure - pre.containment_pressure) * COACH_PSI, dSump = I.containment_sump_level - pre.containment_sump_level;
+    var cParts = [];
+    if (dCp > 0.5) cParts.push('pressure is up ' + cRound(dCp, 1) + ' psi (' + cRound(dCp / COACH_PSI * 1000) + ' kPa)');
+    if (dSump > 2) cParts.push('sump level reads ' + cPct(I.containment_sump_level));
+    if (cParts.length) notes.push('Containment ' + cParts.join(' and its ') + '.');
+    /* a slow rise on BOTH the last one and two minutes, and not in the first 90 s after a trip,
+     * where the level shrinks and swells back on its own (measured on a manual trip) */
+    var nowI = coachSample(I);
+    if (t - c.t0 > 60 && (sinceTrip == null || sinceTrip > 90) && I.fw_flow < 0.01 && I.afw_flow < 0.01 &&
+        coachRate(c, 'sg', nowI, t, 60) > 0.3 && coachRate(c, 'sg', nowI, t, 120) > 0.3) {
+      notes.push('Steam generator level is rising with no feedwater going in.');
+    }
+    if (I.porv_indicator === 'open') notes.push('The pressurizer relief valve indicates open.');
+    if (I.pzr_level < 1 && pre.pzr_level >= 5) notes.push('Pressurizer level reads 0 %, the bottom of its scale.');
+    if (pre.fw_flow >= 0.5 && I.fw_flow < 0.1) notes.push('Main feedwater flow has fallen from ' + cPct(pre.fw_flow * 100) + ' to ' + cPct(I.fw_flow * 100) + '.');
+    s1 = s1.concat(notes.slice(0, 2));
+
+    /* 2. WHAT THE AUTOMATIC SYSTEMS DID */
+    var acts = COACH_ACTIONS.filter(function (a) { return c.actions[a.k] != null; })
+      .sort(function (a, b) { return c.actions[a.k] - c.actions[b.k]; });
+    var s2 = acts.length
+      ? 'Automatic actions since ' + cAbs(c.t0) + ': ' + acts.slice(0, 7).map(function (a) {
+          return a.L && R === 0 ? a.L + ' (+' + cRel(c.actions[a.k] - c.t0) + ')' : a.I + ' (+' + cRel(c.actions[a.k] - c.t0) + ')';
+        }).join(', ') + (acts.length > 7 ? ', and ' + (acts.length - 7) + ' more' : '') + '.'
+      : 'No automatic system has acted.';
+
+    /* 3. WHAT TO WATCH, WITH THE PRESENT READINGS */
+    var now = coachSample(I), items = [];
+    COACH_WATCH.forEach(function (w) {
+      var v = I[w.id];
+      if (typeof v !== 'number' || !isFinite(v)) return;
+      var r = coachRate(c, w.k, now, t);
+      var trend = Math.abs(r) < COACH.still[w.k] ? 'steady' : (r > 0 ? 'rising' : 'falling');
+      items.push({ k: w.k, label: R ? w.I : w.L, value: w.val(v), trend: trend, rate: r });
+    });
+    /* mid-sentence: lower-case the first letter only, so a label's abbreviation ("SG") survives */
+    function mid(l) { return /^[A-Z]{2}/.test(l) ? l : l.charAt(0).toLowerCase() + l.slice(1); }
+    var s3 = 'Worth watching: ' + items.map(function (it) { return mid(it.label) + ' ' + it.value + ', ' + it.trend; }).join('; ') + '.';
+
+    /* 4. SETTLED, OR STILL CHANGING */
+    var s4, settled = c.settledAt != null;
+    if (settled) {
+      var mins = Math.floor((t - c.settledAt + COACH.settle_s) / 60);
+      s4 = 'The readings have held steady for ' + mins + ' plant-minutes.';
+      var still = [];
+      if (I.subcooling_margin < 5 / 1.8) still.push('subcooling margin is ' + cDelta(I.subcooling_margin));
+      if (I.pzr_level < 5) still.push('pressurizer level reads ' + cPct(I.pzr_level));
+      if (I.sg_level < 10) still.push('steam generator level reads ' + cPct(I.sg_level));
+      if (still.length) s4 += ' Steady is not the same as normal: ' + still.join(', and ') + '.';
+    } else {
+      var moving = items.filter(function (it) { return it.trend !== 'steady'; })
+        .sort(function (a, b) { return Math.abs(b.rate) / COACH.still[b.k] - Math.abs(a.rate) / COACH.still[a.k]; }).slice(0, 2);
+      var byK = {}; COACH_WATCH.forEach(function (w) { byK[w.k] = w; });
+      /* said as the change over the window actually measured ("down 706 psi in the last
+       * 2 minutes"), never extrapolated: in the first minute a per-minute figure read as
+       * "pressurizer level falling 118.5 % per minute" */
+      var back = coachBack(c, t, COACH.trend_s), span = back ? t - back.t : 0;
+      var spanWords = span >= 100 ? 'in the last ' + Math.round(span / 60) + ' minutes' : 'in the last ' + Math.round(span) + ' seconds';
+      s4 = moving.length
+        ? 'Still changing: ' + moving.map(function (it) {
+            return mid(it.label) + ' ' + (it.rate > 0 ? 'up ' : 'down ') + byK[it.k].delta(it.rate * span / 60, I[byK[it.k].id]);
+          }).join(', ') + ' ' + spanWords + '.'
+        : 'The readings have slowed. They count as steady once nothing has moved for ' + Math.round(COACH.settle_s / 60) + ' plant-minutes.';
+    }
+
+    return {
+      seq: c.seq,
+      since: c.t0,
+      before_t: c.before_t,
+      title: c.fails.length ? name(c.fails[0].id) : 'Reactor trip',
+      settled: settled,
+      lines: [
+        { kind: 'happened', text: s1.join(' ') },
+        { kind: 'auto', text: s2 },
+        { kind: 'watch', text: s3, items: items.map(function (it) { return { label: it.label, value: it.value, trend: it.trend }; }) },
+        { kind: 'status', text: s4 },
+      ],
+    };
+  };
+
   // ================================================================ output (§7)
   InstructorLayer.prototype.getMessage = function () {
     return this.pendingMessage
@@ -2701,6 +3080,9 @@
        * which grades `below_1m` off the same number the live row does. */
       one_over_m: this.oneOverM ? { points: this.oneOverM.points.length, gen: this.oneOverM.gen || 0,
                                     pred_steps: this._oneOverMPredSteps(this._lastSnapshot) } : null,
+      /* THE FREE-PLAY DEBRIEF (#818) — null unless free play has an event to explain. */
+      coach: this._coachBlock(),
+      free_play: this.isFreePlay(),
       ui_policy: this.uiPolicy,
       highlight: this.mode === 'follow'
         ? (st && st.control ? { view: null, control_label: st.control, instrument_id: null } : null)
@@ -2718,7 +3100,7 @@
         accs: f.accsState ? f.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
                    voided: a.voided || null, no_1m: !!a.no_1m,
-                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,
       } : null,
       level_complete: this.levelComplete ? {
@@ -2793,7 +3175,7 @@
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
           return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
                    voided: a.voided || null, no_1m: !!a.no_1m,
-                   pred_1m: (a.pred_1m == null ? null : a.pred_1m) };
+                   pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,
         /* THE LAST OUT-OF-TURN PRESS ON THIS STEP (#759) — `{ acc_index, blocked_by }`, both
          * indices into the step's own `accs`. `acc_index` is the row the press WOULD have

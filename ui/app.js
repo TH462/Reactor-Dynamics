@@ -675,6 +675,10 @@
 
         // ---------------------------------------------------------------- primary coolant
         { id: 'tavg',     instr: 'tavg', grp: 'Primary coolant', label: 'Tavg',     c: '#b07830', get: function (i) { return i.tavg; }, tru: function (t) { return t.tavg_c; }, range: [270, 330], dHi: 335, fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        // #818: the Tavg program (Tref, off turbine load) and indicated Tavg's deviation from it —
+        // the number manual rod control is about, shown as ΔREF on the ROD CONTROL card.
+        { id: 'tref',     instr: 'tref', grp: 'Primary coolant', label: 'Tref (Tavg program)', c: '#8a7a50', hint: 'the average coolant temperature the plant is programmed to hold at the present turbine load', get: function (i) { return i.tref; }, tru: function (t) { return t.tref_c; }, range: [270, 330], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
+        { id: 'tavg_tref_dev', instr: 'tavg_tref_dev', grp: 'Primary coolant', label: 'Tavg − Tref', c: '#d09a40', hint: 'how far indicated average coolant temperature sits above (+) or below (−) its program; the ROD CONTROL card shows it as ΔREF', get: function (i) { return i.tavg_tref_dev; }, tru: function (t) { return (t.tavg_c != null && t.tref_c != null) ? t.tavg_c - t.tref_c : null; }, range: [-10, 10], fmt: function (v) { return (v >= 0 ? '+' : '') + conv(v, 'tempdiff').toFixed(1) + unit('tempdiff'); } },
         { id: 'thot',     instr: 'thot', grp: 'Primary coolant', label: 'Hot Leg',  c: '#c0563e', get: function (i) { return i.thot; }, tru: function (t) { return t.thot_c; }, range: [270, 335], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         { id: 'tcold',    instr: 'tcold', grp: 'Primary coolant', label: 'Cold Leg', c: '#4a86c0', get: function (i) { return i.tcold; }, tru: function (t) { return t.tcold_c; }, range: [260, 320], fmt: function (v) { return conv(v, 'temp').toFixed(0) + unit('temp'); } },
         // Loop ΔT. INSTRUMENTED (both legs are), so it keeps a `get` — and #315 is
@@ -2385,6 +2389,13 @@
     var catShort = f.category === 'safety_system' ? 'safety' : f.category;
     var html = '<div class="fail-head"><button class="fail-toggle" data-fail="' + f.id + '">Inject</button>' +
       '<span class="fail-name">' + f.display + '</span><span class="fail-cat ' + f.category + '">' + catShort + '</span></div>';
+    /* what it does, in one line, and — for a failure that waits for a plant event — whether it
+     * is armed or has fired (#818). The arm line is filled by renderFailures off the snapshot. */
+    if (f.blurb) html += '<div class="fail-desc">' + mesc(f.blurb) + '</div>';
+    if (f.armed_text) {
+      html += '<div class="fail-arm" data-armfor="' + f.id + '" hidden></div>';
+      row.setAttribute('data-arm', JSON.stringify({ armed: f.armed_text, fired: f.fired_text || '' }));
+    }
     if (f.severity_meta) {
       var m = f.severity_meta;
       html += '<div class="fail-slider"><input type="range" min="0" max="100" value="' +
@@ -2608,6 +2619,7 @@
      * plant-seconds of overshoot. It sits beside the pause block for the same reason: both are
      * the walkthrough asking the clock for something, both restamp the snapshot they change. */
     syncCklAutoSpeed(s);
+    syncFailuresTab(s);
     /* THE SNAPSHOT'S `running` FLAG IS STAMPED AT ASSEMBLY AND CAN BE STALE BY THE TIME IT
      * IS DRAWN. Re-stamp it from the live service here, which is the one place every
      * renderer downstream reads it from.
@@ -2670,7 +2682,7 @@
       // three shares, not just the tiles'. The recorder's row is packed over the OLD plant's
       // field list, so a leaked row would write one plant's numbers into another's columns.
       RD.ChartFine = null; pendingTiles = null; pendingDiagFine = null;
-      afterPlantChange(); return;
+    afterPlantChange(); return;
     }
 
     // The fine sub-samples were drained in `render`, synchronously with the broadcast — see
@@ -3088,7 +3100,8 @@
     // Anything rendered but not keyed would freeze on screen — which is the failure mode
     // a dirty-check trades for the flicker, so it is the thing to get right.
     var tripCause = tripCauseLabel(s.rps_state && s.rps_state.last_trip_reason) || '';
-    var key = active.length ? (tripCause + '\u0002' + active.map(function (a) {
+    var predA = cklPredictedAlarms(s);   /* #818: "predicted by step N" tags, keyed so they come and go */
+    var key = active.length ? (tripCause + '\u0002' + JSON.stringify(predA) + '\u0002' + active.map(function (a) {
       return a.id + '\u0001' + a.state + '\u0001' + a.priority + '\u0001' +
         (a.base_priority || '') + '\u0001' + (alarmSeen[a.id] || 0);
     }).join('\u0002')) : '';
@@ -3128,7 +3141,8 @@
         ' data-scanner-detail="' + esc(alarmDetail(a)) + '"' + docAttr + '>' +
         '<div class="bar"></div><div class="body"><div class="label">' + label +
         '</div><div class="meta">' + cat + ' · ' + prioTxt + ' · ' + a.state.replace('active_', '') +
-        (stamp ? ' · <span class="alarm-t mono">' + stamp + '</span>' : '') + '</div></div>' +
+        (stamp ? ' · <span class="alarm-t mono">' + stamp + '</span>' : '') +
+        (predA[a.id] ? ' <span class="alarm-pred">predicted by step ' + predA[a.id] + '</span>' : '') + '</div></div>' +
         chip + '<div class="glyph">' + glyph + '</div></div>';
     }).join('');
   }
@@ -3180,6 +3194,9 @@
    * It does NOT become a whole-leg "time to completion": that number has no honest source
    * (`hold` is the replay's fixture dwell, not a player-timing measurement — see the wait-line
    * comment in `renderChecklist` below) and the ruling declines it explicitly. */
+  /* #818: when the walkthrough RAISES the clock itself, say so in plain words under the speed bar
+   * (the player did not press anything). Only announces; WHEN the speed changes is unchanged. */
+  var autoSpeedNote = null;   // { rate, step } — retired when the clock leaves that rate or the step moves on
   var warpNote = null;   // { text, reason } — the held-at-real-time note only; retired on any player speed act (unless the hold it names is still standing — see retireWarpNote, #710)
   /* #710: three sites (resumeSim, the speed-button click handler, the walkthrough rewind
    * handler) used to null `warpNote` unconditionally on any player act, on the theory that
@@ -3263,6 +3280,11 @@
       text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
     } else {
       text = advice;
+      if (autoSpeedNote) {
+        var curRate = (s.metadata && s.metadata.time_acceleration) || 1;
+        if (curRate !== autoSpeedNote.rate || autoSpeedNote.step !== cklNoteStepKey(s)) autoSpeedNote = null;
+        else if (!text) text = 'Speeding up to ' + curRate + '× — nothing to do for a while.';
+      }
     }
     if (el.textContent !== text) el.textContent = text;
     el.hidden = !text;
@@ -3297,7 +3319,7 @@
     if (req > 1 && ach != null) {
       var ratio = ach / req;
       cls = straining ? 'bad' : ratio < 0.9 ? 'warn' : 'ok';
-      text = '→ ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
+      text = 'actual ' + (ach >= 100 ? Math.round(ach / 10) * 10 : Math.round(ach)).toLocaleString() + '×';
     }
     var key = cls + '|' + text + '|' + (p.warp_available ? 1 : 0) + '|' + (p.warp_lock || '');
     if (key === _lastPacingKey) return;   // (syncWarpInfo above has its own change guard)
@@ -3305,7 +3327,7 @@
     el.hidden = !text;
     el.textContent = text;
     el.className = 'ff-rate mono' + (cls ? ' ' + cls : '');
-    el.title = text ? 'Achieved rate: ' + text.slice(2) + ' of the requested ' + req + '× (' + p.tier + ' tier, ' + p.physics_dt + ' s step)' : '';
+    el.title = text ? 'Achieved rate: ' + text.slice(7) + ' of the requested ' + req + '× (' + p.tier + ' tier, ' + p.physics_dt + ' s step)' : '';
     var seg = $('speed');
     if (seg) seg.querySelectorAll('button.warp').forEach(function (b) {
       b.classList.toggle('locked', !p.warp_available);
@@ -3566,7 +3588,7 @@
   function idleLauncherHtml() {
     if (!flagOn('checklists')) return '';
     return '<div class="instr-launch"><button type="button" class="btn instr-launch-bar" ' +
-      'data-open-ckl="1" data-scanner-hint="Open the Walkthroughs tab — guided procedures ' +
+      'data-open-ckl="1" data-scanner-hint="Open Main Menu → Walkthroughs — guided procedures ' +
       'that check themselves off the instruments as you operate.">' +
       'Try the walkthroughs</button></div>';
   }
@@ -3634,6 +3656,124 @@
   function renderInstructor(s) {
     renderInstructorInner(s);
     instrLogTick(s);
+    coachToastTick(s);
+  }
+
+  /* THE FREE-PLAY DEBRIEF (#818). The instructor layer writes `instructor.coach` after a trip or
+   * an injected failure in free play: four short lines read off the instruments and alarms
+   * (what happened, what the automatic systems did, readings worth watching, settled or still
+   * changing). This draws it in the Instructor tab, raises ONE dismissible toast per event
+   * pointing at that tab, and offers Retry — the existing rewind, to the newest checkpoint at
+   * or before the moment the event began (the service lays one right before a free-play
+   * injection or manual trip, so Retry lands on that instant). Dismiss returns the tab to its
+   * usual free-play content for this event; the next event brings the debrief back. */
+  var coachUi = { hidden: {}, toastSeq: 0, bound: false, html: null };
+  function coachOf(s) { return (s && s.instructor && s.instructor.coach) || null; }
+  function coachVisible(s) { var c = coachOf(s); return !!(c && !coachUi.hidden[c.seq]); }
+  function coachRetryIdx(c) {
+    var cps = (service && service.checkpoints) || [];
+    for (var i = cps.length - 1; i >= 0; i--) {
+      var m = cps[i] && cps[i].metadata;
+      if (m && m.sim_time <= c.before_t + 1e-6) return i;
+    }
+    return -1;
+  }
+  function coachBind() {
+    if (coachUi.bound) return;
+    var card = $('instructorCard');
+    if (!card) return;
+    coachUi.bound = true;
+    card.addEventListener('click', function (e) {
+      var rt = e.target.closest('[data-coach-retry]');
+      if (rt) {
+        e.preventDefault();
+        var c = coachOf(latest);
+        var idx = c ? coachRetryIdx(c) : -1;
+        if (idx < 0) { showToast('No saved point before this event to go back to.', 'error'); return; }
+        cmd({ action: 'rewind', steps: service.checkpoints.length - idx, exact: true });
+        coachToastHide();
+        return;
+      }
+      var dm = e.target.closest('[data-coach-dismiss]');
+      if (dm) {
+        e.preventDefault();
+        coachUi.hidden[+dm.getAttribute('data-coach-dismiss')] = true;
+        coachUi.html = null;
+        coachToastHide();
+        showIdleInstructor();
+      }
+    });
+  }
+  function renderCoach(s) {
+    coachBind();
+    var c = coachOf(s), cur = $('instrCurrent');
+    if (!c || !cur) return;
+    setInstrRole('Instructor');
+    var idx = coachRetryIdx(c);
+    var body = '';
+    (c.lines || []).forEach(function (ln) {
+      if (ln.kind === 'watch' && ln.items && ln.items.length) {
+        body += '<div class="coach-line coach-watch"><span class="coach-lead">Worth watching</span><ul>' +
+          ln.items.map(function (it) {
+            return '<li><span class="cw-k">' + mesc(it.label) + '</span> <span class="cw-v mono">' + mesc(it.value) +
+              '</span> <span class="cw-t cw-' + mesc(it.trend) + '">' + mesc(it.trend) + '</span></li>';
+          }).join('') + '</ul></div>';
+      } else {
+        body += '<p class="coach-line coach-' + mesc(ln.kind) + (ln.kind === 'status' && c.settled ? ' settled' : '') + '">' + mesc(ln.text) + '</p>';
+      }
+    });
+    var html = '<div class="coach" data-coach-seq="' + (+c.seq) + '">' +
+      '<div class="coach-head"><span class="coach-title">' + mesc(c.title) + '</span>' +
+      '<span class="coach-since mono">since ' + alarmClock(c.since) + '</span></div>' + body +
+      '<div class="coach-btns"><button type="button" class="btn coach-retry" data-coach-retry="' + (+c.seq) + '"' +
+      (idx < 0 ? ' disabled title="No saved point before this event to go back to."'
+               : ' title="Rewind the plant to ' + alarmClock(service.checkpoints[idx].metadata.sim_time) + ', just before this began."') +
+      '>Retry from just before</button> ' +
+      '<button type="button" class="btn linkish" data-coach-dismiss="' + (+c.seq) + '">Dismiss</button></div></div>';
+    if (html !== coachUi.html || !cur.querySelector('.coach')) {
+      cur.classList.remove('instr-standby');
+      cur.removeAttribute('data-idle-key');
+      cur.innerHTML = html;
+      coachUi.html = html;
+    }
+  }
+  function coachToastHide() {
+    var t = $('coachToast');
+    if (t) t.classList.remove('show');
+  }
+  function coachToastTick(s) {
+    var c = coachOf(s), t = $('coachToast');
+    if (!c || coachUi.hidden[c.seq]) { if (t) coachToastHide(); return; }
+    if (paneVisible('instructor')) { if (t) coachToastHide(); coachUi.toastSeq = c.seq; return; }
+    if (c.seq === coachUi.toastSeq) return;      // one toast per event, never a repeat
+    coachUi.toastSeq = c.seq;
+    /* Anchored under the TAB BAR, over the tools panel, not over the board: placed over the
+     * plant area it covered the pressurizer and steam generator level tiles at exactly the
+     * moment those readings matter (seen in the #818 screenshots). */
+    var bar = document.getElementById('tabbar');
+    if (!bar) return;
+    if (!t) {
+      var host = document.body;
+      t = document.createElement('div'); t.id = 'coachToast'; t.className = 'coach-toast';
+      t.setAttribute('role', 'status');
+      t.innerHTML = '<span class="coach-toast-msg"></span> ' +
+        '<button type="button" class="btn coach-toast-open">Open the Instructor tab</button>' +
+        '<button type="button" class="coach-toast-x" aria-label="Dismiss">×</button>';
+      t.addEventListener('click', function (e) {
+        if (e.target.closest('.coach-toast-open')) {
+          var tb = document.querySelector('#tabbar [data-tab="instructor"]');
+          if (tb) tb.click();
+          coachToastHide();
+        } else if (e.target.closest('.coach-toast-x')) coachToastHide();
+      });
+      host.appendChild(t);
+    }
+    t.querySelector('.coach-toast-msg').textContent = c.title + ': the Instructor tab has a short summary of what the board shows.';
+    var r = bar.getBoundingClientRect();
+    t.style.top = Math.round(r.bottom + 6) + 'px';
+    t.style.left = Math.round(r.left + 6) + 'px';
+    t.style.width = Math.max(200, Math.round(r.width - 12)) + 'px';
+    t.classList.add('show');
   }
   function renderInstructorInner(s) {
     // Rewind is live whenever a checkpoint exists (beats / follow steps / sandbox).
@@ -3652,26 +3792,9 @@
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
     // save/load restores, and anything else that broadcasts mid-transition.
-    // Checklist picker row: free play only — anything instructed owns the card.
-    /* THE RUNNING CHECKLIST LIVES IN THE CHECKLISTS TAB (#607 item 6). The 2026-08-11
-     * "tab always shows the list" directive is superseded: leaving the tab used to look
-     * like a restart because the card was painted in the Instructor pane. The list is
-     * still there, behind "← All checklists". */
-    var cklRow = $('instrCklRow');
     var cklRun = $('cklRun');
     var runningCkl = !!(s.instructor && s.instructor.checklist);
     if (!runningCkl && cklState.view === 'run') cklState.view = 'list';
-    if (cklRow) {
-      /* THE LIST SHOWS WHILE A WALKTHROUGH RUNS (layman pass 5, S-2, 2026-09-25). The
-       * `!runningCkl || view === 'list'` clause dates from #607, when the list and the running
-       * card shared ONE pane. Since #660 the card lives in the Instructor pane, so hiding the
-       * list here left the Walkthroughs tab EMPTY for as long as a walkthrough — finished or
-       * not — was loaded: measured, "← All walkthroughs" on a finished card switched to a blank
-       * tab and the list came back only after Close. Nothing sets `view` to 'list' any more. */
-      var showList = flagOn('checklists');
-      cklRow.hidden = !showList;
-      if (showList) toggleCklMenu();
-    }
     if (cklRun) cklRun.hidden = !runningCkl;   // in the Instructor pane, up whenever a walkthrough runs
     /* #687 item 2 — the End-walkthrough row is a sibling of the card now, so it needs the same
      * per-broadcast gate; without it the row survives every path that hides #cklRun. */
@@ -3709,7 +3832,11 @@
       syncInstrNav('idle');
       instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
       var curW = $('instrCurrent');
+      /* a FINISHED walkthrough is free play (#818 review): a trip or injection after it gets the
+       * debrief under the finished card, as it would with no walkthrough loaded */
+      if (curW && ckb.complete && coachVisible(s)) { curW.classList.remove('instr-standby'); renderCoach(s); return; }
       if (curW) {
+        if (curW.querySelector('.coach')) coachUi.html = null;
         curW.classList.remove('instr-standby');
         var wmsg = s.instructor.message || '';
         if (curW.textContent !== wmsg) curW.textContent = wmsg;
@@ -3741,7 +3868,8 @@
       // one-line ellipsized — cue the header and let the player expand.
       instrAttention();
     } else if (!msg && !msgHold.queue.length && dwellMet) {
-      if (msgHold.shown !== null || !cur.querySelector('.instr-idle') || cur.getAttribute('data-idle-key') !== idleKey()) {
+      if (coachVisible(s)) { msgHold.shown = null; renderCoach(s); }   // the free-play debrief (#818)
+      else if (msgHold.shown !== null || !cur.querySelector('.instr-idle') || cur.getAttribute('data-idle-key') !== idleKey()) {
         msgHold.shown = null;
         showIdleInstructor();
       }
@@ -4309,6 +4437,19 @@
     if (want == null) return null;
     return cklAutoKeyStr(a, s, want);
   }
+  /* THE INJECT FAILURE TAB IS FREE PLAY ONLY (OWNER RULING 2026-10-01: "Hide the inject failures tab
+   * unless in free play."). Hidden while a walkthrough, lesson or campaign mission runs; back when it
+   * ends. If it is the open tab when it hides, the player lands on the Instructor. */
+  function syncFailuresTab(s) {
+    var btn = document.querySelector('#tabbar [data-tab="failures"]');
+    if (!btn) return;
+    var ins = s && s.instructor || {};
+    /* the instructor's one free-play predicate (#818 review); opener/scenario are UI-side state */
+    var busy = ins.free_play === false || !!ui.opener || !!ui.scenario;
+    if (btn.hidden === busy) return;
+    btn.hidden = busy;
+    if (busy && btn.classList.contains('on')) selectTab('instructor');
+  }
   function syncCklAutoSpeed(s) {
     var a = cklActiveStep(s);
     var want = cklStepSpeed(s, a);
@@ -4368,6 +4509,7 @@
     if (cur === want) return;
     try { service.handleCommand({ action: 'set_speed', value: want }); }
     catch (e) { return; }                                 // a refusal is not a crash (#505/#506)
+    if (want > cur) autoSpeedNote = { rate: want, step: cklNoteStepKey(s) };   // announce it in #warpInfo (#818)
     /* …and this snapshot was assembled before the change, so restamp it — the speed segment,
      * the ⚡ badge and the chart windows all read `metadata.time_acceleration` off the snapshot
      * being drawn. Same shape as the `metadata.running` restamp the walkthrough pause needs. */
@@ -4458,7 +4600,6 @@
     /* the End-walkthrough row lives OUTSIDE #cklRun since #687 item 2, so blanking the card no
      * longer takes it with it — it has to be torn down by name or it outlives the run */
     var btns = $('cklBtns'); if (btns) { btns.hidden = true; btns.innerHTML = ''; }
-    var row = $('instrCklRow'); if (row) row.hidden = !flagOn('checklists');
     clearCklStepGlow();
     /* …AND THE PRESS MEMORY WITH IT (#809 pass-13 review, 2026-09-28). `cklLastGlow` is what every
      * pointer release re-applies; left standing, the first click after End walkthrough / All
@@ -4795,6 +4936,71 @@
     industry: 'REACTOR TRIP — this procedure is not valid post-trip and the active step will not advance. Rewind to a pre-trip checkpoint, or exit the procedure.',
   };
 
+  /* IS ANY OF THE STEP HIDDEN BELOW THE FOLD? (#818, the persona review: Continue sat clipped inside
+   * this scroller with a 0 px scrollbar and no cue, on 3 of 17 heatup steps at 1600x1000.) The
+   * Continue / Rewind row is now pinned to the scroller's floor (`position: sticky` in shell.css), so
+   * the button is always on screen — and what can be hidden instead is TEXT behind it. `.ckl-more`
+   * says so: a fade and a "scroll for more" label on the pinned row, gone once the reader reaches
+   * the end. Measured off the scroller's own geometry, never a guess from the step's length. */
+  /* WHICH ACTIVE ALARMS THE CURRENT WALKTHROUGH STEP TOLD THE PLAYER TO EXPECT (#818) —
+   * `{ alarmId: stepNumber }` off the active step's authored `predicts_alarms`. The tile stays red;
+   * renderAlarms only adds a tag, and the tag goes when the step does. Read off the POOL like the
+   * step text; the snapshot supplies only which leg and step are live. */
+  function cklPredictedAlarms(s) {
+    var ck = s && s.instructor && s.instructor.checklist, out = {};
+    if (!ck || ck.complete || ck.step_index == null) return out;
+    var pool = (RD.MANUAL_PROCEDURES && RD.MANUAL_PROCEDURES[ui.engineKey]) || [];
+    var pr = null;
+    for (var i = 0; i < pool.length; i++) if (pool[i].id === ck.procedure_id) { pr = pool[i]; break; }
+    var st = pr && pr.steps && pr.steps[ck.step_index];
+    (st && st.predicts_alarms || []).forEach(function (id) { out[id] = ck.step_index + 1; });
+    return out;
+  }
+
+  function cklMoreCue(log) {
+    if (!log || !log.classList) return;
+    var more = log.scrollHeight - log.scrollTop - log.clientHeight > 4;
+    if (log.classList.contains('ckl-more') !== more) log.classList.toggle('ckl-more', more);
+  }
+
+  /* THE HOLD-PROGRESS LINE (#818). A row that needs PLANT TIME as well as a reading — the rods
+   * unmoved for N s, a steady window, a trailing mean — said nothing while the sim counted, so a
+   * player watching SOURCE RANGE sit on 7.0e2 saw a dark row and no reason. This prints the count
+   * the runtime is keeping (`prog`, InstructorLayer.holdProgress: plant-seconds off the grader's own
+   * bag) and says so when it starts again. Unmet rows only; a met row has nothing left to count. */
+  function cklProgLine(en, av) {
+    var p = av && av.prog;
+    if (!p || av.met || !(p.need > 0)) return '';
+    var el = Math.max(0, Math.min(p.need, Math.floor(p.el))), need = Math.round(p.need);
+    var restarted = p.restarts > 0 && el < need;
+    var t;
+    if (p.k === 'still') {
+      if (el >= need) return '';   /* the wait is served; what is left is the reading, which its own line shows */
+      t = 'Holding still… ' + el + ' of ' + need + ' plant-seconds' +
+          (restarted ? ' — started again when the ' + (en.p === 'control_bank_steps' || en.still_s > 0 ? 'rods' : 'control') + ' moved' : '');
+    } else if (p.k === 'steady') {
+      t = el < need ? 'Watching it settle… ' + el + ' of ' + need + ' plant-seconds of readings'
+                    : 'Still changing — this ticks once the last ' + need + ' plant-seconds read steady';
+    } else if (p.k === 'mean') {
+      var pd = PRED_DISPLAY[en.p];
+      t = (p.mean == null) ? 'Averaging… ' + el + ' of ' + need + ' plant-seconds'
+        : 'Average over the last ' + need + ' plant-seconds: ' + fmtPredValue(pd, p.mean) +
+          '. This ticks when the average reaches the target, so the reading has to stay there, not just touch it.';
+      if (restarted) t += ' (the clock went back, so the average started again)';
+    } else return '';
+    return '<div class="ckl-crit-when ckl-prog' + (restarted ? ' ckl-prog-reset' : '') + '">' + mesc(t) + '</div>';
+  }
+  /* ...and its render-key share: whole plant-seconds (5 s buckets on windows over a minute, so a
+   * long window repaints a dozen times rather than every broadcast), the restart count and, once a
+   * mean is full, the value AS PRINTED. A value outside the key never repaints (#392). */
+  function cklProgKey(a) {
+    var p = a && a.prog;
+    if (!p || a.met) return '';
+    var b = p.need > 60 ? 5 : 1;
+    return 'h' + Math.floor(Math.min(p.el, p.need) / b) + 'r' + p.restarts +
+      (p.mean != null ? 'm' + Number(p.mean).toPrecision(3) : '');
+  }
+
   function renderChecklist(s, ck) {
     cklSnap = s;
     var cur = $('cklRun');
@@ -4837,7 +5043,7 @@
        * "past the mark" line below appears when the rods step past prediction-minus-N while
        * `met` stays 0. Only a `below_1m` row carries a non-null `pred_1m`. */
       (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
-        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : ''); }).join(','),
+        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : '') + cklProgKey(a); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
@@ -5212,7 +5418,8 @@
                * player needs to know what to do AND what the sim is waiting for. Quieter, on
                * its own line, so the imperative is what the eye lands on. Not on a row that is
                * still waiting its turn (#756) — a done-when for a row nothing is grading yet. */
-              (en.ask && !ordWait ? '<div class="ckl-crit-when">' + mesc(enTxt) + '</div>' : '') +
+              /* #819 (OWNER RULING 2026-10-02: "check the step off not the subtext"): the done-when
+               * line under an ask is no longer drawn; the tick attaches to the ask itself. */
               (subSpeed && !hasCont ? '<div class="ckl-crit-speed">Suggested time warp: ' + subSpeed + '</div>' : '') +
               (subNote && !hasCont ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
               /* A ROW TICKED BY A SIBLING SAYS SO (`implied_by`, #749 follow-up, OWNER RULING
@@ -5239,6 +5446,7 @@
                * last point), so the "3 short" half cannot be checked and the row ticks on the rods
                * being still alone — rather than stranding a player who never plotted. `no_1m` is
                * the runtime's verdict, never re-derived here. */
+              (!ordWait ? cklProgLine(en, av) : '') +
               (av.no_1m ? '<div class="ckl-crit-when">The 1/M plot shows no prediction, so this ticks ' +
                  'once the rods have been still a plant-minute.</div>' : '') +
               /* ...AND ONE PAST THE MARK SAYS WHERE THE MARK IS (quality pass, 2026-09-24). Measured in
@@ -5437,7 +5645,10 @@
             '">⏪ Rewind step</button>' +
           '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
             (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>' +
-          (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') + '</div>';
+          (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') +
+          /* the "more above" cue (#818): drawn always, shown by CSS only while #cklLog has text
+           * hidden behind this pinned row (`.ckl-more`, set by cklMoreCue) */
+          '<span class="ckl-more-cue" aria-hidden="true">▾ scroll for more</span>' + '</div>';
         h += '</div>';
       }
       var det = '';
@@ -5447,6 +5658,7 @@
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
           : st.wait_hint) + '</div>';
       }
+      /* #819 (2026-10-03): restored after 8052485b removed it — OWNER: "Where did the background boxes go? I didn't want to lose those." */
       /* THE DETAILS PARAGRAPH IS LABELLED, SO IT READS AS EXTRA (#692 item 3, from the owner's
        * 2026-09-09 sheet §B — he asked for it "presented as extra learning material rather than
        * part of the step", and suggested a labelled bubble).
@@ -5481,6 +5693,11 @@
        * the story block is the OTHER always-drawn supplementary field on this card, and two
        * supplementary blocks that look like two different kinds of thing is the confusion this
        * is fixing. */
+      /* ALWAYS OPEN, NEVER A FOLD *(OWNER RULING, 2026-10-02, #819: asked "(a) keep the fold /
+       * (b) revert to Background always open", replied "B"; and 2026-10-01: "we dont need to hide
+       * the background. we just need to clean up the steps and subtext to be more streamlined and
+       * concise.")*. #818 package C made this a <details> closed on arrival; the answer to unread
+       * subtext is SHORTER subtext (#819), not hidden subtext. Do not re-fold it. */
       if (st.why) {
         det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
           mesc(st.why) + '</div>';
@@ -5596,6 +5813,7 @@
     if (log) {
       cklAutoScroll = true;                          /* our own writes must not arm userScrolled */
       log.scrollTop = prevTop;                       /* the rebuild is invisible to the reader */
+      cklMoreCue(log);
       /* THE AUTO-SCROLL YIELDS TO A READER WHO HAS SCROLLED AWAY (#612, owner playtest
        * 2026-09-03: "the checklist scroll window keeps bouncing to the top and back to the step.
        * This makes it impossible to read the steps").
@@ -5612,6 +5830,7 @@
       if (!log.__cklScrollBound) {
         log.__cklScrollBound = true;
         log.addEventListener('scroll', function () {
+          cklMoreCue(log);                           /* #818: before the early return, every scroll */
           if (cklAutoScroll) return;                 /* our write, not theirs */
           var act = log.querySelector('.ckl-active');
           if (!act) { cklState.userScrolled = true; return; }
@@ -5641,7 +5860,7 @@
           /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
            * scrollable ancestor, so with the checklist hosted in a content-sized pane it moved
            * `.tab-body` as well — and only the log's position is preserved across the rebuild,
-           * so the outer container snapped to the top. The pane now owns its height (ckl-mode),
+           * so the outer container snapped to the top. The pane owns its height (the instructor pane, wt-headerless),
            * which removes the outer scroller; this makes the step-advance scroll incapable of
            * reaching an ancestor even if a future layout reintroduces one. */
           var act = log.querySelector('.ckl-active');
@@ -6162,150 +6381,11 @@
     });
     document.querySelectorAll('.ckl-speed-rung').forEach(function (el) { el.classList.remove('ckl-speed-rung'); });
   }
-  // Picker menu (free-play instructor card): every non-narrative procedure for
-  // the active plant can run as a checklist.
-  /* THE LAUNCHER, ORDERED BY RELEVANCE (#443, spec §9).
-   *
-   * SORT, DO NOT FILTER. Inapplicable procedures are demoted into a collapsed group and
-   * LABELLED WITH THEIR GATING CONDITION — "Requires RCS temperature below 95" — which
-   * turns the demotion into instruction: a beginner learns which mode gates which
-   * evolution just by scanning. Hiding them would break the mental model, because a player
-   * who saw a checklist yesterday and cannot find it today assumes a bug, and someone at
-   * power may legitimately want to read ahead about an evolution they will do later.
-   *
-   * The scoring is `RD.InstructorLayer.prototype.rankProcedures`, NOT a copy here: the
-   * preconditions it reads are already graded in that layer, instrument-first per HR1, and
-   * a second evaluator in this file would be the two-samplers-of-one-truth shape #432 was.
-   *
-   * RECOMPUTED ON EVENTS, NOT CONTINUOUSLY (see cklRelevanceKey). During a heatup the plant
-   * crosses mode boundaries; a live-recomputing sort would reshuffle the list under the
-   * cursor at exactly the busiest moments.
-   */
-  function rankedProcedures() {
-    var procs = ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) {
-      return !x.narrative && flagOn('procedure:' + x.id);
-    });
-    if (!procs.length || !latest || !RD.InstructorLayer) return procs.map(function (p) {
-      return { id: p.id, category: p.category, title: p.title, score: 0, ready: true, gate: null };
-    });
-    var active = latest.instructor && latest.instructor.checklist
-      ? latest.instructor.checklist.procedure_id : null;
-    return RD.InstructorLayer.prototype.rankProcedures.call(
-      { _grade: RD.InstructorLayer.prototype._grade, _predMet: RD.InstructorLayer.prototype._predMet },
-      latest, procs, active);
-  }
-  /* The list is ALWAYS on screen in its tab (owner, 2026-08-11) — there is no open/close
-   * any more, so `toggleCklMenu` only means "make sure it is current". Kept under its old
-   * name because three call sites reach it (the idle launcher's "All checklists…", the
-   * mission window, and the tour) and renaming it would be churn for nothing.
-   *
-   * Rebuilt on a KEY, not every broadcast: the order is stable now, so a per-frame
-   * innerHTML would be pure cost on the densest list in the shell. */
-  var cklMenuKey = null;
-  /* THE KEY CARRIES THE PLANT'S RELEVANCE VERDICT, NOT JUST THE ENGINE (#606, owner playtest
-   * 2026-09-02: "when I started up in mode 5 the mode 5 checklist was greyed out but some
-   * where white").
-   *
-   * The key used to be `engineKey | active procedure id`, and NEITHER changes when the player
-   * resets the plant to a different initial condition — the engine is the same engine and no
-   * checklist is running. So the list built at the default hot_full_power boot survived the
-   * reset to Cold Shutdown verbatim: the heatup greyed with "Requires RCS temperature below
-   * 203 degF" (it was at 547) and the at-power legs white. The greying was CORRECT for a plant
-   * that no longer existed.
-   *
-   * The freeze it inherited was written for the RELEVANCE SORT ("never reorder an open list",
-   * spec section 9). That sort is retired — the list is in the standard category order since
-   * the 2026-08-11 directive — so a rebuild can no longer move a row under the cursor; it can
-   * only repaint grey/white and the gate sentence. Keying on the verdict itself means the
-   * innerHTML is still written only when something the player can SEE has changed, which is
-   * what the freeze was actually protecting. */
-  function toggleCklMenu(force) {
-    var menu = $('cklMenu'); if (!menu) return;
-    menu.hidden = false;
-    var ranked = rankedProcedures();
-    var key = ui.engineKey + '|' + (latest && latest.instructor && latest.instructor.checklist
-      ? latest.instructor.checklist.procedure_id : '') + '|' +
-      ranked.map(function (r) { return r.id + (r.ready ? '+' : '-') + (r.gate || ''); }).join(';');
-    if (force === 'force' || key !== cklMenuKey) { cklMenuKey = key; menu.innerHTML = cklMenuHtml(ranked); }
-  }
-  /* A STANDARD ORDER *(OWNER DIRECTIVE, 2026-08-11: "They should stay in a standard
-   * order.")*. This supersedes the relevance SORT: the list is now always in the same
-   * order — category first, on the sequence an operator would name them (startup, power,
-   * control, shutdown, emergency, accident), then the POOL'S OWN ORDER. A list that
-   * rearranges itself is a list you have to re-read every time, and muscle memory is worth
-   * more here than putting the most likely item on top.
-   *
-   * The relevance SCORING is kept and still earns its place, because it is what produces
-   * the gating labels ("Requires reactor power above 10") and what the free-play
-   * Instructor's short launcher picks its four from. What is retired is the reordering,
-   * not the knowledge.
-   *
-   * THE WITHIN-CATEGORY TIEBREAK IS THE POOL'S DECLARATION ORDER, NOT THE TITLE (#606,
-   * OWNER, 2026-09-02: "the checklists should be in a logical order. ie, starting in mode 5
-   * it should start with mode 5 to mode 3 and end with mode 3 to mode 5").
-   *
-   * It was `title.localeCompare`, and alphabetical reversed two of the three pairs, because
-   * these titles begin with the mode they START FROM: "Mode 3, Hot Standby -> Mode 1" sorts
-   * above "Mode 5, Cold Shutdown -> Mode 3", so the STARTUP category listed the second leg
-   * first. Same in POWER, where "load rampdown" sorts above "power ascension". SHUTDOWN was
-   * right only by luck. Measured before the fix: startup, heatup, lower_power, raise_power,
-   * shutdown, cooldown — the operating cycle with two of its three pairs inverted.
-   *
-   * The pool is ALREADY authored in cycle order and says so structurally: every pwr2 entry
-   * names its successor in `next`, and test/run_checklist_pwr2.js asserts that chain matches
-   * the array order. So the declaration order is not an accident of authoring that could
-   * drift — it is the chain, gated, and reading the order off it means the list and the
-   * finished-card handoff can never disagree. It is still a STANDARD order (fixed, never
-   * recomputed from plant state), so the 2026-08-11 directive is untouched: what changed is
-   * which fixed order, not whether it is fixed.
-   *
-   * The CATEGORY grouping stays on top of it. Declaration order alone would give the same
-   * answer for every pool we ship today, but it would put the categories at the mercy of how
-   * a future pool happens to be typed, and the grouping is what the directive named. */
-  /* `incident` is LAST and that is the requirement, not a preference (#670 Phase 2): the six
-   * operating-cycle legs are the list a player works through, and the TMI-2 walkthrough is a
-   * historical reconstruction that starts at full power and ends with a damaged core. An
-   * unknown category already sorts last here, so this entry only makes the position explicit
-   * and stops a future category landing between the cycle and the incident by accident. */
-  var CKL_CAT_ORDER = ['startup', 'power', 'control', 'shutdown', 'emergency', 'accident', 'incident'];
-  function cklMenuHtml(ranked) {
-    if (!ranked) ranked = rankedProcedures();
-    if (!ranked.length) return '<div class="m-note">No procedures for this plant.</div>';
-    /* The pool as authored — the operating cycle. Built per render rather than cached
-     * because the engine can change under this function and a stale map would silently
-     * degrade to "everything ties", which is the failure this sort exists to fix. */
-    var poolIx = {};
-    ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).forEach(function (p, i) { poolIx[p.id] = i; });
-    var stable = ranked.slice().sort(function (a, b) {
-      var ai = CKL_CAT_ORDER.indexOf(a.category || ''), bi = CKL_CAT_ORDER.indexOf(b.category || '');
-      if (ai < 0) ai = CKL_CAT_ORDER.length;
-      if (bi < 0) bi = CKL_CAT_ORDER.length;
-      if (ai !== bi) return ai - bi;
-      var ap = poolIx[a.id], bp = poolIx[b.id];
-      if (ap == null) ap = Infinity;
-      if (bp == null) bp = Infinity;
-      if (ap !== bp) return ap - bp;
-      return (a.title || '').localeCompare(b.title || '');   // last resort; ids are unique so unreachable
-    });
-    return stable.map(function (r) {
-      // A cycle leg is offered under its Main Menu name, "Startup Part 2" (#816); others keep their title.
-      var part = legPart(ui.engineKey, r.id);
-      return '<button data-ckl-start="' + mesc(r.id) + '"' + (r.gate ? ' class="ckl-gated"' : '') +
-             (part ? ' title="' + mesc(part.modes) + '"' : '') + '>' +
-             '<span class="ckl-cat">' + mesc(part ? part.group.toLowerCase() : (r.category || '')) + '</span>' +
-             mesc(part ? legName(ui.engineKey, r) : r.title) +
-             (r.gate ? '<span class="ckl-gate">' + mesc(r.gate) + '</span>' : '') + '</button>';
-    }).join('');
-  }
-  /* NEVER REORDER AN OPEN LIST (spec §9) — and since 2026-08-11 the ORDER is the fixed
-   * category order, so nothing this file does can reorder it. That is what let the freeze go
-   * (#606): the menu now rebuilds whenever the relevance VERDICT changes, which repaints
-   * grey/white and the gate sentence in place and moves no row. A first version of this had a
-   * `refreshCklRelevance` that recomputed on every event with the guard inverted, so it fired
-   * only while the menu was open — under the old relevance sort that reshuffled the list
-   * under the cursor during a heatup, which is the failure the spec names. Keying on the
-   * verdict is what keeps the rebuild rare without letting the list describe a plant the
-   * player has since reset away from. */
+  /* THE WALKTHROUGH LIST IS THE MAIN MENU'S (OWNER RULING, 2026-10-01, #818: "remove the
+   * walkthrough tab since main menu is [now] where you go to pick the walkthrough"). The side
+   * tab's list, its relevance greying (#606) and its key-cached rebuild went with the tab; the
+   * ranking itself survives in InstructorLayer.prototype.rankProcedures. A run started from the
+   * Manual's 📋 Walkthrough button or a finished card's "Next:" still lands here. */
   function startChecklist(id) {
     var running = latest && latest.instructor && latest.instructor.checklist;
     if (running && running.procedure_id === id) {
@@ -6638,7 +6718,6 @@
   // Scenarios / Walkthroughs), then the specific start. Nothing changes in the
   // running sim until a start button is pressed.
   var msel = { engine: 'pwr2', mode: null, init: null };   /* mode null = the category list (#816) */   /* the shipped plant (2026-08-26) */
-  var resetArmT = null;                  // the Reset arm's self-disarm timer (#443)
   /* The window PAUSES, and closing it resumes *(OWNER DIRECTIVE, 2026-08-11: "The menu
    * should freeze the plant but when you close the menu it should unfreeze the plant.")*.
    *
@@ -6651,10 +6730,12 @@
     var m = /[?&]mmode=(free|campaign|scenarios|walkthroughs|lessons)/.exec(location.search || '');
     return m ? m[1] : null;
   }
-  function openMissionSelect() {
+  // `mode` opens straight at a category ('walkthroughs' from the idle bar, "← All walkthroughs"
+  // and the old ?tab=checklists link, #818); a click event or nothing opens the list.
+  function openMissionSelect(mode) {
     msel.engine = ui.engineKey;
     msel.init = ui.initState;
-    msel.mode = urlMenuMode();
+    msel.mode = (typeof mode === 'string' && mode) || urlMenuMode();
     renderMissionSelect();
     openModal('missionOverlay');
   }
@@ -6680,6 +6761,8 @@
     var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
     if (!bb.width || !tb.width) return;
     tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
+    var par = tip.offsetParent;   // the tip is an overlay (#818): sit it right under the button row
+    if (par) tip.style.top = Math.round(bb.bottom - par.getBoundingClientRect().top + 2) + 'px';
   }
   function closeMissionSelect() {
     closeModal('missionOverlay');
@@ -7162,9 +7245,9 @@
   }
 
   var SEEN_KEY = 'rd_seen_';
-  // The Checklists mark points at the LIST now — its open button is gone, because the
-  // list is always on screen (owner, 2026-08-11).
-  var COACH = { session: 'mainMenuBtn', checklists: 'cklMenu', feedback: 'fbHeaderBtn' };
+  // The Checklists mark went with the Walkthroughs tab (#818): the list is Main Menu's, whose
+  // own mark is `session`.
+  var COACH = { session: 'mainMenuBtn', feedback: 'fbHeaderBtn' };
   function seenCoach(k) {
     try { return localStorage.getItem(SEEN_KEY + k) === '1'; } catch (e) { return true; }
   }
@@ -7515,7 +7598,6 @@
     var tb = document.querySelector('.tab-body');
     if (tb) {
       tb.classList.toggle('instr-mode', name === 'instructor');
-      tb.classList.toggle('ckl-mode', name === 'checklists');
     }
     // A pane that skips its work while hidden shows whatever it last painted, and on a
     // PAUSED plant no broadcast is coming to correct it. Repaint on reveal.
@@ -7529,7 +7611,7 @@
   }
   // Where "hand it back to the tools" goes. Remembers the last non-instructor tab so
   // dismissing the Instructor returns you to what you were doing, not to a fixed default.
-  var lastToolsTab = 'checklists';
+  var lastToolsTab = 'indications';
   function applyFocus(iExp, tExp) {
     if (iExp) { selectTab('instructor'); return; }
     if (tExp) { selectTab(currentTab() === 'instructor' ? lastToolsTab : currentTab()); }
@@ -7689,6 +7771,10 @@
      * the whole transcript into the log per line — measured in headless Edge on the opener, whose
      * lines are ~20 words: the conversation appeared twice, "End" and "reveal all" included. */
     if (s && s.instructor && s.instructor.chat) { instrLog.key = null; instrLog.html = ''; return; }
+    /* THE FREE-PLAY DEBRIEF IS LIVE TOO (#818): its readings and lines update in place, and the
+     * welcome it replaces is not a message. Measured in headless Chromium: without this the
+     * welcome text was folded into the log above the debrief. */
+    if (cur.querySelector('.coach')) { instrLog.key = null; instrLog.html = ''; return; }
     var first = (cur.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     if (!first) return;
     if (first === instrLog.key) { instrLog.html = cur.innerHTML; return; }  // same message, live
@@ -7740,6 +7826,15 @@
       var id = row.id.replace('fail-', ''), on = !!act[id];
       row.classList.toggle('active', on);
       var btn = row.querySelector('.fail-toggle'); txt(btn, on ? 'Clear' : 'Inject');
+      /* ARMED OR FIRED (#818): `armed` rides on the active-failure entry only for a failure that
+       * waits for a plant event. Absent = acts at once, so the line stays hidden. */
+      var arm = row.querySelector('[data-armfor]');
+      if (arm) {
+        var st = on && typeof act[id].armed === 'boolean' ? (act[id].armed ? 'armed' : 'fired') : null;
+        var words = st ? JSON.parse(row.getAttribute('data-arm'))[st] : '';
+        if (arm.hidden !== !words) arm.hidden = !words;
+        if (words) { txt(arm, words); arm.className = 'fail-arm ' + st; }
+      }
       var sl = row.querySelector('[data-sevfor]');
       if (sl && on && act[id].severity != null && document.activeElement !== sl) {
         var m = JSON.parse(row.getAttribute('data-meta'));
@@ -8830,10 +8925,73 @@
   }
 
   // ============================================================ commands
+  /* The restart confirm (Free Play / walkthrough / lesson Start over a plant that has run, and
+   * Reset). A row beside the pressed button: the sentence and two buttons, nothing that expires. */
+  var restartAnchor = null;
+  function clearRestartConfirm(disarm) {
+    var row = document.querySelector('.mp-confirm');
+    if (row && row.parentNode) row.parentNode.removeChild(row);
+    if (restartAnchor && disarm !== false) {
+      restartAnchor.removeAttribute('data-armed');
+      if (restartAnchor.hasAttribute('data-mreset')) restartAnchor.setAttribute('data-mreset', 'arm');
+    }
+    restartAnchor = null;
+  }
+  function showRestartConfirm(anchor) {
+    restartAnchor = anchor;
+    var row = document.createElement('div');
+    row.className = 'mp-confirm'; row.setAttribute('role', 'alert');
+    row.innerHTML = '<span>This restarts the plant. Your current plant will be lost.</span>' +
+      '<button class="btn mp-confirm-go" data-mconfirm-go="1">Restart plant</button>' +
+      '<button class="btn" data-mconfirm-cancel="1">Cancel</button>';
+    anchor.parentNode.insertBefore(row, anchor.nextSibling);
+    var go = row.querySelector('[data-mconfirm-go]'); if (go && go.focus) go.focus();
+  }
+  /* Player-facing text for an engine "… BLOCKED: …" refusal: the trip-latched rod drive refusal says
+   * what to do in the board's own words; any other keeps its text minus a bracketed "[sourced, …]"
+   * citation (the citation belongs in the engine comment and the manual, not on the player's board). */
+  /* LEARNING REGISTER: A CODE IS SPELLED OUT THE FIRST TIME A REFUSAL USES IT (#818 review). The
+   * engine's refusals are written in plant shorthand ("MFW RESTORE BLOCKED", "Secure the ECCS",
+   * "requires P-4"); the rod drive one was rewritten whole, every other reached a newcomer raw.
+   * The Industry register keeps the engine's text. A code already followed by its own
+   * parenthesis ("P-4 (a reactor trip)") is left alone. */
+  var BLOCK_CODES = {
+    MFW: 'main feedwater', AFW: 'auxiliary feedwater', ECCS: 'emergency core cooling system',
+    RPS: 'reactor protection system', RHR: 'residual heat removal', SI: 'safety injection',
+    RCS: 'reactor coolant system', FWI: 'feedwater isolation', SG: 'steam generator',
+    PORV: 'pressurizer relief valve', MSIV: 'main steam isolation valve',
+    'P-4': 'the reactor-tripped signal', 'P-6': 'the intermediate-range permissive',
+    'P-7': 'the low-power permissive', 'P-9': 'the turbine-trip permissive',
+    'P-10': 'the power-range permissive', 'P-11': 'the low-pressure permissive', 'P-14': 'the high steam generator level signal'
+  };
+  function spellCodes(m) {
+    var seen = {};
+    /* "MFW RESTORE BLOCKED — rest" -> "Main feedwater (MFW) restore blocked — rest" */
+    m = m.replace(/^([A-Z][A-Z0-9 /-]*?) BLOCKED\b/, function (all, head) {
+      var words = head.split(' ').map(function (w) {
+        if (BLOCK_CODES[w]) { seen[w] = true; return BLOCK_CODES[w] + ' (' + w + ')'; }
+        return w.toLowerCase();
+      }).join(' ');
+      return words.charAt(0).toUpperCase() + words.slice(1) + ' blocked';
+    });
+    return m.replace(/\b(P-\d+|[A-Z]{2,5})\b(\s*\()?/g, function (all, code, paren) {
+      if (!BLOCK_CODES[code] || seen[code]) return all;
+      seen[code] = true;
+      if (paren) return all;   // already explained in place
+      return /^P-/.test(code) ? code + ' (' + BLOCK_CODES[code] + ')' : BLOCK_CODES[code] + ' (' + code + ')';
+    });
+  }
+  function blockedText(m) {
+    if (/ROD DRIVE BLOCKED/.test(m) && /LATCHED/.test(m))
+      return "Rods can't move: the reactor trip is latched. Reset it first — press the SCRAM button on the ROD CONTROL card once it reads PRESS TO RESET.";
+    m = m.replace(/\s*\[sourced[^\]]*\]/g, '').replace(/\s{2,}/g, ' ').trim();
+    return ui.register === 'industry' ? m : spellCodes(m);
+  }
   function cmd(c) {
     // A chat interaction click (e.g. the maintenance tag) is the player acting —
     // release the transcript's reading dwell so the exchange answers promptly.
     if (c && c.action === 'instructor_interact') chatState.nextAt = 0;
+    if (c) bootUntouched = false;   // the player is acting on this plant: it is theirs now
     // A THROW is a refusal, not a crash (#505/#506). The pwr2 shell deliberately throws
     // on a REFUSED command — right for a harness, but nothing on the click path caught it,
     // so the handler unwound silently: no record, no message, and the SECOND command of a
@@ -8841,7 +8999,14 @@
     // becomes the service's own error shape and flows through every consumer below.
     var r;
     try { r = service.handleCommand(c); }
-    catch (e) { r = { type: 'error', code: 'COMMAND_ERROR', message: String(e && e.message || e) }; }
+    catch (e) {
+      var em = String(e && e.message || e);
+      /* AN ENGINE REFUSAL NAMED "BLOCKED" IS AN INTERLOCK, NOT A FAULT (#818): the rod drive door's
+       * "ROD DRIVE BLOCKED: the reactor trip is LATCHED…" threw and drew as "⚠ Command error".
+       * Route it down the ⛔ Blocked path, in the player's words. */
+      r = /\bBLOCKED\b/.test(em) ? { type: 'blocked', code: 'INTERLOCK', message: blockedText(em) }
+                                  : { type: 'error', code: 'COMMAND_ERROR', message: em };
+    }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
@@ -8855,7 +9020,7 @@
     // a refused/unknown command — flashes the same way (#505: an errored press reading
     // as a dead button is exactly what the 2026-08-21 telemetry session was).
     if (r && r.type === 'blocked') {
-      if (r.code === 'INTERLOCK' && r.message) inspectFlash('⛔ Blocked', r.message);
+      if (r.code === 'INTERLOCK' && r.message) { inspectFlash('⛔ Blocked', r.message); showToast('⛔ ' + r.message, 'error'); }
       /* A HELD CLOCK IS A PLANT REFUSAL, NOT INSTRUCTOR FEEDBACK *(owner playtest, 2026-09-04:
        * "when gated and i click on a warp button, it closes the checklist")*. SPEED_HELD comes
        * back `blocked` and fell into the instructor branch below, whose setFocus('instructor')
@@ -9656,9 +9821,28 @@
       document.querySelector('.plant-area').appendChild(t);
     }
     t.textContent = msg;
+    /* ABOVE THE SCANNER, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
+     * the average-temperature, pressurizer-level, pressure and subcooling tiles (measured at
+     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It
+     * now sits just above the scanner bar, over the lower end of the alarm list; measured, it
+     * overlaps no board item at those three sizes. Re-read on every show: the scanner can grow. */
+    try {
+      var pa = t.parentNode.getBoundingClientRect(), sc = $('scannerPanel');
+      var scTop = sc && sc.offsetParent ? sc.getBoundingClientRect().top : pa.bottom;
+      t.style.top = 'auto';
+      t.style.bottom = Math.max(8, Math.round(pa.bottom - scTop + 8)) + 'px';
+    } catch (e) { /* layout unavailable: the stylesheet's top placement stands */ }
     t.className = 'app-toast show' + (kind === 'error' ? ' error' : '');
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { t.classList.remove('show'); }, kind === 'error' ? 5000 : 2500);
+    /* A FADED TOAST KEEPS NO TEXT (#818, layman pass of 2026-10-02, S-8). `.app-toast` fades to
+     * opacity 0 and stays in the DOM, so its last message stayed readable to a screen reader and
+     * to any page-text read: the reviewer quoted a speed-drop toast an hour after it faded, as if
+     * the status line under the speed bar were stale (`#warpInfo` itself read empty). Cleared
+     * once the 0.18 s fade has finished, and only if no newer toast has been shown since. */
+    toastTimer = setTimeout(function () {
+      t.classList.remove('show');
+      toastTimer = setTimeout(function () { if (!t.classList.contains('show')) t.textContent = ''; }, 300);
+    }, kind === 'error' ? 5000 : 2500);
   }
 
   function bindCommands() {
@@ -10048,11 +10232,12 @@
     document.body.addEventListener('click', function (e) {
       var st = e.target.closest('[data-ckl-start]');
       if (st) {
-        toggleCklMenu(false);
         startChecklist(st.getAttribute('data-ckl-start'));
         return;
       }
-      if (e.target.closest('[data-ckl-list]')) { selectTab('checklists'); return; }   // the list tab; the run stays live
+      // "← All walkthroughs" opens the list where it lives now, Main Menu -> Walkthroughs (#818);
+      // the menu pauses the plant and the run stays live behind it.
+      if (e.target.closest('[data-ckl-list]')) { openMissionSelect('walkthroughs'); return; }
       /* the leg-caution block (#653 defect 1). Latching a BOOLEAN — not toggling a null — is the
        * point: once the player has said open or shut, the underway default stops deciding for
        * them. `cklState.key = null` forces the rebuild the way the why-all toggle does. */
@@ -10298,10 +10483,7 @@
     $('instructorCard').addEventListener('click', function (e) {
       if (e.target.closest('[data-open-ckl]')) {
         e.preventDefault();
-        var t = document.querySelector('#tabbar [data-tab="checklists"]');
-        if (t) t.click();
-        toggleCklMenu(true);
-        markSeen('checklists');
+        openMissionSelect('walkthroughs');
         return;
       }
       var os = e.target.closest('[data-opener-start]');
@@ -10367,7 +10549,6 @@
     // Coach marks retire on first use of the thing they point at (#443).
     $('mainMenuBtn').addEventListener('click', function () { markSeen('session'); });
     $('fbHeaderBtn').addEventListener('click', function () { markSeen('feedback'); });
-    $('cklMenu').addEventListener('click', function () { markSeen('checklists'); });
 
     $('missionOverlay').addEventListener('click', function (e) {
       if (e.target === $('missionOverlay')) { closeMissionSelect(); return; }
@@ -10380,19 +10561,20 @@
        * replaces a plant which has RUN arms on the first press and acts on the second. Since the
        * category list (#816) that is EVERY start button in the panes — Free Play, each
        * walkthrough part and the lesson — not only the retired Start-here card's. */
+      /* THE RESTART CONFIRM IS TWO REAL BUTTONS, NO TIMER (#818): the chip that grew the button from
+       * 56 to 388 px and disarmed itself after 6 s could vanish while the player was still reading it. */
+      if (e.target.closest('[data-mconfirm-cancel]')) { clearRestartConfirm(); return; }
+      if (e.target.closest('[data-mconfirm-go]')) {
+        var goEl = restartAnchor; clearRestartConfirm(false);
+        if (goEl) { if (goEl.hasAttribute('data-mreset')) { closeMissionSelect(); doReset(true); } else goEl.click(); }
+        return;
+      }
       var arm = e.target.closest('#mpContent [data-mopener], #mpContent [data-wtstart], #mpContent [data-mfree]');
       if (arm && plantHasRun() && arm.getAttribute('data-armed') !== '1') {
-        // One Start armed at a time: arming this one puts every other back to its own label.
-        Array.prototype.forEach.call($('mpContent').querySelectorAll('[data-armed="1"]'), function (o) {
-          o.removeAttribute('data-armed'); o.classList.remove('mp-reset-armed');
-          txt(o, o.getAttribute('data-label') || '▶ Start');
-        });
-        arm.setAttribute('data-label', arm.textContent);
+        // One confirm at a time: arming this one clears every other.
+        clearRestartConfirm();
         arm.setAttribute('data-armed', '1');
-        arm.classList.add('mp-reset-armed');
-        txt(arm, '⚠ This restarts the plant. Your current plant will be lost. Press again to start.');
-        clearTimeout(resetArmT);
-        resetArmT = setTimeout(function () { renderMissionSelect(); }, 6000);
+        showRestartConfirm(arm);
         return;
       }
       var mo = e.target.closest('[data-mopener]');
@@ -10404,13 +10586,10 @@
       var rs = e.target.closest('[data-mreset]');
       if (rs) {
         if (rs.getAttribute('data-mreset') === 'arm') {
+          clearRestartConfirm();
           rs.setAttribute('data-mreset', 'go');
-          rs.classList.add('mp-reset-armed');
-          txt(rs, '⚠ Confirm reset — the current run is lost');
-          clearTimeout(resetArmT);
-          resetArmT = setTimeout(function () { renderMissionSelect(); }, 6000);   // disarms itself
+          showRestartConfirm(rs);
         } else {
-          clearTimeout(resetArmT);
           closeMissionSelect(); doReset(true);
         }
         return;
@@ -10478,6 +10657,7 @@
         if (!$('missionOverlay').hidden) closeMissionSelect();
         if (!$('chartOverlay').hidden) closeChartSettings();
         if (!$('helpOverlay').hidden) $('helpOverlay').hidden = true;
+        if (!$('settingsOverlay').hidden) closeModal('settingsOverlay');
         if (tourOn) closeTour();
         if (!$('featureOverlay').hidden) closeFeaturePanel();
         if (!$('feedbackOverlay').hidden) closeModal('feedbackOverlay');
@@ -10906,7 +11086,7 @@
     {
       sel: '.strip-chart',
       place: 'top',
-      title: 'Trends &amp; rewind',
+      title: 'Trends & rewind',
       body: '<p>Multi-parameter strip chart. <b>Rewind</b> restores an earlier ' +
         'plant state so you can try again — failure is not game over.</p>'
     },
@@ -10925,31 +11105,13 @@
       sel: '#toolsCard',
       place: 'left',
       title: 'The reference tabs',
-      body: '<p><b>Walkthroughs</b> to follow a procedure. <b>Indications</b> and ' +
-        '<b>Physics</b> for every reading the plant produces and the true state behind ' +
-        'them. <b>Inject Failure</b> when you are ready for casualties. None of them ' +
-        'stops the plant.</p>',
+      body: '<p><b>Indications</b> for every reading the plant produces, and <b>Inject ' +
+        'Failure</b> (free play) when you are ready for casualties. A running walkthrough ' +
+        'or lesson shows in the <b>Instructor</b> tab. None of them stops the plant.</p>',
       prep: function () {
-        var t = document.querySelector('#tabbar [data-tab="checklists"]');
+        var t = document.querySelector('#tabbar [data-tab="indications"]');
         if (t) t.click();
       }
-    },
-    {
-      sel: '#cklMenu',
-      place: 'left',
-      title: 'Walkthroughs',
-      body: '<p>Interactive procedures that check themselves off the instruments. ' +
-        'Best next step after this tour — hover a step to glow the controls it names.</p>',
-      prep: function () {
-        // Checklists is its own tab since #439, and the list is always on screen since
-        // 2026-08-11 — there is nothing to un-hide, only a tab to select.
-        applyFocus(false, true);
-        var t = document.querySelector('#tabbar [data-tab="checklists"]');
-        if (t && !t.classList.contains('on')) t.click();
-        toggleCklMenu('force');
-      },
-      // If checklists are gated off on this channel, point at the strip instead.
-      fallback: '#toolsCard'
     },
     {
       sel: '#manualBtn',
@@ -10964,8 +11126,9 @@
       sel: '#mainMenuBtn',
       place: 'bottom',
       title: 'Main Menu',
-      body: '<p>Starting condition, guided walkthroughs, and Reset. Starting any of them ' +
-        'restarts the plant from a clean initial state.</p>'
+      body: '<p>Lessons, guided <b>Walkthroughs</b> and Free Play, plus Reset. Walkthroughs ' +
+        'are interactive procedures that check themselves off the instruments — the best next ' +
+        'step after this tour. Starting any of them restarts the plant from a clean initial state.</p>'
     },
     {
       sel: '#scannerPanel',
@@ -11038,6 +11201,7 @@
     if (!$('tourRoot')) return;
     tourIdx = Math.max(0, Math.min(TOUR_STEPS.length - 1, i || 0));
     tourOn = true;
+    pauseSim('user');   /* the tour's last card says "Press Play when ready" — hold the clock, and leave it held (#818) */
     $('tourRoot').hidden = false;
     document.body.classList.add('tour-active');
     renderTour();
@@ -11530,6 +11694,7 @@
   function rebuildPlantUI() {
     heldShown = false;        /* #520 — a rebuilt plant can halt again, and must say so again */
     rebaseAutosave();   /* #816 — no autosave until THIS plant has run */
+    bootUntouched = false;
     // BEFORE chartBuf can take a row: the packed row width and the column of every series
     // come from the incoming plant's profile, and a sample taken against the old index
     // would be silently misfiled rather than empty.
@@ -11598,6 +11763,7 @@
     try { res = service.loadState(state); }
     catch (err) { res = { type: 'error', message: String(err && err.message || err) }; }
     if (res && res.type === 'error') return res.message || 'not a valid save';
+    bootUntouched = false;
     /* WHAT IS RUNNING NOW IS WHAT THE SAVE SAYS (#816 review): an opener/scenario/follow from
      * BEFORE the load used to survive it in ui.*, leaving autosave off for the session and the
      * opener UI stale. Re-derive from the restored instructor; ui.follow re-syncs on render. */
@@ -11636,15 +11802,33 @@
   /* Called on every path that puts a new timeline under the player: boot, rebuildPlantUI, and
    * the commands in REBASE_ON (cmd()). A rewind or a retry resets sim time WITHOUT a rebuild, and
    * a `>` guard against a pre-rewind base then refused every later save (#816 review). */
-  function rebaseAutosave() { asBaseT = plantBaseT = service ? service.simTime : null; }
+  function rebaseAutosave() { asBaseT = plantBaseT = service ? service.simTime : null; asCkKey = ckKeyNow(); }
+  /* The default plant the page boots (and that closing the menu starts running behind it) is a plant
+   * the player never CHOSE. While it is untouched it must not overwrite a save that exists —
+   * closing the menu used to turn "Continue — Startup Part 1, step 5" into "Continue — Free Play,
+   * Mode 1" within 30 s. Cleared by the first command, a rebuild or a load. */
+  var bootUntouched = false, bootWrote = false;   // bootWrote: THIS untouched plant already wrote the slot, so it may keep it fresh
+  var asCkKey = '';   // walkthrough step key at the last (re)build or save — a CHANGE alone is worth saving
+  function ckKeyNow() {
+    var ck = service && service.instructor && service.instructor.checklist;
+    return ck ? ck.procedure_id + '#' + ck.idx + (ck.complete ? 'c' : '') : '';
+  }
   var REBASE_ON = { rewind: 1, start_follow: 1, start_checklist: 1, start_opener: 1, start_scenario: 1, reset: 1 };
   function plantHasRun() { return !!service && plantBaseT != null && service.simTime !== plantBaseT; }
   function autosaveEligible() {
     if (!service || ui.opener || ui.scenario) return false;
     var ins = latest && latest.instructor;
     if (ins && ins.mode === 'scenario') return false;
+    if (bootUntouched && !bootWrote) {
+      /* storage can throw (private window, blocked site data): no readable stored save means none to protect */
+      var stored = null;
+      try { stored = localStorage.getItem(AUTOSAVE_KEY); } catch (e) { stored = null; }
+      if (stored) return false;
+    }
     // DIFFERS, not "is greater": a timeline jump the rebase missed must still save, never block.
-    return asBaseT != null && service.simTime !== asBaseT;
+    // A walkthrough that moved a step or finished with the clock stopped is also worth keeping, or
+    // the menu keeps offering Continue at the step it was on before it was completed.
+    return asBaseT != null && (service.simTime !== asBaseT || ckKeyNow() !== asCkKey);
   }
   function autosave() {
     if (!autosaveEligible()) return false;
@@ -11658,7 +11842,8 @@
         walkthrough: ck && !ck.complete ? { id: ck.procedure_id, step: ck.idx } : null,
         snapshot: snap,
       }));
-      asBaseT = service.simTime;   // nothing new to save until the plant runs again
+      if (bootUntouched) bootWrote = true;
+      asBaseT = service.simTime; asCkKey = ckKeyNow();   // nothing new to save until the plant runs again
       return true;
     } catch (e) { return false; }  // quota, storage disabled, file:// — the sim carries on
   }
@@ -11715,24 +11900,38 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     showToast('State saved — reactor_save.json');
   }
-  function exportCsv() {
+  /* A series' DIMENSION, read off the same `fmt` the chart legend prints with (every dimensioned
+   * series formats through conv(v, '<dim>')), so the export converts exactly where the chart does
+   * and a unit-neutral series (%, rods, MWe) stays bare. */
+  function csvDim(ser) {
+    if (ser.dim) return ser.dim;
+    var m = ser.fmt ? /conv\(\s*v\s*,\s*'(\w+)'\s*\)/.exec(String(ser.fmt)) : null;
+    return m ? m[1] : null;
+  }
+  function buildCsv() {
     /* ONE COLUMN PER TRACE, not per channel (#454). A channel set to 'both' is two traces,
      * so it exports two columns — `id_ind` and `id_phys` — because the export's whole
      * contract is that it carries what the chart is showing. A single-side channel keeps
      * the BARE id it has always had, so an existing worksheet built on `tavg` does not
-     * break; the suffix appears only where there is genuinely a pair to tell apart. */
+     * break; the suffix appears only where there is genuinely a pair to tell apart.
+     * UNITS (#818): a dimensioned column's header carries the unit in the board's CURRENT unit
+     * setting — `tavg (°F)` — and its values are in that unit; they were SI under a bare header. */
     var cols = [];
     prof().series.forEach(function (s) {
       var side = sideOf(s); if (!side) return;
+      var dim = csvDim(s), u = dim ? unit(dim) : '', sfx = u ? ' (' + u + ')' : '';
       if (side === 'both') {
-        cols.push({ ser: s, side: 'ind', name: s.id + '_ind' });
-        cols.push({ ser: s, side: 'phys', name: s.id + '_phys' });
-      } else cols.push({ ser: s, side: side, name: s.id });
+        cols.push({ ser: s, side: 'ind', name: s.id + '_ind' + sfx, dim: dim });
+        cols.push({ ser: s, side: 'phys', name: s.id + '_phys' + sfx, dim: dim });
+      } else cols.push({ ser: s, side: side, name: s.id + sfx, dim: dim });
     });
     var head = ['sim_time'].concat(cols.map(function (c) { return c.name; })).join(',');
     // export what the chart is actually showing (seriesVal), so the CSV and the trace agree
-    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c.ser, b, c.side); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
-    var url = URL.createObjectURL(new Blob([head + '\n' + rows.join('\n')], { type: 'text/csv' }));
+    var rows = chartBuf.map(function (b) { return [b.t.toFixed(2)].concat(cols.map(function (c) { var v = seriesVal(c.ser, b, c.side); if (v != null && c.dim) v = conv(v, c.dim); return (v == null || !isFinite(v)) ? '' : v.toFixed(3); })).join(','); });
+    return head + '\n' + rows.join('\n');
+  }
+  function exportCsv() {
+    var url = URL.createObjectURL(new Blob([buildCsv()], { type: 'text/csv' }));
     var a = document.createElement('a'); a.href = url; a.download = 'reactor_trend.csv'; a.click();
   }
   /* The SOE exports ALONGSIDE the trace CSV (#442) — it is the artifact a classroom
@@ -12198,6 +12397,8 @@
         menuNextLegId: menuNextLegId,
         legName: function (id) { return legName(ui.engineKey, { id: id, title: id }); },
         autosave: autosave,
+        buildCsv: buildCsv,
+        cmd: cmd,   /* #818 — a PLAYER command (service.handleCommand directly would skip the untouched-boot clear) */
         readAutosave: readAutosave,
       };
     }
@@ -12267,6 +12468,7 @@
     buildPlantDisplay();
     service.selectPlant(engId(startKey), ui.initState, startEng.dv);   // initial snapshot → render (defaults engaged in-stack)
     rebaseAutosave();   // #816 review: boot skips rebuildPlantUI, so without this the boot plant never autosaved
+    bootUntouched = true; bootWrote = false;
     diagReset('init', { engine_key: startKey, initial_state: ui.initState });
     buildFailures();
     buildAutomate();
@@ -12298,7 +12500,8 @@
     // does not render at all (paneVisible), so `?tab=physics` opened a tab that stayed
     // blank and looked like a broken panel rather than a broken link. `sim` stays as the
     // legacy alias for `operate`.
-    var tbm = /[?&]tab=(failures|graph|indications|physics|checklists|operate|sim|settings|training)/.exec(location.search || '');
+    var loadMenuMode = null;   // the Main Menu category the on-load open lands on (#818)
+    var tbm = /[?&]tab=(failures|graph|indications|physics|checklists|walkthroughs|operate|sim|settings|training)/.exec(location.search || '');
     if (tbm) {
       // Three of these no longer name a TAB (#439) and route to what replaced them:
       // `training` and `operate`/`sim` to the Plant & Mission window, `settings` to the
@@ -12306,6 +12509,9 @@
       // screenshots — a dead deep link is a broken bug report, not a tidy-up.
       var a = tbm[1];
       if (a === 'training' || a === 'operate' || a === 'sim') openMissionSelect();
+      // the Walkthroughs tab is gone (#818): its old links open the list where it lives now
+      // the on-load open below would reset a category opened here, so it carries it instead
+      else if (a === 'checklists' || a === 'walkthroughs') loadMenuMode = 'walkthroughs';
       else if (a === 'settings') openModal('settingsOverlay');
       else {
         var tabId = a === 'graph' ? 'indications' : a;      // `graph` is the old Indications
@@ -12359,7 +12565,7 @@
      * There is now no bypass at all, which is what "always" means. Anything automated —
      * a gate, a dev deep link — dismisses the window rather than being exempted from it,
      * so the thing under test is the thing players get. */
-    openMissionSelect();
+    openMissionSelect(loadMenuMode);
     missionTipArmed = true;            // the NEXT close is the one that needs the pointer
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

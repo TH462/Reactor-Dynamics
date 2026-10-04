@@ -229,6 +229,7 @@
   var DERIVED_FROM = {
     subcooling_margin: ['primary_pressure', 'tavg', 'core_exit_temp'],
     pzr_level_dev:     ['pzr_level', 'tavg'],
+    tavg_tref_dev:     ['tavg'],
     tavg_rate:         ['tavg'],
     loop_delta_t:      ['thot', 'tcold'],
     otdt_setpoint:     ['tavg', 'primary_pressure'],
@@ -251,6 +252,7 @@
     this.reading.porv_indicator = (extras && extras.porv_commanded_open) ? 'open' : 'closed';
     this.reading.subcooling_margin = T_sat(this.reading.primary_pressure) - this.reading.tavg;
     this.reading.pzr_level_dev = this._levelDev(extras);
+    this._trefDev(extras);
     this.reading.rod_limit_margin = this._rodLimitMargin(extras);
     this._deltaTChannels(extras);
     if (this.specs.tavg_rate) this.reading.tavg_rate = 0;   // #375: a fresh plant has no trend
@@ -278,6 +280,19 @@
   // duplication (T_sat) which is enough. `tavg_fp` is the full-power Tavg the program is
   // anchored to — computed at init rather than a config constant, so the engine stashes it
   // on state and hands it over in extras.
+  // Tavg AGAINST ITS PROGRAM (#818). The host plant hands in its own reference temperature
+  // (extras.tref_c — PWR2's sliding Tavg program off turbine load, the line its dump and rod
+  // controllers hold to); the deviation is taken against the INDICATED Tavg (HR1), so a
+  // failed Tavg transmitter corrupts it exactly as it corrupts the rods. A plant that hands
+  // in nothing gets no reading (the retired engine).
+  PWRInstruments.prototype._trefDev = function (extras) {
+    var tr = (extras || {}).tref_c;
+    if (typeof tr !== 'number' || !isFinite(tr)) return;
+    this.reading.tref = tr;
+    var spec = this.specs.tavg_tref_dev, dev = this.reading.tavg - tr;
+    this.reading.tavg_tref_dev = spec ? clip(dev, spec.range[0], spec.range[1]) : dev;
+  };
+
   PWRInstruments.prototype._levelDev = function (extras) {
     // levelPROGRAM, not levelBase (#289): above the program ceiling the two are different
     // lines on purpose, and this gauge reports the CONTROL deviation — level against what the
@@ -461,6 +476,7 @@
 
     // Level deviation from program (#262) — the inventory cue. See _levelDev.
     this.reading.pzr_level_dev = this._levelDev(extras);
+    this._trefDev(extras);
     this.reading.rod_limit_margin = this._rodLimitMargin(extras);
     this._deltaTChannels(extras);
 
@@ -475,7 +491,33 @@
       var rRaw = dt > 0 ? (tNow - tPrev) * 3600 / dt : 0;
       if (this.lagged.tavg_rate == null) this.lagged.tavg_rate = 0;
       this.lagged.tavg_rate += (dt / ((rSpec.rate_tau || 45) + dt)) * (rRaw - this.lagged.tavg_rate);
-      this.reading.tavg_rate = clip(this.lagged.tavg_rate, rSpec.range[0], rSpec.range[1]);
+      var rOut = this.lagged.tavg_rate;
+      // SUSTAINED AND STILL HAPPENING (#818). The 600 s filter alone kept reading the 26 degF
+      // post-trip settle for ~6 plant-minutes after Tavg went flat (MEASURED on fe99ea88:
+      // -134 degF/hr at 3m33 with Tavg flat, COOLDOWN RATE HI lit to ~6m33). A second, fast
+      // filter (rate_tau_fast) says what Tavg is doing NOW; the reading is the SMALLER-magnitude
+      // of the two when they agree in sign, else 0. So a rate reads high only while it is both
+      // sustained (slow) and current (fast): a genuine cooldown reads as before, a finished
+      // one reads ~0 within a few fast time-constants. UNVERIFIED as a real-plant computation —
+      // no document in the corpus describes how a plant computer forms this rate. What IS
+      // sourced is that a trip is not a cooldown-rate event: WTSM 3.2 Table 3.2-10
+      // (ML11223A213) lists "Reactor trip from 100% power" (80 cycles) as a design transient
+      // separate from "Cooldown at <100 degF/hr" (200 cycles).
+      if (rSpec.rate_tau_fast) {
+        // two poles: the fast rate differentiates a SMOOTHED Tavg (same tau), so the noise
+        // floor the one-pole version showed (a steady -61 degF/hr cooldown flickering to
+        // -16 degF/hr, MEASURED) does not reach the reading
+        var aF = dt / (rSpec.rate_tau_fast + dt);
+        var smPrev = this.lagged.tavg_rate_sm != null ? this.lagged.tavg_rate_sm : tNow;
+        var sm = smPrev + aF * (tNow - smPrev);
+        this.lagged.tavg_rate_sm = sm;
+        var rSm = dt > 0 ? (sm - smPrev) * 3600 / dt : 0;
+        if (this.lagged.tavg_rate_fast == null) this.lagged.tavg_rate_fast = 0;
+        this.lagged.tavg_rate_fast += aF * (rSm - this.lagged.tavg_rate_fast);
+        var rF = this.lagged.tavg_rate_fast;
+        rOut = (rOut > 0) !== (rF > 0) ? 0 : (Math.abs(rF) < Math.abs(rOut) ? rF : rOut);
+      }
+      this.reading.tavg_rate = clip(rOut, rSpec.range[0], rSpec.range[1]);
     }
 
     this._copyStatus(extras);

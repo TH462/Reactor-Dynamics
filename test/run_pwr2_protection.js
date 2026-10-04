@@ -1073,6 +1073,27 @@ function runSuite(P, rec, quiet) {
   ckT('with no SR reading the row is UNAVAILABLE and P-6 unmet, never a silent zero',
       fn(rU, 'sr_high_flux').available === false && rU.p6_met === false, '');
 
+  /* ---- P-4 + LOW TAVG FEEDWATER ISOLATION (#818) ---------------------------------------- */
+  head('P-4 + LOW TAVG FWI  [WTSM 12.3.6.1: low Tavg coincident with reactor trip; 547 + 7 = 554 degF]');
+  var spC = P.p4FwiSetpointC();
+  ckT('setpoint is no-load 547 degF + the sourced 7 degF = 554 degF (290.0 degC)',
+      Math.abs((spC * 9 / 5 + 32) - 554.0) < 0.05, (spC * 9 / 5 + 32).toFixed(2) + ' degF');
+  var cold = withReading('tavg_c', spC - 1);
+  var pU = atPower(), rU0 = ride(pU, cold, 1);
+  ckT('untripped plant below the setpoint: NO isolation (P-4 not met)',
+      rU0.fwi_lo_tavg === false && rU0.afas_mdafw === false, '');
+  var pT = atPower(); pT.reactor_trip = true;
+  var rT = ride(pT, withReading('tavg_c', spC + 1), 1);
+  ckT('tripped plant above the setpoint: NO isolation', rT.fwi_lo_tavg === false, '');
+  rT = ride(pT, cold, 1);
+  ckT('tripped plant below the setpoint: isolation stands, and both AFW pumps start (declared)',
+      rT.fwi_lo_tavg === true && rT.afas_mdafw === true && rT.afas_tdafw === true &&
+      rT.afas_mdafw_cause === 'fwi_lo_tavg', '');
+  ckT('it is NOT the hi-hi latch (no fwi, so no turbine-trip-on-level cause)', rT.fwi === false, '');
+  rT = ride(pT, withReading('tavg_c', spC + 1), 1);
+  ckT('UNLATCHED: Tavg back above the setpoint clears the signal (WTSM 12.2 P-4 seals in SI/P-14 only)',
+      rT.fwi_lo_tavg === false, '');
+
   /* ---- REFUSALS ---------------------------------------------------------------------------- */
   head('REFUSALS  [this layer will not report a plant un-tripped on a reading it never had]');
   ['pressure_mpa', 'power_frac', 'flow_frac'].forEach(function (k) {
@@ -1091,6 +1112,13 @@ runSuite(P, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  /* #818 P-4 + low Tavg feedwater isolation */
+  ['the P-4 low-Tavg FWI ignores the reactor trip (isolates an untripped plant)',
+   'pr.fwi_lo_tavg = !!(pr.reactor_trip && tavgOk', 'pr.fwi_lo_tavg = !!(true && tavgOk'],
+  ['the P-4 low-Tavg FWI offset is not the sourced 7 degF',
+   'offset_f: 7.0,', 'offset_f: 5.4,'],
+  ['the P-4 low-Tavg FWI no longer starts AFW',
+   "pr.afas_mdafw = true; pr.afas_mdafw_cause = 'fwi_lo_tavg';", "pr.afas_mdafw_cause = 'fwi_lo_tavg';"],
   /* P-6 and the source-range trip (OWNER RULING 2026-09-26, "B") */
   ['the SR high flux row is gone (the source range can never trip)',
    "{ id: 'sr_high_flux', name: 'Source range high flux', kind: 'rps', dir: +1,",

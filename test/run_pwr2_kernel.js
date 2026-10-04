@@ -860,14 +860,18 @@ var MUTS = [
   ['the strip is reverted — PWR2 takes the retired plant\'s interception fields again', 'SH',
    "            out[id] = def.type === 'command_override'\n" +
    "              ? { type: def.type, category: def.category, display: def.display,\n" +
-   "                  severity_meta: def.severity_meta }\n" +
+   "                  severity_meta: def.severity_meta,\n" +
+   "                  /* the Inject Failure tab's player copy rides through the strip (#818) */\n" +
+   "                  blurb: def.blurb, armed_text: def.armed_text, fired_text: def.fired_text }\n" +
    "              : def;",
    '            out[id] = def;', { grp: 'D' }],
 
+  /* anchors re-taken 2026-10-02 (#818 review): #818 added the player copy (blurb, armed/fired
+   * text) to the strip, and both of these went ANCHOR MISS — blind — at e1c289c3 */
   ['the strip drops the MENU fields too (display gone, the Failures tab goes blank)', 'SH',
    '              ? { type: def.type, category: def.category, display: def.display,\n' +
-   '                  severity_meta: def.severity_meta }',
-   '              ? { type: def.type }', { grp: 'P' }],
+   '                  severity_meta: def.severity_meta,',
+   '              ? { type: def.type,', { grp: 'P' }],
 
   ['the kernel intercepts on TYPE alone, ignoring the missing intercepts list', 'K',
    "      if (def.type !== 'command_override' || !def.intercepts || def.intercepts.indexOf(cmd.action) === -1) continue;",

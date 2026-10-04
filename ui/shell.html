@@ -41,7 +41,7 @@
 
       <!-- Bottom row: strip chart + alarm panel -->
       <div class="bottom-row">
-        <div class="strip-chart" data-scanner-hint="Strip Chart — multi-parameter trend. Tick a parameter on the Indications or Physics tab to plot it; scrub to replay."
+        <div class="strip-chart" data-scanner-hint="Strip Chart — multi-parameter trend. Tick a parameter on the Indications tab to plot it; scrub to replay."
               data-scanner-detail="Several parameters on one time base, so you can see cause and effect rather than one number at a time. Anything the plant indicates can go on it, and so can the true-state quantities on the Physics tab — the checkbox beside each value is what puts it there, which means you can plot a channel against the quantity it is supposed to be measuring. The window is a Settings-tab control; the plot keeps more history than it displays, so widening it reveals trend already recorded. In Teaching mode the traces come from physics; in Realistic they come from the instruments, so a failed sensor lies on the chart exactly as it lies on the board.">
           <!-- THE CHART'S OWN CONTROLS (#439, spec §8). Window and export lived in the
                Settings tab; Settings is now a modal and modals pause, and pausing the
@@ -246,8 +246,7 @@
                "Make the instructor block a tab. Make it the leftmost tab.")*. It was a
                separate card above this strip, in a two-card accordion where expanding one
                collapsed the other. One strip, one visible pane, no accordion. -->
-          <button class="on" data-tab="instructor">Instructor</button
-          ><button data-tab="checklists">Walkthroughs</button>
+          <button class="on" data-tab="instructor">Instructor</button>
           <button data-tab="indications">Indications</button>
           <button data-tab="failures">Inject Failure</button>
         </div>
@@ -307,6 +306,9 @@
         <!-- Tools Block (§10) — expanded by default; collapses to its tab strip -->
           <!-- Inject Failure — built by app.js from M4's catalog -->
           <div class="tabpane" data-pane="failures">
+            <!-- #818 review (Hard Rule 1): the Armed / Fired lines read the PLANT, so the pane says
+                 whose view it is. The operator's board shows only the indications. -->
+            <div class="fail-console-note" id="failConsoleNote">Instructor's console: what you injected, and whether it has acted in the plant itself. The board shows only the indications.</div>
             <div id="failList"></div>
             <div class="advanced-exp" id="advExpToggle" data-scanner-hint="Advanced instrument failure — fail any single instrument (stuck, drifting, noisy, or dead) while the plant behind it stays real. Indications and protection read the channel, not the physics (HR1)."
               data-scanner-detail="The plant keeps behaving correctly; only the reading changes. Use it to test how well you know the couplings: pressure and temperature move together, pressurizer level tracks Tavg, the steam generator is the only heat sink. Those relationships keep holding when one channel stops, which is how you find the bad channel.">▸ Advanced instrument failure (instrument × mode × value)</div>
@@ -377,23 +379,9 @@
                series formatter's "3 %", and the rows are already gated by run_inspect.
                #physicsPane is gone; buildPhysics/renderPhysics are no-ops kept so the three
                call sites do not need hunting down. -->
-          <!-- Checklists (default tab, #439). REFERENCE class: it grades the live plant
-               as you operate, so it must never pause. Ranked above the Manual on purpose
-               — the manual serves depth-seekers, the average player wants a procedure to
-               follow (spec §9). -->
-          <div class="tabpane" data-pane="checklists">
-            <!-- WALKTHROUGHS (owner, 2026-09-08, #660 items 14-15): this tab is the LIST; a running
-                 walkthrough is shown in the Instructor tab, one step at a time. The pane, menu
-                 and data attributes keep their `ckl` ids — four gates address them by id. -->
-            <div class="ckl-picker" id="instrCklRow">
-              <div class="phys-note">To start up the plant, begin with the first walkthrough and work
-                down the list; each one offers the next when it finishes. It runs in the <b>Instructor</b> tab one
-                step at a time: each step checks itself off the instruments, and <b>Continue</b>
-                lights up when the step is done.</div>
-              <div class="ckl-menu" id="cklMenu" data-scanner-hint="Walkthroughs — pick a procedure and it runs one step at a time in the Instructor tab; each step checks itself off the instruments while you operate."
-                  data-scanner-detail="The walkthrough watches the plant rather than trusting you: a step marks itself complete when the instruments say the action took effect. Hovering a step glows the controls and indications it names on the board, which is the fastest way to find a control you have not used before. The list is always in the same order, so a procedure is where you last saw it. A running walkthrough stays where it is when you leave this tab and come back."></div>
-            </div>
-          </div>
+          <!-- The Walkthroughs tab is gone *(OWNER RULING, 2026-10-01, #818: "remove the walkthrough
+               tab since main menu is [now] where you go to pick the walkthrough")*. The list is
+               Main Menu -> Walkthroughs; the RUNNING walkthrough stays in the Instructor tab (#cklRun). -->
           <input type="file" id="loadFile" accept="application/json" style="display:none">
         </div>
       </div>
@@ -624,10 +612,9 @@
             <div class="help-sec">
               <h4>Where to start</h4>
               <p><b>Play</b> starts the clock — the ▶ button flashes whenever the plant is stopped. <b>F11</b> goes fullscreen, which suits the board.<br>
-              <b>Instructor</b> (right column) — free-play coaching and, later, guided voices. Use <b>−</b> to minimize it.<br>
-              <b>Walkthroughs</b> (first tab) — interactive procedures that check themselves off the instruments.<br>
+              <b>Instructor</b> (right column) — free-play coaching and, later, guided voices.<br>
               <b>Manual</b> — full operator reference and written procedures.<br>
-              <b>Main Menu</b> (in the tools row, beside Settings) — starting condition, courses and reset.<br>
+              <b>Main Menu</b> (in the tools row, beside Settings) — starting condition, Walkthroughs (interactive procedures that check themselves off the instruments), Lessons and reset.<br>
               <b>System Scanner</b> (the line under the board) — hover anything for what it is and how to use it.</p>
             </div>
             <div class="help-sec">

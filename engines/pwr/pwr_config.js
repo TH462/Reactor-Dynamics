@@ -2734,6 +2734,11 @@
       // Not in SOURCE, so it draws no PRNG number and the cross-step noise stream is
       // unchanged (the appended-instrument rule).
       pzr_level_dev:     { lag: 0,   noise: 0,     range: [-40, 40], derived: true },
+      // Tavg - Tref (#818): indicated Tavg against the host plant's Tavg program (extras.tref_c).
+      tavg_tref_dev:     { lag: 0,   noise: 0,     range: [-60, 60], derived: true },
+      // Tref itself (#818): the Tavg program off turbine load, published beside the deviation so
+      // it can be trended. Not a sensor and not in SOURCE: no PRNG draw (appended-instrument rule).
+      tref:              { lag: 0,   noise: 0,     range: [250, 350], derived: true },
       // Control-bank steps remaining ABOVE the rod insertion limit — the authority-remaining
       // signal the ROD LIMIT LO annunciator reads (#306). Range top is `rods.max_steps`, which
       // is also the value the engine reports when the limit does not apply; `run_m4` pins the
@@ -2755,7 +2760,9 @@
       // ~40 s — crossing time scales inversely with severity, which is the right
       // shape for a rate alarm. Not in SOURCE, so it draws no PRNG number and the
       // cross-step noise stream is unchanged (the appended-instrument rule).
-      tavg_rate:         { lag: 0,   noise: 0,     range: [-300, 300], rate_tau: 600, derived: true },
+      // rate_tau_fast (#818): the 'still happening' filter — see pwr_instruments.js. 60 s, the
+      // same time constant as pwr2_engine.s own tavg_rate_c_per_hr gauge. [tune]
+      tavg_rate:         { lag: 0,   noise: 0,     range: [-300, 300], rate_tau: 600, rate_tau_fast: 30, derived: true },
       // ------------------------------------------------ OTΔT / OPΔT channels (#311)
       // The loop-ΔT protection set. All five are DERIVED from indicated `thot`,
       // `tcold`, `tavg` and `primary_pressure`, so each inherits those channels' lag

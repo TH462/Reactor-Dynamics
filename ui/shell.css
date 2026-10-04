@@ -847,9 +847,14 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 /* ===================================================== right col: sim ctrls */
 .sim-controls {
   flex: 0 0 auto; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 8px 10px; display: flex; flex-direction: column; gap: 8px;
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; position: relative;
 }
-.sim-top { display: flex; align-items: center; justify-content: space-between; }
+.sim-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; column-gap: 8px; }
+/* THE CLOCK WRAPS, IT IS NEVER OVERDRAWN (2026-10-02, #819 layman S-8). With TEST BUILD showing
+   (dev/preview channels) the brand is 303 px in a 338 px row at a 1600 px window, and `.brand`'s
+   min-width:0 let it run 53 px under the clock ("TEST BUILD 0:18"). Wrapping drops the clock to
+   its own line, right-aligned, only when the row cannot hold both; verify_flags_ui pins it. */
+.sim-top > .clock { margin-left: auto; white-space: nowrap; }
 .logo { font-weight: 800; letter-spacing: .01em; font-size: 15px; white-space: nowrap;
   color: var(--text); text-decoration: none; cursor: pointer; }
 .logo:hover { color: var(--text); opacity: 0.82; text-decoration: none; }
@@ -1046,8 +1051,9 @@ html[data-channel="dev"] .logo-test {
    Its own strip above the text (padding-top 13px) rather than inline, so the arrow can never
    land on top of the centred sentence at a narrow panel width. */
 .mm-tip {
-  position: relative; margin: 2px 0 4px; padding: 13px 8px 4px;
-  background: rgba(91, 179, 196, .12); border: 1px solid var(--normal); border-radius: 5px;
+  /* AN OVERLAY, NOT A ROW (#818): in flow it pushed the whole side panel down ~48 px for 6 s. */
+  position: absolute; left: 10px; right: 10px; z-index: 40; margin: 2px 0 0; padding: 13px 8px 4px;
+  background: linear-gradient(rgba(91, 179, 196, .12), rgba(91, 179, 196, .12)), var(--bg-elevated); border: 1px solid var(--normal); border-radius: 5px;
   color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
   animation: mmTipIn .18s ease-out;
 }
@@ -1376,6 +1382,7 @@ html[data-channel="dev"] .logo-test {
 .tabbar { display: flex; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .tabbar button { flex: 1 1 0; background: transparent; border: none; color: var(--text-2);
   padding: 8px 4px; font-size: 11px; cursor: pointer; border-bottom: 2px solid transparent; }
+.tabbar button[hidden] { display: none; }
 .tabbar button:hover { color: var(--text); }
 .tabbar button.on { color: var(--text); border-bottom-color: var(--normal); }
 /* fixed height (fills the tools box); overflowing tab content scrolls here */
@@ -1648,11 +1655,41 @@ select.num-input { width: auto; }
 .dim-info { color: #2c343d; }
 .nv.bool-off { color: var(--text-2); }
 
-/* failures-tab inject toggle */
-.fail-toggle { background: var(--bg-elevated); color: var(--text-2); border: 1px solid var(--border);
-  border-radius: 4px; padding: 2px 8px; font-size: 10px; cursor: pointer; flex: 0 0 auto; min-width: 48px; }
-.fail-toggle:hover { color: var(--text); }
+/* failures-tab inject toggle. #818: the grey-on-grey button read as DISABLED — full-strength
+   text and an accent border so it reads as a live control, the same weight as a board button. */
+.fail-toggle { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--normal);
+  border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; cursor: pointer; flex: 0 0 auto; min-width: 54px; }
+.fail-toggle:hover { background: rgba(34,211,238,.14); }
+.fail-toggle:focus-visible { outline: 2px solid var(--normal); outline-offset: 1px; }
 .fail-row.active .fail-toggle { background: var(--critical); color: #fff; border-color: var(--critical); }
+/* #818: one plain line on what the failure does, and its armed/fired state */
+.fail-console-note { font-size: 11px; line-height: 1.35; color: var(--text-2); margin: 0 0 6px; padding: 4px 6px; border-left: 2px solid var(--border, #444); }
+.fail-desc { font-size: 11px; line-height: 1.35; color: var(--text-2); margin: 3px 0 0 62px; }
+.fail-arm { font-size: 11px; line-height: 1.35; margin: 3px 0 0 62px; }
+.fail-arm.armed { color: #e0b44a; }
+.fail-arm.fired { color: var(--critical); }
+
+/* #818: the free-play debrief in the Instructor tab, and its one toast */
+.coach { font-size: 12px; line-height: 1.45; color: var(--text); font-style: normal; }
+.coach-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.coach-title { font-weight: 600; }
+.coach-since { font-size: 11px; color: var(--text-2); }
+.coach-line { margin: 0 0 6px; }
+.coach-auto { color: var(--text-2); }
+.coach-watch .coach-lead { display: block; color: var(--text-2); margin-bottom: 2px; }
+.coach-watch ul { margin: 0; padding-left: 1.1em; }
+.coach-watch li { margin-bottom: 1px; }
+.coach-watch .cw-t { font-size: 11px; color: var(--text-2); }
+.coach-watch .cw-rising, .coach-watch .cw-falling { color: var(--text); }
+.coach-status.settled { color: var(--normal); }
+.coach-btns { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.coach-toast { position: fixed; z-index: 119; display: flex; align-items: center; gap: 8px; box-sizing: border-box;
+  background: var(--bg-elevated); border: 1px solid var(--normal); border-radius: 6px;
+  color: var(--text); font-size: 12px; padding: 7px 8px 7px 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+.coach-toast.show { opacity: 1; pointer-events: auto; }
+.coach-toast-x { background: none; border: 0; color: var(--text-2); font-size: 16px; cursor: pointer; padding: 0 4px; }
+.coach-toast-x:hover { color: var(--text); }
 
 /* ============================================================================
  * TABBED CONTROL STRIP — the four control sections are stacked behind a tab bar
@@ -2245,6 +2282,18 @@ select.num-input { width: auto; }
   outline-offset: 2px;
   box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.30);
   border-radius: 6px; position: relative; z-index: 4;
+  /* SLOW BREATH, BRIGHTNESS ONLY *(OWNER, 2026-10-02: "i also want the dashed action glow rings to
+     slowly pulse. they can have a base brightness to them so something of the glow is always
+     visible"; then "I meant both, it's hard for people to find what they are supposed to press or
+     check")*. Supersedes the 2026-09-27 "dashed and still" for this ring. 3.2 s against the press
+     glow's 1.2 s, and the dash and 1.5 px width stay, so "check" still reads apart from "press".
+     Never below half brightness. Runs under reduced motion too, as the owner asked (declared in
+     verify_reduced_motion). */
+  animation: cklCheckPulse 3.2s ease-in-out infinite;
+}
+@keyframes cklCheckPulse {
+  0%, 100% { outline-color: rgba(90, 240, 255, 0.50); box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.18); }
+  50%      { outline-color: rgba(90, 240, 255, 0.95); box-shadow: 0 0 12px 3px rgba(90, 240, 255, 0.34); }
 }
 /* THE CARD THAT HOLDS A LIT CONTROL *(OWNER, 2026-09-27, #809 item 3: "Lets make a dimmer glow thats
    for the panel that contains the control. keep the brighter solid glow for indications.")*. So the
@@ -2426,16 +2475,7 @@ select.num-input { width: auto; }
 .chat-ff { text-align: center; color: var(--caution); font-size: 11px; font-style: italic; }
 
 /* ============================================================ auto-checklists (Path 3)
-   Picker lives in Operate; the live checklist still renders in the Instructor card. */
-.ckl-picker { margin: 2px 0 4px; }
-.ckl-menu { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 40vh; overflow-y: auto; }
-.ckl-menu[hidden] { display: none; }
-.ckl-menu button {
-  text-align: left; background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text); padding: 6px 9px; font-size: 12.5px; cursor: pointer;
-}
-.ckl-menu button:hover { border-color: var(--stopped); }
-.ckl-cat { display: inline-block; min-width: 62px; margin-right: 6px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+   The list is Main Menu -> Walkthroughs (#818); the live checklist renders in the Instructor card. */
 .ckl-log { display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto; padding-right: 4px; margin-bottom: 8px; }
 /* ...EXCEPT WHILE A CHECKLIST IS RUNNING, where it must reach the bottom of the column
    *(OWNER, 2026-09-02 playtest, M5->3 item 4: "The scroll window for the tabs should go all the
@@ -2608,6 +2648,28 @@ select.num-input { width: auto; }
   display: block; color: var(--muted);
   font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 3px;
 }
+/* CONTINUE IS ALWAYS ON SCREEN (#818). The Rewind / Continue row stays the LAST thing in the step
+   (#687 item 3: under the text) but is pinned to the floor of the scrolling #cklLog, so a long step
+   scrolls its TEXT behind the row instead of scrolling the button out of sight. Opaque, on the
+   step card's own ground, so text passing under it does not show through. */
+.ckl-step.ckl-active .ckl-ack-row {
+  position: sticky; bottom: 0; z-index: 2;
+  background: var(--bg-elevated); margin: 5px 0 0; padding: 4px 0 2px;
+}
+/* ...and the scroll cue: a fade above the pinned row plus a "scroll for more" label, shown only
+   while text is hidden below the fold (`.ckl-more`, set by cklMoreCue in ui/app.js). */
+.ckl-more-cue { display: none; margin-left: auto; font-size: 11px; color: var(--muted); }
+.ckl-log.ckl-more .ckl-active .ckl-more-cue { display: inline; }
+.ckl-log.ckl-more .ckl-active .ckl-ack-row::before {
+  content: ''; position: absolute; left: 0; right: 0; top: -22px; height: 22px; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg-elevated));
+}
+/* "predicted by step N" on an alarm tile (#818): small and quiet — the tile keeps its severity colour,
+   this only says the walkthrough told the player it was coming. */
+.alarm-pred { display: inline-block; font-size: 10px; padding: 0 5px; margin-left: 2px; border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-2); white-space: nowrap; }
+/* A VISIBLE SCROLLBAR. Measured 0 px wide in the review: overlay scrollbars drew nothing at rest. */
+.ckl-log { scrollbar-width: thin; scrollbar-color: var(--muted) transparent; }
 /* THE LEG'S CAUTIONS, DRAWN DURING THE RUN (#653 product defect 1). Amber, because they are
    cautions and the board's own amber is what a player has been taught to read that way — the
    same idiom as .m-caution on the browse card, so the two screens agree. The summary line is a
@@ -2731,20 +2793,8 @@ select.num-input { width: auto; }
 .set-body p { font-size: 13px; line-height: 1.55; color: var(--text-2); margin: 0 0 10px; }
 .set-body .scan-hint { color: var(--muted); }
 
-/* Checklists — its own tab since #439 (spec §9: it ranks above the Manual, and it is
-   a live operating aid, so it never pauses). */
-.ckl-picker[hidden] { display: none; }
 .ckl-busy { color: var(--muted); font-style: italic; }
 
-/* ---- relevance ordering (#443, spec §9): SORT, DO NOT FILTER -----------------
-   A demoted procedure keeps its place in the list and states its gating condition.
-   That is the whole value of demoting rather than hiding: the demotion becomes
-   instruction, and a player who saw a checklist yesterday can still find it. */
-.ckl-gate {
-  display: block; font-size: 10px; color: var(--muted); font-style: italic;
-  margin-top: 1px;
-}
-.ckl-gated { opacity: .72; }
 .ckl-later { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 4px; }
 .ckl-later > summary {
   font-size: 11px; color: var(--muted); cursor: pointer; padding: 2px 0;
@@ -2806,7 +2856,10 @@ select.num-input { width: auto; }
 /* ---- reset, in the session footer of the Plant & Mission window (#443) ---- */
 .mp-session { flex: 0 0 auto; padding: 10px 14px 12px; border-top: 1px solid var(--border); }
 .mp-reset { margin-top: 8px; }
-.mp-reset.mp-reset-armed { border-color: var(--caution); color: var(--caution); }
+/* the restart confirm (#818): the sentence and two real buttons, no timer, nothing that grows */
+.mp-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--caution); border-radius: 6px; background: rgba(245,158,11,.08); color: var(--text-1, inherit); font-size: 13px; }
+.mp-confirm > span { flex: 1 1 220px; }
+.mp-confirm .mp-confirm-go { border-color: var(--caution); color: var(--caution); }
 
 /* ---- coach marks (#443): a dot that waits, and retires on first use -------- */
 .unvisited { position: relative; }
@@ -3143,35 +3196,6 @@ select.num-input { width: auto; }
 #instructorCard.wt-headerless .instr-body > #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
 #instructorCard.wt-headerless .instr-body > #instrLog { flex: 0 1 auto; }
 
-/* THE CHECKLISTS PANE, same treatment, same reason (#612, owner playtest 2026-09-03: "the
-   checklist scroll window keeps bouncing to the top and back to the step" and "the right column
-   scroll window should go to the bottom of the column. There is currently an unused black space
-   below it.").
-
-   #607 moved the RUNNING checklist out of the instructor pane and into this one, which is a
-   plain content-sized `.tabpane` — so it inherited neither half of the rule above. Two
-   consequences, and the owner reported both as separate bugs:
-
-     1. TWO NESTED SCROLLERS. `.tab-body` is `overflow-y: auto` and scrolled the whole pane while
-        `.ckl-log` scrolled inside it at its 48vh cap. `scrollIntoView` scrolls every scrollable
-        ancestor, so a step advance moved both, and #605's save/restore covers the log alone —
-        the outer one snapped to the top. Hence "to the top and back to the step".
-     2. DEAD SPACE. Content-sized means the pane stops where its content stops. Measured at
-        1600x950: pane bottom y=724 against a 950 px viewport, 226 px of unused black below it,
-        with the log capped at 456 px.
-
-   Giving the pane the height makes `.ckl-log` the ONLY scroller and lets it reach the bottom of
-   the column, which is one fix for both reports. `.ckl-mode` is set on .tab-body by selectTab,
-   exactly as `.instr-mode` is, so this does not depend on :has(). The identical construct is the
-   identical scrollport risk (#723) — clamp it too. */
-.tab-body.ckl-mode { overflow: hidden; overflow: clip; display: flex; flex-direction: column; }
-.tabpane[data-pane="checklists"] { flex-direction: column; min-height: 0; }
-.tabpane[data-pane="checklists"].on { display: flex; flex: 1 1 auto; min-height: 0; }
-.tabpane[data-pane="checklists"] #cklRun { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-/* The 48vh cap is right everywhere .ckl-log is content-sized; inside the running host it is
-   what stopped the log filling the column, so it is lifted HERE ONLY. */
-.tabpane[data-pane="checklists"] #cklRun .ckl-log { flex: 1 1 0; min-height: 0; max-height: none; }
-
 /* THE LOG. `flex: 1 1 0` with `min-height: 0` is what makes it the scrolling element
    rather than growing the pane — without the min-height a flex child refuses to shrink
    below its content and the scrollbar silently moves to an ancestor. */
@@ -3402,13 +3426,24 @@ select.num-input { width: auto; }
      ⚠ `.ckl-step-glow` IS A BOARD-SURFACE CLASS WEARING A CHECKLIST PREFIX. It is applied through
      `revealControl` to board TILES, and since #727 to the trip-block popover rows as well — it is
      not part of the walkthrough panel's own `.ckl-*` styling. Do not re-split it on the prefix. */
+  /* THE DASHED PRESS RING BREATHES SLOWLY *(OWNER, 2026-10-02: "i also want the dashed action glow
+     rings to slowly pulse. they can have a base brightness to them so something of the glow is always
+     visible" — confirmed as the PRESS ring, which is dashed only under this media query)*. A DECLARED
+     EXCEPTION to "nothing moves under reduced motion" (#740): colour/brightness only, never size or
+     position, 3.2 s a cycle, never darker than half brightness. Geometry (3 px dashed, offset 2 px)
+     is unchanged, so the #740 shape-distinctness claim still holds. verify_reduced_motion names it. */
   .ckl-step-glow {
-    animation: none;
+    animation: cklDashPulse 3.2s ease-in-out infinite;
     outline: 3px dashed rgba(90, 240, 255, 0.95);
     outline-offset: 2px;
     box-shadow: none;
   }
+  @keyframes cklDashPulse {
+    0%, 100% { outline-color: rgba(90, 240, 255, 0.50); }
+    50%      { outline-color: rgba(90, 240, 255, 0.95); }
+  }
   .ckl-step-glow.ckl-step-done {
+    animation: none;
     outline-width: 1px;
     box-shadow: none;
   }

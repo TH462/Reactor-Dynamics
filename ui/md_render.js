@@ -30,7 +30,11 @@
   }
 
   RD.mdToHtml = function (md) {
-    var lines = String(md == null ? '' : md).replace(/\r\n?/g, '\n').split('\n');
+    // HTML comments (test markers, the digest manifest) are maintainer text: drop them
+    // outside code fences rather than escaping them into visible paragraphs (#818).
+    var src = String(md == null ? '' : md).replace(/\r\n?/g, '\n').split(/(^```[^\n]*\n[\s\S]*?^```)/m)
+      .map(function (seg, k) { return k % 2 ? seg : seg.replace(/<!--[\s\S]*?-->/g, ''); }).join('');
+    var lines = src.split('\n');
     var out = [], para = [], lists = [], i = 0, m;
 
     function flushPara() {
