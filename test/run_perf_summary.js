@@ -511,6 +511,23 @@ head('verdict: PAINTS ARE BEING DROPPED splits into the causes the new data can 
   var vNone = none.perf.summary().verdict;
   ck('falls through to the original compositor/GPU sentence when nothing else explains it',
     /^PAINTS ARE BEING DROPPED — the compositor cannot paint/.test(vNone), vNone);
+
+  // (f) #613: the OWNER's measured regime — 47 % dropped, FEWER coalesced than painted
+  // (25,704 vs 28,920 over 54,624 broadcasts, SwiftShader). The fixture above drops 56 %,
+  // which is why four real bundles read "healthy" while every check here was green.
+  var owner = scenario({ t0: 0, glMode: 'software' });
+  feed(owner.perf, { intervalMs: 58, stepMs: 3, renderMs: 2, nominal: 100 }, 20);
+  for (var j = 0; j < 18; j++) owner.perf.dropped();   // 18/38 = 47 % dropped
+  var vOwner = owner.perf.summary().verdict;
+  ck('SOFTWARE RENDERING fires at the owner\'s 47 % drop (coalesced < painted)',
+    /^PAINTS ARE BEING DROPPED — SOFTWARE RENDERING/.test(vOwner), vOwner);
+
+  // (g) …and a light drop (2 of 22, 9 %) still reads healthy
+  var light = scenario({ t0: 0, glMode: 'software' });
+  feed(light.perf, { intervalMs: 58, stepMs: 3, renderMs: 2, nominal: 100 }, 20);
+  light.perf.dropped(); light.perf.dropped();
+  var vLight = light.perf.summary().verdict;
+  ck('a 9 % drop is not called dropped', /^healthy/.test(vLight), vLight);
 })();
 
 /* ============================================================== 5. injection self-test ==== */

@@ -31,6 +31,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Unreleased]
 
 - **CI pinned to `ubuntu-24.04`** (both jobs in `gates.yml`): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19, and the font-metric and float-branch fixtures were fitted to 24.04.
+- **#613 bug-report perf verdict no longer reads "healthy" at 4.6 fps** (`ui/perf.js`): the dropped-paint branch required `coalesced > paints` (>50 % dropped); the owner's machine drops 47 %, so four bundles (2026-09-14 → 09-29) that each carried `software_gl: true` (SwiftShader) were labelled healthy. Now fires above a 20 % dropped share. `run_perf_summary` 95 → 97; the new owner-regime check fails on the old code.
 
 ## [Alpha 1.8.2] — 2026-10-03
 

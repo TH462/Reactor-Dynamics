@@ -945,7 +945,7 @@ var BASELINES = {
   // discriminator carried the SHIPPED 40 ms budget, so a 68 ms broadcast fell through for the
   // second reason and the tier mutation came back BLIND — the fixture now differs in `tier`
   // and nothing else.
-  'run_perf_summary.js':   { code: 0, score: '95passed 0failed 95checks', secs: 1 },
+  'run_perf_summary.js':   { code: 0, score: '97passed 0failed 97checks', secs: 1 },
   // #437, the sequence-of-events stream. Two defects were red here before the file landed
   // and are what the numbers are pinned against: the recorder's own first-pass alarm sweep
   // arriving as 46 `alarm_clear` events at t=0 (TR-1 measured "a steady 20 s at power"
