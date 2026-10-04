@@ -147,6 +147,10 @@
  *   --ff=10          ?ff= boot fast-forward in SIM seconds (see the trap above)
  *   --throttle=N     CDP Emulation.setCPUThrottlingRate
  *   --software       launch with --disable-gpu-rasterization --disable-gpu-compositing
+ *   --swiftshader    launch with --disable-gpu: SwiftShader WebGL + software compositing, the
+ *                    owner's work-PC state (#613)
+ *   --rasterthreads=N  --num-raster-threads=N (a starved raster pool, e.g. a virtual desktop)
+ *   --vw=1500 --vh=950  viewport (the owner's is 1920x931)
  *   --headed         run headed (raster path differs from headless; slower, but closer)
  *   --label=<s>      row label in the printed table / JSON
  *   --json=<path>    write the numbers as JSON
@@ -169,7 +173,7 @@ var ROOT = path.join(__dirname, '..');
 function parseArgs(argv) {
   var o = {
     init: 'hot_full_power', inject: '', secs: 15, settle: 5, speed: 10, ff: 10,
-    ab: '', throttle: 0, software: false, headed: false, label: '', json: '', trace: '',
+    ab: '', throttle: 0, software: false, swiftshader: false, headed: false, vw: 1500, vh: 950, rasterthreads: 0, label: '', json: '', trace: '',
   };
   for (var i = 0; i < argv.length; i++) {
     var a = argv[i];
@@ -177,8 +181,8 @@ function parseArgs(argv) {
     if (!m) { console.error('unrecognised argument: ' + a); process.exit(2); }
     var k = m[1], v = m[2];
     if (k === 'help') { console.log(helpText()); process.exit(0); }
-    else if (k === 'software' || k === 'headed') o[k] = true;
-    else if (k === 'secs' || k === 'settle' || k === 'speed' || k === 'ff' || k === 'throttle') o[k] = +v;
+    else if (k === 'software' || k === 'headed' || k === 'swiftshader') o[k] = true;
+    else if (k === 'secs' || k === 'settle' || k === 'speed' || k === 'ff' || k === 'throttle' || k === 'vw' || k === 'vh' || k === 'rasterthreads') o[k] = +v;
     else if (k in o) o[k] = v == null ? '' : v;
     else { console.error('unrecognised option: --' + k); process.exit(2); }
   }
@@ -930,8 +934,13 @@ async function main() {
 
   var launchArgs = [];
   if (o.software) launchArgs = ['--disable-gpu-rasterization', '--disable-gpu-compositing'];
+  // #613: the owner's work PC reports gl_renderer SwiftShader with acceleration locked off by
+  // policy. --disable-gpu is what puts Chrome in that state (SwiftShader WebGL, software
+  // compositing); --software alone leaves the GPU process compositing.
+  if (o.swiftshader) launchArgs = ['--disable-gpu'];
+  if (o.rasterthreads) launchArgs.push('--num-raster-threads=' + o.rasterthreads);
   var browser = await playwright.chromium.launch({ headless: !o.headed, args: launchArgs });
-  var page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  var page = await browser.newPage({ viewport: { width: o.vw, height: o.vh } });
   var out = { label: label, knobs: knobs, opts: o };
 
   try {
