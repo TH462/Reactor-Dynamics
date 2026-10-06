@@ -122,15 +122,24 @@ function walk(dir, acc) {
 // THE OPERATOR MANUALS (site/build_manuals.js) are published pages too. The expected set is
 // derived HERE from tools/pack_manuals.js's DOCS (the in-app manual's own list) with the slug rule
 // restated independently, so a build that drops or renames a chapter disagrees with the manual.
-var MANUAL_DOCS = require(path.join(ROOT, 'tools', 'pack_manuals.js')).DOCS;
-var MANUAL_PAGES = MANUAL_DOCS.map(function (f) {
+var MANUAL_WITHHELD = require(path.join(ROOT, 'site', 'build_manuals.js')).WEB_WITHHELD;
+var MANUAL_DOCS = require(path.join(ROOT, 'tools', 'pack_manuals.js')).DOCS
+  .filter(function (f) { return MANUAL_WITHHELD.indexOf(f) === -1; });
+var slugPage = function (f) {
   return 'manuals/' + (f === 'README.md' ? 'index' : f.replace(/\.md$/, '').toLowerCase().replace(/_/g, '-')) + '.html';
-});
+};
+var MANUAL_PAGES = MANUAL_DOCS.map(slugPage);
 check('PAGES', 'tools/pack_manuals.js', 'DOCS gives ' + MANUAL_PAGES.length + ' manual pages',
-  MANUAL_PAGES.length >= 14 && MANUAL_PAGES.indexOf('manuals/index.html') !== -1
+  MANUAL_PAGES.length >= 12 && MANUAL_PAGES.indexOf('manuals/index.html') !== -1
     ? 'the chapters the in-app manual packs' : null);
 var OUT_FILES = walk(OUT, []);
 var OUT_HTML = OUT_FILES.filter(function (f) { return /\.html$/.test(f); }).sort();
+// Withheld chapters (dev log, flag-gated campaign) must not be published or indexed.
+var leaked = MANUAL_WITHHELD.map(slugPage).filter(function (p) {
+  return fs.existsSync(path.join(OUT, p)) || fs.existsSync(path.join(OUT, p.replace(/\.html$/, '')));
+});
+check('MANUALS', 'site/build_manuals.js', 'withheld chapters (' + MANUAL_WITHHELD.join(', ') + ') not published',
+  MANUAL_WITHHELD.length && !leaked.length ? 'absent from the output' : (leaked.join(', ') || 'withheld list empty'));
 
 // ONE CHECK FOR THE WHOLE SET, NOT ONE PER FILE — and that is not a style choice. A per-file
 // tally moves with the CONTENTS of the output, and `download/` is an OPTIONAL_DIR: it exists

@@ -20,7 +20,13 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const { DOCS } = require(path.join(ROOT, 'tools', 'pack_manuals.js'));
+const { DOCS: PACKED } = require(path.join(ROOT, 'tools', 'pack_manuals.js'));
+/* In the app, NOT on the web. 00 is a dev-facing log (issue numbers, ruling quotes) with no
+ * search value. 11 documents the training campaign, which is flag-gated (site/flags.js,
+ * stage 'preview'): an unreleased feature gets no public page, same rule as changelog.html.
+ * Re-add 11 when `campaign` goes public. Links to these go to GitHub, like any unpacked file. */
+const WEB_WITHHELD = ['00_REVISION_HISTORY.md', '11_CAMPAIGN_CROSSWALK.md'];
+const DOCS = PACKED.filter((f) => WEB_WITHHELD.indexOf(f) === -1);
 require(path.join(ROOT, 'ui', 'md_render.js'));
 const mdToHtml = globalThis.RD.mdToHtml;
 
@@ -226,4 +232,4 @@ function buildManuals(OUT) {
   return { pages: written, sources: docs.map((d) => [d.rel, 'Manuals/' + d.file]) };
 }
 
-module.exports = { buildManuals: buildManuals, slugOf: slugOf };
+module.exports = { buildManuals: buildManuals, slugOf: slugOf, WEB_WITHHELD: WEB_WITHHELD };
