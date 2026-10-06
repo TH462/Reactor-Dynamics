@@ -43,6 +43,11 @@ function labelFor(file, md) {
   return t.replace(/\s+[—–-]\s+/, ' · ');
 }
 
+/* site/build_manuals.js reads this list to publish the same chapters as static pages (SEO), so
+ * the website and the in-app manual cannot disagree about which documents are the manual. */
+module.exports = { DOCS: DOCS, labelFor: labelFor };
+
+if (require.main === module) {
 var docs = DOCS.map(function (file) {
   var md = fs.readFileSync(path.join(SRC, file), 'utf8').replace(/^﻿/, '');
   return {
@@ -53,7 +58,7 @@ var docs = DOCS.map(function (file) {
   };
 });
 
-var MANUAL_MD = {
+  var MANUAL_MD = {
   pwr: {
     plant_label: 'SLS-100 — Pressurized Water Reactor',
     docs: docs,
@@ -68,3 +73,4 @@ var body = ';(function (RD) {\n  "use strict";\n' +
 fs.writeFileSync(path.join(ROOT, 'ui', 'manual_md.js'), body);
 console.log('Wrote ui/manual_md.js (' + (body.length / 1024).toFixed(1) + ' KB, ' + docs.length + ' docs)');
 docs.forEach(function (d) { console.log('  ' + d.id + ': ' + d.label + ' (' + (d.md.length / 1024).toFixed(1) + ' KB)'); });
+}

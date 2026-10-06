@@ -152,6 +152,16 @@ async function fetchStages() {
   }
 }
 
+/* Pure, so test/run_site_build.js can assert BOTH directions without stamping the tree: the
+ * released site is indexable AND points crawlers at sitemap.xml; every other channel stays
+ * Disallow and names no sitemap (a sitemap on a test host would advertise it). */
+function robotsTxt(r) {
+  return r.channel === 'public'
+    ? 'User-agent: *\nAllow: /\nSitemap: https://reactordynamics.com/sitemap.xml\n'
+    : '# ' + r.channel + ' build (' + r.host + '): not the released site — keep it out of search.\n' +
+      'User-agent: *\nDisallow: /\n';
+}
+
 async function main() {
   const r = resolve(process.env);
   const f = await fetchStages();
@@ -230,10 +240,7 @@ async function main() {
     ' */\n' +
     'window.RD_TELEMETRY_ENDPOINT = ' + JSON.stringify(tel) + ';\n');
 
-  const robots = r.channel === 'public'
-    ? 'User-agent: *\nAllow: /\n'
-    : '# ' + r.channel + ' build (' + r.host + '): not the released site — keep it out of search.\n' +
-      'User-agent: *\nDisallow: /\n';
+  const robots = robotsTxt(r);
   fs.writeFileSync(path.join(__dirname, '..', 'robots.txt'), robots);
 
   console.log('stamp: host=' + r.host + '  branch=' + (r.branch || '<none>') +
@@ -249,7 +256,7 @@ async function main() {
   }
 }
 
-module.exports = { resolve: resolve, PRODUCTION_BRANCH: PRODUCTION_BRANCH };
+module.exports = { robotsTxt: robotsTxt, resolve: resolve, PRODUCTION_BRANCH: PRODUCTION_BRANCH };
 
 /* Side effects only when run as a command, so test/run_channel.js can require this
  * file without stamping the working tree. */

@@ -30,6 +30,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Website only (no version bump, no `changelog.html` entry) — SEO
+
+- **Operator manuals published as static HTML** (`site/build_manuals.js`, called by `build_site.js`): `manuals/index.html` + 13 chapter pages from the same `DOCS` list `tools/pack_manuals.js` packs, rendered by the in-app `ui/md_render.js`. Slug = file name lowercased, `_` to `-` (`04_NORMAL_OPERATIONS.md` -> `manuals/04-normal-operations`). Each page has canonical, Open Graph and Twitter cards, prev/next links, a link into the simulator and the CC BY 4.0 line; inter-chapter `.md` links are rewritten, links outside `Manuals/` go to the file on GitHub. The reference walk, extensionless rewrite and `?v=` cache-bust now cover them, so a dead link fails the build.
+- **`sitemap.xml` generated at build** (every page and manual chapter at the canonical url the page declares, `lastmod` from git; not `404`, not the control room) and `robots.txt` on the public channel gains `Sitemap:`. Test hosts stay `Disallow` with no sitemap (`robotsTxt()` is now a pure function in `site/stamp_version.js`).
+- **"Manual" added to the site nav and footer** on every root page except `index.html`. Gate: `run_site_build` +`MANUALS` and `SITEMAP` rules (each added check injected red).
+
 ## [Alpha 1.8.3-rc1] — 2026-10-04
 
 - **CI pinned to `ubuntu-24.04`** (both jobs in `gates.yml`): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19, and the font-metric and float-branch fixtures were fitted to 24.04.
