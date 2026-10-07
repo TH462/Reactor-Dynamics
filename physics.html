@@ -55,6 +55,7 @@
       <a href="about.html">About</a>
       <a class="active" href="physics.html">Physics</a>
       <a href="roadmap.html">Roadmap</a>
+      <a href="manuals/index.html">Manual</a>
       <a href="download.html">Download</a>
       <a href="changelog.html">Changelog</a>
       <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
@@ -68,12 +69,15 @@
 
   <h2>The plant — SLS-100</h2>
   <p>The <strong>SLS-100</strong> (Single Loop Simulated) is a compact
-  PWR of about 100&nbsp;MWe: one RCS loop (core, RCP,
-  U-tube SG, pressurizer), BOP, CVCS, ECCS, RHR, and RPS/ESF. Cold shutdown
-  (Mode 5, 122&nbsp;°F) through full power is one continuous plant.</p>
+  pressurized water reactor (PWR) of about 100&nbsp;MWe: one reactor coolant
+  loop (core, reactor coolant pump, U-tube steam generator, pressurizer), the
+  steam and feed plant, charging and letdown, emergency core cooling with an
+  accumulator, residual heat removal, containment, and reactor protection and
+  safeguards. Cold shutdown (Mode 5, 122&nbsp;°F) through full power is one
+  continuous plant.</p>
 
-  <p><strong>Model in short:</strong> six-group point kinetics · nodal loop with
-  real break locations · water properties fitted to IAPWS-95 steam tables, with their error measured · load coupled through the
+  <p><strong>Model in short:</strong> six-group point kinetics · nine-node coolant loop,
+  mass and energy conserved · breaks at a chosen loop location · water properties fitted to IAPWS-95 steam tables, with their error measured · load coupled through the
   secondary · protection on instrument channels · degraded regimes open · no
   spatial core.</p>
 
@@ -93,10 +97,13 @@
 
   <h2>Heat, pressure, and inventory</h2>
   <ul>
-    <li><strong>Lumped nodes</strong> (fuel, cladding hot node, coolant,
-    secondary) with first-order heat transfer — not a TH systems code.</li>
-    <li><strong>Pressurizer</strong> thermodynamics (heaters, spray, PORV /
-    safeties); solid and empty ends are reachable.</li>
+    <li><strong>Coolant loop:</strong> nine nodes from downcomer to cold leg,
+    mass and energy conserved at every junction; loop flow from integrated
+    momentum. Lumped fuel, cladding and steam-generator nodes &mdash; not a
+    licensing thermal-hydraulics code.</li>
+    <li><strong>Pressurizer:</strong> two regions &mdash; a steam space
+    compressed by an insurge over a stratified liquid &mdash; with heaters,
+    spray, relief valve and safeties; water-solid and empty are reachable.</li>
     <li><strong>Inventory</strong> from CVCS, ECCS, accumulators, leaks, and
     relief. Subcooling tracked; primary can void; RCP cavitation from suction
     margin.</li>
@@ -107,14 +114,16 @@
 
   <h2>Secondary and electrical</h2>
   <ul>
-    <li>SG mass-energy balance couples steam, feed, dumps, and isolation to
-    primary heat removal.</li>
+    <li>Steam-generator mass and energy balance: level moves with feed,
+    auxiliary feed and steam flow; steam dumps, relief valves and isolation
+    couple to primary heat removal; a drying generator stops removing heat.</li>
     <li>Turbine / condenser / generator: load is a steam demand on the
-    primary; loss of turbine or heat sink leaves energy in the plant.</li>
+    primary; condenser vacuum is computed, so losing it takes away the steam
+    dump.</li>
   </ul>
 
   <h2>Instruments and protection</h2>
-  <p>Board quantities are lagged instrument channels (optional stuck/drift).
+  <p>Board quantities are lagged, noisy instrument channels that can be failed.
   Trips, interlocks, safeguards, and automatic controllers take those channel
   values — not true state. A failed transmitter misleads both the operator and
   the automation.</p>
@@ -123,8 +132,11 @@
   <ul>
     <li>No spatial neutronics or xenon tilt.</li>
     <li>One loop, lumped nodes — no multi-loop or subchannel TH.</li>
-    <li>No containment / LOCA licensing stack (core-damage paths for training
-    progression only).</li>
+    <li>Containment is one lumped volume with spray and fan coolers &mdash; no
+    structural heat sink, no hydrogen burn. Not a licensing accident
+    analysis.</li>
+    <li>Core damage (cladding oxidation, hydrogen generation) is modelled for
+    training, not for licensing.</li>
     <li>Not a digital twin of a named unit.</li>
   </ul>
   <p>Coefficients, step order, and declared departures: simulation-physics
@@ -148,6 +160,7 @@
       <a href="about.html">About</a>
       <a href="physics.html">Physics</a>
       <a href="roadmap.html">Roadmap</a>
+      <a href="manuals/index.html">Manual</a>
       <a href="changelog.html">Changelog</a>
       <a href="privacy.html">Privacy</a>
       <a href="legal.html">Legal</a>

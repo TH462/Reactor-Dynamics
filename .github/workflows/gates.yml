@@ -109,7 +109,10 @@ jobs:
   # THE SHARDS. Any id EXCEPT `aggregate-gate` — see the header note; that name belongs to the
   # fan-in job below and to nothing else.
   gate-shard:
-    runs-on: ubuntu-latest
+    # PINNED to ubuntu-24.04 (2026-10-04): ubuntu-latest moves to Ubuntu 26 from 2026-10-19 (GitHub
+    # runner-images #14748). The font-metric and float-branch fixtures were fitted to 24.04
+    # (CLAUDE.md, the #543/#588/#713 bullet); move the pin deliberately, re-measuring them.
+    runs-on: ubuntu-24.04
     strategy:
       # fail-fast: false, or the first shard to go red CANCELS the other two and the log stops
       # saying whether the rest of the suite was green. A gate exists to report, and a cancelled
@@ -253,7 +256,7 @@ jobs:
   # so without this job every release pull request would block for ever on a check that is
   # never reported. Give it no `name:` — a display name would replace the id as the context.
   aggregate-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: gate-shard
     # always(), so a failed or cancelled shard still produces a REPORTED red rather than a
     # skipped check. A skipped required check blocks a pull request exactly as a missing one

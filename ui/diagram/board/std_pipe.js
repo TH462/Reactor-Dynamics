@@ -264,8 +264,21 @@
    * 48.6 ms and the worst this harness reproduces is 22 ms, so the absolute cost is
    * environmental and unreproduced here. This removes real, measured waste; whether it is
    * enough is what his next report answers. */
+  /* PAINT-LOCKED MODE (#613, OWNER 2026-10-04: "What if we set it to step once per update now
+   * if under a threshold."). The owner's work PC renders in software (SwiftShader, acceleration
+   * locked by policy) and Chrome hands this page a frame every 216.7 ms. On such a machine the
+   * clock's own 24 Hz rAF request is a SECOND frame producer competing with the app's paint
+   * (measured on a fast box, wave 3: the request alone commits and draws a frame even when it
+   * writes nothing). So when our own interval stays under PAINT_LOCK_FPS for PAINT_LOCK_HOLD_MS
+   * while the tab is visible, the clock stops requesting frames for the rest of the session and
+   * the app's paint drives it instead (`StdPipe.paintTick`, called from ui/app.js's paint rAF):
+   * one dash step per painted broadcast. Latched, not re-tried: re-enabling the clock to test
+   * the machine would bring back the slowness it is testing for. Whether it buys frames on his
+   * machine is UNMEASURED — the bundle carries `flow_mode` so his next report says. */
+  var PAINT_LOCK_FPS = 12, PAINT_LOCK_HOLD_MS = 3000;
+  var flowMode = 'clock', slowSinceMs = 0;
   var animSkip = 0, animEma = 0;
-  function flowTick() {
+  function flowTick(fromPaint) {
     flowRafPend = false;
     var now = performance.now();
     var frozen = !!document.querySelector('.pwr-board-stage.bd-frozen');
@@ -273,10 +286,20 @@
     if (!frozen) flowClockMs += now - flowLastMs;
     var frameMs = flowLastMs ? now - flowLastMs : 0;
     flowLastMs = now;
+    if (fromPaint === true) { tickAnimations(now); if (!frozen) writeDashes(); return; }
     /* An exponential mean of our own interval. Nominal is 1000/FLOW_FPS ms; when the page is
      * healthy the timer lands near it, and when the main thread is contended it does not. */
     if (frameMs > 0 && frameMs < 2000) animEma = animEma ? (animEma * 0.85 + frameMs * 0.15) : frameMs;
     var nominal = 1000 / FLOW_FPS;
+    /* A hidden tab's timers are throttled by the browser, not by this machine — never count it. */
+    /* Focus too (review, 2026-10-04): an occluded or background window can report 'visible'
+     * while the browser throttles its frames, and the latch is permanent. */
+    var visible = (!document.visibilityState || document.visibilityState === 'visible') &&
+      (!document.hasFocus || document.hasFocus());
+    if (visible && frameMs < 2000 && animEma > 1000 / PAINT_LOCK_FPS) {
+      if (!slowSinceMs) slowSinceMs = now;
+      else if (now - slowSinceMs >= PAINT_LOCK_HOLD_MS) { flowMode = 'paint'; return; }
+    } else slowSinceMs = 0;
     /* 0 skips while we are inside ~2x nominal, then progressively more, capped so the motion
      * never stops outright — a frozen-looking board reads as a crashed sim. */
     var want = animEma > nominal * 4 ? 3 : animEma > nominal * 2 ? 1 : 0;
@@ -303,6 +326,9 @@
     else { animSkip = want; }
     if (doTick) tickAnimations(now);
     if (frozen || !doTick) return;
+    writeDashes();
+  }
+  function writeDashes() {
     var els = document.querySelectorAll('polyline[data-dash-cyc]');
     if (!els.length) return;
     var t = flowClockMs / 1000;
@@ -335,7 +361,7 @@
     flowTimer = setInterval(function () {
       // Writes land inside a rAF so a frame never composites mid-batch (the 2026-08-06
       // strobing lesson, ui/app.js render()).
-      if (flowRafPend) return;
+      if (flowRafPend || flowMode === 'paint') return;
       flowRafPend = true;
       (window.requestAnimationFrame || setTimeout)(flowTick);
     }, Math.round(1000 / FLOW_FPS));
@@ -547,5 +573,8 @@
     return function () { ro.disconnect(); };
   }
 
-  window.StdPipe = { createKit: createKit, watchScale: watchScale, dashPhase: dashPhase, setFlowSpeed: setFlowSpeed, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
+  /* Called from the app's paint rAF every painted broadcast; a no-op unless paint-locked. */
+  function paintTick() { if (flowMode === 'paint') flowTick(true); }
+  window.StdPipe = { paintTick: paintTick, flowMode: function () { return flowMode; },
+    _forcePaintLock: function () { flowMode = 'paint'; }, createKit: createKit, watchScale: watchScale, dashPhase: dashPhase, setFlowSpeed: setFlowSpeed, DASH_PERIOD: DASH_PERIOD, DASH_CYCLE_S: DASH_CYCLE_S, FLUIDS: FLUIDS, SIZES: SIZES, STUB_LEN: STUB_LEN, phaseTempColor: phaseTempColor, TEMP_MIN_C: TEMP_MIN_C, WATER_MAX_C: WATER_MAX_C };
 })();

@@ -2657,6 +2657,9 @@
       _renderRaf = 0;
       var snap = _renderSnap; _renderSnap = null;
       if (!snap) return;
+      // #613: on a slow machine the pipe-flow clock stops requesting its own frames and steps
+      // here, once per painted broadcast. A no-op until std_pipe latches that mode.
+      if (window.StdPipe && StdPipe.paintTick) { try { StdPipe.paintTick(); } catch (e) {} }
       if (!RD.Perf) { renderNow(snap); return; }
       var t0 = RD.Perf.renderStart();
       try { renderNow(snap); } finally { RD.Perf.renderEnd(t0); }

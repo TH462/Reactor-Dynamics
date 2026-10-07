@@ -119,8 +119,27 @@ function walk(dir, acc) {
   });
   return acc;
 }
+// THE OPERATOR MANUALS (site/build_manuals.js) are published pages too. The expected set is
+// derived HERE from tools/pack_manuals.js's DOCS (the in-app manual's own list) with the slug rule
+// restated independently, so a build that drops or renames a chapter disagrees with the manual.
+var MANUAL_WITHHELD = require(path.join(ROOT, 'site', 'build_manuals.js')).WEB_WITHHELD;
+var MANUAL_DOCS = require(path.join(ROOT, 'tools', 'pack_manuals.js')).DOCS
+  .filter(function (f) { return MANUAL_WITHHELD.indexOf(f) === -1; });
+var slugPage = function (f) {
+  return 'manuals/' + (f === 'README.md' ? 'index' : f.replace(/\.md$/, '').toLowerCase().replace(/_/g, '-')) + '.html';
+};
+var MANUAL_PAGES = MANUAL_DOCS.map(slugPage);
+check('PAGES', 'tools/pack_manuals.js', 'DOCS gives ' + MANUAL_PAGES.length + ' manual pages',
+  MANUAL_PAGES.length >= 12 && MANUAL_PAGES.indexOf('manuals/index.html') !== -1
+    ? 'the chapters the in-app manual packs' : null);
 var OUT_FILES = walk(OUT, []);
 var OUT_HTML = OUT_FILES.filter(function (f) { return /\.html$/.test(f); }).sort();
+// Withheld chapters (dev log, flag-gated campaign) must not be published or indexed.
+var leaked = MANUAL_WITHHELD.map(slugPage).filter(function (p) {
+  return fs.existsSync(path.join(OUT, p)) || fs.existsSync(path.join(OUT, p.replace(/\.html$/, '')));
+});
+check('MANUALS', 'site/build_manuals.js', 'withheld chapters (' + MANUAL_WITHHELD.join(', ') + ') not published',
+  MANUAL_WITHHELD.length && !leaked.length ? 'absent from the output' : (leaked.join(', ') || 'withheld list empty'));
 
 // ONE CHECK FOR THE WHOLE SET, NOT ONE PER FILE — and that is not a style choice. A per-file
 // tally moves with the CONTENTS of the output, and `download/` is an OPTIONAL_DIR: it exists
@@ -130,7 +149,7 @@ var OUT_HTML = OUT_FILES.filter(function (f) { return /\.html$/.test(f); }).sort
 // are still named individually, but only when there are some.
 var SERVED = [], undeclared = [];
 OUT_HTML.forEach(function (rel) {
-  if (PAGES.indexOf(rel) !== -1 || rel === 'ui/shell.html') { SERVED.push(rel); return; }
+  if (PAGES.indexOf(rel) !== -1 || MANUAL_PAGES.indexOf(rel) !== -1 || rel === 'ui/shell.html') { SERVED.push(rel); return; }
   // download/ holds the single-file OFFLINE build — everything inlined, downloaded rather
   // than served, so it is neither a page nor bustable.
   if (/^download\//.test(rel)) return;
@@ -142,9 +161,71 @@ check('PAGES', 'the built output', OUT_HTML.length + ' html file(s), ' + SERVED.
 undeclared.forEach(function (f) {
   check('PAGES', f, 'is published but declared nowhere — a dev harness on the live domain', null);
 });
-check('PAGES', 'the built output', SERVED.length + ' served pages vs ' + PAGES.length +
-  ' declared', SERVED.length === PAGES.length + 1
-    ? 'every declared page plus the control room, and nothing extra' : null);
+check('PAGES', 'the built output', SERVED.length + ' served pages vs ' + PAGES.length + ' + ' +
+  MANUAL_PAGES.length + ' declared', SERVED.length === PAGES.length + MANUAL_PAGES.length + 1
+    ? 'every declared page, every manual chapter and the control room, and nothing extra' : null);
+
+// ------------------------------------------------ manual pages: canonical + cards
+// Read from the OUTPUT, after the extensionless rewrite: Cloudflare 308s `.html` away, so the
+// canonical a crawler is told about must be the url that is actually served.
+function meta(html, re) { var m = re.exec(html); return m ? m[1] : null; }
+var canonOf = {};
+PAGES.concat(MANUAL_PAGES).forEach(function (rel) {
+  var html = fs.readFileSync(path.join(OUT, rel), 'utf8');
+  canonOf[rel] = meta(html, /<link rel="canonical" href="([^"]+)"/);
+});
+MANUAL_PAGES.forEach(function (rel) {
+  var html = fs.readFileSync(path.join(OUT, rel), 'utf8');
+  var slug = rel.replace(/^manuals\//, '').replace(/\.html$/, '');
+  var want = 'https://reactordynamics.com/manuals/' + (slug === 'index' ? '' : slug);
+  var og = meta(html, /property="og:image" content="([^"]+)"/);
+  var desc = meta(html, /<meta name="description" content="([^"]*)"/);
+  var title = meta(html, /<title>([^<]+)<\/title>/);
+  check('MANUALS', rel, 'canonical = ' + canonOf[rel], canonOf[rel] === want
+    ? 'absolute and extensionless, as served' : null);
+  check('MANUALS', rel, 'og:url = ' + meta(html, /property="og:url" content="([^"]+)"/),
+    meta(html, /property="og:url" content="([^"]+)"/) === want ? 'matches the canonical' : null);
+  check('MANUALS', rel, 'og:image = ' + og + ' ' + meta(html, /og:image:width" content="(\d+)"/) + 'x' +
+    meta(html, /og:image:height" content="(\d+)"/),
+    og === 'https://reactordynamics.com/site/hero.png' && meta(html, /og:image:width" content="(\d+)"/) === '1915' &&
+    meta(html, /og:image:height" content="(\d+)"/) === '1045' ? 'the card image, absolute, with its size' : null);
+  check('MANUALS', rel, 'twitter:card + title + description',
+    /name="twitter:card" content="summary_large_image"/.test(html) && /name="twitter:title"/.test(html) &&
+    desc && desc.length > 20 && desc.length <= 161 && title && /Reactor Dynamics$/.test(title)
+      ? 'a description of ' + (desc && desc.length) + ' chars' : null);
+  check('MANUALS', rel, 'body has an h1 and a CC BY 4.0 + simulator link',
+    /<h1[ >]/.test(html) && /CC BY 4\.0/.test(html) && /href="\.\.\/ui\/shell\?engine=pwr2/.test(html)
+      ? 'real content, licence line, link into the simulator' : null);
+});
+
+// ---------------------------------------------------------------- sitemap.xml and robots.txt
+var sitemap = fs.existsSync(path.join(OUT, 'sitemap.xml'))
+  ? fs.readFileSync(path.join(OUT, 'sitemap.xml'), 'utf8') : '';
+var locs = (sitemap.match(/<loc>([^<]+)<\/loc>/g) || []).map(function (l) { return l.replace(/<\/?loc>/g, ''); });
+check('SITEMAP', 'sitemap.xml', 'exists and lists ' + locs.length + ' urls',
+  /<urlset /.test(sitemap) && locs.length > 0 ? 'a urlset of absolute locs' : null);
+var missing = [];
+PAGES.concat(MANUAL_PAGES).forEach(function (rel) {
+  if (rel === '404.html') return;
+  if (locs.indexOf(canonOf[rel]) === -1) missing.push(rel + ' (' + canonOf[rel] + ')');
+});
+check('SITEMAP', 'sitemap.xml', 'lists every page and manual chapter (' + missing.length + ' missing)',
+  missing.length === 0 ? 'each at the canonical url the page declares' : null);
+missing.forEach(function (m) { check('SITEMAP', m, 'is not in the sitemap', null); });
+check('SITEMAP', 'sitemap.xml', 'lists exactly ' + (PAGES.length - 1 + MANUAL_PAGES.length) + ' urls (has ' +
+  locs.length + ')', locs.length === PAGES.length - 1 + MANUAL_PAGES.length
+    ? 'nothing extra: no 404, no control room, no harness' : null);
+check('SITEMAP', 'sitemap.xml', 'names neither 404 nor the control room',
+  !/404|\/ui\/|shell/.test(sitemap) ? 'not content destinations' : null);
+var stampMod = require(path.join(ROOT, 'site', 'stamp_version.js'));
+var robPub = stampMod.robotsTxt(stampMod.resolve({ CF_PAGES: '1', CF_PAGES_BRANCH: 'main' }));
+var robPrev = stampMod.robotsTxt(stampMod.resolve({ CF_PAGES: '1', CF_PAGES_BRANCH: 'develop' }));
+check('SITEMAP', 'robots.txt (public)', JSON.stringify(robPub),
+  /^Allow: \/$/m.test(robPub) && /^Sitemap: https:\/\/reactordynamics\.com\/sitemap\.xml$/m.test(robPub)
+    ? 'indexable, and points crawlers at the sitemap' : null);
+check('SITEMAP', 'robots.txt (preview)', JSON.stringify(robPrev),
+  /^Disallow: \/$/m.test(robPrev) && !/Sitemap/i.test(robPrev) && !/^Allow:/m.test(robPrev)
+    ? 'the test site stays out of search and advertises no sitemap' : null);
 
 // ---------------------------------------------------------------- every asset url versioned
 // Walked from the OUTPUT, not from build_site.js's own list of files to rewrite. That is the
@@ -271,7 +352,7 @@ function report() {
   try { fs.rmSync(OUT, { recursive: true, force: true }); } catch (e) { /* scratch dir */ }
   var byRule = {};
   findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f); });
-  ['BUILD', 'PAGES', 'RETIRED', 'BUST', 'NOCACHE'].forEach(function (r) {
+  ['BUILD', 'PAGES', 'MANUALS', 'SITEMAP', 'RETIRED', 'BUST', 'NOCACHE'].forEach(function (r) {
     var all = byRule[r] || [], bad = all.filter(function (f) { return !f.why; });
     if (!all.length) return;
     console.log('\n' + B + (bad.length ? R + 'FAIL' : G + 'PASS') + X + '  ' + B + r + X +

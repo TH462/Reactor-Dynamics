@@ -308,6 +308,8 @@
         visibility: visibilitySummary(),
         raf: { last: lastRafBurst, paint_broadcast_ratio: broadcasts > 0 ? (paints / broadcasts) : null },
         loaf: loafSummary(),
+        // #613: 'paint' once the pipe-flow clock has latched to the app's paint on a slow machine
+        flow_mode: (typeof window !== 'undefined' && window.StdPipe && window.StdPipe.flowMode) ? window.StdPipe.flowMode() : null,
       };
       out.verdict = verdict(out);
       return out;
@@ -345,6 +347,7 @@
    * final protection evaluation). 1.4x of a 70 ms budget is 98 ms — past that the physics is
    * not spending a budget, it is missing one, and the blunt verdict is the right one. */
   var BUDGET_OVERSHOOT = 1.4;
+  var DROPPED_SHARE_WARN = 0.2;       // >20% of broadcasts reached no paint: frames are being withheld
   function verdict(s) {
     if (!s.step_ms || !s.render_ms) return 'not enough samples yet';
     var stepShare = s.step_ms.p95 / s.nominal_ms;
@@ -376,7 +379,11 @@
       return 'THE LOOP IS SLIPPING — broadcasts are arriving later than they are scheduled, ' +
         'but neither physics nor rendering accounts for it. Something else is holding the main thread.';
     }
-    if (s.fps !== null && s.fps < 20 && s.coalesced > s.paints) {
+    /* #613: this used to require `coalesced > paints` — MORE THAN HALF dropped. The owner's
+     * machine drops 47 % (25,704 coalesced vs 28,920 painted, 4.6 fps, SwiftShader), so four
+     * consecutive bundles from the very symptom this verdict exists to name read "healthy". */
+    var droppedShare = (s.paints + s.coalesced) > 0 ? s.coalesced / (s.paints + s.coalesced) : 0;
+    if (s.fps !== null && s.fps < 20 && droppedShare > DROPPED_SHARE_WARN) {
       var vis = s.visibility;
       var hiddenShare = (vis && vis.session_ms > 0) ? (vis.hidden_ms / vis.session_ms) : 0;
       if (hiddenShare >= HIDDEN_SHARE_WARN) {

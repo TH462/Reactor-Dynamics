@@ -398,3 +398,27 @@ summary.log-head:focus-visible { outline: 2px solid var(--normal); outline-offse
 }
 .dl-meta.is-filled { display: block; }
 .dl-meta .sep { color: var(--muted); margin: 0 8px; }
+
+/* ================================================== operator manual pages (manuals/) */
+.page.manual { max-width: 900px; }
+.manual-crumb { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+.manual-crumb .cta-inline { font-weight: 600; }
+.page.manual h1 { margin-bottom: 12px; }
+.page.manual h4, .page.manual h5 { color: var(--text); margin: 18px 0 6px; }
+.page.manual hr { border: 0; border-top: 1px solid var(--border); margin: 22px 0; }
+.page.manual b { color: var(--text); }
+.page.manual code, .page.manual pre { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.88em; }
+.page.manual code { background: var(--bg-elevated); padding: 1px 5px; border-radius: 4px; }
+.page.manual pre { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; overflow-x: auto; }
+.page.manual blockquote { margin: 14px 0; padding: 2px 16px; border-left: 3px solid var(--caution);
+  background: var(--bg-panel); }
+.page.manual .mdoc-tw { overflow-x: auto; margin: 14px 0; }
+.page.manual table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.page.manual th, .page.manual td { border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+  vertical-align: top; color: var(--text-2); }
+.page.manual th { background: var(--bg-elevated); color: var(--text); }
+.manual-pager { display: flex; justify-content: space-between; gap: 16px; margin: 40px 0 16px;
+  padding-top: 16px; border-top: 1px solid var(--border); font-size: 14px; }
+.manual-license { font-size: 13px; color: var(--muted); }
+.manual-toc { columns: 2 300px; }

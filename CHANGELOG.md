@@ -30,6 +30,19 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.3] — 2026-10-07
+
+- **CI pinned to `ubuntu-24.04`** (both jobs in `gates.yml`): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19, and the font-metric and float-branch fixtures were fitted to 24.04.
+- **#613 bug-report perf verdict no longer reads "healthy" at 4.6 fps** (`ui/perf.js`): the dropped-paint branch required `coalesced > paints` (>50 % dropped); the owner's machine drops 47 %, so four bundles (2026-09-14 → 09-29) that each carried `software_gl: true` (SwiftShader) were labelled healthy. Now fires above a 20 % dropped share. `run_perf_summary` 95 → 97; the new owner-regime check fails on the old code.
+- **#613 pipe-flow dashes lock to the board's update on a slow machine** (`std_pipe.js`, owner 2026-10-04: "set it to step once per update now if under a threshold"): below 12 fps held 3 s with the tab visible, the dash clock stops requesting its own 24 Hz frames for the session and steps once per painted broadcast. Forced on, SwiftShader 1920×931 1×: frames drawn 302 → 99, raster 3,444 → 1,270 ms per 10 s, dashes still move. Latches at a 12× CPU throttle, stays off unthrottled. Bundle carries `flow_mode`. Effect on the owner's machine unmeasured.
+
+### Website only (no `changelog.html` entry) — SEO
+
+- **Operator manuals published as static HTML** (`site/build_manuals.js`, called by `build_site.js`): `manuals/index.html` + 11 chapter pages from the `DOCS` list `tools/pack_manuals.js` packs, minus 00 (dev log) and 11 (campaign, flag-gated — re-add when it goes public), rendered by the in-app `ui/md_render.js`. Slug = file name lowercased, `_` to `-` (`04_NORMAL_OPERATIONS.md` -> `manuals/04-normal-operations`). Each page has canonical, Open Graph and Twitter cards, prev/next links, a link into the simulator and the CC BY 4.0 line; inter-chapter `.md` links are rewritten, links outside `Manuals/` go to the file on GitHub. The reference walk, extensionless rewrite and `?v=` cache-bust now cover them, so a dead link fails the build.
+- **`sitemap.xml` generated at build** (every page and manual chapter at the canonical url the page declares, `lastmod` from git; not `404`, not the control room) and `robots.txt` on the public channel gains `Sitemap:`. Test hosts stay `Disallow` with no sitemap (`robotsTxt()` is now a pure function in `site/stamp_version.js`).
+- **"Manual" added to the site nav and footer** on every root page except `index.html`. Gate: `run_site_build` +`MANUALS` and `SITEMAP` rules (each added check injected red).
+- **Site copy brought up to date** (`roadmap.html`, `about.html`, `physics.html`, `download.html`). Roadmap: containment spray/fan coolers moved from "In progress" to "Open now" (shipped 1.8.x), plus the guided opener, debrief, Continue and the public manual; the TMI-2 walkthrough (flag `preview`) added to "Nearly there"; "In progress" is now the active issues (#613, #818, #819); "Later" gains #529/#530/#316. About: BWR/RBMK are "later", not "in work". Physics: rewritten against the rebuilt engine (nine-node loop, two-region pressurizer, containment, core damage) where it described the retired one.
+
 ## [Alpha 1.8.2] — 2026-10-03
 
 ### Changed — walkthrough rings breathe (`497b2fc5`)

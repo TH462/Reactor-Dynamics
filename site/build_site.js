@@ -90,7 +90,7 @@ const OPTIONAL_DIRS = ['download'];
  * which is meaningless on Pages, where nothing is excluded. The underlying invariant is
  * the same one #258 cost a release: the build command cannot run a file that is not there,
  * and a deploy failure reports it as a bare `exited with 1` long after the fact. */
-const BUILD_ONLY = new Set(['stamp_version.js', 'make_download.js', 'build_site.js']);
+const BUILD_ONLY = new Set(['stamp_version.js', 'make_download.js', 'build_site.js', 'build_manuals.js']);
 
 // ---------------------------------------------------------------- copy
 function copyDir(src, dst, prune) {
@@ -122,6 +122,13 @@ for (const p of PAGES) {
 for (const d of DIRS) {
   copyDir(path.join(ROOT, d), path.join(OUT, d), d === 'site' ? BUILD_ONLY : WITHHELD_DIRS[d]);
 }
+
+/* THE OPERATOR MANUALS, as static pages (SEO). Generated from Manuals/*.md by
+ * site/build_manuals.js into manuals/<slug>.html. They are pages like any other: every loop
+ * below that walks PAGES walks ALL_PAGES, so a dead link in a manual fails the build. */
+const MANUALS = require('./build_manuals.js').buildManuals(OUT);
+const MANUAL_PAGES = MANUALS.pages;
+const ALL_PAGES = PAGES.concat(MANUAL_PAGES);
 for (const f of OPTIONAL) {
   if (fs.existsSync(path.join(ROOT, f))) fs.copyFileSync(path.join(ROOT, f), path.join(OUT, f));
 }
@@ -239,7 +246,7 @@ function checkHtml(rel) {
     if (!fs.existsSync(path.join(OUT, target))) problems.push(rel + '  ->  ' + href);
   }
 }
-PAGES.forEach(checkHtml);
+ALL_PAGES.forEach(checkHtml);
 checkHtml('ui/shell.html');
 
 /* ------------------------------------------------ EXTENSIONLESS URLS, OUTPUT ONLY
@@ -294,7 +301,7 @@ function rewriteHtml(rel) {
 
   fs.writeFileSync(abs, src);
 }
-PAGES.forEach(rewriteHtml);
+ALL_PAGES.forEach(rewriteHtml);
 rewriteHtml('ui/shell.html');
 if (deadLinks.length) {
   console.error('\nRewrite skipped these — the target is not in the output:');
@@ -355,7 +362,7 @@ function bustAssets(rel) {
   });
   fs.writeFileSync(abs, src);
 }
-PAGES.forEach(bustAssets);
+ALL_PAGES.forEach(bustAssets);
 bustAssets('ui/shell.html');
 
 // /sim must land on the FINAL url, not one that redirects again.
@@ -386,8 +393,29 @@ if (problems.length) {
     'DIRS/PAGES in site/build_site.js — do not delete the reference to silence this.');
 }
 
+/* ------------------------------------------------------------------- sitemap.xml
+ * Every published page, in the canonical form the page ITSELF declares AFTER the extensionless
+ * rewrite (read back from the output, so the sitemap cannot name a url the canonical tag
+ * disagrees with). 404.html is a page but not a destination; ui/shell.html is the app, not
+ * content. lastmod = the source file's last commit date, omitted when git cannot say. */
+const cp = require('child_process');
+const sitemapRows = [];
+ALL_PAGES.filter((p) => p !== '404.html').forEach((rel) => {
+  const m = /<link rel="canonical" href="([^"]+)"/.exec(fs.readFileSync(path.join(OUT, rel), 'utf8'));
+  if (!m) throw new Error('sitemap: ' + rel + ' declares no canonical url');
+  const srcRel = (MANUALS.sources.find((x) => x[0] === rel) || [rel, rel])[1];
+  const g = cp.spawnSync('git', ['log', '-1', '--format=%cs', '--', srcRel], { cwd: ROOT, encoding: 'utf8' });
+  const lastmod = g.status === 0 && /^\d{4}-\d\d-\d\d$/.test((g.stdout || '').trim()) ? g.stdout.trim() : null;
+  sitemapRows.push('  <url><loc>' + m[1].replace(/&/g, '&amp;') + '</loc>' +
+    (lastmod ? '<lastmod>' + lastmod + '</lastmod>' : '') + '</url>');
+});
+fs.writeFileSync(path.join(OUT, 'sitemap.xml'),
+  '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+  sitemapRows.join('\n') + '\n</urlset>\n');
+
 count(OUT);
-console.log('dist-site/  ' + files + ' files  (' + PAGES.length + ' pages, ' +
+console.log('dist-site/  ' + files + ' files  (' + PAGES.length + ' pages + ' + MANUAL_PAGES.length +
+  ' manual pages, ' + sitemapRows.length + ' in sitemap.xml, ' +
   DIRS.length + ' asset directories)  — every reference resolves');
 console.log('            ' + busted + ' asset urls carry ?v=' + STAMP +
   '  (a release cannot serve new HTML against cached CSS — #470)');
