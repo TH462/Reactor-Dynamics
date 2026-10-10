@@ -1898,6 +1898,12 @@
     setScope: function (spec) { setScope(spec); },
     pointAt: function (names) { return pointAt(names); },
     clearPointers: function () { clearPointers(); },
+    // The ELEMENTS a pointer would outline (halo where there is one), for the instructor callout
+    // (#811 prototype) to measure and keep clear of. Read-only; draws nothing.
+    pointTargets: function (names) {
+      if (!stage) return [];
+      return focusResolve([].concat(names || []), false).map(function (id) { return haloFor(id) || tiles[id]; }).filter(Boolean);
+    },
     // Read accessor for harnesses: what is scoped, lit, dimmed and pointed at right now.
     scopeState: function () {
       return { key: focus.key, names: focus.names.slice(), lit: focus.lit.slice(),

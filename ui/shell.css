@@ -3474,3 +3474,41 @@ select.num-input { width: auto; }
     box-shadow: 0 0 0 2px rgba(122, 176, 255, 0.9);
   }
 }
+
+/* ============================================================ instructor CALLOUT (prototype, #811)
+   OWNER 2026-10-10: "Anchored callout" — the opener's current line beside the control it is about.
+   ACTION callouts (a control is asked for) lead with the action, big; the explanation follows,
+   small. OBSERVATION callouts ("what matters about what you are seeing") are lighter and anchored
+   to the board item. Off by default (?callout=1, Settings). No z-index above the modals (200). */
+.instr-callout {
+  position: fixed; z-index: 55; box-sizing: border-box; min-width: 240px; max-width: 400px;
+  background: #18212b; color: var(--text); border: 1px solid #4a7fb8; border-radius: 10px;
+  padding: 8px 12px 10px; box-shadow: 0 6px 22px rgba(0,0,0,.55);
+  transition: left .18s ease, top .18s ease;
+}
+.instr-callout[hidden] { display: none; }
+.instr-callout[data-kind="observe"] { background: rgba(20,28,36,.94); border-color: #3b5168; border-style: dashed; }
+.ico-arrow { position: absolute; width: 12px; height: 12px; background: inherit; border: inherit; border-style: solid; transform: rotate(45deg); }
+.instr-callout[data-side="none"] .ico-arrow { display: none; }
+.instr-callout[data-side="right"] .ico-arrow { left: -7px; border-top-color: transparent; border-right-color: transparent; }
+.instr-callout[data-side="left"]  .ico-arrow { right: -7px; left: auto; border-bottom-color: transparent; border-left-color: transparent; }
+.instr-callout[data-side="below"] .ico-arrow { top: -7px; border-right-color: transparent; border-bottom-color: transparent; }
+.instr-callout[data-side="above"] .ico-arrow { bottom: -7px; top: auto; border-left-color: transparent; border-top-color: transparent; }
+.ico-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.ico-who { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ico-hist-btn { background: none; border: none; color: #8cc4ff; font-size: 11px; cursor: pointer; padding: 0 2px; }
+.ico-hist-btn.on { text-decoration: underline; }
+.ico-hist { max-height: 30vh; overflow-y: auto; margin-bottom: 8px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; gap: 6px; }
+.ico-hist[hidden] { display: none; }
+.ico-hist .chat-txt { font-size: 12px; }
+.ico-act { font-size: 17px; line-height: 1.35; font-weight: 700; color: #e8f1fb; }
+.ico-why { font-size: 12px; line-height: 1.4; color: var(--muted); margin-top: 6px; }
+.ico-say { font-size: 14px; line-height: 1.4; color: var(--text); }
+.instr-callout [data-point] { cursor: pointer; }
+.ico-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.ico-btns[hidden] { display: none; }
+.ico-btns .chat-btn { width: auto; flex: 1 1 auto; }
+.ico-btns .lc-panel { width: 100%; }
+/* The chat panel keeps the record, collapsed: its transcript and buttons live in the bubble. */
+.instructor.callout-on #chatLog, .instructor.callout-on #chatBtns { display: none; }
+.instructor.callout-on .instr-current::before { content: 'The instructor is talking on the board. History is in the bubble.'; display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }

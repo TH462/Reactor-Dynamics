@@ -3824,8 +3824,9 @@
     if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
     // Chat-mode scenarios (TMI-2 M5): a scrolling multi-speaker transcript
     // replaces the single-slot commentary card. Level-complete renders inline.
-    if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); return; }
+    if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); calloutSync(); return; }
     if (chatState.sid) resetChat();
+    if (callout.el && !callout.el.hidden) calloutSync();   // the opener ended: the bubble goes with it
     // Auto-checklist (Path 3): painted in the Checklists tab, not this card.
     var ckb = s.instructor && s.instructor.checklist;
     if (ckb) {
@@ -4115,6 +4116,246 @@
     }
     // A named ask button ("Show me", "Carry on") names itself; the plain Ready does not (#811).
     cmd(style === 'show_me' || style === 'carry_on' ? { action: 'instructor_continue', button: style } : { action: 'instructor_continue' });
+  }
+
+  /* ============================================================ instructor CALLOUT (prototype)
+   * OWNER, 2026-10-10: the chat panel makes the eye shuttle between the instructor's text and the
+   * board; he chose the "anchored callout": the current line in a bubble BESIDE the highlighted
+   * control with a pointer, bottom-centre over the board when nothing is highlighted, the history
+   * collapsed, and the chat buttons in the bubble. And (same day): "nobody reads any of the fine
+   * text … They read only enough to accomplish a step" — so the ACTION sentence leads, big; the
+   * explanation follows, small. The split is presentational (sentence-level, by an imperative
+   * verb); the opener's wording is untouched.
+   *
+   * OFF BY DEFAULT: `?callout=1` or Settings > Instructor callout. Openers only (RD.OPENERS).
+   * The chat panel stays the engine of record: the bubble MIRRORS its revealed lines and its
+   * button row, and a bubble click is forwarded to the matching button in #chatBtns, so every
+   * button keeps exactly one handler (chatButtonAction / the level-complete card). */
+  var CALLOUT_LS = 'rd_instr_callout';
+  function calloutPref() {
+    var m = /[?&]callout=([01])/.exec(location.search || '');
+    if (m) return m[1] === '1';
+    try { return localStorage.getItem(CALLOUT_LS) === '1'; } catch (e) { return false; }
+  }
+  function setCalloutPref(on) {
+    ui.callout = !!on;
+    try { localStorage.setItem(CALLOUT_LS, on ? '1' : '0'); } catch (e) { /* private mode */ }
+    syncCalloutSeg();
+    calloutSync();
+  }
+  function syncCalloutSeg() {
+    var seg = $('calloutSeg'); if (!seg) return;
+    [].forEach.call(seg.querySelectorAll('[data-callout]'), function (b) { b.classList.toggle('on', (b.getAttribute('data-callout') === 'on') === !!ui.callout); });
+  }
+  var callout = { el: null, histOpen: false, key: null, timer: null, raf: 0, obs: null, points: [] };
+  function calloutActive() {
+    var s = latest, sid = s && s.instructor && s.instructor.chat && s.instructor.scenario_id;
+    return !!(ui.callout && ui.plant === 'pwr' && sid && RD.OPENERS && RD.OPENERS[sid] && chatState.sid === sid);
+  }
+  // Sentence split + action test. An ACTION sentence starts (after an optional "Your turn:" style
+  // lead-in) with an imperative the player can carry out on the board.
+  // "Watch …" is not an action: the player is told where to look, which is what an OBSERVATION
+  // callout is for (owner refinement 2026-10-10: a concise "what matters about what you are
+  // seeing", anchored to the board item, lighter, no control asked for).
+  var CALLOUT_VERBS = /^(set|press|hold|put|type|drive|trip|restart|reduce|select|insert|return|open|close|click|turn)\b/i;
+  function calloutSentences(txt) {
+    return String(txt || '').split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/).filter(function (x) { return x.trim(); });
+  }
+  function calloutIsAction(sen) {
+    return CALLOUT_VERBS.test(sen.replace(/^(?:[A-Z][a-z]+(?: [a-z]+)?:\s*)/, ''));
+  }
+  // The CURRENT message: the trailing revealed lines that arrived together (one beat's dialogue
+  // shares its sim time), the player's own echo excluded.
+  function calloutGroup() {
+    var log = (latest && latest.instructor.chat && latest.instructor.chat.log) || [];
+    var n = Math.min(chatState.shown, log.length), out = [], t = null;
+    for (var i = n - 1; i >= 0; i--) {
+      var e = log[i];
+      if (e.speaker === 'player') { if (out.length) break; else continue; }
+      if (t === null) t = e.t; else if (e.t !== t) break;
+      out.unshift(e);
+    }
+    return out;
+  }
+  function calloutEl() {
+    if (callout.el && callout.el.isConnected) return callout.el;
+    var el = document.createElement('div');
+    el.id = 'instrCallout'; el.className = 'instr-callout'; el.hidden = true;
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = '<div class="ico-arrow"></div>' +
+      '<div class="ico-head"><span class="ico-who">Instructor</span>' +
+      '<button type="button" class="ico-hist-btn" data-ico-hist="1" data-scanner-hint="Show or hide everything the instructor has said so far.">History</button></div>' +
+      '<div class="ico-hist" hidden></div><div class="ico-body"></div><div class="ico-btns"></div>';
+    el.addEventListener('click', function (e) {
+      if (e.target.closest('[data-ico-hist]')) {
+        callout.histOpen = !callout.histOpen; callout.key = null; calloutSync(); return;
+      }
+      // Forward to the real button in the chat panel — one handler per button, always.
+      var b = e.target.closest('[data-chatbtn],[data-chatrevealall],[data-lc]');
+      if (b) {
+        var attr = b.hasAttribute('data-chatbtn') ? 'data-chatbtn' : b.hasAttribute('data-lc') ? 'data-lc' : 'data-chatrevealall';
+        var real = document.querySelector('#chatBtns [' + attr + '="' + b.getAttribute(attr) + '"]');
+        if (real) real.click();
+        return;
+      }
+      var pl = e.target.closest('[data-point]');
+      if (pl) chatPoint(pl.getAttribute('data-point').split('|'));   // click the line: show it again
+    });
+    document.body.appendChild(el);
+    callout.el = el;
+    window.addEventListener('resize', calloutPlaceSoon);
+    window.addEventListener('scroll', calloutPlaceSoon, true);
+    return el;
+  }
+  function calloutSync() {
+    var card = $('instructorCard');
+    var on = calloutActive();
+    if (card) card.classList.toggle('callout-on', on);
+    if (!on) {
+      if (callout.el) callout.el.hidden = true;
+      clearInterval(callout.timer); callout.timer = null; callout.key = null;
+      return;
+    }
+    var el = calloutEl();
+    if (!callout.obs && $('instrCurrent') && window.MutationObserver) {
+      callout.obs = new MutationObserver(function () { if (ui.callout) calloutSyncSoon(); });
+      callout.obs.observe($('instrCurrent'), { childList: true, subtree: true });
+    }
+    var grp = calloutGroup();
+    var btnSrc = $('chatBtns');
+    var btnHtml = btnSrc ? btnSrc.innerHTML : '';
+    var key = JSON.stringify([grp.map(function (e) { return e.t + '|' + (e[ui.register] || e.learning); }), btnHtml, callout.histOpen, ui.register]);
+    if (key !== callout.key) {
+      callout.key = key;
+      var acts = [], rests = [], pts = [];
+      // Only an ASK (a beat whose `ask_buttons` are up: the player is being asked to operate
+      // something) is an ACTION callout. Everything else — the hello, the watch beats, the
+      // instructor doing it for you — is an OBSERVATION callout, whatever its verbs.
+      var pb = latest && chatPendingBeat(latest);
+      var isAsk = !!(pb && pb.ask_buttons && latest.instructor.branch_beat_id === pb.id);
+      grp.forEach(function (e) {
+        calloutSentences(e[ui.register] || e.learning || '').forEach(function (x) { (isAsk && calloutIsAction(x) ? acts : rests).push(x); });
+        if (e.point) pts = pts.concat(e.point);
+      });
+      var ptAttr = pts.length ? ' data-point="' + mesc(pts.join('|')) + '" data-scanner-hint="Click to show it on the board again."' : '';
+      var body = '';
+      if (acts.length) {
+        body += '<div class="ico-act"' + ptAttr + '>' + acts.map(mesc).join(' ') + '</div>';
+        if (rests.length) body += '<div class="ico-why">' + rests.map(mesc).join(' ') + '</div>';
+      } else if (rests.length) {
+        body += '<div class="ico-say"' + ptAttr + '>' + rests.map(mesc).join(' ') + '</div>';
+      }
+      el.querySelector('.ico-body').innerHTML = body;
+      var bEl = el.querySelector('.ico-btns');
+      bEl.innerHTML = btnHtml; bEl.hidden = !btnHtml.trim();
+      var hist = el.querySelector('.ico-hist');
+      hist.hidden = !callout.histOpen;
+      el.querySelector('[data-ico-hist]').classList.toggle('on', callout.histOpen);
+      if (callout.histOpen) {
+        var log = $('chatLog');
+        hist.innerHTML = log ? log.innerHTML : '';
+        hist.scrollTop = hist.scrollHeight;
+      }
+      callout.points = pts;
+      callout.kind = acts.length ? 'act' : 'observe';
+      el.setAttribute('data-kind', callout.kind);
+      el.hidden = !(body || btnHtml.trim());
+    }
+    calloutPlace();
+    if (!callout.timer) callout.timer = setInterval(calloutPlace, 400);   // the board can move under it (splitters)
+  }
+  function calloutSyncSoon() {
+    if (callout.raf) return;
+    callout.raf = requestAnimationFrame(function () { callout.raf = 0; calloutSync(); });
+  }
+  function calloutPlaceSoon() { if (callout.el && !callout.el.hidden) requestAnimationFrame(calloutPlace); }
+  function rectOk(r) { return r && r.width > 2 && r.height > 2; }
+  function overlapArea(a, b) {
+    var w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return w > 0 && h > 0 ? w * h : 0;
+  }
+  // PLACEMENT. Bounds = the board area on screen. The anchor is the beat's glowing control; the
+  // bubble tries right, left, below, above of it (clamped into bounds) and takes the candidate that
+  // covers the least of the anchor (weighted 4) + the line's pointed-at components, plus a cost for
+  // being pushed off its ideal spot by the bounds (the pointer stops reaching); ties to that order.
+  // No anchor on screen -> bottom-centre over the board.
+  function calloutPlace() {
+    var el = callout.el;
+    if (!el || el.hidden) return;
+    var host = $('viewArea');
+    var vw = window.innerWidth, vh = window.innerHeight, M = 10, GAP = 14;
+    var hb = host ? host.getBoundingClientRect() : { left: 0, top: 0, right: vw, bottom: vh };
+    var B = { left: Math.max(M, hb.left + M), top: Math.max(M, hb.top + M), right: Math.min(vw - M, hb.right - M), bottom: Math.min(vh - M, hb.bottom - M) };
+    el.style.maxWidth = Math.max(260, Math.min(400, Math.round((B.right - B.left) * 0.4))) + 'px';
+    var w = el.offsetWidth, h = el.offsetHeight;
+    // ANCHOR: an ACTION callout points at the beat's glowing control; an OBSERVATION callout at
+    // the board item its line points at (sayAt), falling back to the glow. Both keep clear of
+    // the glow AND every pointed-at item.
+    var glow = null;
+    [].some.call(document.querySelectorAll('#viewArea .instr-glow'), function (g) {
+      if (rectOk(g.getBoundingClientRect())) { glow = g.getBoundingClientRect(); return true; } return false;
+    });
+    var ptRects = [];
+    var PB = scopeBoard();
+    if (PB && PB.pointTargets && callout.points.length) {
+      PB.pointTargets(callout.points).forEach(function (t) { var r = t.getBoundingClientRect(); if (rectOk(r)) ptRects.push(r); });
+    }
+    function inB(r) { return r && !(r.right < B.left || r.left > B.right || r.bottom < B.top || r.top > B.bottom); }
+    // The whole PANEL the control sits on, not just its own art: o4's "press FAST, then hold
+    // INSERT" names buttons beside the glowing CONTROL column, and a bubble beside the column
+    // covered them (seen in the 1366x768 screenshot). The smallest board tile that contains the
+    // rect (and is not most of the board) stands in for it.
+    function panelOf(r) {
+      if (!r) return r;
+      var st = document.querySelector('#viewArea .pwr-board-stage');
+      if (!st) return r;
+      var S = st.getBoundingClientRect(), best = null, ba = Infinity;
+      [].forEach.call(st.children, function (t) {
+        var q = t.getBoundingClientRect(), a = q.width * q.height;
+        if (a < S.width * S.height / 6 && a < ba && q.left <= r.left + 1 && q.top <= r.top + 1 && q.right >= r.right - 1 && q.bottom >= r.bottom - 1 && a > r.width * r.height * 1.05) { best = q; ba = a; }
+      });
+      return best ? { left: Math.min(best.left, r.left), top: Math.min(best.top, r.top), right: Math.max(best.right, r.right), bottom: Math.max(best.bottom, r.bottom) } : r;
+    }
+    glow = panelOf(glow);
+    var A = (callout.kind === 'observe' && inB(ptRects[0])) ? ptRects[0] : (inB(glow) ? glow : null);
+    var avoid = [];
+    if (glow) avoid.push({ r: glow, wt: 4 });
+    ptRects.forEach(function (r) { avoid.push({ r: r, wt: r === A ? 4 : 1 }); });
+    callout.anchorRect = A ? { left: A.left, top: A.top, right: A.right, bottom: A.bottom } : null;
+    function clampX(x) { return Math.max(B.left, Math.min(B.right - w, x)); }
+    function clampY(y) { return Math.max(B.top, Math.min(B.bottom - h, y)); }
+    var pick;
+    if (!A) {
+      pick = { side: 'none', x: clampX((B.left + B.right - w) / 2), y: clampY(B.bottom - h - 8) };
+    } else {
+      var cx = (A.left + A.right) / 2, cy = (A.top + A.bottom) / 2;
+      var cands = [
+        { side: 'right', x: A.right + GAP, y: cy - h / 2 },
+        { side: 'left', x: A.left - GAP - w, y: cy - h / 2 },
+        { side: 'below', x: cx - w / 2, y: A.bottom + GAP },
+        { side: 'above', x: cx - w / 2, y: A.top - GAP - h },
+      ];
+      cands.forEach(function (c, i) {
+        var fx = clampX(c.x), fy = clampY(c.y);
+        var off = (c.side === 'right' || c.side === 'left') ? Math.abs(fx - c.x) : Math.abs(fy - c.y);   // pushed AWAY from/onto the anchor
+        c.x = fx; c.y = fy;
+        var R = { left: fx, top: fy, right: fx + w, bottom: fy + h };
+        var cost = 0;
+        avoid.forEach(function (a) { cost += a.wt * overlapArea(R, a.r); });
+        c.cost = cost + off * 200 + i;
+      });
+      cands.sort(function (a, b) { return a.cost - b.cost; });
+      pick = cands[0];
+    }
+    el.style.left = Math.round(pick.x) + 'px';
+    el.style.top = Math.round(pick.y) + 'px';
+    el.setAttribute('data-side', pick.side);
+    var ar = el.querySelector('.ico-arrow');
+    if (A && pick.side !== 'none') {
+      var ax = (A.left + A.right) / 2, ay = (A.top + A.bottom) / 2;
+      if (pick.side === 'right' || pick.side === 'left') { ar.style.top = Math.round(Math.max(10, Math.min(h - 22, ay - pick.y - 6))) + 'px'; ar.style.left = ''; }
+      else { ar.style.left = Math.round(Math.max(10, Math.min(w - 22, ax - pick.x - 6))) + 'px'; ar.style.top = ''; }
+    }
   }
 
   // ============================================================ auto-checklists (Path 3)
@@ -10032,6 +10273,10 @@
     // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
     // their defaults; stack still accepts set_register for tests.
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
+    ui.callout = calloutPref();
+    syncCalloutSeg();
+    var cseg = $('calloutSeg');
+    if (cseg) cseg.addEventListener('click', function (e) { var b = e.target.closest('[data-callout]'); if (b) setCalloutPref(b.getAttribute('data-callout') === 'on'); });
     var aseg = $('attnSeg');
     if (aseg) aseg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-attn]'); if (!b) return;
