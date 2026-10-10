@@ -553,6 +553,17 @@
     });
   };
 
+  /* THE RESTORE BOUNDARY (quality pass on 89597600, 2026-10-10). A save, autosave or rewind
+   * checkpoint taken while a walkthrough held a `scripted_only` failure carries it in the control
+   * layer's own block, and that block restores whether or not a walkthrough comes back with it: an
+   * instructor block with no checklist (a `scope:'world'` rewind after Stop, a save whose
+   * procedure no longer resolves) handed free play a FAILED lamp with no row to clear it.
+   * Called by SimulationService._restore after the instructor is settled. Same ownership rule as
+   * Stop: no walkthrough running, no scripted failure. */
+  InstructorLayer.prototype.releaseOrphanScriptedFailures = function () {
+    if (!this.checklist) this._clearScriptedFailures();
+  };
+
   // Manual tick — only the ACTIVE step can be checked (a checklist is sequential).
   // Allowed even on auto-gradable steps: the operator's judgment outranks a
   // debounce that hasn't landed yet.

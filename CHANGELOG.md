@@ -37,6 +37,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - Step 2 injects `condensate_polisher_trip`: POLISHER STATUS reads **FAILED** (amber) and the sim pauses; step text cut to one line pointing at the lamp (owner 2026-10-10: players read only enough to do the step). Indicator only — no polisher model; the feed loss stays step 3's. Measured: under 0.1 s of plant time before the clock stops.
 - New failure flag `scripted_only` (pwr_control.js): injectable by a walkthrough, skipped by `getFailureCatalog` (no Failures-tab row — a lamp with no consequence in free play), cleared by `InstructorLayer` on Stop / unload; a reset rebuilds the layer.
 - `Manuals/08` §1.0, §2.0, §6.0 updated (Rev 24 pending row, item m). Gate: `run_pwr2_board` 101 -> 107, 5 new mutations caught; `run_manual_controls` 1329 -> 1330; `run_inspect`'s group check skips scripted-only rows.
+- Quality pass: a restore (file load, autosave Continue, rewind) now drops a `scripted_only` failure when no walkthrough comes back with it (`SimulationService._restore` → `InstructorLayer.releaseOrphanScriptedFailures`). Before: a plant-only rewind after Stop, or a save whose walkthrough did not restore, left FAILED lit in free play with no row to clear it (measured, both shapes). No save-format change. Step 2's `why` reworded to history — on this board condensate flow still reads 99.7 % at that step. `run_pwr2_board` 107 -> 110, +1 mutation caught (43/43).
 
 ### Changed — full-power opener: help sooner, restart on an early trip (#811)
 

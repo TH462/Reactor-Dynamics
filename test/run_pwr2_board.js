@@ -1437,6 +1437,28 @@ function runSuite(quietRec) {
     B.P.svc.running = true; sB = run(B.P, 2, sB && sB.active_failures ? sB : B.s);
     q('polisher: a plant reset clears it too',
       !polActive(sB) && lamp(sB) === 'IN SERVICE/' + BD_OK, lamp(sB));
+    /* THE RESTORE BOUNDARY (quality pass, 2026-10-10). The control layer's block carries the
+     * failure in every save and checkpoint; it must come back only WITH its walkthrough. Control
+     * first: a save of the running walkthrough restores both (lamp still FAILED). Then the two
+     * shapes that used to orphan it — measured before the fix: polisher active, no checklist. */
+    var C = toStep2Save();
+    var Cs = mkWorld(); Cs.svc.loadState(JSON.parse(JSON.stringify(C.save)));
+    q('polisher: a save of the running walkthrough restores it WITH the walkthrough (the control)',
+      polActive(Cs.svc.assembleSnapshot()) && !!Cs.svc.instructor.checklist,
+      'checklist ' + !!Cs.svc.instructor.checklist);
+    var strip = JSON.parse(JSON.stringify(C.save)); strip.instructor.checklist = null;
+    var Co = mkWorld(); Co.svc.loadState(strip);
+    var sCo = Co.svc.assembleSnapshot();
+    q('polisher: a restore that brings back no walkthrough drops it (no FAILED lamp free play cannot clear)',
+      !polActive(sCo) && lamp(sCo) === 'IN SERVICE/' + BD_OK, lamp(sCo));
+    var E = toPolisher();
+    E.P.cmd({ action: 'checklist_check', index: 1 }); run(E.P, 5, E.s);   /* step 3: a checkpoint WITH it */
+    E.P.cmd({ action: 'stop_checklist' });
+    E.P.cmd({ action: 'rewind', steps: 1, exact: true, scope: 'world' });
+    var sE = E.P.svc.assembleSnapshot();
+    q('polisher: Stop, then a plant-only rewind to a checkpoint that held it, does not bring it back',
+      !polActive(sE) && !E.P.svc.instructor.checklist && lamp(sE) === 'IN SERVICE/' + BD_OK, lamp(sE));
+    function toStep2Save() { var X = toPolisher(); return { save: X.P.svc.saveState() }; }
     bindWorld(w);
   })();
 
@@ -1456,6 +1478,8 @@ var PTPATH = path.join(SRC, 'pwr2_protection.js');
 var PTSRC = fs.readFileSync(PTPATH, 'utf8').replace(/\r\n/g, '\n');
 var IPATH = path.join(__dirname, '..', 'layers', 'instructor_layer.js');
 var ISRC = fs.readFileSync(IPATH, 'utf8').replace(/\r\n/g, '\n');
+var SVCPATH = path.join(__dirname, '..', 'layers', 'simulation_service.js');
+var SVCSRC = fs.readFileSync(SVCPATH, 'utf8').replace(/\r\n/g, '\n');
 var MPPATH = path.join(__dirname, '..', 'ui', 'manual_procedures.js');
 var MPSRC = fs.readFileSync(MPPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
@@ -1468,6 +1492,8 @@ var MUTS = [
    "      if (def.scripted_only) continue;\n", ""],
   ['Stop leaves the scripted failure standing (stale FAILED in free play)', IPATH, ISRC,
    "    this._clearScriptedFailures();\n    this.checklist = null;", "    this.checklist = null;"],
+  ['a restore keeps a walkthrough-only failure with no walkthrough to own it (orphan FAILED lamp)', SVCPATH, SVCSRC,
+   "    if (this.instructor.releaseOrphanScriptedFailures) this.instructor.releaseOrphanScriptedFailures();\n", ""],
   ['TMI-2 step 2 stops injecting the polisher failure (narrated only again)', MPPATH, MPSRC,
    "          inject: [{ failure: 'condensate_polisher_trip' }],\n", ""],
   /* THE WORLD SEAM (#738 quality pass). Without the reset at onMount the message state from the

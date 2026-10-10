@@ -5902,7 +5902,11 @@
          * passes before the clock stops (run_pwr2_board), so step 3's
          * 21-second stuck-valve window is untouched. */
         { text: 'No action. The CONDENSATE POLISHER reads FAILED. Press Continue.',
-          why: 'Its valves shut, so the condensate pumps have nowhere to send water.',
+          /* HISTORY, NOT THIS BOARD (quality pass 2026-10-10): the failure is indicator-only, so at
+           * this step CONDENSATE FLOW still reads 99.7 % with the pump running (measured), and it
+           * never trips here — step 3's feed loss is what drops the flow. The line used to say,
+           * in the present tense, that the pumps had "nowhere to send water". */
+          why: 'At Three Mile Island its valves shut and the condensate pump tripped. Here only this lamp changes; the feed loss is the next step.',
           story: { clock: '04:00:36',
             saw: 'Water got into the instrument air line to the polisher valves and they shut. The condensate pump lost its flow path and tripped.',
             knew: 'A polisher blockage in the basement. Nothing was wrong with the reactor.',
