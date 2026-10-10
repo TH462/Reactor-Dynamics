@@ -5,6 +5,9 @@
  *   QW1  Quiet board: with no alarm up the alarm panel is a one-line strip under a shorter chart and
  *        the board takes the height (scale 0.605 -> ~0.70 at 1366x768); the first alarm expands it at
  *        once; a dragged (pinned) strip is never collapsed. Layout only.
+ *   QW2  Hover help at the cursor: resting on a described board item for ~0.4 s shows the Scanner's
+ *        one-line brief beside the pointer (same text); a press or leaving dismisses it; never over
+ *        the instructor callout card.
  *
  * SHOTDIR=<dir> saves a screenshot per section.
  * Run: node test/verify_quickwins_ui.js
@@ -79,6 +82,58 @@ function ck(name, ok, detail) {
   var pin = await board(p.page);
   ck('QW1 a dragged (pinned) strip height is never collapsed', !pin.quiet && pin.rowH === 230, JSON.stringify(pin));
   await p.ctx.close();
+
+  // ---- QW2 ---------------------------------------------------------------------------------
+  var h = await session({ width: 1366, height: 768 }, '&callout=1');
+  await h.page.click('#tabbar [data-tab="instructor"]').catch(function () {});
+  await h.page.waitForTimeout(1500);   // let the board settle: a relayout under a measured point moves the target
+  var pt = await h.page.evaluate(function () {
+    var e = document.querySelector('.pwr-board-stage [data-item]'), r = e.getBoundingClientRect();
+    return [r.x + r.width / 2, r.y + r.height / 2];
+  });
+  function tip(page) {
+    return page.evaluate(function () {
+      var t = document.getElementById('hoverTip');
+      return { on: !!(t && t.classList.contains('on')), text: t ? t.textContent : '',
+               scanner: document.getElementById('scanner').textContent,
+               rect: t ? t.getBoundingClientRect().toJSON() : null };
+    });
+  }
+  await h.page.mouse.move(pt[0], pt[1]);
+  await h.page.waitForTimeout(200);
+  var early = await tip(h.page);
+  ck('QW2 no tooltip before the ~0.4 s dwell', !early.on, JSON.stringify({ on: early.on }));
+  await h.page.waitForFunction(function () { var t = document.getElementById('hoverTip'); return t && t.classList.contains('on'); }, null, { timeout: 5000 }).catch(function () {});
+  var late = await tip(h.page);
+  ck('QW2 after the dwell the tooltip shows the Scanner brief, beside the cursor',
+     late.on && late.rect && late.text.length > 10 && late.text === late.scanner && late.rect.left >= pt[0] && late.rect.top >= pt[1],
+     late.text.slice(0, 50) + (late.rect ? ' @' + Math.round(late.rect.left) + ',' + Math.round(late.rect.top) : ' (no tip drawn)'));
+  await shot(h.page, 'qw2_tip');
+  await h.page.mouse.down(); await h.page.mouse.up();
+  await h.page.waitForTimeout(150);
+  ck('QW2 a press dismisses it', !(await tip(h.page)).on);
+  await h.page.mouse.move(pt[0] + 1, pt[1] + 1);
+  await h.page.waitForTimeout(700);
+  await h.page.mouse.move(3, 3);
+  await h.page.waitForTimeout(250);
+  ck('QW2 moving onto nothing described dismisses it', !(await tip(h.page)).on);
+  // The instructor callout card: start the opener and rest on the card's own hinted button.
+  await h.page.waitForSelector('#instrCurrent [data-opener-start]', { timeout: 10000 });
+  await h.page.click('#instrCurrent [data-opener-start]');
+  await h.page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o0_hello'); }, null, { timeout: 30000 });
+  await h.page.waitForSelector('#instrCallout [data-scanner-hint]', { state: 'visible', timeout: 15000 });
+  var cb = await h.page.evaluate(function () {
+    var e = document.querySelector('#instrCallout [data-scanner-hint]'), r = e.getBoundingClientRect();
+    return [r.x + r.width / 2, r.y + r.height / 2];
+  });
+  await h.page.mouse.move(cb[0], cb[1]);
+  await h.page.waitForTimeout(900);
+  var onCard = await tip(h.page);
+  ck('QW2 no tooltip over the instructor callout card (its button carries a hint)', !onCard.on, JSON.stringify({ on: onCard.on }));
+  await h.page.mouse.move(pt[0], pt[1]);
+  await h.page.waitForTimeout(900);
+  ck('QW2 ...and it still shows on the board with the callout up', (await tip(h.page)).on);
+  await h.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));

@@ -764,6 +764,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .scrubber .head { position: absolute; right: 0; top: -3px; width: 3px; height: 10px; background: var(--normal); border-radius: 2px; pointer-events: none; }
 .scrubber .lbl { font-size: 10px; color: var(--muted); }
 
+/* HOVER HELP AT THE CURSOR (quick win 2): the Scanner's one-line brief beside the pointer. */
+.hover-tip {
+  position: fixed; left: 0; top: 0; z-index: 9500; max-width: 300px; pointer-events: none;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text); font-size: 12px; line-height: 1.35; padding: 5px 9px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .5); opacity: 0; transition: opacity .1s ease;
+}
+.hover-tip.on { opacity: 1; }
+.hover-tip strong { color: var(--text); }
+
 /* App-level feedback toast (save / load / file errors) */
 .app-toast {
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%) translateY(-6px);

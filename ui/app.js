@@ -11157,6 +11157,56 @@
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
     document.body.addEventListener('mouseover', function (e) { inspectAt(e); });
+    /* HOVER HELP AT THE CURSOR (quick win 2, owner 2026-10-10: "more intuitive"). The Scanner line
+     * sits under the board, a long way from the thing the eye is on. After HOVER_TIP_MS of
+     * resting on a described thing, its one-line brief -- the SAME text the Scanner shows,
+     * resolved by the same inspectResolve -- appears beside the cursor. The Scanner stays the
+     * expanded view. Never over the instructor callout card, the Scanner panel itself, or a
+     * dialog; any press, key, wheel or leaving the window dismisses it. Mouse only. */
+    (function () {
+      var HOVER_TIP_MS = 400, tip = null, timer = null, tipKey = null, shown = false, mx = 0, my = 0, lastMove = 0;
+      function hide() {
+        if (timer) { clearTimeout(timer); timer = null; }
+        tipKey = null; shown = false;
+        if (tip) tip.classList.remove('on');
+      }
+      function place() {
+        if (!tip) return;
+        var w = tip.offsetWidth, h = tip.offsetHeight, x = mx + 14, y = my + 20;
+        if (x + w > window.innerWidth - 6) x = Math.max(6, mx - w - 10);
+        if (y + h > window.innerHeight - 6) y = Math.max(6, my - h - 12);
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      }
+      function show(res) {
+        if (!tip) {
+          tip = document.createElement('div');
+          tip.id = 'hoverTip'; tip.className = 'hover-tip'; tip.setAttribute('role', 'tooltip');
+          document.body.appendChild(tip);
+        }
+        tip.innerHTML = (res.title ? '<strong>' + mesc(res.title) + '</strong> — ' : '') + mesc(res.brief);
+        place();
+        tip.classList.add('on');
+        shown = true;
+      }
+      document.addEventListener('mousemove', function (e) {
+        mx = e.clientX; my = e.clientY;
+        if (shown) place();
+        var now = Date.now();
+        if (now - lastMove < 60) return;         // resolving walks the board's geometry; do not do it every pixel
+        lastMove = now;
+        var t = e.target;
+        if (!t || !t.closest || t.closest('#instrCallout, .instr-callout, #scannerPanel, .mission-overlay, .oom-win, #tourRoot, .hover-tip')) { hide(); return; }
+        var res = inspectResolve(e);
+        if (!res || !res.brief) { hide(); return; }
+        if (res.key === tipKey) return;          // still resting on the same thing
+        hide();
+        tipKey = res.key;
+        timer = setTimeout(function () { timer = null; show(res); }, HOVER_TIP_MS);
+      }, true);
+      ['mousedown', 'keydown', 'wheel'].forEach(function (n) { window.addEventListener(n, hide, true); });
+      window.addEventListener('blur', function (e) { if (e.target === window) hide(); });   /* capture would catch every element's blur */
+      document.documentElement.addEventListener('mouseleave', hide);
+    }());
     /* THE CLICK PATH IS FLASH-AWARE (#558) — see inspectAt. A press that raises a refusal
      * writes it here and this listener, running later in the SAME dispatch, used to
      * overwrite it with the button's own help text before a single frame was painted. */
