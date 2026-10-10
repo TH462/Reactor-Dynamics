@@ -2154,7 +2154,7 @@
         // text so a font/rounding change cannot make this pass for the wrong reason.
         (function () {
           var p = d.compProps(item('ims2immk7ks'), s0);
-          ck('units: SI Tavg tile reads °C, not °F', p.unit === 'C' && p.value > 250 && p.value < 350,
+          ck('units: SI Tavg tile reads °C, not °F', p.unit === '°C' && p.value > 250 && p.value < 350,
             p.unit + ' ' + p.value);
           ck('units: SI Tavg tile bands are °C too (the band cannot be in a different unit than the reading)',
             p.tripHi > 300 && p.tripHi < 400 && p.normHi < 320, p.tripHi + ' / ' + p.normHi);
@@ -2188,7 +2188,7 @@
           // and failed on a rounding edge (12 °F vs 6 °C, off by 1.2). The absolute-vs-
           // difference discriminant is untouched: the +32 error sits > 10 away.
           ck('units: SI leg ΔT is a difference, not an absolute temperature',
-            / C$/.test(valOf('imro6qpci2d')) && Math.abs(us - si * 9 / 5) <= 1.5 && Math.abs(us - (si * 9 / 5 + 32)) > 10,
+            / °C$/.test(valOf('imro6qpci2d')) && Math.abs(us - si * 9 / 5) <= 1.5 && Math.abs(us - (si * 9 / 5 + 32)) > 10,
             usDT + ' -> ' + valOf('imro6qpci2d'));
         })();
         // Flow. gpm is an authored display scale, so SI is m³/h (owner selection).

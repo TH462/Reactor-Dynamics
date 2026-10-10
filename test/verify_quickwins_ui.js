@@ -13,6 +13,8 @@
  *   QW4  PAUSED veil: a plainly stopped clock (Escape out of the Quick tour, the player's pause) puts a
  *        big PAUSED over the board whose Resume button plays; none under a dialog, the tour, or a
  *        walkthrough hold; clicks pass through everywhere else.
+ *   QW5  Board temperature units read `°F` (degree sign), as the chart and manual do. (The on/off selector
+ *        vocabulary half of QW5 is NOT done -- see the commit message.)
  *
  * SHOTDIR=<dir> saves a screenshot per section.
  * Run: node test/verify_quickwins_ui.js
@@ -207,6 +209,22 @@ function ck(name, ok, detail) {
   var vm = await veil(v.page);
   ck('QW4 no veil under a dialog (Settings holds the clock itself)', !vm.running && !vm.on, JSON.stringify(vm));
   await v.ctx.close();
+
+  // ---- QW5 ---------------------------------------------------------------------------------
+  var d = await session({ width: 1366, height: 768 });
+  var du = await d.page.evaluate(function () {
+    var bare = [], deg = 0;
+    [].forEach.call(document.querySelectorAll('.pwr-board-stage *'), function (e) {
+      if (e.children.length) return;
+      var t = e.textContent.trim();
+      if (/^[FC](\/hr)?$/.test(t)) bare.push(t);
+      if (/^\u00B0[FC](\/hr)?$/.test(t)) deg++;
+    });
+    return { bare: bare, deg: deg };
+  });
+  ck('QW5 every board temperature unit carries the degree sign (no bare F / C / F/hr)', du.bare.length === 0 && du.deg >= 8, JSON.stringify(du));
+  await shot(d.page, 'qw5_units');
+  await d.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
