@@ -362,6 +362,8 @@ body {
    stays muted gray. Exactly one accented chip per control = a calm board.
    .run = energized/armed (green), .warn = caution (amber). */
 .seg button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px #38424d; }
+/* QW3: while the window is AUTO the lit width is only the cap, so it reads as a limit, not a choice. */
+.seg.win-auto button.on { font-weight: 400; color: var(--text-2); box-shadow: none; text-decoration: underline dotted; text-underline-offset: 3px; }
 .seg button.on.run { color: #6FD089; background: rgba(70,163,94,.08); box-shadow: inset 0 0 0 1px rgba(70,163,94,.65); }
 .seg button.on.warn { color: var(--caution); background: rgba(217,164,65,.10); box-shadow: inset 0 0 0 1px rgba(217,164,65,.65); }
 /* press-and-hold (rod drive) active state */

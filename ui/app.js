@@ -45,7 +45,8 @@
     diagMode: 'learning',   // synoptic: 'learning' (M8 Education) | 'realistic'
     physOverlay: false,     // synoptic: Physics Overlay toggle (Learning only)
     rodSpeed: 'normal',
-    window: 300,            // strip-chart seconds
+    window: 300,            // strip-chart seconds (the rung: a CAP while windowAuto, the choice once clicked)
+    windowAuto: true,       // QW3: until the player clicks a rung, the shown window fits the data (chartWindowEff)
     series: {},             // per-plant; defaults set on plant load — "is it plotted at all"
     /* WHICH SIDE(S) each plotted channel traces (#454): id -> 'ind' | 'phys' | 'both'.
      * ABSENT MEANS "follow the global Learning/Realistic rule", which is why this starts
@@ -8463,10 +8464,26 @@
   // through, every reachable checkpoint sat off the left edge and the picker had
   // nothing to click. The traces then occupy only the right-hand sliver, which is
   // honest: chartBuf keeps CHART_RECORD_SEC of trend and no more.
+  /* THE WINDOW FITS THE DATA (quick win 3, owner 2026-10-10: at 60x the rung jumped to 1 h and a
+   * change a minute old was a hairline). Until the player clicks a rung, the shown window is the
+   * smallest step that keeps the time since their last command at or under half the width
+   * (>= 1 min), CAPPED by the rung the speed rule picked (ui.window) -- so it opens at 1 min and
+   * widens as the plant is watched. A click on 1m/5m/10m/30m (or in chart settings) sets
+   * ui.windowAuto = false and that choice stands. Steps, not a continuous slide, so the axis
+   * labels move only when the window does. */
+  var CHART_AUTO_STEPS = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200];
+  var chartLastActSim = 0;     // sim time of the player's last command (set in cmd())
+  function chartWindowEff(t1) {
+    if (!ui.windowAuto) return ui.window;
+    if (chartLastActSim > t1) chartLastActSim = 0;     // a rewind or a new plant: the clock went backwards
+    var want = Math.max(60, 2 * (t1 - chartLastActSim)), w = CHART_AUTO_STEPS[CHART_AUTO_STEPS.length - 1];
+    for (var i = 0; i < CHART_AUTO_STEPS.length; i++) if (CHART_AUTO_STEPS[i] >= want) { w = CHART_AUTO_STEPS[i]; break; }
+    return Math.min(ui.window, w);
+  }
   function chartExtent() {
     if (!chartBuf.length) return { t0: 0, t1: 0, span: 1 };
     var t1 = chartBuf[chartBuf.length - 1].t;
-    var t0 = t1 - ui.window;
+    var t0 = t1 - chartWindowEff(t1);
     var cps = ui.rewindPick && service ? (service.checkpoints || []) : [];
     if (cps.length) {
       var oldest = cps[0].metadata.sim_time;
@@ -8493,11 +8510,12 @@
   var chartDrawnKey = '';
   function chartDrawKey() {
     return chartBuf.length + ':' + (chartBuf.length ? chartBuf[chartBuf.length - 1].t : -1) +
-           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0) +
+           ':' + (chartBuf.length ? chartWindowEff(chartBuf[chartBuf.length - 1].t) : ui.window) + ':' + (RD.Events ? RD.Events.count() : 0) +
            ':' + (ui.rewindPick ? 1 : 0);
   }
   function drawChart() {
     chartDrawnKey = chartDrawKey();
+    var gwSeg = $('graphWindow'); if (gwSeg) gwSeg.classList.toggle('win-auto', !!ui.windowAuto);
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
@@ -9401,6 +9419,7 @@
                                   : { type: 'error', code: 'COMMAND_ERROR', message: em };
     }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
+    if (c && c.action !== 'instructor_interact' && !(r && (r.type === 'blocked' || r.type === 'error'))) chartLastActSim = cmdT;   // QW3: the player acted
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
     // this is the player acting. Blocked commands are dropped inside command().
@@ -10430,7 +10449,7 @@
     if (tabBody) tabBody.addEventListener('click', function (e) {
       if (e.target.closest('.plot-cell')) e.stopPropagation();
     }, true);
-    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
+    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); ui.windowAuto = false; chartRange = {}; drawChart(); });
 
     /* Redraw on RESIZE — the lane split reads the live plot height, but drawChart only ran
      * on the next snapshot tick (never, if paused), so a splitter drag or window resize
@@ -10453,7 +10472,7 @@
     $('coFilter').addEventListener('input', applyCsFilter);
     $('chartOptsWin').addEventListener('click', function (e) {
       var b = e.target.closest('[data-win]'); if (!b) return;
-      ui.window = +b.getAttribute('data-win');
+      ui.window = +b.getAttribute('data-win'); ui.windowAuto = false;
       chartRange = {};
       // Keep the on-chart ladder in step — they are two views of one setting.
       var src = $('graphWindow').querySelectorAll('[data-win]');

@@ -8,6 +8,8 @@
  *   QW2  Hover help at the cursor: resting on a described board item for ~0.4 s shows the Scanner's
  *        one-line brief beside the pointer (same text); a press or leaving dismisses it; never over
  *        the instructor callout card.
+ *   QW3  The chart window fits the data: a fresh run opens on 1 min and widens with the time since
+ *        the player's last command (never past the speed rule's rung); a clicked rung is authoritative.
  *
  * SHOTDIR=<dir> saves a screenshot per section.
  * Run: node test/verify_quickwins_ui.js
@@ -134,6 +136,31 @@ function ck(name, ok, detail) {
   await h.page.waitForTimeout(900);
   ck('QW2 ...and it still shows on the board with the callout up', (await tip(h.page)).on);
   await h.ctx.close();
+
+  // ---- QW3 ---------------------------------------------------------------------------------
+  function axisFirst(page) {
+    return page.evaluate(function () {
+      var sp = document.querySelector('#chartXAxis span'); var t = sp ? sp.textContent : '';
+      var m = t.match(/(\d+):(\d+):(\d+)/), n = t.match(/(\d+)s/);
+      return { text: t, sec: m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) : n ? +n[1] : null,
+               auto: document.getElementById('graphWindow').classList.contains('win-auto') };
+    });
+  }
+  var w = await session({ width: 1366, height: 768 });
+  var a0 = await axisFirst(w.page);
+  ck('QW3 a fresh run opens on a 1 min window (was the 5 min rung)', a0.sec === 60 && a0.auto, JSON.stringify(a0));
+  await shot(w.page, 'qw3_fresh');
+  await w.page.click('#speed button[data-speed="60"]');
+  await w.page.waitForTimeout(4000);
+  var a60 = await axisFirst(w.page);
+  ck('QW3 at 60x the window follows the data, not the 1 h rung (60 s <= window < 3600 s)', a60.sec >= 60 && a60.sec < 3600, JSON.stringify(a60));
+  await shot(w.page, 'qw3_60x');
+  var rung = await w.page.evaluate(function () { var b = document.querySelectorAll('#graphWindow [data-win]'); return +b[b.length - 1].getAttribute('data-win'); });
+  await w.page.click('#graphWindow [data-win="' + rung + '"]');
+  await w.page.waitForTimeout(700);
+  var aM = await axisFirst(w.page);
+  ck('QW3 a clicked rung is authoritative (the widest rung shows exactly, auto off)', aM.sec === rung && !aM.auto, JSON.stringify(aM) + ' rung ' + rung);
+  await w.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
