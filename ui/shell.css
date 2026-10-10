@@ -809,6 +809,23 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack > .alarm-empty {
   grid-column: 1 / -1;
 }
+/* QUIET BOARD (quick win 1): no alarm up -> the alarm panel becomes a one-line strip laid over the
+   chart's (always empty) legend corner, the row shrinks to the chart alone, and the board takes the
+   height. The chart keeps THREE 36 px lanes (LANE_FLOOR_PX) -- any shorter and the default channels
+   demote to numeric rows. app.js toggles .alarms-quiet (8 s of quiet to collapse, instant expand;
+   never when the operator has dragged the strip, never with the side panel hidden). */
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .plant-area > .bottom-row {
+  flex: 0 0 var(--bottomrow-quiet-h, 176px); min-height: 0; position: relative;
+}
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .plant-area > .bottom-row > .alarm-panel {
+  position: absolute; left: 9px; top: 7px; z-index: 3; height: 22px; width: auto; max-width: calc(100% - 330px);
+  flex-direction: row; align-items: center; min-width: 0; overflow: hidden;
+  background: transparent; border: none;
+}
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel > .alarm-head { border-bottom: none; padding: 0; gap: 8px; flex: 0 0 auto; }
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel > .alarm-stack { padding: 0 8px; flex: 1 1 auto; min-width: 0; display: block; overflow: hidden; }
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel .alarm-empty { padding: 0; text-align: left; font-size: 11px; white-space: nowrap; }
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel .btn { padding: 1px 6px; font-size: 10px; min-height: 18px; }
 .alarm-empty { color: var(--muted); font-size: 11px; padding: 10px; text-align: center; font-style: italic; }
 .alarm-tile {
   display: flex; gap: 7px; align-items: flex-start; padding: 6px 8px; border-radius: 5px;

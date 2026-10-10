@@ -3070,10 +3070,28 @@
     var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
     return 'T+' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
   }
+  /* QUIET-BOARD LAYOUT (quick win 1, owner 2026-10-10: "more intuitive and easier"). With no alarm
+   * up, the alarm panel is a one-line strip under a shorter chart and the board takes the height
+   * (CSS: .alarms-quiet). LAYOUT ONLY -- the alarm list and its behaviour are untouched (#822).
+   * The first alarm expands it at once; collapsing waits ALARM_QUIET_HOLD_MS of continuous quiet so a
+   * chattering alarm cannot make the board resize every second. A pinned (dragged) strip height is
+   * the operator's and is never collapsed. */
+  var ALARM_QUIET_HOLD_MS = 8000, alarmQuietSince = -1e9, alarmQuietOn = null;
+  function updateAlarmQuiet(activeCount) {
+    var app = document.querySelector('.app.pwr-synoptic');
+    if (!app) return;
+    var t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (activeCount) alarmQuietSince = null;
+    else if (alarmQuietSince == null) alarmQuietSince = t;
+    var pinned = !!app.style.getPropertyValue('--bottomrow-h');
+    var want = !pinned && alarmQuietSince != null && (t - alarmQuietSince) >= ALARM_QUIET_HOLD_MS;
+    if (want !== alarmQuietOn) { alarmQuietOn = want; app.classList.toggle('alarms-quiet', want); }
+  }
   function renderAlarms(s) {
     var stack = $('alarmStack');
     var now = s.metadata ? s.metadata.sim_time : 0;
     var active = s.alarms.filter(function (a) { return a.state !== 'clear'; });
+    updateAlarmQuiet(active.length);
     var liveIds = {};
     active.forEach(function (a) {
       liveIds[a.id] = true;
