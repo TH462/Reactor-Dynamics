@@ -6,10 +6,11 @@
  *
  * What only the page can get wrong, at 1366x768 and 1920x1080:
  *   1. DEFAULT UNCHANGED — no flag, no bubble; the chat transcript is where it was.
- *   2. PLACEMENT — on every opener ask the bubble is wholly on-screen, beside the glowing control's
- *      PANEL (within 40 px of it), and covers none of the control or its panel.
- *   3. ACTION FIRST — an ask's bubble leads with the action sentence (.ico-act); a watch line
- *      renders as an OBSERVATION callout (data-kind="observe", no .ico-act).
+ *   2. PLACEMENT (iteration 2, owner: "it blocks part of the diagram") — on every beat the card is
+ *      on-screen and covers NONE of the six top tiles, the highlighted control's panel, or any item
+ *      the line points at; a leader line runs to the anchor. Hovering the card fades it to ~25 %.
+ *   3. COMPACT — an ask shows its action sentence only (.ico-act), the rest behind "why?"; a watch
+ *      line is an OBSERVATION callout of ONE sentence (data-kind="observe", no .ico-act).
  *   4. BUTTONS WORK FROM THE BUBBLE — Ready starts the load ask, Show me does the step (o1_help),
  *      the early trip's Restart lands a fresh opener on o0.
  *   5. THE SETTINGS TOGGLE turns it on with no reload.
@@ -85,11 +86,29 @@ var BUB = '#instrCallout';
         [].forEach.call(st.children, function (t) { var q = t.getBoundingClientRect(), a = q.width * q.height;
           if (a < S.width * S.height / 6 && a < ba && a > g.width * g.height * 1.05 && q.left <= g.left + 1 && q.top <= g.top + 1 && q.right >= g.right - 1 && q.bottom >= g.bottom - 1) { P = q; ba = a; } });
       }
+      // The six TOP TILES, found by walking text nodes for the exact label (app.js finds them by
+      // the smallest tile whose text contains it — a different route to the same tiles).
+      var LABS = ['REACTOR POWER', 'AVG COOLANT TEMPERATURE', 'SUBCOOLING MARGIN', 'PRIMARY PRESSURE', 'PRESSURIZER LEVEL', 'STEAM GENERATOR LEVEL'];
+      var stg = document.querySelector('#viewArea .pwr-board-stage'), tops = [];
+      var tw = document.createTreeWalker(stg, NodeFilter.SHOW_TEXT), tn;
+      while ((tn = tw.nextNode())) {
+        if (LABS.indexOf(tn.nodeValue.trim().toUpperCase()) === -1) continue;
+        var up = tn.parentNode; while (up && up.parentNode !== stg) up = up.parentNode;
+        if (up) tops.push(up.getBoundingClientRect());
+      }
+      var pts = (RD.PwrBoard && RD.PwrBoard.pointTargets) ? RD.PwrBoard.pointTargets(
+        [].concat.apply([], [].map.call(b.querySelectorAll('[data-point]'), function (x) { return x.getAttribute('data-point').split('|'); }))).map(function (t) { return t.getBoundingClientRect(); }) : [];
+      var ld = document.querySelector('#instrCalloutLead'), dot = ld && !ld.hidden ? ld.querySelector('i').getBoundingClientRect() : null;
+      function near(rr, x, y) { return x >= rr.left - 8 && x <= rr.right + 8 && y >= rr.top - 8 && y <= rr.bottom + 8; }
+      var leadOk = dot ? [P].concat(pts).some(function (rr) { return rr && near(rr, (dot.left + dot.right) / 2, (dot.top + dot.bottom) / 2); }) : null;
       function ov(a, c) { var w = Math.min(a.right, c.right) - Math.max(a.left, c.left), h = Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top); return w > 0 && h > 0 ? w * h : 0; }
       function gap(a, c) { var dx = Math.max(0, c.left - a.right, a.left - c.right), dy = Math.max(0, c.top - a.bottom, a.top - c.bottom); return Math.max(dx, dy); }
       return { shown: true, side: b.getAttribute('data-side'), kind: b.getAttribute('data-kind'),
         onScreen: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
         glow: !!g, overlap: g ? Math.round(ov(r, g) + ov(r, P)) : 0, gap: g ? Math.round(gap(r, P)) : null,
+        tops: tops.length, topHit: Math.round(tops.reduce(function (acc, q) { return acc + ov(r, q); }, 0)),
+        ptHit: Math.round(pts.reduce(function (acc, q) { return acc + ov(r, q); }, 0)),
+        lead: leadOk, whyBtn: !!b.querySelector('[data-ico-why]'), compact: b.classList.contains('ico-compact'),
         act: (b.querySelector('.ico-act') || {}).textContent || '', why: (b.querySelector('.ico-why') || {}).textContent || '',
         say: (b.querySelector('.ico-say') || {}).textContent || '',
         btns: [].map.call(b.querySelectorAll('.ico-btns [data-chatbtn]'), function (x) { return x.getAttribute('data-chatbtn'); }),
@@ -139,9 +158,25 @@ var BUB = '#instrCallout';
     await settle(page);
     var g1 = await geom(page);
     await shot(page, tag, 'o1_load');
-    ck(tag + ' o1_load: beside Turbine Load (on-screen, gap <= 40 px, no overlap)', g1.shown && g1.onScreen && g1.glow && g1.overlap === 0 && g1.gap <= 40, JSON.stringify(g1));
-    ck(tag + ' o1_load: the ACTION leads (big), the why follows (small), Show me in the bubble',
-       /^First move: set Turbine Load to 80 MW\.$/.test(g1.act.trim()) && /less steam/.test(g1.why) && g1.btns.join() === 'show_me', JSON.stringify([g1.act, g1.why, g1.btns]));
+    ck(tag + ' o1_load: clear of all six top tiles and of the Turbine Load panel, on-screen, leader to the panel',
+       g1.shown && g1.onScreen && g1.glow && g1.tops === 6 && g1.topHit === 0 && g1.overlap === 0 && (g1.lead === true || g1.gap <= 4), JSON.stringify(g1));
+    ck(tag + ' o1_load: COMPACT — the action line only, the explanation behind "why?", Show me in the bubble',
+       /^First move: set Turbine Load to 80 MW\.$/.test(g1.act.trim()) && g1.why === '' && g1.whyBtn && g1.btns.join() === 'show_me', JSON.stringify([g1.act, g1.why, g1.whyBtn, g1.btns]));
+    await page.click(BUB + ' [data-ico-why]').catch(function () {});
+    await page.waitForTimeout(500);
+    var g1w = await geom(page);
+    ck(tag + ' o1_load: "why?" opens the explanation, and the card is still clear of the top tiles and the panel',
+       /less steam/.test(g1w.why) && g1w.topHit === 0 && g1w.overlap === 0, JSON.stringify([g1w.why, g1w.topHit, g1w.overlap]));
+    await page.click(BUB + ' [data-ico-why]').catch(function () {});
+    // HOVER FADE: over the card it fades so the board under it reads; over a button it stays solid.
+    await page.hover(BUB + ' .ico-act').catch(function () {});
+    await page.waitForTimeout(400);
+    var opCard = await page.evaluate(function () { return +getComputedStyle(document.querySelector('#instrCallout')).opacity; });
+    await page.hover(BUB + ' [data-chatbtn="show_me"]').catch(function () {});
+    await page.waitForTimeout(400);
+    var opBtn = await page.evaluate(function () { return +getComputedStyle(document.querySelector('#instrCallout')).opacity; });
+    await page.mouse.move(2, 2);
+    ck(tag + ' hover: the card fades to ~25 % over its text, stays solid over a button', opCard <= 0.3 && opBtn === 1, 'card ' + opCard + ', button ' + opBtn);
     if (v === 0) {
       await page.click(BUB + ' [data-chatbtn="show_me"]').catch(function () {});
       ck(tag + ': Show me clicked in the bubble does the step (o1_help fires)', await fired(page, 'o1_help', 30000));
@@ -151,8 +186,9 @@ var BUB = '#instrCallout';
       await settle(page);
       var g = await geom(page);
       await shot(page, tag, ASKS[i][0]);
-      ck(tag + ' ' + ASKS[i][0] + ': action callout beside its control, on-screen, not covering it, Show me in it',
-         ok && g.shown && g.onScreen && g.glow && g.overlap === 0 && g.gap <= 40 && g.kind === 'act' && g.act.length > 0 && g.btns.indexOf('show_me') !== -1,
+      ck(tag + ' ' + ASKS[i][0] + ': action callout clear of the six top tiles, its control panel and pointed items; leader to it; Show me in it',
+         ok && g.shown && g.onScreen && g.glow && g.tops === 6 && g.topHit === 0 && g.overlap === 0 && g.ptHit === 0 && (g.lead === true || g.gap <= 4) &&
+         g.kind === 'act' && g.act.length > 0 && g.why === '' && g.btns.indexOf('show_me') !== -1,
          JSON.stringify(g));
     }
     // observation lines (watch beats): lighter, no action, still anchored and on-screen
@@ -161,8 +197,9 @@ var BUB = '#instrCallout';
       await settle(page);
       var go = await geom(page);
       await shot(page, tag, OBS[j][0]);
-      ck(tag + ' ' + OBS[j][0] + ': observation callout (no action line), on-screen, clear of the glow',
-         okj && go.shown && go.onScreen && go.kind === 'observe' && !go.act && go.overlap === 0, JSON.stringify(go));
+      ck(tag + ' ' + OBS[j][0] + ': observation callout — ONE sentence, no action line, clear of the top tiles, the panel and pointed items',
+         okj && go.shown && go.onScreen && go.kind === 'observe' && !go.act && go.say && !/[.!?]\s+[A-Z]/.test(go.say.trim()) &&
+         go.tops === 6 && go.topHit === 0 && go.overlap === 0 && go.ptHit === 0, JSON.stringify(go));
     }
     await S.ctx.close();
   }

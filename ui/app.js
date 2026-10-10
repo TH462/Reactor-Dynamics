@@ -4187,6 +4187,7 @@
       '<button type="button" class="ico-hist-btn" data-ico-hist="1" data-scanner-hint="Show or hide everything the instructor has said so far.">History</button></div>' +
       '<div class="ico-hist" hidden></div><div class="ico-body"></div><div class="ico-btns"></div>';
     el.addEventListener('click', function (e) {
+      if (e.target.closest('[data-ico-why]')) { callout.whyOpen = !callout.whyOpen; callout.key = null; calloutSync(); return; }
       if (e.target.closest('[data-ico-hist]')) {
         callout.histOpen = !callout.histOpen; callout.key = null; calloutSync(); return;
       }
@@ -4213,6 +4214,8 @@
     if (card) card.classList.toggle('callout-on', on);
     if (!on) {
       if (callout.el) callout.el.hidden = true;
+      if (callout.lead) callout.lead.hidden = true;
+      if (callout.boardObs) { callout.boardObs.disconnect(); callout.boardObs = null; }
       clearInterval(callout.timer); callout.timer = null; callout.key = null;
       return;
     }
@@ -4221,10 +4224,11 @@
       callout.obs = new MutationObserver(function () { if (ui.callout) calloutSyncSoon(); });
       callout.obs.observe($('instrCurrent'), { childList: true, subtree: true });
     }
+    calloutWatchBoard();
     var grp = calloutGroup();
     var btnSrc = $('chatBtns');
     var btnHtml = btnSrc ? btnSrc.innerHTML : '';
-    var key = JSON.stringify([grp.map(function (e) { return e.t + '|' + (e[ui.register] || e.learning); }), btnHtml, callout.histOpen, ui.register]);
+    var key = JSON.stringify([grp.map(function (e) { return e.t + '|' + (e[ui.register] || e.learning); }), btnHtml, callout.histOpen, callout.whyOpen, ui.register]);
     if (key !== callout.key) {
       callout.key = key;
       var acts = [], rests = [], pts = [];
@@ -4238,12 +4242,24 @@
         if (e.point) pts = pts.concat(e.point);
       });
       var ptAttr = pts.length ? ' data-point="' + mesc(pts.join('|')) + '" data-scanner-hint="Click to show it on the board again."' : '';
+      // COMPACT (owner 2026-10-10: the card "blocks part of the diagram"; players read only enough
+      // to do the step). An ask shows its ACTION only; the explanation waits behind "why?". An
+      // observation shows ONE sentence (the "Watch …" one, else the first that is not a clock
+      // note); the rest of it is in History.
+      var gk = JSON.stringify(grp.map(function (e) { return e.t; }));
+      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
       var body = '';
       if (acts.length) {
         body += '<div class="ico-act"' + ptAttr + '>' + acts.map(mesc).join(' ') + '</div>';
-        if (rests.length) body += '<div class="ico-why">' + rests.map(mesc).join(' ') + '</div>';
+        if (rests.length) {
+          body += '<button type="button" class="ico-more" data-ico-why="1">' + (callout.whyOpen ? 'hide' : 'why?') + '</button>';
+          if (callout.whyOpen) body += '<div class="ico-why">' + rests.map(mesc).join(' ') + '</div>';
+        }
       } else if (rests.length) {
-        body += '<div class="ico-say"' + ptAttr + '>' + rests.map(mesc).join(' ') + '</div>';
+        var one = rests.filter(function (x) { return /^watch\b/i.test(x); })[0] ||
+          rests.filter(function (x) { return !/^clock\b/i.test(x); })[0] || rests[0];
+        body += '<div class="ico-say"' + ptAttr + '>' + mesc(one) + '</div>';
+        if (rests.length > 1) body += '<button type="button" class="ico-more" data-ico-hist="1">more</button>';
       }
       el.querySelector('.ico-body').innerHTML = body;
       var bEl = el.querySelector('.ico-btns');
@@ -4269,93 +4285,181 @@
     callout.raf = requestAnimationFrame(function () { callout.raf = 0; calloutSync(); });
   }
   function calloutPlaceSoon() { if (callout.el && !callout.el.hidden) requestAnimationFrame(calloutPlace); }
+  /* PLACEMENT (iteration 2, OWNER 2026-10-10: "it blocks part of the diagram and it might block
+   * important info"). The card no longer sits flush against the control: it goes in the board's
+   * LOW-VALUE space and a thin leader line runs to the anchor.
+   *
+   * KEEP-OUT (hard): the six top tiles (REACTOR POWER … STEAM GENERATOR LEVEL), the highlighted
+   * control's PANEL, every item the line points at. SOFT: any other board tile it covers (by
+   * area), and ×6 for a tile whose readout text changed in the last 4 s (a moving number is the
+   * thing being watched). Plus distance to the anchor, so it stays near. A grid search over the
+   * board area takes the least cost; a spot that still touches a keep-out shrinks the card to its
+   * action line and searches again. The current spot is kept unless a new one is clearly better
+   * (no jitter as readouts tick). No anchor -> the same search with no distance pull, from the
+   * bottom centre. */
+  var CALLOUT_TOP_TILES = ['reactor power', 'avg coolant temperature', 'subcooling margin', 'primary pressure', 'pressurizer level', 'steam generator level'];
+  function calloutStage() { return document.querySelector('#viewArea .pwr-board-stage'); }
+  // The smallest board tile whose text names the gauge. Cached per mounted stage.
+  function calloutTopTiles() {
+    var st = calloutStage();
+    if (!st) return [];
+    if (callout.topFor === st && callout.top && callout.top.every(function (t) { return t.isConnected; })) return callout.top;
+    var kids = [].slice.call(st.children), out = [];
+    CALLOUT_TOP_TILES.forEach(function (lab) {
+      var best = null, ba = Infinity;
+      kids.forEach(function (t) {
+        var tx = (t.textContent || '').toLowerCase();
+        if (tx.indexOf(lab) === -1) return;
+        var q = t.getBoundingClientRect(), a = q.width * q.height;
+        if (a > 0 && a < ba) { best = t; ba = a; }
+      });
+      if (best) out.push(best);
+    });
+    callout.topFor = st; callout.top = out;
+    return out;
+  }
+  // Readouts that just changed: one observer on the stage while the callout is up.
+  function calloutWatchBoard() {
+    var st = calloutStage();
+    if (!st || !window.MutationObserver) return;
+    if (callout.boardObs && callout.boardFor === st) return;
+    if (callout.boardObs) callout.boardObs.disconnect();
+    callout.changed = new Map();
+    callout.boardFor = st;
+    callout.boardObs = new MutationObserver(function (recs) {
+      var now = Date.now();
+      for (var i = 0; i < recs.length; i++) {
+        var n = recs[i].target;
+        while (n && n.parentNode !== st) n = n.parentNode;
+        if (n) callout.changed.set(n, now);
+      }
+    });
+    callout.boardObs.observe(st, { subtree: true, characterData: true, childList: true });
+  }
   function rectOk(r) { return r && r.width > 2 && r.height > 2; }
   function overlapArea(a, b) {
     var w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
     return w > 0 && h > 0 ? w * h : 0;
   }
-  // PLACEMENT. Bounds = the board area on screen. The anchor is the beat's glowing control; the
-  // bubble tries right, left, below, above of it (clamped into bounds) and takes the candidate that
-  // covers the least of the anchor (weighted 4) + the line's pointed-at components, plus a cost for
-  // being pushed off its ideal spot by the bounds (the pointer stops reaching); ties to that order.
-  // No anchor on screen -> bottom-centre over the board.
+  function rectGap(a, b) {
+    var dx = Math.max(0, b.left - a.right, a.left - b.right), dy = Math.max(0, b.top - a.bottom, a.top - b.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  // The smallest board tile containing a rect (and not most of the board): a control's PANEL.
+  function calloutPanelOf(r) {
+    var st = calloutStage();
+    if (!r || !st) return r;
+    var S = st.getBoundingClientRect(), best = null, ba = Infinity;
+    [].forEach.call(st.children, function (t) {
+      var q = t.getBoundingClientRect(), a = q.width * q.height;
+      if (a < S.width * S.height / 6 && a < ba && a > r.width * r.height * 1.05 && q.left <= r.left + 1 && q.top <= r.top + 1 && q.right >= r.right - 1 && q.bottom >= r.bottom - 1) { best = q; ba = a; }
+    });
+    return best ? { left: Math.min(best.left, r.left), top: Math.min(best.top, r.top), right: Math.max(best.right, r.right), bottom: Math.max(best.bottom, r.bottom) } : r;
+  }
+  // What the placement must not cover, and what it points at.
+  function calloutKeepOut() {
+    var glow = null;
+    [].some.call(document.querySelectorAll('#viewArea .instr-glow'), function (g) {
+      var r = g.getBoundingClientRect(); if (rectOk(r)) { glow = r; return true; } return false;
+    });
+    var panel = glow ? calloutPanelOf(glow) : null;
+    var pts = [];
+    var PB = scopeBoard();
+    if (PB && PB.pointTargets && callout.points && callout.points.length) {
+      PB.pointTargets(callout.points).forEach(function (t) { var r = t.getBoundingClientRect(); if (rectOk(r)) pts.push(r); });
+    }
+    var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
+    var hard = top.concat(panel ? [panel] : [], pts);
+    var anchor = (callout.kind === 'observe' && pts[0]) ? pts[0] : panel;
+    return { hard: hard, top: top, panel: panel, points: pts, anchor: anchor };
+  }
   function calloutPlace() {
     var el = callout.el;
     if (!el || el.hidden) return;
-    var host = $('viewArea');
-    var vw = window.innerWidth, vh = window.innerHeight, M = 10, GAP = 14;
+    var host = $('viewArea'), st = calloutStage();
+    var vw = window.innerWidth, vh = window.innerHeight, M = 8;
     var hb = host ? host.getBoundingClientRect() : { left: 0, top: 0, right: vw, bottom: vh };
     var B = { left: Math.max(M, hb.left + M), top: Math.max(M, hb.top + M), right: Math.min(vw - M, hb.right - M), bottom: Math.min(vh - M, hb.bottom - M) };
-    el.style.maxWidth = Math.max(260, Math.min(400, Math.round((B.right - B.left) * 0.4))) + 'px';
-    var w = el.offsetWidth, h = el.offsetHeight;
-    // ANCHOR: an ACTION callout points at the beat's glowing control; an OBSERVATION callout at
-    // the board item its line points at (sayAt), falling back to the glow. Both keep clear of
-    // the glow AND every pointed-at item.
-    var glow = null;
-    [].some.call(document.querySelectorAll('#viewArea .instr-glow'), function (g) {
-      if (rectOk(g.getBoundingClientRect())) { glow = g.getBoundingClientRect(); return true; } return false;
+    el.style.maxWidth = Math.max(230, Math.min(340, Math.round((B.right - B.left) * 0.3))) + 'px';
+    var K = calloutKeepOut();
+    var A = K.anchor;
+    var S = st ? st.getBoundingClientRect() : null, soft = [], now = Date.now();
+    var dimming = !!(st && st.classList.contains('bd-dimming'));
+    if (st) [].forEach.call(st.children, function (t) {
+      var q = t.getBoundingClientRect();
+      if (!rectOk(q)) return;
+      var ch = callout.changed && callout.changed.get(t);
+      // A big tile (the vessel, the steam generator art) is still the plant: covered at a quarter
+      // of the cost of a panel or readout, so the card prefers the gaps between components.
+      // Under a beat's SCOPE the dimmed board is, by the instructor's own say, not what matters
+      // now: the cheapest place for the card. A lit tile costs double.
+      var big = q.width * q.height > S.width * S.height / 6;
+      var wt = big ? 0.25 : 1;
+      if (dimming) wt *= t.classList.contains('bd-lit') ? 2 : 0.3;
+      if (ch && now - ch < 4000) wt *= 4;
+      soft.push({ r: q, wt: wt });
     });
-    var ptRects = [];
-    var PB = scopeBoard();
-    if (PB && PB.pointTargets && callout.points.length) {
-      PB.pointTargets(callout.points).forEach(function (t) { var r = t.getBoundingClientRect(); if (rectOk(r)) ptRects.push(r); });
+    function search(w, h) {
+      var best = null, STEP = 16;
+      for (var y = B.top; y <= B.bottom - h; y += STEP) {
+        for (var x = B.left; x <= B.right - w; x += STEP) {
+          var R = { left: x, top: y, right: x + w, bottom: y + h };
+          var hard = 0, s2 = 0, i;
+          for (i = 0; i < K.hard.length; i++) hard += overlapArea(R, K.hard[i]);
+          for (i = 0; i < soft.length; i++) s2 += soft[i].wt * overlapArea(R, soft[i].r);
+          var d = A ? rectGap(R, A) : Math.abs((y + h) - B.bottom) + Math.abs(x + w / 2 - (B.left + B.right) / 2) * 0.5;
+          var c = hard * 1000 + s2 + d * 60;
+          if (!best || c < best.c) best = { x: x, y: y, c: c, hard: hard };
+        }
+      }
+      return best;
     }
-    function inB(r) { return r && !(r.right < B.left || r.left > B.right || r.bottom < B.top || r.top > B.bottom); }
-    // The whole PANEL the control sits on, not just its own art: o4's "press FAST, then hold
-    // INSERT" names buttons beside the glowing CONTROL column, and a bubble beside the column
-    // covered them (seen in the 1366x768 screenshot). The smallest board tile that contains the
-    // rect (and is not most of the board) stands in for it.
-    function panelOf(r) {
-      if (!r) return r;
-      var st = document.querySelector('#viewArea .pwr-board-stage');
-      if (!st) return r;
-      var S = st.getBoundingClientRect(), best = null, ba = Infinity;
-      [].forEach.call(st.children, function (t) {
-        var q = t.getBoundingClientRect(), a = q.width * q.height;
-        if (a < S.width * S.height / 6 && a < ba && q.left <= r.left + 1 && q.top <= r.top + 1 && q.right >= r.right - 1 && q.bottom >= r.bottom - 1 && a > r.width * r.height * 1.05) { best = q; ba = a; }
-      });
-      return best ? { left: Math.min(best.left, r.left), top: Math.min(best.top, r.top), right: Math.max(best.right, r.right), bottom: Math.max(best.bottom, r.bottom) } : r;
+    el.classList.remove('ico-compact');
+    var w = el.offsetWidth, h = el.offsetHeight;
+    var pick = search(w, h);
+    if (pick && pick.hard > 0) {               // nothing clear at full size: action line only
+      el.classList.add('ico-compact');
+      w = el.offsetWidth; h = el.offsetHeight;
+      pick = search(w, h) || pick;
     }
-    glow = panelOf(glow);
-    var A = (callout.kind === 'observe' && inB(ptRects[0])) ? ptRects[0] : (inB(glow) ? glow : null);
-    var avoid = [];
-    if (glow) avoid.push({ r: glow, wt: 4 });
-    ptRects.forEach(function (r) { avoid.push({ r: r, wt: r === A ? 4 : 1 }); });
-    callout.anchorRect = A ? { left: A.left, top: A.top, right: A.right, bottom: A.bottom } : null;
-    function clampX(x) { return Math.max(B.left, Math.min(B.right - w, x)); }
-    function clampY(y) { return Math.max(B.top, Math.min(B.bottom - h, y)); }
-    var pick;
-    if (!A) {
-      pick = { side: 'none', x: clampX((B.left + B.right - w) / 2), y: clampY(B.bottom - h - 8) };
-    } else {
-      var cx = (A.left + A.right) / 2, cy = (A.top + A.bottom) / 2;
-      var cands = [
-        { side: 'right', x: A.right + GAP, y: cy - h / 2 },
-        { side: 'left', x: A.left - GAP - w, y: cy - h / 2 },
-        { side: 'below', x: cx - w / 2, y: A.bottom + GAP },
-        { side: 'above', x: cx - w / 2, y: A.top - GAP - h },
-      ];
-      cands.forEach(function (c, i) {
-        var fx = clampX(c.x), fy = clampY(c.y);
-        var off = (c.side === 'right' || c.side === 'left') ? Math.abs(fx - c.x) : Math.abs(fy - c.y);   // pushed AWAY from/onto the anchor
-        c.x = fx; c.y = fy;
-        var R = { left: fx, top: fy, right: fx + w, bottom: fy + h };
-        var cost = 0;
-        avoid.forEach(function (a) { cost += a.wt * overlapArea(R, a.r); });
-        c.cost = cost + off * 200 + i;
-      });
-      cands.sort(function (a, b) { return a.cost - b.cost; });
-      pick = cands[0];
+    if (!pick) pick = { x: B.left, y: B.top, c: 0, hard: 0 };
+    // Hysteresis: stay put unless the new spot is clearly better (a ticking readout must not
+    // make the card hop).
+    var P = callout.pos;
+    if (P && P.w === w && P.h === h && P.key === callout.key) {
+      var R0 = { left: P.x, top: P.y, right: P.x + w, bottom: P.y + h };
+      var hard0 = 0;
+      K.hard.forEach(function (r) { hard0 += overlapArea(R0, r); });
+      var s0 = 0;
+      soft.forEach(function (o) { s0 += o.wt * overlapArea(R0, o.r); });
+      var c0 = hard0 * 1000 + s0 + (A ? rectGap(R0, A) : 0) * 60;
+      if (hard0 === 0 && R0.left >= B.left && R0.right <= B.right && R0.top >= B.top && R0.bottom <= B.bottom && c0 <= pick.c * 1.25 + 4000) pick = { x: P.x, y: P.y };
     }
+    callout.pos = { x: pick.x, y: pick.y, w: w, h: h, key: callout.key };
     el.style.left = Math.round(pick.x) + 'px';
     el.style.top = Math.round(pick.y) + 'px';
-    el.setAttribute('data-side', pick.side);
-    var ar = el.querySelector('.ico-arrow');
-    if (A && pick.side !== 'none') {
-      var ax = (A.left + A.right) / 2, ay = (A.top + A.bottom) / 2;
-      if (pick.side === 'right' || pick.side === 'left') { ar.style.top = Math.round(Math.max(10, Math.min(h - 22, ay - pick.y - 6))) + 'px'; ar.style.left = ''; }
-      else { ar.style.left = Math.round(Math.max(10, Math.min(w - 22, ax - pick.x - 6))) + 'px'; ar.style.top = ''; }
+    el.setAttribute('data-side', 'none');
+    calloutLead(A, { left: pick.x, top: pick.y, right: pick.x + w, bottom: pick.y + h });
+  }
+  // The LEADER: a thin line from the card's nearest edge to the anchor's nearest edge, with a dot.
+  function calloutLead(A, R) {
+    var ln = callout.lead;
+    if (!ln || !ln.isConnected) {
+      ln = document.createElement('div');
+      ln.className = 'ico-lead'; ln.id = 'instrCalloutLead';
+      ln.innerHTML = '<i></i>';
+      document.body.appendChild(ln);
+      callout.lead = ln;
     }
+    if (!A) { ln.hidden = true; return; }
+    var ax = Math.max(A.left, Math.min(A.right, (R.left + R.right) / 2)), ay = Math.max(A.top, Math.min(A.bottom, (R.top + R.bottom) / 2));
+    var bx = Math.max(R.left, Math.min(R.right, ax)), by = Math.max(R.top, Math.min(R.bottom, ay));
+    var dx = ax - bx, dy = ay - by, len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 4) { ln.hidden = true; return; }
+    ln.hidden = false;
+    ln.style.left = Math.round(bx) + 'px'; ln.style.top = Math.round(by) + 'px';
+    ln.style.width = Math.round(len) + 'px';
+    ln.style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad)';
   }
 
   // ============================================================ auto-checklists (Path 3)
