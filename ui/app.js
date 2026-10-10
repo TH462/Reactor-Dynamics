@@ -4108,6 +4108,9 @@
       if (!rop) return;
       TEL.missionAbandon(rid, Math.max(0, rop.beats.map(function (b) { return b.id; }).indexOf(rs.instructor.current_beat_id)));
       startOpener(rid);
+      // The button stands until the next broadcast re-renders: a double-click's second press
+      // filed a second abandon (against the fresh mission) and restarted twice (#811 QA 2026-10-09).
+      var rb = $('chatBtns'); if (rb) rb.innerHTML = '';
       return;
     }
     // A named ask button ("Show me", "Carry on") names itself; the plain Ready does not (#811).

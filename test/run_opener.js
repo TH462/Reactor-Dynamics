@@ -614,6 +614,14 @@ test('a rod hold is never overtaken by the help or a clock change', function (ck
   var r3 = play(holdRoute([{ at: 5, cmd: { action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' } }]), 420);
   var h3 = r3.at.o4_help != null ? r3.at.o4_help - r3.at.o4_rods : null;
   ck('lost release (OUT hold, never released): the hold heals at the limit and the help comes', h3 == null ? 'never' : '+' + h3.toFixed(1) + ' s', h3 != null && h3 >= 50 && h3 < 65, '+50..65 s');
+  /* ACTED ON THE FIRST LINE (#811 QA, 2026-10-09): a FAST hold at +2..+15 s lies inside o4's 15.8 s
+   * reading hold. rod_travel's baseline used to be taken on the first pass after the hold, so the
+   * 16 steps were invisible: no grade on the release, then at +46 s "I'll drive the rods in 40
+   * steps" (56 in, power 79.9 %). The baseline is the bank at the ask: met on the release. */
+  var r4 = play(holdRoute(hold(2, 15)), 420);
+  var d4 = r4.at.o5_rods_watch != null ? r4.at.o5_rods_watch - r4.at.o4_rods : null;
+  ck('hold inside the reading time (+2..+15): graded, no help', (d4 == null ? 'never' : 'o5 at +' + d4.toFixed(1) + ' s') + ', help ' + !!(r4.at.o4_help || r4.at.o4_help_more),
+     d4 != null && d4 < 20 && !r4.at.o4_help && !r4.at.o4_help_more, 'o5 by +20 s (after the reading hold), no help');
 });
 
 // ------------------------------------------------------------------ board scope (#811)

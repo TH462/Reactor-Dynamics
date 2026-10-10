@@ -829,6 +829,15 @@
     this.lastBeatFireTime = simTime;
     this._actionsSinceBeat = [];
     this._beatBaseline = {};
+    /* rod_travel's baseline is the bank AT THE FIRE, not at the first pass that evaluates it: under
+     * `pace: 'reading'` that pass is the whole reading hold later (15.8 s on o4_rods), and a player
+     * who acted on the ask's first line lost that travel — measured (#811 QA, 2026-10-09): 16 steps
+     * held in at +2..+15 s, power 89.3 %, never graded; +46 s "I'll drive the rods in 40 steps",
+     * 56 in, 79.9 %. The snapshot is this pass's (step() sets it), i.e. before the beat's commands. */
+    var bss = this._lastSnapshot && this._lastSnapshot.control_state && this._lastSnapshot.control_state.rod_groups;
+    for (var bi = 0; bss && bi < bss.length; bi++) {
+      if (bss[bi] && bss[bi].id != null && typeof bss[bi].steps === 'number') this._beatBaseline[bss[bi].id] = bss[bi].steps;
+    }
 
     // A rewind beat asks M5 to roll the WORLD back while the Instructor keeps its
     // progress (the "watch that again" device). It does not also checkpoint —

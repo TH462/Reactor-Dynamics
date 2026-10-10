@@ -459,8 +459,19 @@ var OFFER = '#instrCurrent [data-opener-start]';
   var oxB = await chatBtns();
   ck('early trip: offers Restart (primary) and Carry on', oxB.length === 2 && oxB[0].style === 'restart' && oxB[0].primary && !oxB[0].ghost &&
      /Restart the opener/.test(oxB[0].text) && oxB[1].style === 'carry_on' && oxB[1].ghost, JSON.stringify(oxB));
-  await page.evaluate(function () { window.__ev = []; });
-  await page.click('#chatBtns [data-chatbtn="restart"]');
+  // The page was reloaded since the step-2 hook (the not-fresh confirm), so re-hook telemetry here.
+  await page.evaluate(function () {
+    window.__ev = [];
+    var T = RD.Telemetry, orig = T.event;
+    if (!orig.__qaHook) { T.event = function (n, p) { window.__ev.push([n, JSON.parse(JSON.stringify(p || {}))]); return orig.apply(this, arguments); }; T.event.__qaHook = true; }
+  });
+  /* DOUBLE-CLICKED (#811 QA, 2026-10-09): the second click lands before the next broadcast
+   * re-renders the buttons, and used to file a SECOND mission_abandon (against the fresh opener's
+   * own mission, at the stale ox_trip_early index) and reset the plant twice. */
+  await page.evaluate(function () {
+    var b1 = document.querySelector('#chatBtns [data-chatbtn="restart"]'); if (b1) b1.click();
+    var b2 = document.querySelector('#chatBtns [data-chatbtn="restart"]'); if (b2) b2.click();
+  });
   var rst = await page.waitForFunction(function () {
     var s = RD.__dev.service(), I = s.instructor;
     return I.mode === 'scenario' && I.firedBeats.has('o0_hello') && !I.firedBeats.has('ox_trip_early') && !I.firedBeats.has('o1_load');
@@ -468,7 +479,12 @@ var OFFER = '#instrCurrent [data-opener-start]';
   var rs = await page.evaluate(function () { var s = RD.__dev.service(), sn = s.assembleSnapshot();
     return { scram: !!(sn.rps_state && sn.rps_state.scrammed), pwr: sn.instruments.power_range, ic: s.activeInitialState, acc: s.timeAcceleration,
              watch: s.instructor._watchFired.length, dim: !!document.querySelector('.pwr-board-stage.bd-dimming'),
-             abandon: (window.__ev || []).filter(function (e) { return e[0] === 'mission_abandon'; }).map(function (e) { return e[1]; }) }; });
+             abandon: (window.__ev || []).filter(function (e) { return e[0] === 'mission_abandon'; }).map(function (e) { return e[1]; }),
+             starts: (window.__ev || []).filter(function (e) { return e[0] === 'mission_start'; }).length,
+             oxIdx: RD.OPENERS.opener_pwr2_hfp.beats.map(function (b) { return b.id; }).indexOf('ox_trip_early') }; });
+  ck('Restart (double-clicked): ONE mission_abandon at the early-trip beat, ONE mission_start',
+     rs.abandon.length === 1 && rs.abandon[0].id === 'opener_pwr2_hfp' && rs.abandon[0].beat === rs.oxIdx && rs.starts === 1,
+     JSON.stringify({ abandon: rs.abandon, starts: rs.starts, oxIdx: rs.oxIdx }));
   ck('Restart: a fresh opener at full power, untripped, on o0', rst && !rs.scram && rs.pwr > 98 && rs.ic === 'hot_full_power' && rs.watch === 0 && rs.acc === 1 && !rs.dim,
      JSON.stringify(rs));
   await page.evaluate(function () { RD.__dev.service().handleCommand({ action: 'instructor_continue' }); });   // Ready
