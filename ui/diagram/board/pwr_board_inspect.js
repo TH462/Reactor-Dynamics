@@ -1131,7 +1131,7 @@
       'model here, so the readout reports the one thing that IS modelled — whether condensate is ' +
       'flowing through it.', CI, '13.0'),
     imrqrouhrdr: e('Polisher Status',
-      'IN SERVICE when condensate is flowing through the polisher, STANDBY when it is not.',
+      'IN SERVICE with condensate flowing through it, STANDBY without. FAILED in the Three Mile Island walkthrough.',
       'Deliberately not a resin-condition readout: the plant does not model polisher chemistry, and a ' +
       'hard-coded NORMAL would be an instrument that cannot ever tell you anything.', CI, '13.0'),
 

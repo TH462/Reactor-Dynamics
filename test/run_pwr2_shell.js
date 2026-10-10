@@ -274,7 +274,10 @@ function runSuite(SH, rec, quiet, only) {
      globalThis.RD.PWR_CONFIG.protection.channels.filter(function (ch) { return ch.id === 'afw_level'; }).length === 0 &&
      pc.interlocks.length === 0 && pc.runbacks.length === 0 &&
      alarmsOk &&
-     Object.keys(pc.failures).length === 22 &&
+     /* 22 menu rows + the TMI-2 polisher (2026-10-10), which is scripted-only: in the table
+      * so the walkthrough can inject it, not on the menu */
+     Object.keys(pc.failures).length === 23 &&
+     !!pc.failures.condensate_polisher_trip && pc.failures.condensate_polisher_trip.scripted_only === true &&
      !!pc.failures.stuck_porv_open && !!pc.failures.rcp_trip && !!pc.failures.turbine_trip &&
      /* #515 — the P-9 channel failure (pwr2_only: the old engine's catalog hides it) */
      !!pc.failures.anticipatory_trip_failure &&

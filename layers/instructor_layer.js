@@ -537,7 +537,20 @@
     // banner that no longer exists); anyone else's message is left alone.
     // #709 — the trip notice goes the same way: it names a panel that no longer exists.
     if (this.checklist && (this.checklist.precondMsg || this.checklist.scramMsg)) this.pendingMessage = null;
+    this._clearScriptedFailures();
     this.checklist = null;
+  };
+
+  /* A `scripted_only` failure (pwr_control.js — the TMI-2 polisher, owner ruling 2026-10-10) has
+   * no Failures-tab row, so nothing in free play could clear it: it goes when the walkthrough
+   * does. Plant failures the walkthrough injected stay — the plant is the plant. */
+  InstructorLayer.prototype._clearScriptedFailures = function () {
+    var L = this.below;
+    if (!L || !L.getActiveFailures || !L.config || !L.config.failures) return;
+    L.getActiveFailures().forEach(function (f) {
+      var d = L.config.failures[f.id];
+      if (d && d.scripted_only) L.handleCommand({ action: 'clear_failure', failure_id: f.id });
+    });
   };
 
   // Manual tick — only the ACTIVE step can be checked (a checklist is sequential).
@@ -647,6 +660,7 @@
 
   InstructorLayer.prototype.unload = function () {
     var reg = this.register;
+    if (this.checklist) this._clearScriptedFailures();
     this._clear();
     this.register = reg;
   };

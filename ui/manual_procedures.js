@@ -5887,34 +5887,29 @@
            * pulsed the ACT-ON-THIS ring on the turbine card. The step reads two numbers; both are
            * watched. */
           hl_watch: ['Reactor Power', 'Turbine Load'] },
-        /* 2 — 04:00:36, ONE SECOND BEFORE THE ACCIDENT. App. II.1 E1. NARRATED, NOT INJECTED
-         * *(OWNER RULING, 2026-09-10: "All decisions as recommended", ratifying #693's option A)*:
-         * this plant has no polisher model and the ruling declined building one. `Manuals/08`
-         * §6.0 carries the declaration.
+        /* 2 — 04:00:36, ONE SECOND BEFORE THE ACCIDENT. App. II.1 E1. A SCRIPTED EVENT, SHOWN
+         * AND NARRATED *(OWNER RULING, 2026-10-10: "The condensate polisher failure should be a
+         * scripted event and we can have the indicator on the condensate polisher show that it
+         * has failed and we also should narrate what's going on so kind of a hybrid of both.")* —
+         * superseding #693's option A (narrated only). `condensate_polisher_trip` is
+         * INDICATOR-ONLY (pwr_control.js): POLISHER STATUS reads FAILED, no plant physics; the
+         * feed loss is step 3's. Kept SHORT on purpose *(OWNER, 2026-10-10: "nobody reads any of
+         * the fine text or any extra descriptions. They read only enough to accomplish a step and
+         * nothing more.")* — the lamp carries the event, the text only points at it.
          *
-         * AN OBSERVATION STEP — no `acc`, no `accs`, no `saw`, no `cmd` — so the instructor
-         * meets it after OBSERVE_DWELL_S = 12 sim-seconds and then holds on Continue
-         * (instructor_layer.js). That is the owner's "there can be steps where we just see what
-         * happened to the indications".
-         *
-         * NO `pause` HERE, AND IT IS A RUNTIME FACT RATHER THAN A PREFERENCE. The pause is
-         * requested only when something in this step's `inject`/`clear` NEWLY fires
-         * (`_stepChecklist`, #694), so `pause: true` on a step that injects nothing is a dead
-         * field — it would read as authored and do nothing. Nothing is lost: the step already
-         * holds on Continue, and there is no event to miss.
-         *
-         * AND NO `hl` OR `hl_watch`, which makes this the ONE step in the pwr2 pool that
-         * highlights nothing (#685 took the other four to zero). That is the honest answer here
-         * rather than an omission: the polisher is not on this board in any form, so every label
-         * available would point at something the step is not about. The `note` says so out loud
-         * so a player does not go looking. */
-        { text: 'No action. Read what has just happened in the basement, then press Continue.',
-          note: 'Nothing on the board moves. The trouble is two rooms away, in the condensate system.',
-          why: 'A condensate polisher cleans feedwater on its way back from the condenser — the last thing anyone would expect to start a core-damage accident. This plant has none, so this beat is told rather than simulated.',
+         * `pause` IS LIVE NOW (#694): the inject newly fires one tick after entry, the clock stops
+         * with FAILED lit, and the step is complete on Continue. Measured: under 0.1 s of plant time
+         * passes before the clock stops (run_pwr2_board), so step 3's
+         * 21-second stuck-valve window is untouched. */
+        { text: 'No action. The CONDENSATE POLISHER reads FAILED. Press Continue.',
+          why: 'Its valves shut, so the condensate pumps have nowhere to send water.',
           story: { clock: '04:00:36',
             saw: 'Water got into the instrument air line to the polisher valves and they shut. The condensate pump lost its flow path and tripped.',
             knew: 'A polisher blockage in the basement. Nothing was wrong with the reactor.',
-            did: 'They carried on clearing the resin.' } },
+            did: 'They carried on clearing the resin.' },
+          inject: [{ failure: 'condensate_polisher_trip' }],
+          pause: true,
+          hl_watch: ['Polisher Status'] },
         /* 3 — 04:00:37, t = 0. App. II.1 E2. THE INITIATING EVENT, AND THE STEP THAT ARMS THE
          * STUCK VALVE.
          *

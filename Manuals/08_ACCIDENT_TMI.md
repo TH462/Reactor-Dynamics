@@ -24,10 +24,10 @@ Feedwater Failure**, **PORV Stuck Open** and **PORV Indicator Stuck Closed** tog
 (**07** PWR-E01, PWR-E12, PWR-E07, PWR-E08).
 
 **The first minute arrives as five beats, not one.** Steps 2-6 are the cascade, one event to a
-step and each on its own clock: the condensate polisher goes off line (told, not simulated, §6.0),
+step and each on its own clock: the condensate polisher goes off line (its POLISHER STATUS lamp reads FAILED; no polisher model, §6.0),
 the condensate and main feed pumps trip, the turbine trips after them, the auxiliary feed pumps
-start into shut valves, and the relief valve lifts and does not reseat. **On two of those beats the
-walkthrough stops the clock** — the feed-pump trip and the relief valve — because the events are
+start into shut valves, and the relief valve lifts and does not reseat. **On three of those beats the
+walkthrough stops the clock** — the polisher, the feed-pump trip and the relief valve — because the events are
 seconds wide and are not the player's to control: the primary pressure spike peaks about six
 seconds in and is over by thirty-five. The sim resumes when you press **Continue**; **Rewind step**
 and **Stop** release it too. Steps 2, 3 and 6 ask for no action at all — read the board, then
@@ -85,7 +85,7 @@ on the source, not a quote from it.
 
 | Clock | Elapsed | TMI-2 (sourced) | This plant (measured) |
 |---|---|---|---|
-| **04:00:36** | −1 s | Condensate pump CO-P1A trips — postulated closure of the condensate polisher valves *"because of water in the control air system"* (E1) | No polisher model — the initiator is **narrated**, not injected (§6.0). Walkthrough step 2, which asks for no action |
+| **04:00:36** | −1 s | Condensate pump CO-P1A trips — postulated closure of the condensate polisher valves *"because of water in the control air system"* (E1) | No polisher model — a **scripted, indicator-only** event: POLISHER STATUS reads **FAILED** and nothing else in the plant moves (§6.0). Walkthrough step 2, which asks for no action — **the sim pauses here** |
 | **04:00:37** | 0 s | *"Feedwater pumps FW-P1A and FW-P1B tripped"* (E2) | **Loss of Main Feedwater** injected, **and the relief-valve stick armed with it**; FEED FLOW to 0. Walkthrough step 3 — **the sim pauses here** |
 | 04:00:37 | 0 s | Turbine trip follows, *"Normal following trip of feedwater pumps"* (E3) | Nothing injected — the turbine trips out of the feed loss on its own, within about a second. TURBINE TRIP lit. Walkthrough step 4 |
 | 04:00:37 | 0 s | Auxiliary feed pumps start into **valves already shut** — *"Block valves EF-V12A and EF-V12B were closed"* (E4) | **Auxiliary Feedwater Failure** injected, hidden — the pumps run and deliver nothing. Walkthrough step 5 |
@@ -220,7 +220,7 @@ rather than asserted.
 | **The 13:50 hydrogen burn** | Not modelled. `ctmt_h2_burned` is a **registered static 0**, and containment has **no recombiners** — their capacity is in no document in the corpus, so none was invented. Containment spray, the fan coolers and the steam-line isolation that goes with them **are** built and auto-actuate on sourced containment-pressure setpoints — see **09** §3.0 — so a large break no longer only heats and pressurises; whether this specific TMI-2 path ever reaches the 30 psig actuation is not remeasured here |
 | **Fuel damage on the TMI path** | The damage latch is a **cladding** temperature of **2200 °F (1204.4 °C)** — 10 CFR 50.46 criterion 1, *"the calculated maximum fuel element cladding temperature shall not exceed 2200F"*. It is a clad limit, not a fuel one, and the fuel runs far hotter than the clad in normal operation. **1200 °F (648.9 °C)** is a third quantity — GEND-061's onset of significant hydrogen generation. On this ride none of the three is reached |
 | **A quench tank / pressurizer relief tank** | There is none (**12** §13.0). Relief and safety discharge go **directly to the containment atmosphere**, where a real plant fills a relief tank and bursts its rupture disc first |
-| **The condensate polisher** | No polisher model — the board's polisher status is behavioural, not a resin condition, so the historical initiator is narrated rather than injected. Modelling it was costed against giving it a failure-registry row and a board command, and declined on player complexity rather than on fidelity. The walkthrough's step 2 is that narration |
+| **The condensate polisher** | No polisher model — the board's polisher status is behavioural, not a resin condition. The historical initiator is a **scripted event that drives only that lamp**: walkthrough step 2 sets POLISHER STATUS to **FAILED** while the step narrates it, and the plant consequence (the feed-pump trip) is step 3's injected Loss of Main Feedwater. It is not on the Failures tab — in free play it would be a lamp with no consequence — and it clears when the walkthrough stops |
 | **A partial injection throttle** | Injection is one **On / Off** control merging the high- and low-head pumps (**03** §11.0). TMI-2's crew shut two makeup valves, throttled two more and stopped one of three pumps. Here the same decision is all or nothing, which makes it a starker choice than the crew faced |
 | **Offsite release and dose** | No source term, no release model, no radiation monitors. The simulation ends at fuel damage (**12** §13.0) |
 

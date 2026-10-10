@@ -30,6 +30,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — TMI-2 walkthrough: the condensate polisher failure is shown on the board (#670; preview-gated, no `changelog.html` entry)
+
+*(OWNER RULING, 2026-10-10: "The condensate polisher failure should be a scripted event and we can have the indicator on the condensate polisher show that it has failed and we also should narrate what's going on so kind of a hybrid of both.")* Supersedes #693's narrated-only option.
+
+- Step 2 injects `condensate_polisher_trip`: POLISHER STATUS reads **FAILED** (amber) and the sim pauses; step text cut to one line pointing at the lamp (owner 2026-10-10: players read only enough to do the step). Indicator only — no polisher model; the feed loss stays step 3's. Measured: under 0.1 s of plant time before the clock stops.
+- New failure flag `scripted_only` (pwr_control.js): injectable by a walkthrough, skipped by `getFailureCatalog` (no Failures-tab row — a lamp with no consequence in free play), cleared by `InstructorLayer` on Stop / unload; a reset rebuilds the layer.
+- `Manuals/08` §1.0, §2.0, §6.0 updated (Rev 24 pending row, item m). Gate: `run_pwr2_board` 101 -> 107, 5 new mutations caught; `run_manual_controls` 1329 -> 1330; `run_inspect`'s group check skips scripted-only rows.
+
 ### Changed — full-power opener: help sooner, restart on an early trip (#811)
 
 *(OWNER RULING, 2026-10-09: "do 1,2.")* Measured first (live telemetry, 30 days, 29 opener sessions): the help beats fired **0** times, ~5 players left on the load ask at 54–93 s, and 6 of 29 tripped early (1 of those 6 finished).

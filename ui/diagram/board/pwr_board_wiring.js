@@ -1609,7 +1609,18 @@
     // Condensate polisher: there is no polisher model, so this cannot report resin condition.
     // It reports the one thing that IS modeled — whether condensate is flowing through it —
     // instead of the hard-coded 'NORMAL' it displayed until 2026-07-25.
-    imrqrouhrdr: function (s) { return IN(s).condensate_pump_running ? 'IN SERVICE' : 'STANDBY'; },
+    // FAILED is the TMI-2 walkthrough's scripted polisher failure (owner ruling 2026-10-10,
+    // `condensate_polisher_trip` in pwr_control.js) — indicator only, read off the control
+    // layer's active failures because no engine field exists to carry it.
+    imrqrouhrdr: function (s) {
+      var af = (s && s.active_failures) || [];
+      for (var i = 0; i < af.length; i++) {
+        if (af[i].id === 'condensate_polisher_trip') return { text: 'FAILED', color: BD_WARN };
+      }
+      // an OBJECT on every path: a bare string leaves the last colour standing, so the
+      // amber would outlive a cleared failure. BD_OK is the item's authored green.
+      return { text: IN(s).condensate_pump_running ? 'IN SERVICE' : 'STANDBY', color: BD_OK };
+    },
     // Condenser vacuum, inHg. Two readouts on the V2 board: on the condenser itself, and
     // on the CONDENSER COOLING card next to the circulating-water temperature that drives
     // it — the pairing is the point, since vacuum is the variable that CW temperature moves.
@@ -3798,6 +3809,7 @@
      * Subcooling Margin) and these are the same names. */
     'Pressurizer Level': 'ims2immon9z', 'Subcooling Margin': 'ims2immxl2s',
     'Steam Flow': 'ims3wm0d0bu', 'Feed Flow': 'imrsgkz4lq0',
+    'Polisher Status': 'imrqrouhrdr',   // the TMI-2 initiator's step (owner ruling 2026-10-10)
     /* TWO LABELS THE CHECKLISTS HAVE ALWAYS USED AND THIS MAP NEVER CARRIED (#598 item 14).
      * `revealControl` returns null for an unknown label and the step then glows NOTHING —
      * silently, because a null highlight looks exactly like a step that asked for none. Twelve

@@ -1167,6 +1167,9 @@
         EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),
                                       node: 'sg_primary' });
       }
+      /* INDICATOR ONLY (owner ruling 2026-10-10, pwr_control.js): no polisher model, so the
+       * engine has nothing to break. The board reads the control layer's active_failures. */
+      else if (c.failure_id === 'condensate_polisher_trip') { /* accepted; no plant effect */ }
       else throw new Error('pwr2_shell: failure "' + c.failure_id + '" REFUSED — not in ' +
         'PWR2\'s failure set yet (PORV stick, primary leak, instrument failures exist)');
     },
@@ -1620,7 +1623,9 @@
                       'anticipatory_trip_failure',   /* #515: the P-9 channel failed */
                       'stuck_open_spray', 'continuous_rod_withdrawal',
                       'tavg_sensor_failure', 'porv_indicator_stuck_closed',
-                      'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
+                      'pzr_level_sensor_stuck', 'pzr_level_sensor_low',
+                      /* indicator-only, scripted, not a menu row (getFailureCatalog skips it) */
+                      'condensate_polisher_trip'], out = {};
           /* THE INTERCEPTION IS THE RETIRED PLANT'S, AND IT IS STRIPPED (#546/#547, the
            * #534 systemic pattern). Seven kept rows are `command_override` — a mechanism
            * that has the KERNEL drop or rewrite the operator's command before it reaches

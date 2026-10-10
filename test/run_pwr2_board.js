@@ -70,6 +70,7 @@ require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_instruments.js'));
 ].forEach(function (f) { require(path.join(SRC, f + '.js')); });
 require(path.join(__dirname, '..', 'layers', 'instructor_layer.js'));
 require(path.join(__dirname, '..', 'layers', 'simulation_service.js'));
+require(path.join(__dirname, '..', 'ui', 'manual_procedures.js'));   /* the TMI-2 polisher step */
 require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_data.js'));
 var WIRING_PATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_wiring.js');
 require(WIRING_PATH);
@@ -1387,6 +1388,57 @@ function runSuite(quietRec) {
     bindWorld(w);                 /* put the driver back on the suite's world — see above */
   })();
 
+  /* ---- THE TMI-2 POLISHER (owner ruling 2026-10-10, #670) ----------------------------------
+   * *("The condensate polisher failure should be a scripted event and we can have the indicator
+   * on the condensate polisher show that it has failed and we also should narrate what's going
+   * on so kind of a hybrid of both.")*. Driven through the WALKTHROUGH, not a bare inject: the
+   * claim is that step 2 lights POLISHER STATUS, pauses, moves no plant time, is not a Failures
+   * tab row, and leaves with the walkthrough (Stop) and with a plant reset. The pre-check is the
+   * control: the lamp reads IN SERVICE in green before anything fires. */
+  if (!rec) head('CONDENSATE POLISHER  [the TMI-2 initiator lights the lamp, and goes with the walkthrough]');
+  (function () {
+    var BD_OK = '#5aad7c', BD_WARN = '#d8a657';
+    function lamp(s) { var v = s && D.valueFor({ id: 'imrqrouhrdr' }, s); return v ? v.text + '/' + v.color : 'null'; }
+    function polActive(s) { return s.active_failures.some(function (f) { return f.id === 'condensate_polisher_trip'; }); }
+    /* tick, keeping the last snapshot — a paused service's tick() returns null */
+    function run(P, n, last) { for (var i = 0; i < n; i++) { var s = P.svc.tick(); if (s) last = s; } return last; }
+    /* walk the leg to step 2's fire: step 1 auto-meets (power > 90 %), Continue, then tick */
+    function toPolisher() {
+      var P = mkWorld(); bindWorld(P);
+      var pre = lamp(P.snap()), s = P.snap(), i, c;
+      P.cmd({ action: 'start_checklist', procedure_id: 'pwr_tmi2_incident' });
+      for (i = 0; i < 60; i++) { s = run(P, 1, s); c = s.instructor && s.instructor.checklist; if (c && c.acc_met) break; }
+      P.cmd({ action: 'checklist_check', index: 0 });
+      s = run(P, 1, s);
+      var t0 = P.svc.simTime;
+      s = run(P, 5, s);
+      c = s.instructor && s.instructor.checklist;
+      return { P: P, s: s, pre: pre, step: c && c.step_index, paused: !!(c && c.paused),
+               dt: P.svc.simTime - t0, running: P.svc.running };
+    }
+    var A = toPolisher();
+    q('polisher: before the walkthrough fires it the lamp reads IN SERVICE in green (the control)',
+      A.pre === 'IN SERVICE/' + BD_OK, A.pre);
+    q('polisher: TMI-2 step 2 lights POLISHER STATUS FAILED in amber and pauses the clock',
+      A.step === 1 && lamp(A.s) === 'FAILED/' + BD_WARN && A.paused && A.running === false,
+      'step ' + A.step + ', lamp ' + lamp(A.s) + ', paused ' + A.paused + ', running ' + A.running);
+    q('polisher: indicator only — the paused step spends no plant time (step 3 stuck-valve window untouched)',
+      A.dt < 0.25, 'sim time across 5 ticks after the fire: ' + A.dt.toFixed(3) + ' s');
+    var cat = A.P.svc.layer.getFailureCatalog().map(function (f) { return f.id; });
+    q('polisher: it is NOT a Failures-tab row (a lamp with no consequence in free play)',
+      cat.indexOf('condensate_polisher_trip') < 0 && cat.indexOf('loss_of_feedwater') >= 0,
+      cat.length + ' catalog rows');
+    var sA = A.P.cmd({ action: 'stop_checklist' });
+    A.P.svc.running = true; sA = run(A.P, 2, sA);
+    q('polisher: Stop clears it — no stale FAILED (or amber) left behind in free play',
+      !polActive(sA) && lamp(sA) === 'IN SERVICE/' + BD_OK, lamp(sA));
+    var B = toPolisher();
+    var sB = B.P.cmd({ action: 'reset', plant_id: 'pwr2', initial_state: 'hot_full_power' });
+    B.P.svc.running = true; sB = run(B.P, 2, sB && sB.active_failures ? sB : B.s);
+    q('polisher: a plant reset clears it too',
+      !polActive(sB) && lamp(sB) === 'IN SERVICE/' + BD_OK, lamp(sB));
+    bindWorld(w);
+  })();
 
   return rec;
 }
@@ -1402,7 +1454,22 @@ var KPATH = path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js')
 var KSRC = fs.readFileSync(KPATH, 'utf8').replace(/\r\n/g, '\n');
 var PTPATH = path.join(SRC, 'pwr2_protection.js');
 var PTSRC = fs.readFileSync(PTPATH, 'utf8').replace(/\r\n/g, '\n');
+var IPATH = path.join(__dirname, '..', 'layers', 'instructor_layer.js');
+var ISRC = fs.readFileSync(IPATH, 'utf8').replace(/\r\n/g, '\n');
+var MPPATH = path.join(__dirname, '..', 'ui', 'manual_procedures.js');
+var MPSRC = fs.readFileSync(MPPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* THE TMI-2 POLISHER (owner ruling 2026-10-10) — one mutation per claim */
+  ['the polisher lamp ignores the scripted failure (step 2 lights nothing)', WIRING_PATH, WSRC,
+   "if (af[i].id === 'condensate_polisher_trip') return", "if (false) return"],
+  ['the polisher lamp drops its colour on the normal path (amber outlives the clear)', WIRING_PATH, WSRC,
+   "'IN SERVICE' : 'STANDBY', color: BD_OK };", "'IN SERVICE' : 'STANDBY' };"],
+  ['the scripted-only failure becomes a Failures-tab row', KPATH, KSRC,
+   "      if (def.scripted_only) continue;\n", ""],
+  ['Stop leaves the scripted failure standing (stale FAILED in free play)', IPATH, ISRC,
+   "    this._clearScriptedFailures();\n    this.checklist = null;", "    this.checklist = null;"],
+  ['TMI-2 step 2 stops injecting the polisher failure (narrated only again)', MPPATH, MPSRC,
+   "          inject: [{ failure: 'condensate_polisher_trip' }],\n", ""],
   /* THE WORLD SEAM (#738 quality pass). Without the reset at onMount the message state from the
    * previous plant is compared against the new one, which raised two false "RELEASED BY THE PLANT"
    * messages and a flashing button on a brand-new plant. Reachable from the RESET button. */
