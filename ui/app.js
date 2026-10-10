@@ -10661,7 +10661,21 @@
     // Level Complete actions (Continue / Retry / Rewind) render inside the card.
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
-      if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      if (cb) {
+        /* "SHOW ME" ANSWERS AT ONCE (quick win 7): the do-it-for-me step takes ~1.5 s of plant time
+         * before the instructor's next line appears, and until then the press looked dead. Acknowledge
+         * on the press itself -- the button (and the callout's mirror of it) reads "Doing it..." and
+         * goes inert. The next render re-keys the buttons and replaces them; if nothing does within 4 s
+         * (a refused step) the label is handed back so it can never strand. */
+        if (cb.getAttribute('data-chatbtn') === 'show_me') {
+          [].forEach.call(document.querySelectorAll('[data-chatbtn="show_me"]'), function (sb) {
+            var was = sb.textContent;
+            sb.textContent = 'Doing it…'; sb.disabled = true; sb.setAttribute('aria-busy', 'true');
+            setTimeout(function () { if (sb.isConnected && sb.disabled) { sb.disabled = false; sb.textContent = was; sb.removeAttribute('aria-busy'); } }, 4000);
+          });
+        }
+        chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return;
+      }
       var pl = e.target.closest('.chat-line[data-point]');
       if (pl) { chatPoint(pl.getAttribute('data-point').split('|')); return; }   // re-show the line's pointer (#811)
       var ra = e.target.closest('[data-chatrevealall]');

@@ -15,6 +15,8 @@
  *        walkthrough hold; clicks pass through everywhere else.
  *   QW5  Board temperature units read `°F` (degree sign), as the chart and manual do. (The on/off selector
  *        vocabulary half of QW5 is NOT done -- see the commit message.)
+ *   QW6  The number boxes' step arrows keep their look but get a 24 screen-px hit zone.
+ *   QW7  The opener's Show me button acknowledges the press at once ("Doing it..."), step still runs.
  *
  * SHOTDIR=<dir> saves a screenshot per section.
  * Run: node test/verify_quickwins_ui.js
@@ -225,6 +227,68 @@ function ck(name, ok, detail) {
   ck('QW5 every board temperature unit carries the degree sign (no bare F / C / F/hr)', du.bare.length === 0 && du.deg >= 8, JSON.stringify(du));
   await shot(d.page, 'qw5_units');
   await d.ctx.close();
+
+  // ---- QW6 ---------------------------------------------------------------------------------
+  var z = await session({ width: 1366, height: 768 });
+  var zr = await z.page.evaluate(function () {
+    var btns = [].slice.call(document.querySelectorAll('.pwr-board-stage .bd-num-steps button'));
+    var bad = [], small = 0, shrunk = 0, stolen = 0, minZoneW = 1e9, minZoneH = 1e9, sc = parseFloat(getComputedStyle(document.querySelector('.pwr-board-stage')).transform.match(/matrix\(([^,]+)/)[1]);
+    // A point another TILE's control is painted over is that control's (a neighbour wins where zones meet, and
+    // two number boxes already overlap on the board); it counts as the arrow's only if it lands on nothing else.
+    var curTile = null;
+    function hit(x, y, b) {
+      var e = document.elementFromPoint(x, y), t = e && e.closest('[data-item]');
+      if (e && b && t && t !== curTile) return b;
+      return e && e.closest('button');
+    }
+    btns.forEach(function (b) { curTile = b.closest('[data-item]');
+      var r = b.getBoundingClientRect(); if (r.width < 2) return;
+      if (Math.abs(r.height - 14 * sc) > 1.5) shrunk++;                       // visuals unchanged
+      var up = b.parentNode.firstChild === b, cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      // 24 screen px zone: probe the far end of it, 11 px beyond the visual edge, and 11 px to the right
+      var yFar = up ? r.top - 10.5 : r.bottom + 10.5;
+      if (hit(cx, yFar, b) !== b) bad.push('v'); if (hit(r.right + 5, cy, b) !== b) bad.push('h');
+      if (hit(cx, cy, b) !== b) bad.push('c');
+    });
+    // negative control: no other board button's centre may be swallowed by a zone
+    [].forEach.call(document.querySelectorAll('.pwr-board-stage button'), function (b) {
+      if (b.closest('.bd-num-steps')) return;
+      var r = b.getBoundingClientRect(); if (r.width < 2) return;
+      var h = hit(r.left + r.width / 2, r.top + r.height / 2, null);
+      if (h && h !== b && h.closest('.bd-num-steps')) stolen++;
+    });
+    return { n: btns.length, bad: bad.length, shrunk: shrunk, stolen: stolen, sc: sc };
+  });
+  ck('QW6 every step arrow has a >= 24 px hit zone (11 px past its edge and to the right hit it), centre intact',
+     zr.n >= 4 && zr.bad === 0, JSON.stringify(zr));
+  ck('QW6 the arrows themselves are drawn at their old size', zr.shrunk === 0, JSON.stringify(zr));
+  ck('QW6 no other board button lost its centre to a zone', zr.stolen === 0, JSON.stringify(zr));
+  await z.ctx.close();
+
+  // ---- QW7 ---------------------------------------------------------------------------------
+  var o = await session({ width: 1366, height: 768 });
+  await o.page.click('#tabbar [data-tab="instructor"]').catch(function () {});
+  await o.page.waitForSelector('#instrCurrent [data-opener-start]', { timeout: 10000 });
+  await o.page.click('#instrCurrent [data-opener-start]');
+  var gotShowMe = false;
+  for (var k = 0; k < 120 && !gotShowMe; k++) {
+    gotShowMe = await o.page.evaluate(function () {
+      if (document.querySelector('#chatBtns [data-chatbtn="show_me"]')) return true;
+      var ack = document.querySelector('#chatBtns [data-chatbtn="ack"]'); if (ack) ack.click();
+      return false;
+    });
+    if (!gotShowMe) await o.page.waitForTimeout(500);
+  }
+  ck('QW7 the opener reaches a Show me ask', gotShowMe);
+  var sm = await o.page.evaluate(function () {
+    var b = document.querySelector('#chatBtns [data-chatbtn="show_me"]'); if (!b) return null;
+    var before = b.textContent; b.click();
+    return { before: before, now: b.textContent, disabled: b.disabled };   // read in the SAME task as the press
+  });
+  ck('QW7 pressing Show me answers in the same instant ("Doing it...", inert)', !!sm && /Doing it/.test(sm.now) && sm.disabled === true, JSON.stringify(sm));
+  var fired1 = await o.page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_help'); }, null, { timeout: 20000 }).then(function () { return true; }).catch(function () { return false; });
+  ck('QW7 ...and the step still runs (o1_help fires)', fired1);
+  await o.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
