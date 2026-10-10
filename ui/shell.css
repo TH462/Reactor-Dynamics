@@ -3474,3 +3474,54 @@ select.num-input { width: auto; }
     box-shadow: 0 0 0 2px rgba(122, 176, 255, 0.9);
   }
 }
+
+/* ============================================================ instructor CALLOUT (prototype, #811)
+   OWNER 2026-10-10: "Anchored callout" — the opener's current line on the board, a leader line to
+   what it is about. Iteration 2 (same day): "it blocks part of the diagram" -> compact (action
+   line only, "why?" behind a click), placed in low-value board space; "a light grey … background
+   … so it doesn't look like part of the plant" -> a LIGHT card with dark text on the dark board.
+   Hovering the card fades it so the board under it reads; a button under the cursor stays solid.
+   Off by default (?callout=1, Settings). Below the modals (200). */
+.instr-callout {
+  --ico-bg: #dfe4ea; --ico-ink: #141a21; --ico-sub: #4a5562; --ico-edge: #8e9cab; --ico-link: #1f5fa8;
+  position: fixed; z-index: 55; box-sizing: border-box; min-width: 200px; max-width: 340px;
+  background: var(--ico-bg); color: var(--ico-ink); border: 1px solid var(--ico-edge); border-radius: 8px;
+  padding: 6px 10px 8px; box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  transition: left .2s ease, top .2s ease, opacity .15s ease;
+}
+.instr-callout[hidden] { display: none; }
+/* OBSERVATION: what to look at, not what to do — lighter still, no weight. */
+.instr-callout[data-kind="observe"] { --ico-bg: #eef1f4; border-style: dashed; }
+.instr-callout:hover:not(:has(button:hover)) { opacity: .25; }
+.ico-arrow { display: none; }
+.ico-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+.ico-who { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ico-sub); }
+.ico-hist-btn, .ico-more { background: none; border: none; color: var(--ico-link); font-size: 11px; cursor: pointer; padding: 0 2px; }
+.ico-hist-btn.on { text-decoration: underline; }
+.ico-more { display: inline-block; margin-top: 3px; text-decoration: underline; }
+.ico-hist { max-height: 30vh; overflow-y: auto; margin-bottom: 6px; padding: 6px; border: 1px solid var(--ico-edge); border-radius: 6px;
+  display: flex; flex-direction: column; gap: 6px; background: #f6f8fa; }
+.ico-hist[hidden] { display: none; }
+.ico-hist .chat-meta { color: var(--ico-sub); }
+.ico-hist .chat-txt { font-size: 12px; color: var(--ico-ink); background: #fff; border-color: #c9d1d9; }
+.ico-act { font-size: 16px; line-height: 1.3; font-weight: 700; color: var(--ico-ink); }
+.ico-why { font-size: 12px; line-height: 1.4; color: var(--ico-sub); margin-top: 3px; }
+.ico-say { font-size: 13.5px; line-height: 1.35; color: var(--ico-ink); }
+.instr-callout [data-point] { cursor: pointer; }
+.ico-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.ico-btns[hidden] { display: none; }
+.ico-btns .btn { background: #fff; color: var(--ico-ink); border-color: var(--ico-edge); }
+.ico-btns .chat-btn { width: auto; flex: 1 1 auto; padding: 5px 10px; }
+.ico-btns .chat-btn-ack { border-color: #2f6f3a; border-width: 2px; }
+.ico-btns .chat-reveal-all, .ico-btns .chat-ff { color: var(--ico-sub); }
+.ico-btns .lc-panel { width: 100%; }
+/* No keep-out-free spot at full size: the action line (and its buttons) only. */
+.instr-callout.ico-compact .ico-head, .instr-callout.ico-compact .ico-more, .instr-callout.ico-compact .ico-why { display: none; }
+/* The LEADER: card edge -> anchor edge. Pointer-transparent; never covers anything that matters. */
+.ico-lead { position: fixed; z-index: 54; height: 0; border-top: 1.5px solid #dfe4ea; transform-origin: 0 0; pointer-events: none;
+  box-shadow: 0 0 2px rgba(0,0,0,.8); }
+.ico-lead[hidden] { display: none; }
+.ico-lead i { position: absolute; right: -4px; top: -4.75px; width: 7px; height: 7px; border-radius: 50%; background: #dfe4ea; }
+/* The chat panel keeps the record, collapsed: its transcript and buttons live in the bubble. */
+.instructor.callout-on #chatLog, .instructor.callout-on #chatBtns { display: none; }
+.instructor.callout-on .instr-current::before { content: 'The instructor is talking on the board. History is in the bubble.'; display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
