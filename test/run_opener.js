@@ -119,6 +119,7 @@ function window_(r, fromId, toId, fn) {   // fold fn over trace samples between 
 function max(a) { return Math.max.apply(null, a); }
 
 var READY = { action: 'instructor_continue' };
+var SHOW_ME = { action: 'instructor_continue', button: 'show_me' };   // the chat's "Show me" (ui/app.js chatButtonAction)
 var ROUTES = {
   // Delays are a reading player's: read the line, find the control, act (at 1×, so sim = wall).
   typical: {
@@ -149,11 +150,66 @@ var ROUTES = {
   hands_off: {
     o0_hello: [{ at: 8, cmd: READY }],
   },
+  /* #811, OWNER RULING 2026-10-09 "do 1,2" — help sooner. Each of these runs every check below. */
+  // presses "Show me" on every ask, a few seconds after its lines are read
+  show_me: {
+    o0_hello:  [{ at: 8, cmd: READY }],
+    o1_load:   [{ at: 18, cmd: SHOW_ME }],
+    o4_rods:   [{ at: 19, cmd: SHOW_ME }],
+    o6_spray:  [{ at: 17, cmd: SHOW_ME }],
+    o8_auto:   [{ at: 12, cmd: SHOW_ME }],
+    o10_scram: [{ at: 12, cmd: SHOW_ME }],
+  },
+  // clicks an UNRELATED control every 6 s through the load and rod asks (spray AUTO, already in
+  // AUTO): the old `quiet` window restarted on each click and never ended
+  fiddler: {
+    o0_hello:  [{ at: 8, cmd: READY }],
+    o1_load:   fiddle(60),
+    o4_rods:   fiddle(60),
+  },
+  // drives the rods in a little (a 5 s FAST hold, 6 steps) and stops short: the help adds 40
+  partial_rods: {
+    o0_hello:  [{ at: 15, cmd: READY }],
+    o1_load:   [{ at: 20, cmd: { action: 'set_load_target', mwe: 80 } }],
+    o4_rods:   [{ at: 16, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' } },
+                { at: 21, cmd: { action: 'rod_stop', group_id: 'control_rods' } }],
+    o6_spray:  [{ at: 20, cmd: { action: 'set_spray', pct: 100 } }],
+    o8_auto:   [{ at: 8, cmd: { action: 'set_spray', auto: true } }],
+    o10_scram: [{ at: 8, cmd: { action: 'scram' } }],
+  },
+  // withdraws first (o4_wrong), lets go, then presses "Show me" on the wrong-way line
+  show_me_wrong: {
+    o0_hello:  [{ at: 3, cmd: READY }],
+    o1_load:   [{ at: 5, cmd: { action: 'set_load_target', mwe: 80 } }],
+    o4_rods:   [{ at: 5, cmd: { action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' } }],
+    o4_wrong:  [{ at: 3, cmd: { action: 'rod_stop', group_id: 'control_rods' } }, { at: 12, cmd: SHOW_ME }],
+    o6_spray:  [{ at: 5, cmd: { action: 'set_spray', pct: 100 } }],
+    o8_auto:   [{ at: 8, cmd: { action: 'set_spray', auto: true } }],
+    o10_scram: [{ at: 8, cmd: { action: 'scram' } }],
+  },
 };
+function fiddle(until) {
+  var a = [];
+  for (var t = 2; t <= until; t += 6) a.push({ at: t, cmd: { action: 'set_spray', auto: true } });
+  return a;
+}
 var ROUTE_PATH = {
   typical:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
   mistake:   ['o0_hello', 'o1_load', 'o2_watch', 'o3_small', 'o4_rods', 'o4_wrong', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
   hands_off: ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
+  show_me:   ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
+  fiddler:   ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
+  partial_rods: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
+  show_me_wrong: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_wrong', 'o4_help', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
+};
+/* WHEN each help arrived, in sim seconds after its ask (#811, 2026-10-09). Show me: within a few
+ * seconds of the press (route time + the pass it lands on). The fiddler: at the authored window,
+ * clicks notwithstanding (the old `quiet` exit never ended under a click every 6 s). */
+var HELP_AT = {
+  show_me:  { o1_help: ['o1_load', 18, 20], o4_help: ['o4_rods', 19, 21], o6_help: ['o6_spray', 17, 19], o8_help: ['o8_auto', 12, 14], o10_help: ['o10_scram', 12, 14] },
+  fiddler:  { o1_help: ['o1_load', 44, 46], o4_help: ['o4_rods', 46, 48] },
+  partial_rods: { o4_help: ['o4_rods', 46, 48] },
+  show_me_wrong: { o4_help: ['o4_wrong', 12, 14] },
 };
 
 // ------------------------------------------------------------------ static: the copy
@@ -261,11 +317,38 @@ test('opener copy — registers, units, length, speed stated, highlights, exits'
     if (w.until && ids.indexOf(w.until) === -1) wBad.push(w.id + ' until ' + w.until);
   });
   ck('every watch lands on a beat and is disarmed by a real one', wBad.join(',') || (OP.watch || []).length + ' watch', (OP.watch || []).length > 0 && !wBad.length, 'defined');
+  /* EARLY TRIP: RESTART OR CARRY ON (#811, OWNER RULING 2026-10-09 "do 1,2"). Two lines (what
+   * happened; the choice), Restart the FIRST (primary) ask button, Carry on the second and the
+   * beat's branch, plus a quiet exit so a player who touches nothing is not stranded. */
   var ox = OP.beats.filter(function (b) { return b.id === 'ox_trip_early'; })[0];
-  var oxl = ox && ox.dialogue && ox.dialogue.length === 1 ? ox.dialogue[0] : null;
-  ck('ox_trip_early lifts the scope and sets 1×, in ONE line of <= 20 words (both registers)',
-     oxl ? words(oxl.learning) + ' / ' + words(oxl.industry) + ' words, scope ' + JSON.stringify(ox.scope) + ', speed ' + ox.speed : 'missing',
-     !!oxl && ox.scope === null && ox.speed === 1 && words(oxl.learning) <= 20 && words(oxl.industry) <= 20, 'scope null, speed 1, <= 20 / <= 20');
+  var oxB = (ox && ox.ask_buttons) || [];
+  var oxBr = (ox && ox.branches) || [];
+  ck('ox_trip_early: lifts the scope, sets 1×, says "before the planned" in both registers',
+     ox ? 'scope ' + JSON.stringify(ox.scope) + ', speed ' + ox.speed + ', lines ' + (ox.dialogue || []).length : 'missing',
+     !!ox && ox.scope === null && ox.speed === 1 && /before the planned/.test(ox.dialogue[0].learning) && /before the planned/.test(ox.dialogue[0].industry), 'null, 1, said');
+  ck('ox_trip_early: Restart is the primary button, Carry on the second and a branch',
+     oxB.map(function (b) { return b.style; }).join(',') + ' / ' + oxBr.map(function (b) { return b.trigger.type + (b.trigger.button ? ':' + b.trigger.button : '') + '→' + b.goto; }).join(','),
+     oxB.length === 2 && oxB[0].style === 'restart' && oxB[1].style === 'carry_on' &&
+       oxBr.some(function (b) { return b.trigger.type === 'manual' && b.trigger.button === 'carry_on'; }) &&
+       oxBr.some(function (b) { return b.trigger.type === 'inaction'; }), 'restart,carry_on / carry_on + inaction');
+
+  /* HELP SOONER (#811, OWNER RULING 2026-10-09 "do 1,2"): every ASK (a beat with an inaction exit
+   * to a help beat) offers "Show me" while it is asked and routes it to that help; the help exit is
+   * NOT `quiet` (clicks do not restart it) but keeps the hold guard; and its window is the ask's
+   * reading time + ~30 s (the reading hold keeps branches shut until the lines are read). */
+  var RS = RD.InstructorLayer.readingSeconds, askBad = [], asks = [];
+  OP.beats.forEach(function (b) {
+    var help = (b.branches || []).filter(function (x) { return x.trigger.type === 'inaction' && /_help$/.test(x.goto); })[0];
+    if (!help) return;
+    var read = (b.dialogue || []).reduce(function (a, l) { return a + RS(l); }, 0), slack = help.trigger.window - read;
+    asks.push(b.id + ' ' + help.trigger.window + ' s (' + slack.toFixed(1) + ' after reading)');
+    if (!(b.ask_buttons && b.ask_buttons[0] && b.ask_buttons[0].style === 'show_me')) askBad.push(b.id + ': no Show me button');
+    if (!b.branches.some(function (x) { return x.trigger.type === 'manual' && x.trigger.button === 'show_me' && x.goto === help.goto; })) askBad.push(b.id + ': Show me does not reach ' + help.goto);
+    if (help.trigger.quiet || !help.trigger.no_hold) askBad.push(b.id + ': help exit quiet=' + !!help.trigger.quiet + ' no_hold=' + !!help.trigger.no_hold);
+    if (!(slack >= 28 && slack <= 35)) askBad.push(b.id + ': window ' + help.trigger.window + ' - reading ' + read.toFixed(1) + ' = ' + slack.toFixed(1));
+  });
+  ck('every ask: Show me → its help; help ~30 s after the lines are read, not reset by clicks, never under a hold',
+     askBad.join('; ') || asks.join(', '), asks.length === 7 && !askBad.length, '7 asks, slack 28..35 s');
 });
 
 // ------------------------------------------------------------------ lineup + restore
@@ -358,6 +441,10 @@ Object.keys(ROUTES).forEach(function (name) {
     var want = ROUTE_PATH[name];
     ck('beats fired in order', r.fired.join(' '), r.fired.join(' ') === want.join(' '), want.join(' '));
     ck('reaches the level_complete', r.lc ? r.lc.instructor.level_complete.title : 'never', !!r.lc, 'Full-power opener');
+    Object.keys(HELP_AT[name] || {}).forEach(function (h) {
+      var w = HELP_AT[name][h], dt = r.at[h] != null && r.at[w[0]] != null ? r.at[h] - r.at[w[0]] : null;
+      ck(h + ' arrives ' + w[1] + '..' + w[2] + ' s after ' + w[0], dt == null ? 'never' : '+' + dt.toFixed(1) + ' s', dt != null && dt >= w[1] && dt <= w[2], w[1] + '..' + w[2] + ' s');
+    });
     if (!r.lc) return;
     var S = r.snaps, s0 = r.start;
     var p0 = psi(I(s0, 'primary_pressure')), t0 = degF(I(s0, 'tavg'));
@@ -395,6 +482,10 @@ Object.keys(ROUTES).forEach(function (name) {
     // power follows, Tavg comes back (read at the END of the watch, o6)
     ck('o6: power below 90 % after the rods went in', I(S.o6_spray, 'power_range').toFixed(1) + ' %', I(S.o6_spray, 'power_range') < 90, '< 90 %');
     ck('o6: rods actually moved in', S.o6_spray.true_state.rod_steps.toFixed(0) + ' steps', S.o6_spray.true_state.rod_steps < 600, '< 600');
+    // A PARTIAL insert then the help (#811, 2026-10-09): the help's 40 lands on top of the
+    // player's 6, and every line after it is checked on this route like any other.
+    if (name === 'partial_rods') ck('partial: 6 steps by the player + the help\'s 40', (606 - S.o6_spray.true_state.rod_steps).toFixed(0) + ' steps in at o6',
+       Math.abs(606 - S.o6_spray.true_state.rod_steps - 46) <= 3, '43..49');
     if (name === 'typical') ck('o6: a FAST hold of ~33 s put the rods in about 40 steps', (606 - S.o6_spray.true_state.rod_steps).toFixed(0) + ' steps',
        Math.abs(606 - S.o6_spray.true_state.rod_steps - 40) <= 8, '32..48 (text: about 40)');
     // From the PEAK over the rods ask, not its first sample (#811 reading pace): on the mistake route
@@ -498,8 +589,9 @@ function hold(a, b) {
           { at: b, cmd: { action: 'rod_stop', group_id: 'control_rods' } }];
 }
 test('a rod hold is never overtaken by the help or a clock change', function (ck) {
-  [['hold +100..+140 (spans the 120 s window)', hold(100, 140), 100, 140],
-   ['probe hold +10..+13, then +110..+150', hold(10, 13).concat(hold(110, 150)), 110, 150]].forEach(function (c) {
+  // The windows moved from 120 s quiet to 46 s plain (#811, 2026-10-09): each hold spans it.
+  [['hold +30..+60 (spans the 46 s window)', hold(30, 60), 30, 60],
+   ['probe hold +10..+13, then +35..+65', hold(10, 13).concat(hold(35, 65)), 35, 65]].forEach(function (c) {
     var r = play(holdRoute(c[1]), 420);
     var a0 = r.at.o4_rods, hs = a0 + c[2], he = a0 + c[3];
     var during = r.fired.filter(function (id) { return r.at[id] > hs && r.at[id] < he; });
@@ -510,17 +602,18 @@ test('a rod hold is never overtaken by the help or a clock change', function (ck
     var dt = r.at.o5_rods_watch != null ? r.at.o5_rods_watch - he : null;
     ck(c[0] + ': ask met on the final release', dt == null ? 'never' : '+' + dt.toFixed(1) + ' s', dt != null && dt >= 0 && dt < 3, '0..3 s after release');
   });
-  // QUIET: the window restarts on the last touch — a 3-step tap at +60 then nothing gets the help at +180, not +120.
-  var r2 = play(holdRoute([{ at: 60, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -3, speed: 'fast' } }]), 420);
+  // NOT QUIET ANY MORE (#811, OWNER RULING 2026-10-09 "help after ~30 s regardless of fiddling"): a
+  // 3-step tap at +20, then nothing, gets the help at the window (+46 s), not 46 s after the tap.
+  var r2 = play(holdRoute([{ at: 20, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -3, speed: 'fast' } }]), 420);
   var h = r2.at.o4_help != null ? r2.at.o4_help - r2.at.o4_rods : null;
-  ck('tap at +60, then idle: help counts from the last touch', h == null ? 'never' : '+' + h.toFixed(1) + ' s', h != null && h >= 179 && h < 182, '+180 s');
+  ck('tap at +20, then idle: help at the window, not restarted by the tap', h == null ? 'never' : '+' + h.toFixed(1) + ' s', h != null && h >= 46 && h < 48, '+46 s');
   // A LOST RELEASE (the UI never sends rod_stop): the hold heals when the bank stops at its travel
   // limit, so the help still comes. Held OUT because an IN hold at full power trips the plant
-  // before the bank bottoms. Measured: help at +129.0 s (o4_wrong at +8.9 re-arms the window);
-  // with the `moving === false` heal removed the help never fires (QA 2026-09-28: was unguarded).
+  // before the bank bottoms; o4_wrong fires on the way and re-arms the window (37 s). With the
+  // `moving === false` heal removed the help never fires (QA 2026-09-28: was unguarded).
   var r3 = play(holdRoute([{ at: 5, cmd: { action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'fast' } }]), 420);
   var h3 = r3.at.o4_help != null ? r3.at.o4_help - r3.at.o4_rods : null;
-  ck('lost release (OUT hold, never released): the hold heals at the limit and the help comes', h3 == null ? 'never' : '+' + h3.toFixed(1) + ' s', h3 != null && h3 >= 120 && h3 < 140, '+120..140 s');
+  ck('lost release (OUT hold, never released): the hold heals at the limit and the help comes', h3 == null ? 'never' : '+' + h3.toFixed(1) + ' s', h3 != null && h3 >= 50 && h3 < 65, '+50..65 s');
 });
 
 // ------------------------------------------------------------------ board scope (#811)
@@ -550,8 +643,9 @@ test('board scope: set by beats, lifted by a beat, early trip handled', function
   ck('the load line carries its pointer into the chat log', logL ? JSON.stringify(logL.point) : 'line missing',
      !!logL && JSON.stringify(logL.point) === '["Turbine and Generator"]', '["Turbine and Generator"]');
 
+  // Touches nothing after the trip: the choice stands 60 s (quiet), then the explanation (#811, 2026-10-09).
   var early = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }] }, 900);
-  var want = ['o0_hello', 'o1_load', 'ox_trip_early', 'o11_trip', 'o12_settle', 'o13_end'];
+  var want = ['o0_hello', 'o1_load', 'ox_trip_early', 'ox_trip_explain', 'o12_settle', 'o13_end'];
   ck('early SCRAM: beats', early.fired.join(' '), early.fired.join(' ') === want.join(' '), want.join(' '));
   ck('early SCRAM: scope was up before the trip', nm(early.snaps.o1_load), !!(early.snaps.o1_load && early.snaps.o1_load.scope), 'set');
   var fx = early.snaps.ox_trip_early;
@@ -564,18 +658,61 @@ test('board scope: set by beats, lifted by a beat, early trip handled', function
    * clock to 1x and this check passes with `speed: 1` deleted (measured, injection 2026-09-28). */
   var fast = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'set_load_target', mwe: 80 } }],
                     o2_watch: [{ at: 5, cmd: { action: 'scram' } }] }, 900, true);
-  var fo2 = fast.snaps.o2_watch, fox = fast.snaps.ox_trip_early, fo11 = fast.snaps.o11_trip;
+  var fo2 = fast.snaps.o2_watch, fox = fast.snaps.ox_trip_early, fo11 = fast.snaps.ox_trip_explain;
   ck('early SCRAM at 5x: the clock was 5x, ox_trip_early brings it back to 1x',
      (fo2 ? fo2.metadata.time_acceleration : '?') + 'x at o2 -> ' + (fox ? fox.metadata.time_acceleration : 'never') + 'x at ox -> ' +
-       (fo11 ? fo11.metadata.time_acceleration : 'never') + 'x at o11',
+       (fo11 ? fo11.metadata.time_acceleration : 'never') + 'x at ox_trip_explain',
      !!fo2 && fo2.metadata.time_acceleration === 5 && !!fox && fox.metadata.time_acceleration === 1 && !!fo11 && fo11.metadata.time_acceleration === 1,
      '5 -> 1 -> 1');
-  var t11 = early.snaps.o11_trip;
-  ck('early SCRAM: o11\'s "about 2 % / decay about 5 %" still true',
-     t11 ? I(t11, 'power_range').toFixed(2) + ' % / ' + t11.true_state.decay_heat_pct.toFixed(2) + ' %' : 'never',
-     !!t11 && I(t11, 'power_range') > 1 && I(t11, 'power_range') < 3 && t11.true_state.decay_heat_pct >= 4 && t11.true_state.decay_heat_pct <= 6, '1..3 % / 4..6 %');
-  var tE = early.snaps.o13_end ? degF(I(early.snaps.o13_end, 'tavg')) : NaN;
-  ck('early SCRAM: o12\'s "Tavg toward about 552 °F" still true', tE.toFixed(1) + ' °F', tE > 548 && tE < 558, '548..558');
+
+  /* RESTART OR CARRY ON (#811, OWNER RULING 2026-10-09 "do 1,2"). ox_trip_explain names no number,
+   * so it must be true on a PROMPT carry-on and on the 60 s default alike: neutron power falling,
+   * decay heat falling slowly and "well above" power (> 2x), at the beat and 5 s on (its own hold). */
+  function explainTrue(r, label) {
+    var a = r.at.ox_trip_explain;
+    if (a == null) { ck(label + ': ox_trip_explain fired', 'never', false, 'fired'); return; }
+    var s0 = r.trace.filter(function (x) { return x.t >= a; })[0].s, s1 = r.trace.filter(function (x) { return x.t >= a + 5; })[0].s;
+    var p0 = I(s0, 'power_range'), p1 = I(s1, 'power_range'), d0 = s0.true_state.decay_heat_pct, d1 = s1.true_state.decay_heat_pct;
+    ck(label + ': "neutron power keeps falling; decay heat falls slowly, well above Power"',
+       'trip +' + (a - (r.at.ox_trip_early)).toFixed(0) + ' s: power ' + p0.toFixed(2) + ' -> ' + p1.toFixed(2) + ' %, decay ' + d0.toFixed(2) + ' -> ' + d1.toFixed(2) + ' %',
+       p1 < p0 && d1 < d0 && (d0 - d1) / d0 < (p0 - p1) / p0 && d0 > 2 * p0 && d1 > 2 * p1, 'both down, decay the slower (relative), decay > 2x power');
+    var tr = r.snaps.ox_trip_explain.trend;
+    ck(label + ': the strip chart shows Power, Decay Heat, Tavg', tr ? tr.series.join(',') : 'null', !!tr && tr.series.join(',') === 'power,decay,tavg', 'power,decay,tavg');
+    var t12 = degF(I(r.snaps.o12_settle, 'tavg')), t13 = degF(I(r.snaps.o13_end, 'tavg'));
+    ck(label + ': o12\'s "Tavg drops toward about 552 °F" — still above it, ends near it',
+       t12.toFixed(1) + ' -> ' + t13.toFixed(1) + ' °F', t12 >= t13 && t13 > 548 && t13 < 558, 'down to 548..558');
+    ck(label + ': reaches the finish card', r.lc ? 'yes' : 'no', !!r.lc, 'yes');
+  }
+  ck('early SCRAM, hands off: the choice stands ~60 s, then carries on', (early.at.ox_trip_explain - early.at.ox_trip_early).toFixed(1) + ' s',
+     early.at.ox_trip_explain - early.at.ox_trip_early >= 60 && early.at.ox_trip_explain - early.at.ox_trip_early < 62, '60..62 s');
+  explainTrue(early, 'early SCRAM, carried on at 60 s');
+  var CARRY = { action: 'instructor_continue', button: 'carry_on' };
+  var prompt = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }], ox_trip_early: [{ at: 10, cmd: CARRY }] }, 900);
+  ck('Carry on (pressed at +10 s): beats', prompt.fired.join(' '), prompt.fired.join(' ') === want.join(' '), want.join(' '));
+  ck('Carry on: taken at once, not at the 60 s default', (prompt.at.ox_trip_explain - prompt.at.ox_trip_early).toFixed(1) + ' s',
+     prompt.at.ox_trip_explain - prompt.at.ox_trip_early < 20, '< 20 s (reading hold, then the press)');
+  explainTrue(prompt, 'Carry on at +10 s');
+  // A plain Ready (no button id) is not "Carry on": a stray second Ready click must not take it.
+  var stray = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }], ox_trip_early: [{ at: 10, cmd: READY }] }, 120);
+  ck('a plain Ready on the choice does not carry on', 'ox_trip_explain at ' + (stray.at.ox_trip_explain != null ? '+' + (stray.at.ox_trip_explain - stray.at.ox_trip_early).toFixed(0) + ' s' : 'never'),
+     stray.at.ox_trip_explain == null || stray.at.ox_trip_explain - stray.at.ox_trip_early >= 60, 'not before the 60 s default');
+
+  /* RESTART: the page sends exactly what the finish card's Retry sends — `start_opener` (ui/app.js
+   * chatButtonAction 'restart' -> startOpener). Asserted on the service: back at full power,
+   * untripped, the watch re-armed, and the opener plays again from Ready. */
+  var rs = play({ o0_hello: [{ at: 3, cmd: READY }], o1_load: [{ at: 6, cmd: { action: 'scram' } }] }, 60).svc;
+  var trippedBefore = !!rs.assembleSnapshot().rps_state.scrammed;
+  rs.handleCommand({ action: 'start_opener', opener_id: OP_ID });
+  for (var q = 0; q < 30; q++) rs.tick();
+  var sn = rs.assembleSnapshot();
+  ck('Restart: tripped before, then full power and untripped on o0',
+     'tripped ' + trippedBefore + ' -> ' + !!sn.rps_state.scrammed + ', power ' + sn.instruments.power_range.toFixed(1) + ' %, beats ' + Array.from(rs.instructor.firedBeats).join(','),
+     trippedBefore && !sn.rps_state.scrammed && sn.instruments.power_range > 98 && rs.instructor.firedBeats.has('o0_hello') && rs.instructor.firedBeats.size === 1,
+     'untripped, > 98 %, o0 only');
+  ck('Restart: the early-trip watch is armed again', JSON.stringify(rs.instructor._watchFired), rs.instructor._watchFired.length === 0, '[]');
+  rs.handleCommand(READY);
+  for (q = 0; q < 400 && !rs.instructor.firedBeats.has('o1_load'); q++) rs.tick();
+  ck('Restart: Ready then reaches the load ask again', String(rs.instructor.firedBeats.has('o1_load')), rs.instructor.firedBeats.has('o1_load'), 'true');
 
   // save/restore carries the watch's memory: a restored opener past the watch does not re-fire it
   /* SAVE/RESTORE after the watch fired: the restored opener must not take it AGAIN (the plant is

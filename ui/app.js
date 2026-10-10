@@ -4064,9 +4064,22 @@
     var cb = beat && beat.chat_button;
     var bid = beat ? beat.id : null;
     if (chatState.skipBid && chatState.skipBid !== bid) chatState.skipBid = null;
-    var key = bid + '|' + (cb ? cb.style : '') + '|' + ui.register + '|' + (chatState.skipBid === bid);
+    /* ASK BUTTONS (#811, OWNER RULING 2026-10-09 "do 1,2"): a beat's `ask_buttons` show while its
+     * BRANCHES are watched (it has fired; the player is on its ask) — "Show me", or the early
+     * trip's "Restart the opener" / "Carry on". The first is the primary. Such a beat's own
+     * `chat_button` (the Ready that fired it) is not shown again over its ask: it did nothing there. */
+    var asking = !!(beat && beat.ask_buttons && s.instructor.branch_beat_id === bid);
+    var key = bid + '|' + (asking ? 'ask' : (cb ? cb.style : '')) + '|' + ui.register + '|' + (chatState.skipBid === bid);
     if (key === chatState.btnKey) return;
     chatState.btnKey = key;
+    if (asking) {
+      btns.innerHTML = beat.ask_buttons.map(function (b, i) {
+        var lbl = b['label_' + ui.register] || b.label_learning || b.style;
+        return '<button class="btn chat-btn ' + (i === 0 ? 'chat-btn-ack' : 'ghost chat-btn-alt') +
+          '" data-chatbtn="' + mesc(b.style) + '">' + mesc(lbl) + '</button>';
+      }).join('');
+      return;
+    }
     if (!cb || (cb.style === 'skip' && chatState.skipBid === bid)) {
       btns.innerHTML = (cb && cb.style === 'skip')
         ? '<div class="chat-ff">⏩ running ahead — the board will pull us back</div>' : '';
@@ -4087,7 +4100,18 @@
       if (latest) renderChat(latest);
       return;
     }
-    cmd({ action: 'instructor_continue' });
+    // The early trip's "Restart the opener" (#811, 2026-10-09): the finish card's Retry path —
+    // a fresh opener at full power. Filed as an abandon at the beat it left, like End.
+    if (style === 'restart') {
+      var rs = latest, rid = ui.opener || (rs && rs.instructor && rs.instructor.scenario_id);
+      var rop = rid && RD.OPENERS && RD.OPENERS[rid];
+      if (!rop) return;
+      TEL.missionAbandon(rid, Math.max(0, rop.beats.map(function (b) { return b.id; }).indexOf(rs.instructor.current_beat_id)));
+      startOpener(rid);
+      return;
+    }
+    // A named ask button ("Show me", "Carry on") names itself; the plain Ready does not (#811).
+    cmd(style === 'show_me' || style === 'carry_on' ? { action: 'instructor_continue', button: style } : { action: 'instructor_continue' });
   }
 
   // ============================================================ auto-checklists (Path 3)

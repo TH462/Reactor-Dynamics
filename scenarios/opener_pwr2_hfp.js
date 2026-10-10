@@ -51,6 +51,44 @@
   // waits for the player to stop touching controls, never overtakes a hold.
   var NO_HOLD = { type: 'no_hold' };
 
+  /* HELP SOONER (#811, OWNER RULING 2026-10-09, "do 1,2" — approving "a 'Show me' chat button that
+   * does the step for the player, plus help after ~30 s regardless of fiddling, not 90 s quiet").
+   * MEASURED before it (live telemetry, 30 days to 2026-10-09, 29 opener sessions): the help beats
+   * fired 0 times — `quiet` restarted the window on every click, so a player clicking around never
+   * got it — and ~5 players closed the tab on the load ask at 54-93 s.
+   *
+   * Every ask now carries SHOW_ME (a chat button, `ask_buttons`, rendered while the ask's branches
+   * are watched) and a HELP exit `helpAfter(n)`: plain time since the ask, NOT restarted by clicks,
+   * but still never under a held rod button (`no_hold`, see NO_HOLD above). THE WINDOW is the ask's
+   * own READING time plus 30 s: the reading hold (pace: 'reading') keeps every branch shut until the
+   * lines have been read, so 30 s from the ask itself would be ~15 s of real time on a two-line
+   * ask. run_opener.js asserts each window minus its lines' reading time is 28..35 s.
+   * Branch ORDER is the success rule: the success branch is listed first and an inaction exit is
+   * always evaluated after every other branch, so a player who does the step in the same pass wins. */
+  var SHOW_ME = [{ style: 'show_me', label_learning: 'Show me', label_industry: 'Show me' }];
+  function showMe(help) { return { trigger: { type: 'manual', button: 'show_me' }, goto: help }; }
+  function helpAfter(window, help) { return { trigger: { type: 'inaction', window: window, no_hold: true }, goto: help }; }
+
+  /* THE ROD HELP COUNTS WHAT THE PLAYER ALREADY DID. A plain -40 on top of a partial insert overshoots
+   * the text that follows. MEASURED (80 MWe, a -20 nudge at +38 s, help -40 at +46 s: 60 steps in):
+   * o5_settled said "Power settles near 84 %" at 82.6 % and power went on to 78.3 % with the dump
+   * shut by o6. So, by travel since the ask: 30+ steps in -> the player did it, no help, on to the
+   * watch (power follows within seconds); 15-29 -> 20 more (o4_help_more); under 15 -> the full 40.
+   * "Show me" with 15+ in also gives the 20. Every `all` below sits AFTER the success branch, and
+   * names the travel FIRST: `all` stops at its first false term, and the travel's baseline is taken
+   * on the first pass that evaluates it (instructor_layer.js rod_travel), which must be the ask's. */
+  function inSince(n) { return { type: 'rod_travel', group_id: 'control_rods', direction: 'in', steps: n }; }
+  function rodHelp(window) {
+    var wait = { type: 'inaction', window: window, no_hold: true };
+    return [
+      { trigger: { type: 'all', triggers: [inSince(15), { type: 'manual', button: 'show_me' }] }, goto: 'o4_help_more' },
+      showMe('o4_help'),
+      { trigger: { type: 'all', triggers: [inSince(30), wait] }, goto: 'o5_rods_watch' },
+      { trigger: { type: 'all', triggers: [inSince(15), wait] }, goto: 'o4_help_more' },
+      helpAfter(window, 'o4_help'),
+    ];
+  }
+
   /* BOARD SCOPE AND POINTERS (#811, OWNER RULING 2026-09-28: "we use dimming to isolate the part
    * of the board we are focusing on and only use the outline as a pointer to briefly show what the
    * instructor is describing"). A beat's `scope` names board REGIONS (pwr_board_wiring.js
@@ -111,9 +149,11 @@
           say('I put Tavg, Pressure, Steam Dump and Power on the strip chart so you can watch.',
               'Strip chart: Tavg, Pressure, Steam Dump, Power.'),
         ],
+        ask_buttons: SHOW_ME,
         branches: [
           { trigger: inst('mwe_output', 'below', 96), goto: 'o2_watch' },
-          { trigger: { type: 'inaction', window: 90, quiet: true }, goto: 'o1_help' },
+          showMe('o1_help'),
+          helpAfter(44, 'o1_help'),                  // lines read 14.3 s, + 30
         ] },
       { id: 'o1_help',
         trigger: delay(0),
@@ -162,6 +202,7 @@
         highlight: { control_label: 'Control Bank' },
         scope: RODS_SCOPE,
         trend: ['power', 'rod_steps', 'tavg'],
+        ask_buttons: SHOW_ME,
         dialogue: [
           sayAt('Reactor Vessel', 'Clock back to 1×. Your turn: press FAST, then hold INSERT under CONTROL about 35 seconds. Rods go in about 40 steps; watch power follow.',
               'Clock 1×. Select FAST rod speed; hold INSERT under CONTROL approximately 35 seconds, approximately 40 steps in. Monitor reactor power.'),
@@ -177,14 +218,14 @@
           { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90), IN_SINCE_ASK,
               { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }, NO_HOLD] }, goto: 'o5_rods_watch' },
           { trigger: { type: 'rod_travel', group_id: 'control_rods', direction: 'out', steps: WRONG_WAY_STEPS }, goto: 'o4_wrong' },
-          { trigger: { type: 'inaction', window: 120, quiet: true }, goto: 'o4_help' },
-        ] },
+        ].concat(rodHelp(46)) },                     // lines read 15.8 s, + 30
       // WITHDRAWN, NOT INSERTED (#811 QA: power 93.7 -> 98.2 %, bank to 627/627 and 120 s of silence
       // before the help beat). One line, then the same ask continues from here — its own inaction
       // exit, and no second wrong-way branch, so the line is said once.
       { id: 'o4_wrong',
         trigger: delay(0),
         highlight: { control_label: 'Control Bank' },
+        ask_buttons: SHOW_ME,
         dialogue: [
           say('Those rods went out, the wrong way, so power rose. Drive Control Bank in instead.',
               'Rods withdrawn; power increasing. Insert control rods.'),
@@ -192,8 +233,7 @@
         branches: [
           { trigger: { type: 'all', triggers: [inst('power_range', 'below', 90), IN_SINCE_ASK,
               { type: 'any', triggers: [did('rod_nudge'), did('rod_stop')] }, NO_HOLD] }, goto: 'o5_rods_watch' },
-          { trigger: { type: 'inaction', window: 120, quiet: true }, goto: 'o4_help' },
-        ] },
+        ].concat(rodHelp(37)) },                     // line read 7.0 s, + 30
       { id: 'o4_help',
         trigger: delay(0),
         commands: [{ action: 'rod_nudge', group_id: 'control_rods', steps: -40 }],
@@ -248,9 +288,11 @@
           say('The strip chart now shows Pressure and Spray.',
               'Strip chart: Pressure, PZR Spray.'),
         ],
+        ask_buttons: SHOW_ME,
         branches: [
           { trigger: inst('pzr_spray_flow', 'above', 30), goto: 'o7_spray_watch' },
-          { trigger: { type: 'inaction', window: 90, quiet: true }, goto: 'o6_help' },
+          showMe('o6_help'),
+          helpAfter(43, 'o6_help'),                  // lines read 13.4 s, + 30
         ] },
       { id: 'o6_help',
         trigger: delay(0),
@@ -276,18 +318,22 @@
         trigger: delay(0),
         highlight: { control_label: 'Pressurizer Spray (PZR)' },
         dialogue: [say('That\'s enough. Put the spray back in AUTO.', 'Return pressurizer spray to automatic.')],
+        ask_buttons: SHOW_ME,
         branches: [
           { trigger: { type: 'control_state', field: 'spray_auto', direction: 'is_true' }, goto: 'o9_heaters' },
-          { trigger: { type: 'inaction', window: 60, quiet: true }, goto: 'o8_help' },
+          showMe('o8_help'),
+          helpAfter(35, 'o8_help'),                  // line read 4.9 s, + 30
         ] },
       { id: 'o8_auto',
         trigger: delay(0),
         highlight: { control_label: 'Pressurizer Spray (PZR)' },
         dialogue: [say('That\'s enough. Put the spray back in AUTO. The Pressurizer Pressure Low alarm is the pressure drop you just made.',
                        'Return pressurizer spray to automatic. PZR PRESS LO is the spray-induced pressure decrease.')],
+        ask_buttons: SHOW_ME,
         branches: [
           { trigger: { type: 'control_state', field: 'spray_auto', direction: 'is_true' }, goto: 'o9_heaters' },
-          { trigger: { type: 'inaction', window: 60, quiet: true }, goto: 'o8_help' },
+          showMe('o8_help'),
+          helpAfter(39, 'o8_help'),                  // line read 8.5 s, + 30
         ] },
       { id: 'o8_help',
         trigger: delay(0),
@@ -312,9 +358,11 @@
         scope: null,                                   // the whole board for the trip
         dialogue: [say('Clock back to 1×. Last move: trip the reactor. Press SCRAM, then press it again within 3 seconds to confirm.',
                        'Clock 1×. Manually trip the reactor: SCRAM, then SCRAM again within 3 seconds to confirm.')],
+        ask_buttons: SHOW_ME,
         branches: [
           { trigger: { type: 'scram' }, goto: 'o11_trip' },
-          { trigger: { type: 'inaction', window: 90, quiet: true }, goto: 'o10_help' },
+          showMe('o10_help'),
+          helpAfter(39, 'o10_help'),                 // line read 8.5 s, + 30
         ] },
       { id: 'o10_help',
         trigger: delay(0),
@@ -369,11 +417,53 @@
         speed: 1,
         scope: null,
         highlight: { control_label: 'Tavg' },
+        /* RESTART OR CARRY ON (#811, OWNER RULING 2026-10-09, "do 1,2" — approving "on an early
+         * trip, offer 'Restart the opener' instead of jumping straight to the trip ending").
+         * MEASURED before it (live telemetry, 30 days): 6 of 29 opener sessions tripped early, 1 of
+         * those 6 finished. `restart` is handled by the PAGE (ui/app.js: the same startOpener the
+         * finish card's Retry uses — a fresh plant at full power, untripped, back at o0); it is
+         * the primary button. Carry on goes to ox_trip_explain, NOT o11_trip: o11's "about 2 %" is
+         * true only ~12-25 s after a trip (measured, early SCRAM at o1: 2.15 % at +15 s, 1.24 % at
+         * +30, 0.55 % at +60), and a player may sit on this choice. The quiet exit carries on for a
+         * player who touches nothing (no strand). */
         dialogue: [
-          say("The reactor tripped unexpectedly. Clock back to 1×. I've brought the full board back so you can see everything.",
-              'Unexpected reactor trip. Clock 1×. Full board display restored.'),
+          say("The reactor tripped before the planned trip step. Clock back to 1×, and I've brought the full board back.",
+              'Reactor tripped before the planned manual trip. Clock 1×. Full board display restored.'),
+          say('Restart the opener from full power, or carry on and I\'ll explain what the trip did.',
+              'Restart the familiarization at 100 % power, or continue with the post-trip review.'),
         ],
-        branches: [{ trigger: delay(0), goto: 'o11_trip' }] },
+        ask_buttons: [
+          { style: 'restart', label_learning: 'Restart the opener', label_industry: 'Restart at 100 % power' },
+          { style: 'carry_on', label_learning: 'Carry on', label_industry: 'Continue' },
+        ],
+        branches: [
+          { trigger: { type: 'manual', button: 'carry_on' }, goto: 'ox_trip_explain' },
+          { trigger: { type: 'inaction', window: 60, quiet: true }, goto: 'ox_trip_explain' },
+        ] },
+
+      // APPENDED, not inserted: telemetry files `opener_beat` as the INDEX in beats[], so every
+      // earlier beat keeps its index. The early trip's own explanation, true at ANY time after the
+      // trip (it names no number): o11's figures are a property of +12 s, not of "after a trip".
+      // Then the same settle and finish as the planned trip.
+      { id: 'ox_trip_explain',
+        trigger: delay(0),
+        highlight: { control_label: 'Tavg' },
+        trend: ['power', 'decay', 'tavg'],
+        dialogue: [
+          say('All rods dropped, so neutron power fell fast and keeps falling toward zero. The fuel still makes decay heat, which falls slowly.',
+              'Reactor tripped. Neutron power decreasing toward zero; decay heat decreasing slowly.'),
+          say('The strip chart now shows Power, Decay Heat and Tavg. Decay Heat stays well above Power.',
+              'Strip chart: Power, Decay Heat, Tavg. Decay heat remains well above neutron power.'),
+        ],
+        branches: [{ trigger: delay(5), goto: 'o12_settle' }] },
+
+      // APPENDED (index-stable, as above). The rod help for a player already 15-29 steps in.
+      { id: 'o4_help_more',
+        trigger: delay(0),
+        commands: [{ action: 'rod_nudge', group_id: 'control_rods', steps: -20 }],
+        dialogue: [say('You have some rods in already. I\'ll drive them in 20 more steps for you.',
+                       'Instructor inserting control rods a further 20 steps.')],
+        branches: [{ trigger: delay(0), goto: 'o5_rods_watch' }] },
     ],
   };
 })(globalThis.RD || (globalThis.RD = {}));

@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — full-power opener: help sooner, restart on an early trip (#811)
+
+*(OWNER RULING, 2026-10-09: "do 1,2.")* Measured first (live telemetry, 30 days, 29 opener sessions): the help beats fired **0** times, ~5 players left on the load ask at 54–93 s, and 6 of 29 tripped early (1 of those 6 finished).
+
+- **"Show me"** on every ask (load, rods, wrong-way rods, spray, spray back to AUTO, SCRAM): the instructor does the step. The Ready button that used to stand, inert, over the load ask is gone.
+- **Help ~30 s after the ask's lines are read** (windows 35–46 s from the ask), no longer restarted by every click; still never under a held rod button. The rod help counts what the player already did: 30+ steps in → no help; 15–29 → 20 more (`o4_help_more`); under 15 → 40 (measured: 6 + 40 = 46 steps, o5_settled at 82.6 %).
+- **Early trip**: the instructor says the reactor tripped before the planned step and offers **Restart the opener** (primary; same path as the finish card's Retry, back at 100 % power) or **Carry on**, which now leads to a time-independent trip explanation (`ox_trip_explain`) — o11's "about 2 %" is only true ~12–25 s after a trip (measured 2.15 % at +15 s, 0.55 % at +60 s). Untouched for 60 s, it carries on.
+- Layer: `manual` triggers can name a chat button (`button: 'show_me'`), so a stray Ready cannot count as one; `inaction` gains `no_hold` (hold guard without the restart-on-click); the snapshot carries `branch_beat_id`. New beats are appended, so telemetry's `opener_beat` indices keep their meaning.
+
 ## [Alpha 1.8.3] — 2026-10-07
 
 - **CI pinned to `ubuntu-24.04`** (both jobs in `gates.yml`): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19, and the font-metric and float-branch fixtures were fitted to 24.04.

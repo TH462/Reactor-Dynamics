@@ -1015,8 +1015,11 @@
          * and does not run at all while a rod HOLD is in progress. Measured before it existed: a
          * player who began holding INSERT at 85-115 s into the rods ask got "I'll drive the rods
          * in 40 steps for you" and the clock to 5x at exactly +120.0 s, under their finger. */
+        /* NO_HOLD (#811, OWNER RULING 2026-10-09 "do 1,2" — help after ~30 s regardless of
+         * fiddling): `no_hold: true` keeps the hold guard WITHOUT the restart-on-every-command, so
+         * the window is plain time since the ask but still never ends under a held rod button. */
+        if ((trigger.quiet || trigger.no_hold) && this._holdActive(snapshot)) return false;
         if (trigger.quiet) {
-          if (this._holdActive(snapshot)) return false;
           if (this._lastActionTime !== null && (arm === null || this._lastActionTime > arm)) arm = this._lastActionTime;
         }
         return arm !== null && (simTime - arm) >= trigger.window;
@@ -1034,8 +1037,8 @@
       case 'scram':
         return !!((snapshot.rps_state && snapshot.rps_state.scrammed) ||
                   (snapshot.true_state && snapshot.true_state.scrammed));
-      case 'manual':          // the user clicked Continue (consumed per pass)
-        return this._continueRequested;
+      case 'manual':          // the user clicked Continue (consumed per pass); `button` names which (#811)
+        return trigger.button ? this._continueRequested === trigger.button : this._continueRequested === true;
       case 'all':
         for (i = 0; i < trigger.triggers.length; i++) {
           if (!this._evalTrigger(trigger.triggers[i], snapshot, simTime)) return false;
@@ -2261,7 +2264,11 @@
     // Instructor-internal commands — consumed here, never forwarded below (they
     // are not plant commands and would only be an M4 error).
     if (command && command.action === 'instructor_continue') {
-      this._continueRequested = true;
+      /* A NAMED chat button (#811, OWNER RULING 2026-10-09 "do 1,2": "Show me", "Carry on") sends
+       * `button: '<id>'` and satisfies only a `manual` trigger naming that id; a plain Continue /
+       * Ready (no id) satisfies only an unnamed one. So a stray second Ready click can never be
+       * taken as "Show me", and a Show me never advances a beat waiting on Ready. */
+      this._continueRequested = (typeof command.button === 'string' && command.button) ? command.button : true;
       return null;
     }
     if (command && command.action === 'instructor_interact') {
@@ -3066,6 +3073,9 @@
       message_register: base.message_register,
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
+      // The beat whose BRANCHES are being watched (it has fired; the player is on its ask), or
+      // null. The chat renders that beat's `ask_buttons` only then (#811 "Show me", 2026-10-09).
+      branch_beat_id: this.branchWatch ? this.branchWatch.id : null,
       trend: this._trend ? { rev: this._trend.rev, series: this._trend.series.slice() } : null,
       scope: this.mode === 'scenario' && this._scope ? { rev: this._scope.rev, names: this._scope.names.slice() } : null,
       // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its

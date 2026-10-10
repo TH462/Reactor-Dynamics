@@ -428,6 +428,17 @@ var OFFER = '#instrCurrent [data-opener-start]';
   await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_load'); }, null, { timeout: 40000 }).catch(function () {});
   await page.waitForTimeout(800);
   var dimBefore = await page.evaluate(function () { return !!document.querySelector('.pwr-board-stage.bd-dimming'); });
+  /* SHOW ME (#811, OWNER RULING 2026-10-09 "do 1,2"): on the load ask the chat offers "Show me" —
+   * and NOT the Ready that fired the beat, which did nothing over the ask (it stood there before). */
+  async function chatBtns(ms) {
+    await page.waitForFunction(function () {
+      var r = document.querySelector('[data-chatrevealall]'); if (r) r.click();
+      return document.querySelectorAll('#chatBtns [data-chatbtn]').length > 0; }, null, { timeout: ms || 30000 }).catch(function () {});
+    return page.evaluate(function () { return [].map.call(document.querySelectorAll('#chatBtns [data-chatbtn]'), function (b) {
+      return { style: b.getAttribute('data-chatbtn'), text: b.textContent.trim(), primary: b.classList.contains('chat-btn-ack'), ghost: b.classList.contains('ghost') }; }); });
+  }
+  var askB = await chatBtns();
+  ck('Show me: the load ask offers it (and no stale Ready)', askB.length === 1 && askB[0].style === 'show_me' && askB[0].text === 'Show me', JSON.stringify(askB));
   var acc5 = await page.evaluate(function () {
     var s = RD.__dev.service();
     s.handleCommand({ action: 'set_attention_stops', value: false });
@@ -442,6 +453,31 @@ var OFFER = '#instrCurrent [data-opener-start]';
   ck('early trip: the guard beat fires and un-dims the board', dimBefore && oxFired && !after7.dim,
      'dimmed before ' + dimBefore + ', ox_trip_early ' + oxFired + ', dimmed after ' + after7.dim);
   ck('early trip: ...and takes the clock from 5x back to 1x', acc5 === 5 && oxFired && after7.acc === 1, acc5 + 'x -> ' + after7.acc + 'x');
+
+  /* RESTART OR CARRY ON (#811, OWNER RULING 2026-10-09 "do 1,2"): Restart is the PRIMARY (first,
+   * the bold bordered button), Carry on the secondary; Restart lands a fresh opener at full power. */
+  var oxB = await chatBtns();
+  ck('early trip: offers Restart (primary) and Carry on', oxB.length === 2 && oxB[0].style === 'restart' && oxB[0].primary && !oxB[0].ghost &&
+     /Restart the opener/.test(oxB[0].text) && oxB[1].style === 'carry_on' && oxB[1].ghost, JSON.stringify(oxB));
+  await page.evaluate(function () { window.__ev = []; });
+  await page.click('#chatBtns [data-chatbtn="restart"]');
+  var rst = await page.waitForFunction(function () {
+    var s = RD.__dev.service(), I = s.instructor;
+    return I.mode === 'scenario' && I.firedBeats.has('o0_hello') && !I.firedBeats.has('ox_trip_early') && !I.firedBeats.has('o1_load');
+  }, null, { timeout: 15000 }).then(function () { return true; }).catch(function () { return false; });
+  var rs = await page.evaluate(function () { var s = RD.__dev.service(), sn = s.assembleSnapshot();
+    return { scram: !!(sn.rps_state && sn.rps_state.scrammed), pwr: sn.instruments.power_range, ic: s.activeInitialState, acc: s.timeAcceleration,
+             watch: s.instructor._watchFired.length, dim: !!document.querySelector('.pwr-board-stage.bd-dimming'),
+             abandon: (window.__ev || []).filter(function (e) { return e[0] === 'mission_abandon'; }).map(function (e) { return e[1]; }) }; });
+  ck('Restart: a fresh opener at full power, untripped, on o0', rst && !rs.scram && rs.pwr > 98 && rs.ic === 'hot_full_power' && rs.watch === 0 && rs.acc === 1 && !rs.dim,
+     JSON.stringify(rs));
+  await page.evaluate(function () { RD.__dev.service().handleCommand({ action: 'instructor_continue' }); });   // Ready
+  await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_load'); }, null, { timeout: 40000 }).catch(function () {});
+  await chatBtns();
+  await page.click('#chatBtns [data-chatbtn="show_me"]').catch(function () {});
+  var shown = await page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_help'); }, null, { timeout: 30000 })
+    .then(function () { return true; }).catch(function () { return false; });
+  ck('Show me: clicking it does the load step (o1_help fires)', shown);
 
   // ---------------------------------------------------------------- 5. Not now = this session
   await boot();

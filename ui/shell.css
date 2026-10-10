@@ -2472,6 +2472,7 @@ select.num-input { width: auto; }
 .chat-btn { width: 100%; padding: 7px 10px; font-weight: 700; }
 .chat-btn-ack { border-color: var(--stopped); }
 .chat-btn-skip { border-color: var(--caution); color: var(--caution); }
+.chat-btn-alt { font-weight: 400; }   /* a second, secondary ask button (#811 early trip: Carry on) */
 .chat-ff { text-align: center; color: var(--caution); font-size: 11px; font-style: italic; }
 
 /* ============================================================ auto-checklists (Path 3)
