@@ -5635,11 +5635,16 @@ async function testObservationStepAckButton(page) {
   var r = await page.evaluate(function () {
     var c = globalThis.RD.__dev.service().instructor.checklist;
     var mk = document.querySelector('.ckl-step.ckl-active [data-ckl-check]');
+    /* A `callout: true` leg (TMI-2, 2026-10-10) draws the step on the board and hides the column's
+     * step card; its Continue is the card's, which forwards to this one. Same claim: a usable
+     * Continue, drawn, before anything is expanded. */
+    var co = document.querySelector('#instrCallout:not([hidden]) [data-ico-fwd="[data-ckl-check]"]');
+    if (co && mk && !mk.getClientRects().length) mk = co;
     var rc = mk ? mk.getBoundingClientRect() : null;
     return {
       idx: c.idx,
       anyCheck: document.querySelectorAll('[data-ckl-check]').length,
-      inActive: !!mk,
+      inActive: !!mk && (!!mk.closest('.ckl-step.ckl-active') || !!mk.closest('#instrCallout')),
       w: rc ? Math.round(rc.width) : 0, h: rc ? Math.round(rc.height) : 0,
       disp: mk ? getComputedStyle(mk).display : null,
       inCollapsible: !!(mk && mk.closest('details')),

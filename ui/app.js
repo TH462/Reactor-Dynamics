@@ -3833,6 +3833,7 @@
       /* The walkthrough IS the Instructor's card (#660 item 15): the step card above, the
        * instructor's own line (check-offs, overtaken notes) as plain text beneath it. */
       renderChecklist(s, ckb);
+      calloutSync();
       syncInstrNav('idle');
       instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
       var curW = $('instrCurrent');
@@ -4135,10 +4136,14 @@
   function calloutPref() {
     var m = /[?&]callout=([01])/.exec(location.search || '');
     if (m) return m[1] === '1';
-    try { return localStorage.getItem(CALLOUT_LS) === '1'; } catch (e) { return false; }
+    // TRI-STATE (2026-10-10): null = never chosen. The opener needs an explicit On; a walkthrough
+    // authored `callout: true` (TMI-2) draws it unless the player chose Off.
+    try { var v = localStorage.getItem(CALLOUT_LS); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; }
   }
   function setCalloutPref(on) {
-    ui.callout = !!on;
+    ui.callout = !!on; ui.calloutSet = !!on;
+    cklState.key = null;   // the walkthrough column swaps step card <-> progress list
+    if (latest && latest.instructor && latest.instructor.checklist) renderChecklist(latest, latest.instructor.checklist);
     try { localStorage.setItem(CALLOUT_LS, on ? '1' : '0'); } catch (e) { /* private mode */ }
     syncCalloutSeg();
     calloutSync();
@@ -4191,6 +4196,9 @@
       if (e.target.closest('[data-ico-hist]')) {
         callout.histOpen = !callout.histOpen; callout.key = null; calloutSync(); return;
       }
+      // A walkthrough button forwards to the real one in #cklRun (hidden under the callout).
+      var fw = e.target.closest('[data-ico-fwd]');
+      if (fw) { var rb = document.querySelector('#cklRun ' + fw.getAttribute('data-ico-fwd')); if (rb && !rb.disabled) rb.click(); return; }
       // Forward to the real button in the chat panel — one handler per button, always.
       var b = e.target.closest('[data-chatbtn],[data-chatrevealall],[data-lc]');
       if (b) {
@@ -4210,9 +4218,11 @@
   }
   function calloutSync() {
     var card = $('instructorCard');
-    var on = calloutActive();
-    if (card) card.classList.toggle('callout-on', on);
-    if (!on) {
+    var on = calloutActive(), ckOn = !on && cklCalloutActive();
+    if (card) { card.classList.toggle('callout-on', on); card.classList.toggle('ckl-callout-on', ckOn); }
+    var mode = on ? 'chat' : ckOn ? 'ckl' : null;
+    if (mode !== callout.mode) { callout.mode = mode; callout.key = null; callout.pos = null; callout.histOpen = false; }
+    if (!on && !ckOn) {
       if (callout.el) callout.el.hidden = true;
       if (callout.lead) callout.lead.hidden = true;
       if (callout.boardObs) { callout.boardObs.disconnect(); callout.boardObs = null; }
@@ -4225,6 +4235,12 @@
       callout.obs.observe($('instrCurrent'), { childList: true, subtree: true });
     }
     calloutWatchBoard();
+    if (ckOn) {
+      cklCalloutFill(el);
+      calloutPlace();
+      if (!callout.timer) callout.timer = setInterval(calloutPlace, 400);
+      return;
+    }
     var grp = calloutGroup();
     var btnSrc = $('chatBtns');
     var btnHtml = btnSrc ? btnSrc.innerHTML : '';
@@ -4272,6 +4288,7 @@
         hist.innerHTML = log ? log.innerHTML : '';
         hist.scrollTop = hist.scrollHeight;
       }
+      el.querySelector('.ico-who').textContent = 'Instructor';
       callout.points = pts;
       callout.kind = acts.length ? 'act' : 'observe';
       el.setAttribute('data-kind', callout.kind);
@@ -4358,6 +4375,7 @@
   }
   // What the placement must not cover, and what it points at.
   function calloutKeepOut() {
+    if (callout.mode === 'ckl') return cklCalloutKeepOut();
     var glow = null;
     [].some.call(document.querySelectorAll('#viewArea .instr-glow'), function (g) {
       var r = g.getBoundingClientRect(); if (rectOk(r)) { glow = r; return true; } return false;
@@ -4460,6 +4478,113 @@
     ln.style.left = Math.round(bx) + 'px'; ln.style.top = Math.round(by) + 'px';
     ln.style.width = Math.round(len) + 'px';
     ln.style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad)';
+  }
+
+  /* ---- THE WALKTHROUGH CALLOUT (2026-10-10, OWNER: "We should build TMI with the concise
+   * callouts like the starting instruction.") ------------------------------------------------
+   * The opener's card, driven by the ACTIVE WALKTHROUGH STEP instead of the chat log. Only a
+   * procedure that authors `callout: true` (the TMI-2 incident) gets it — its steps are written
+   * for it (one action line, one short why); the other legs' step prose is not, so they never
+   * draw it. The player's Settings > Instructor callout = Off turns it off here too.
+   *
+   *   step with `hl` (a control to act on) -> ACTION card: the step line big, its `why` behind
+   *     "why?", anchored to the control's panel.
+   *   otherwise (verify / watch / narrated)  -> OBSERVATION card: the step line and its `why`
+   *     small beneath it, dashed, anchored to the first watched item.
+   * Both carry the story clock in the head, the event's one `story.line`, a `note` only where the
+   * step cannot be done without it, the done-when rows when there are several, and Rewind /
+   * Continue — forwarded to the real buttons in #cklRun, so each keeps exactly one handler.
+   * History lists the morning so far (clock + saw / knew / did) — the long form lives there. */
+  function cklCalloutOn(pr) {
+    return !!(pr && pr.callout && ui.plant === 'pwr' && ui.calloutSet !== false);
+  }
+  function cklCalloutActive() {
+    var a = latest && cklActiveStep(latest);
+    return !!(a && cklState.view === 'run' && cklCalloutOn(a.pr));
+  }
+  function cklCalloutFill(el) {
+    var s = latest, a = cklActiveStep(s);
+    if (!a) { el.hidden = true; return; }
+    var st = a.st, ck = a.ck, pr = a.pr, idx = ck.step_index;
+    // the AUTHORED kind: once its rows are met the step lights nothing, but it is still an ask
+    var act = !!((st.hl && st.hl.length) || (stepHlLabels(st, ck) || []).length);
+    var rc = document.querySelector('#cklRun [data-ckl-check]'), rw = document.querySelector('#cklRun [data-wt-rewind]');
+    var sp = (cklIsWaitStep(st) && !ck.awaiting_ack && !ck.acc_met) ? cklStepSpeed(s, a) : 1;
+    var gk = pr.id + '#' + idx;
+    if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
+    var key = JSON.stringify(['ckl', gk, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
+      !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, sp, callout.whyOpen, callout.histOpen]);
+    if (key === callout.key) return;
+    callout.key = key;
+    var sy = st.story || {};
+    el.querySelector('.ico-who').textContent = 'Step ' + (idx + 1) + ' of ' + pr.steps.length + (sy.clock ? ' · ' + sy.clock : '');
+    var b = '';
+    if (sy.line) b += '<div class="ico-story">' + mesc(sy.line) + '</div>';
+    if (act) {
+      b += '<div class="ico-act">' + mesc(st.text) + '</div>';
+      if (st.why) {
+        b += '<button type="button" class="ico-more" data-ico-why="1">' + (callout.whyOpen ? 'hide' : 'why?') + '</button>';
+        if (callout.whyOpen) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+      }
+    } else {
+      b += '<div class="ico-say">' + mesc(st.text) + '</div>';
+      if (st.why) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+    }
+    if (st.crew) b += '<div class="ico-crew">The crew\'s action, as taken — not a recommendation.</div>';
+    if (st.note) b += '<div class="ico-tip">' + mesc(st.note) + '</div>';
+    var rows = (st.accs || []).map(function (en, k) { return { en: en, met: !!((ck.accs && ck.accs[k]) || {}).met }; })
+      .filter(function (r) { return !r.en.hidden && !r.en.cont; });
+    if (rows.length > 1) {
+      b += rows.map(function (r) {
+        return '<div class="ico-crit' + (r.met ? ' met' : '') + '">' + (r.met ? '✓ ' : '○ ') +
+          mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
+      }).join('');
+    }
+    if (sp > 1) b += '<div class="ico-wait">⏩ Waiting at ' + sp + '×</div>';
+    el.querySelector('.ico-body').innerHTML = b;
+    var bEl = el.querySelector('.ico-btns');
+    bEl.innerHTML =
+      '<button type="button" class="btn ico-rw" data-ico-fwd="[data-wt-rewind]"' + (rw && !rw.disabled ? '' : ' disabled') + '>⏪ Rewind</button>' +
+      '<button type="button" class="btn ico-cont' + (ck.awaiting_ack ? ' ready' : '') + '" data-ico-fwd="[data-ckl-check]"' +
+        (rc && !rc.disabled ? '' : ' disabled') + '>Continue ▶</button>';
+    bEl.hidden = false;
+    var hist = el.querySelector('.ico-hist');
+    hist.hidden = !callout.histOpen;
+    el.querySelector('[data-ico-hist]').classList.toggle('on', callout.histOpen);
+    if (callout.histOpen) {
+      var hh = '';
+      for (var k = 0; k <= idx && k < pr.steps.length; k++) {
+        var y = pr.steps[k].story;
+        if (!y) continue;
+        hh += '<div class="ico-h"><b>' + mesc(y.clock || '') + '</b> ' + mesc(y.saw || y.line || '') +
+          (y.knew ? '<div><i>They knew:</i> ' + mesc(y.knew) + '</div>' : '') +
+          (y.did ? '<div><i>They did:</i> ' + mesc(y.did) + '</div>' : '') + '</div>';
+      }
+      hist.innerHTML = hh;
+      hist.scrollTop = hist.scrollHeight;
+    }
+    callout.points = [];
+    callout.kind = act ? 'act' : 'observe';
+    el.setAttribute('data-kind', callout.kind);
+    el.hidden = false;
+  }
+  // Keep-outs for a walkthrough step: the six top tiles, every lit control / watched item / lit
+  // card on the board, and the acted-on control's panel. Anchor: that panel (action) or the
+  // first watched item (observation).
+  function cklCalloutKeepOut() {
+    function rects(sel) {
+      var out = [];
+      [].forEach.call(document.querySelectorAll(sel), function (g) { var r = g.getBoundingClientRect(); if (rectOk(r)) out.push(r); });
+      return out;
+    }
+    var acts = rects('#viewArea .ckl-step-glow');
+    var watches = rects('#viewArea .ckl-watch-glow, #viewArea .ckl-check-glow');
+    var cards = rects('#viewArea .ckl-panel-glow');
+    var panel = acts[0] ? calloutPanelOf(acts[0]) : null;
+    var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
+    var hard = top.concat(panel ? [panel] : [], acts, watches, cards);
+    var anchor = callout.kind === 'act' ? (panel || acts[0] || null) : (watches[0] || cards[0] || null);
+    return { hard: hard, top: top, panel: panel, points: watches, anchor: anchor };
   }
 
   // ============================================================ auto-checklists (Path 3)
@@ -5466,6 +5591,7 @@
        * churn: `time_acceleration` moves only when the player, this walkthrough, or an attention
        * stop moves it, which is a handful of times in a whole leg. */
       (s && s.metadata && s.metadata.time_acceleration) || 1,
+      cklCalloutOn(pr) ? 'co' : '',
       cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
@@ -5610,6 +5736,18 @@
           return '<div class="ckl-caut-l">' + mesc(c) + '</div>';
         }).join('') : '') +
         '</div>';
+    }
+    /* THE CALLOUT LEG'S COLUMN IS A PROGRESS LIST (2026-10-10, OWNER: "We should build TMI with the
+     * concise callouts like the starting instruction."). The step itself is drawn on the board by
+     * cklCalloutFill; the step card below is still built (the engine of record: its Continue and
+     * Rewind are the buttons the callout forwards to) and hidden by `#cklRun.ckl-co`. */
+    var coOn = cklCalloutOn(pr);
+    if (coOn) {
+      h += '<ol class="ckl-prog-list">' + pr.steps.map(function (sx, k) {
+        var dn = !!(ck.steps_done && ck.steps_done[k]), ac = !ck.complete && k === ck.step_index;
+        return '<li class="' + (dn ? 'done' : ac ? 'active' : 'pend') + '"><span class="ckl-pl-ico">' + (dn ? '✓' : ac ? '▸' : '○') +
+          '</span><span class="ckl-pl-n">' + (k + 1) + '</span><span class="ckl-pl-t">' + mesc(sx.text) + '</span></li>';
+      }).join('') + '</ol>';
     }
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
@@ -6145,6 +6283,7 @@
     var prevLog = cklScroller();
     var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
+    cur.classList.toggle('ckl-co', coOn);
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
@@ -10377,7 +10516,8 @@
     // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
     // their defaults; stack still accepts set_register for tests.
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
-    ui.callout = calloutPref();
+    ui.calloutSet = calloutPref();
+    ui.callout = ui.calloutSet === true;
     syncCalloutSeg();
     var cseg = $('calloutSeg');
     if (cseg) cseg.addEventListener('click', function (e) { var b = e.target.closest('[data-callout]'); if (b) setCalloutPref(b.getAttribute('data-callout') === 'on'); });

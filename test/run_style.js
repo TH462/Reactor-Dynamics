@@ -129,7 +129,7 @@ function loadManualText() {
  * `['text']` only and state a rule about the STEP BEING AN IMPERATIVE — a narrative field is
  * past-tense reporting, where "the crew believed the valve should have shut" is correct and
  * forbidding it would be a category error. `why` is treated the same way for the same reason. */
-var STORY_KEYS = ['clock', 'saw', 'knew', 'did'];
+var STORY_KEYS = ['clock', 'line', 'saw', 'knew', 'did'];   // 'line': the callout's one-line event (2026-10-10)
 function stepFields(s, fields) {
   var out = [];
   fields.forEach(function (f) {
