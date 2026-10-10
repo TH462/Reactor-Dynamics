@@ -90,6 +90,11 @@ var BUB = '#instrCallout';
         var up = tn.parentNode; while (up && up.parentNode !== stg) up = up.parentNode;
         if (up) tops.push(up.getBoundingClientRect());
       }
+      // THE PLANT KEEP-OUTS (owner: "it might block important info"): the pressurizer and vessel
+      // drawings and the PZR SPRAY / PZR TEMP / HTR PWR readouts. This test's OWN list of board ids,
+      // not the app's: a renamed item must go red here, not silently shrink both lists.
+      var PLANT = ['pressurizer', 'reactorVessel', 'imsgt6tl11c', 'imsgt6qmdgx', 'ims5gp0aicx', 'ims5gq44zgr', 'ims5gpdv96m', 'ims5gprvl7n'];
+      var plant = PLANT.map(function (id) { var t = stg.querySelector('[data-item="' + id + '"]'); return t ? t.getBoundingClientRect() : null; }).filter(function (q) { return q && ok(q); });
       // the step's lit items on the board, and the acted-on control's PANEL
       var lit = [].map.call(document.querySelectorAll('#viewArea .ckl-step-glow, #viewArea .ckl-watch-glow, #viewArea .ckl-check-glow, #viewArea .ckl-panel-glow'),
         function (x) { return x.getBoundingClientRect(); }).filter(ok);
@@ -107,6 +112,9 @@ var BUB = '#instrCallout';
       base.onScreen = r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
       base.tops = tops.length;
       base.topHit = Math.round(tops.reduce(function (a, q) { return a + ov(r, q); }, 0));
+      base.plant = plant.length;
+      base.plantHit = Math.round(plant.reduce(function (a, q) { return a + ov(r, q); }, 0));
+      base.compact = b.classList.contains('ico-compact');
       base.lit = lit.length;
       base.litHit = Math.round(lit.reduce(function (a, q) { return a + ov(r, q); }, 0));
       base.lead = dot ? lit.some(function (q) { return dx >= q.left - 8 && dx <= q.right + 8 && dy >= q.top - 8 && dy <= q.bottom + 8; }) : null;
@@ -128,7 +136,7 @@ var BUB = '#instrCallout';
     var S = await session(vp), page = S.page;
     await start(page, PROC);
     var N = await page.evaluate(function () { return RD.__dev.service().instructor.checklist.proc.steps.length; });
-    var bad = [], skipped = [];
+    var bad = [], skipped = [], compact = [];
     for (var i = 0; i < N; i++) {
       if (i > 0) await jump(page, i);
       var g = await geom(page);
@@ -144,6 +152,8 @@ var BUB = '#instrCallout';
         if (g.main !== g.text) why.push('line "' + g.main + '"');
         if (g.tops !== 6 || g.topHit !== 0) why.push('top tiles ' + g.tops + ' hit ' + g.topHit);
         if (g.litHit !== 0) why.push('covers a lit item by ' + g.litHit + ' px2');
+        if (g.plant !== 8 || g.plantHit !== 0) why.push('plant keep-outs ' + g.plant + '/8 hit ' + g.plantHit + ' px2');
+        if (g.compact) compact.push(g.idx + 1);
         if (g.lit && g.lead === false) why.push('leader misses the anchor');
         if (!g.cont) why.push('no Continue in the card');
         if (g.who.indexOf('Step ' + (g.idx + 1) + ' of ' + N) !== 0) why.push('head "' + g.who + '"');
@@ -153,7 +163,7 @@ var BUB = '#instrCallout';
       if (why.length) bad.push('step ' + (i + 1) + ': ' + why.join('; ') + ' ' + JSON.stringify(g.box || null));
     }
     ck(tag + ': every one of the ' + N + ' TMI steps draws the card — right kind, the step line, on-screen, clear of the six top tiles and every lit item, leader to the anchor, Continue in it; the column is a progress list',
-       N >= 15 && bad.length === 0 && skipped.length <= 2, bad.length ? bad.join(' | ') : N + ' steps' + (skipped.length ? ', overtaken on the jump: ' + skipped : ''));
+       N >= 15 && bad.length === 0 && skipped.length <= 2, bad.length ? bad.join(' | ') : N + ' steps' + (skipped.length ? ', overtaken on the jump: ' + skipped : '') + ', compact fallback on: ' + (compact.join(',') || 'none'));
 
     // "why?" on an ACTION step
     var actIdx = await page.evaluate(function () { var s = RD.__dev.service().instructor.checklist.proc.steps; for (var k = 0; k < s.length; k++) if (s[k].hl && s[k].hl.length && s[k].why && !s[k].overtaken) return k; return -1; });
@@ -183,6 +193,21 @@ var BUB = '#instrCallout';
     }
     await S.ctx.close();
   }
+
+  // ---------------------------------------------------------------- 6. Settings shows the EFFECTIVE state
+  var T = await session({ width: 1366, height: 768 });
+  await start(T.page, PROC);
+  async function segState(p) { return p.evaluate(function () { var b = document.querySelector('#calloutSeg .on'); var c = document.querySelector('#instrCallout'); return { on: b && b.getAttribute('data-callout'), card: !!(c && !c.hidden) }; }); }
+  await T.page.click('#settingsBtn');
+  var s0 = await segState(T.page);
+  await T.page.click('#calloutSeg [data-callout="off"]'); await T.page.waitForTimeout(600);
+  var s1 = await segState(T.page);
+  await T.page.click('#calloutSeg [data-callout="auto"]'); await T.page.waitForTimeout(600);
+  var s2 = await segState(T.page);
+  var ls = await T.page.evaluate(function () { try { return localStorage.getItem('rd_instr_callout'); } catch (e) { return 'x'; } });
+  ck('Settings shows the effective state: nothing chosen reads Auto with the TMI card up; Off takes it down; Auto brings it back and clears the choice',
+     s0.on === 'auto' && s0.card && s1.on === 'off' && !s1.card && s2.on === 'auto' && s2.card && ls === null, JSON.stringify([s0, s1, s2, ls]));
+  await T.ctx.close();
 
   // ---------------------------------------------------------------- 5. defaults elsewhere
   var D = await session({ width: 1366, height: 768 });

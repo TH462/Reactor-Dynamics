@@ -4140,17 +4140,23 @@
     // authored `callout: true` (TMI-2) draws it unless the player chose Off.
     try { var v = localStorage.getItem(CALLOUT_LS); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; }
   }
-  function setCalloutPref(on) {
-    ui.callout = !!on; ui.calloutSet = !!on;
+  // v: true (On), false (Off) or null (Auto: unset; only a `callout: true` walkthrough draws it)
+  function setCalloutPref(v) {
+    var on = v === true;
+    ui.callout = on; ui.calloutSet = v === null ? null : on;
     cklState.key = null;   // the walkthrough column swaps step card <-> progress list
     if (latest && latest.instructor && latest.instructor.checklist) renderChecklist(latest, latest.instructor.checklist);
-    try { localStorage.setItem(CALLOUT_LS, on ? '1' : '0'); } catch (e) { /* private mode */ }
+    try { if (v === null) localStorage.removeItem(CALLOUT_LS); else localStorage.setItem(CALLOUT_LS, on ? '1' : '0'); } catch (e) { /* private mode */ }
     syncCalloutSeg();
     calloutSync();
   }
   function syncCalloutSeg() {
     var seg = $('calloutSeg'); if (!seg) return;
-    [].forEach.call(seg.querySelectorAll('[data-callout]'), function (b) { b.classList.toggle('on', (b.getAttribute('data-callout') === 'on') === !!ui.callout); });
+    [].forEach.call(seg.querySelectorAll('[data-callout]'), function (b) {
+      // the EFFECTIVE state: Auto when the player has not chosen (the TMI-2 walkthrough draws it)
+      var cur = ui.calloutSet === true ? 'on' : ui.calloutSet === false ? 'off' : 'auto';
+      b.classList.toggle('on', b.getAttribute('data-callout') === cur);
+    });
   }
   var callout = { el: null, histOpen: false, key: null, timer: null, raf: 0, obs: null, points: [] };
   function calloutActive() {
@@ -4568,6 +4574,24 @@
     el.setAttribute('data-kind', callout.kind);
     el.hidden = false;
   }
+  /* THE PLANT ITSELF IS A KEEP-OUT on a callout walkthrough (2026-10-10, OWNER: "it blocks part of the
+   * diagram and it might block important info"). On TMI-2 the pressurizer's level and the vessel's
+   * water are the lesson, and the opener's placement treats a big drawing as cheap to cover. Board
+   * item ids (pwr_board_data.js): the two component drawings and the PZR SPRAY / PZR TEMP / HTR PWR
+   * label+value pairs beside the pressurizer. PRESSURIZER LEVEL and PRIMARY PRESSURE are top tiles.
+   * verify_tmi_callout asserts all eight resolve, so a board re-export that renames one goes red. */
+  var CKL_CALLOUT_PLANT = ['pressurizer', 'reactorVessel', 'imsgt6tl11c', 'imsgt6qmdgx', 'ims5gp0aicx', 'ims5gq44zgr', 'ims5gpdv96m', 'ims5gprvl7n'];
+  RD.CklCalloutPlant = CKL_CALLOUT_PLANT;
+  function cklCalloutPlantRects() {
+    var st = calloutStage(), out = [];
+    if (!st) return out;
+    CKL_CALLOUT_PLANT.forEach(function (id) {
+      var t = st.querySelector('[data-item="' + id + '"]');
+      var r = t && t.getBoundingClientRect();
+      if (r && rectOk(r)) out.push(r);
+    });
+    return out;
+  }
   // Keep-outs for a walkthrough step: the six top tiles, every lit control / watched item / lit
   // card on the board, and the acted-on control's panel. Anchor: that panel (action) or the
   // first watched item (observation).
@@ -4582,7 +4606,8 @@
     var cards = rects('#viewArea .ckl-panel-glow');
     var panel = acts[0] ? calloutPanelOf(acts[0]) : null;
     var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
-    var hard = top.concat(panel ? [panel] : [], acts, watches, cards);
+    var plant = cklCalloutPlantRects();
+    var hard = top.concat(plant, panel ? [panel] : [], acts, watches, cards);
     var anchor = callout.kind === 'act' ? (panel || acts[0] || null) : (watches[0] || cards[0] || null);
     return { hard: hard, top: top, panel: panel, points: watches, anchor: anchor };
   }
@@ -10520,7 +10545,7 @@
     ui.callout = ui.calloutSet === true;
     syncCalloutSeg();
     var cseg = $('calloutSeg');
-    if (cseg) cseg.addEventListener('click', function (e) { var b = e.target.closest('[data-callout]'); if (b) setCalloutPref(b.getAttribute('data-callout') === 'on'); });
+    if (cseg) cseg.addEventListener('click', function (e) { var b = e.target.closest('[data-callout]'); if (b) { var cv = b.getAttribute('data-callout'); setCalloutPref(cv === 'on' ? true : cv === 'off' ? false : null); } });
     var aseg = $('attnSeg');
     if (aseg) aseg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-attn]'); if (!b) return;
