@@ -292,6 +292,7 @@
     var ox = (r.width - b.w * s) / 2 - b.x * s;
     var oy = (r.height - b.h * s) / 2 - b.y * s;
     stage.style.transform = 'translate(' + ox.toFixed(2) + 'px,' + oy.toFixed(2) + 'px) scale(' + s.toFixed(5) + ')';
+    stage.style.setProperty('--bd-s', s.toFixed(4));   // the stage scale, for hit zones sized in SCREEN px (.bd-num-steps)
     focusRescale();
   }
 
