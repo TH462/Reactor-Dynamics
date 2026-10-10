@@ -9429,7 +9429,13 @@
       end: function () {
         if (ended) return;
         ended = true;
-        if (mission) ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: 0 });
+        // An opener files the beat it came to rest on, as End does: beat 0 here hid where 12 of
+        // the first 21 opener abandons happened (all tab closes, 2026-10).
+        if (mission) {
+          var op = mission.openerBeat && RD.OPENERS && RD.OPENERS[mission.id];
+          var beat = op ? Math.max(0, op.beats.map(function (b) { return b.id; }).indexOf(mission.openerBeat)) : 0;
+          ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: beat });
+        }
         // A walkthrough still running when the tab goes away never sees another tick, so
         // without this the most interesting runs — the abandoned ones — end in silence.
         this.walkthroughEnd('left');

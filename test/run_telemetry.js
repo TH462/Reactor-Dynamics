@@ -1243,6 +1243,36 @@ function sentDelta(a, fn) { var n = a.sent.length; fn(); a.T.flush(); return a.s
   }
 }());
 
+// =========================================== ui/app.js: an opener abandoned by closing the tab
+/* TEL.end() (pagehide) filed mission_abandon with beat 0 for every mission, so the most common
+ * opener exit read as "left on the greeting" whatever beat it came to rest on (12 of 21 opener
+ * abandons, 30 days to 2026-10-09). It now files the beat openerBeat() last recorded, as End does. */
+(function () {
+  var hadUi = Object.prototype.hasOwnProperty.call(global, 'ui'), oldUi = global.ui;
+  var hadLatest = Object.prototype.hasOwnProperty.call(global, 'latest'), oldLatest = global.latest;
+  global.ui = { plant: 'pwr2', initState: 'hot_full_power' };
+  global.latest = null;                        // end() reads the app's last snapshot for sim_seconds
+  try {
+    var a = loadTEL();
+    global.RD.OPENERS = { op_x: { beats: [{ id: 'b0' }, { id: 'b1' }, { id: 'b2' }] } };
+    a.TEL.sessionStart('scenario', { scenario_id: 'op_x', initial_state: 'hot_full_power' });
+    a.TEL.openerBeat({ scenario_id: 'op_x', current_beat_id: 'b2' });
+    a.TEL.end();
+    var ab = a.events.filter(function (e) { return e.name === 'mission_abandon'; });
+    ck('tab close mid-opener files the beat it rested on (2), not 0',
+      ab.length === 1 && ab[0].props.beat === 2, JSON.stringify(ab));
+    var b = loadTEL();
+    b.TEL.sessionStart('scenario', { scenario_id: 'mission_y', initial_state: 'hot_full_power' });
+    b.TEL.end();
+    var ab2 = b.events.filter(function (e) { return e.name === 'mission_abandon'; });
+    ck('tab close on a non-opener mission still files beat 0',
+      ab2.length === 1 && ab2[0].props.beat === 0, JSON.stringify(ab2));
+  } finally {
+    if (hadUi) global.ui = oldUi; else delete global.ui;
+    if (hadLatest) global.latest = oldLatest; else delete global.latest;
+  }
+}());
+
 // =========================================== ui/app.js: state-derived milestones (TEL)
 /* #on_grid-is-an-IC: `hot_full_power` starts with the generator already on line, so the
  * old "mwe_output > 0" state test fired on_grid on the FIRST tick — recording the initial
