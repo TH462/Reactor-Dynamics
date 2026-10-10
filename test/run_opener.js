@@ -141,8 +141,8 @@ var ROUTES = {
     // mid-hold), let go 3 s after the line, then in, in two nudges.
     o4_rods:   [{ at: 5, cmd: { action: 'rod_start', group_id: 'control_rods', direction: 1, speed: 'normal' } }],
     o4_wrong:  [{ at: 3, cmd: { action: 'rod_stop', group_id: 'control_rods' } },
-                { at: 12, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -30 } },
-                { at: 40, cmd: { action: 'rod_nudge', group_id: 'control_rods', steps: -20 } }],
+                { at: 12, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' } },
+                { at: 48, cmd: { action: 'rod_stop', group_id: 'control_rods' } }],   // a ~36 s FAST hold IN, ~43 steps (a nudge ramps slowly and is not what a player does)
     o6_spray:  [{ at: 5, cmd: { action: 'set_spray', pct: 100 } }],
     o7_spray_watch: [{ at: 9, cmd: { action: 'set_spray', auto: true } }],   // closed after ~10 s, BEFORE the ask
     // o10_scram: never pressed — the instructor trips it
@@ -177,6 +177,27 @@ var ROUTES = {
     o8_auto:   [{ at: 8, cmd: { action: 'set_spray', auto: true } }],
     o10_scram: [{ at: 8, cmd: { action: 'scram' } }],
   },
+  // #811 (2026-10-09): the ask now needs 30 steps IN, so waiting after 15-29 is reachable. A 17 s FAST
+  // hold (~20 steps), then nothing: the help window ends and o4_help_more adds 20.
+  stop20: {
+    o0_hello:  [{ at: 15, cmd: READY }],
+    o1_load:   [{ at: 20, cmd: { action: 'set_load_target', mwe: 80 } }],
+    o4_rods:   [{ at: 16, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' } },
+                { at: 33, cmd: { action: 'rod_stop', group_id: 'control_rods' } }],
+    o6_spray:  [{ at: 20, cmd: { action: 'set_spray', pct: 100 } }],
+    o8_auto:   [{ at: 8, cmd: { action: 'set_spray', auto: true } }],
+    o10_scram: [{ at: 8, cmd: { action: 'scram' } }],
+  },
+  // the boundary: a ~26 s FAST hold (~31 steps), the least that counts as done. Graded on release.
+  steps30: {
+    o0_hello:  [{ at: 15, cmd: READY }],
+    o1_load:   [{ at: 20, cmd: { action: 'set_load_target', mwe: 80 } }],
+    o4_rods:   [{ at: 16, cmd: { action: 'rod_start', group_id: 'control_rods', direction: -1, speed: 'fast' } },
+                { at: 42, cmd: { action: 'rod_stop', group_id: 'control_rods' } }],
+    o6_spray:  [{ at: 20, cmd: { action: 'set_spray', pct: 100 } }],
+    o8_auto:   [{ at: 8, cmd: { action: 'set_spray', auto: true } }],
+    o10_scram: [{ at: 8, cmd: { action: 'scram' } }],
+  },
   // withdraws first (o4_wrong), lets go, then presses "Show me" on the wrong-way line
   show_me_wrong: {
     o0_hello:  [{ at: 3, cmd: READY }],
@@ -200,6 +221,9 @@ var ROUTE_PATH = {
   show_me:   ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
   fiddler:   ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
   partial_rods: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
+  stop20: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help_more', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
+  // no o5_settled: at 31 steps power is 86.2 % at the watch's 6 s (the line says near 84), so it is rightly not said
+  steps30: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
   show_me_wrong: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_wrong', 'o4_help', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
 };
 /* WHEN each help arrived, in sim seconds after its ask (#811, 2026-10-09). Show me: within a few
@@ -209,6 +233,7 @@ var HELP_AT = {
   show_me:  { o1_help: ['o1_load', 18, 20], o4_help: ['o4_rods', 19, 21], o6_help: ['o6_spray', 17, 19], o8_help: ['o8_auto', 12, 14], o10_help: ['o10_scram', 12, 14] },
   fiddler:  { o1_help: ['o1_load', 44, 46], o4_help: ['o4_rods', 46, 48] },
   partial_rods: { o4_help: ['o4_rods', 46, 48] },
+  stop20: { o4_help_more: ['o4_rods', 46, 48] },
   show_me_wrong: { o4_help: ['o4_wrong', 12, 14] },
 };
 
@@ -479,6 +504,11 @@ Object.keys(ROUTES).forEach(function (name) {
            S.o5_rods_watch.control_state.bank_steps < bw, 'in');
       }
     }
+    // o5_rods_watch: "power drops toward the load" must be TRUE over the watch, not just at 13-16 steps
+    // in (#811, reviewer: power held ~90 % with the dump 35-40 % open). Low point of the watch vs the ask.
+    var pLoW = Math.min.apply(null, window_(r, 'o5_rods_watch', 'o6_spray', function (s) { return I(s, 'power_range'); }));
+    ck('o5: "power drops" - the watch low is 5+ points under the ask', I(S.o4_rods, 'power_range').toFixed(1) + ' -> ' + pLoW.toFixed(1) + ' %',
+       pLoW < I(S.o4_rods, 'power_range') - 5, '> 5 points down');
     // power follows, Tavg comes back (read at the END of the watch, o6)
     ck('o6: power below 90 % after the rods went in', I(S.o6_spray, 'power_range').toFixed(1) + ' %', I(S.o6_spray, 'power_range') < 90, '< 90 %');
     ck('o6: rods actually moved in', S.o6_spray.true_state.rod_steps.toFixed(0) + ' steps', S.o6_spray.true_state.rod_steps < 600, '< 600');
@@ -618,10 +648,12 @@ test('a rod hold is never overtaken by the help or a clock change', function (ck
    * reading hold. rod_travel's baseline used to be taken on the first pass after the hold, so the
    * 16 steps were invisible: no grade on the release, then at +46 s "I'll drive the rods in 40
    * steps" (56 in, power 79.9 %). The baseline is the bank at the ask: met on the release. */
-  var r4 = play(holdRoute(hold(2, 15)), 420);
+  // (30 steps now grade the ask, so the first 13 s hold alone is 15 steps = help_more: a SECOND hold
+  // +18..+38 adds ~24; met on that release only if the first one's ~15 were counted from the ask.)
+  var r4 = play(holdRoute(hold(2, 15).concat(hold(18, 38))), 420);
   var d4 = r4.at.o5_rods_watch != null ? r4.at.o5_rods_watch - r4.at.o4_rods : null;
-  ck('hold inside the reading time (+2..+15): graded, no help', (d4 == null ? 'never' : 'o5 at +' + d4.toFixed(1) + ' s') + ', help ' + !!(r4.at.o4_help || r4.at.o4_help_more),
-     d4 != null && d4 < 20 && !r4.at.o4_help && !r4.at.o4_help_more, 'o5 by +20 s (after the reading hold), no help');
+  ck('hold inside the reading time (+2..+15) then +18..+38: graded on the release, no help', (d4 == null ? 'never' : 'o5 at +' + d4.toFixed(1) + ' s') + ', help ' + !!(r4.at.o4_help || r4.at.o4_help_more),
+     d4 != null && d4 >= 36 && d4 < 42 && !r4.at.o4_help && !r4.at.o4_help_more, 'o5 at the +38 s release, no help');
 });
 
 // ------------------------------------------------------------------ board scope (#811)

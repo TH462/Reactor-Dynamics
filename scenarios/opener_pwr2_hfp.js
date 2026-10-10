@@ -39,11 +39,15 @@
   // Rods OUT this far past where they sat at the ask = the wrong way (see o4_wrong). Held at MED
   // the bank moves ~23 steps per 30 s at 1x (QA pass, headless Edge), so this is ~6 s of holding OUT.
   var WRONG_WAY_STEPS = 5;
-  // ...and the ask is met only once the bank is actually IN from where it stood when the line was
-  // said. Measured on the 90 MWe route: power is already 89.0 % at the ask, so "power < 90 and a
+  // ...and the ask is met only once the bank is actually IN 30 steps from where it stood when the line
+  // was said (the text says "about 40"; 30 is the floor of 'did it', the help tiers below start at 15).
+  // MEASURED (reviewer, head a7b1ba6f, steps 3): met at 13-16 steps in, power then held ~90 % with the
+  // dump 35-40 % open, so "power drops toward the load" in o5 was barely true. The power < 90 test is
+  // kept as a cheap guard on the boundary case (a bank already IN at the ask); it is not what grades.
+  // Measured on the 90 MWe route: power is already 89.0 % at the ask, so "power < 90 and a
   // release" alone accepted the release of an OUT hold and moved on to "Rods in means fewer
   // neutrons" over a bank that had gone out.
-  var IN_SINCE_ASK = { type: 'rod_travel', group_id: 'control_rods', direction: 'in', steps: 3 };
+  var IN_SINCE_ASK = { type: 'rod_travel', group_id: 'control_rods', direction: 'in', steps: 30 };
   // ...and no hold may still be in progress. A release EARLIER in the ask (a 3 s probe hold) stays in
   // the action memory, so without this a second, longer hold was accepted mid-hold the moment power
   // crossed 90 % (#811 layman pass, measured: the 5x watch at +115.4 s and the spray ask at +145.4 s,
