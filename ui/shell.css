@@ -766,6 +766,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .scrubber .head { position: absolute; right: 0; top: -3px; width: 3px; height: 10px; background: var(--normal); border-radius: 2px; pointer-events: none; }
 .scrubber .lbl { font-size: 10px; color: var(--muted); }
 
+/* PAUSED VEIL (quick win 4): a big PAUSED over the board while the clock is plainly stopped. Clicks pass
+   through to the board; only the Resume button takes them. */
+.paused-veil { position: absolute; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
+  pointer-events: none; background: rgba(8, 12, 16, 0.30); }
+.paused-veil.on { display: flex; }
+.paused-veil-btn { pointer-events: auto; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: rgba(10, 14, 19, 0.72); border: 1px solid #3a4c58; border-radius: 12px; padding: 14px 40px 16px;
+  color: var(--text); font-family: inherit; }
+.paused-veil-btn:hover { border-color: var(--running, #6FD089); }
+.paused-veil-btn .pv-word { font-size: 40px; font-weight: 800; letter-spacing: .18em; line-height: 1; color: var(--caution, #d9a441); }
+.paused-veil-btn .pv-go { font-size: 15px; font-weight: 600; letter-spacing: .06em; color: var(--running, #6FD089); }
+
 /* HOVER HELP AT THE CURSOR (quick win 2): the Scanner's one-line brief beside the pointer. */
 .hover-tip {
   position: fixed; left: 0; top: 0; z-index: 9500; max-width: 300px; pointer-events: none;

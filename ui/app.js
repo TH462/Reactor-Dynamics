@@ -9219,13 +9219,38 @@
       if (speedSeg) speedSeg.querySelectorAll('[data-speed].on').forEach(function (x) { x.classList.remove('on'); });
       lastSpeedSync = null;
     }
+    updatePausedVeil();
+  }
+  /* THE PAUSED VEIL (quick win 4, owner 2026-10-10). A stopped clock was a small amber icon:
+   * leaving the Quick tour with Escape left the plant frozen (measured: simTime 1.4 s and
+   * not moving, play button 'play paused') with nothing on the board to say so. The veil is a
+   * big "PAUSED" over the board whose Resume button presses the play button (the one source of
+   * truth). It shows ONLY for a plain stop -- the player's own pause, the tour's hold, a stop with
+   * no named reason. It stays off for a hold that already explains itself or covers the board:
+   * the walkthrough step's pause (its card says so), a modal, a rewind review, scenario content,
+   * a plant rebuild -- and while the tour is up. The veil passes clicks through except its
+   * button, so a paused plant can still be inspected and commanded. The 2026-08-11 removal of
+   * the old full-board curtain was about a pause the plant no longer starts in; it loads running. */
+  function updatePausedVeil() {
+    var area = $('viewArea'); if (!area || !service) return;
+    var el = $('pausedVeil');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'pausedVeil'; el.className = 'paused-veil';
+      el.innerHTML = '<button type="button" class="paused-veil-btn" id="pausedVeilBtn" aria-label="Paused. Resume the simulation">' +
+        '<span class="pv-word">PAUSED</span><span class="pv-go">▶ Resume</span></button>';
+      el.querySelector('button').addEventListener('click', function () { if (!service.running) $('playBtn').click(); });
+      area.appendChild(el);
+    }
+    var plain = Object.keys(pauseWhy).every(function (k) { return k === 'user'; });
+    el.classList.toggle('on', !service.running && plain && !tourOn);
   }
   function pauseSim(reason) {
     pauseWhy[reason || 'user'] = true;
     if (service.running) service.stop();
     syncPlayBtn();
   }
-  function clearPause(reason) { delete pauseWhy[reason || 'user']; }   // NOT a resume — see above
+  function clearPause(reason) { delete pauseWhy[reason || 'user']; updatePausedVeil(); }   // NOT a resume — see above
   function pausedFor(reason) { return !!pauseWhy[reason]; }
   function resumeSim() {
     pauseWhy = {};                       // the player said go: every hold is released
@@ -11683,6 +11708,7 @@
     tourClearLive();
     if ($('tourRoot')) $('tourRoot').hidden = true;
     document.body.classList.remove('tour-active');
+    updatePausedVeil();   // the tour holds the clock and leaves it held (#818): say so once the tour is gone
   }
   /* `r` is a RECT, not an element, since #720 — a group step's spotlight is the union of its
    * members and there is no element whose box that is. */

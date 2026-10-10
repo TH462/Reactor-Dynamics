@@ -10,6 +10,9 @@
  *        the instructor callout card.
  *   QW3  The chart window fits the data: a fresh run opens on 1 min and widens with the time since
  *        the player's last command (never past the speed rule's rung); a clicked rung is authoritative.
+ *   QW4  PAUSED veil: a plainly stopped clock (Escape out of the Quick tour, the player's pause) puts a
+ *        big PAUSED over the board whose Resume button plays; none under a dialog, the tour, or a
+ *        walkthrough hold; clicks pass through everywhere else.
  *
  * SHOTDIR=<dir> saves a screenshot per section.
  * Run: node test/verify_quickwins_ui.js
@@ -161,6 +164,49 @@ function ck(name, ok, detail) {
   var aM = await axisFirst(w.page);
   ck('QW3 a clicked rung is authoritative (the widest rung shows exactly, auto off)', aM.sec === rung && !aM.auto, JSON.stringify(aM) + ' rung ' + rung);
   await w.ctx.close();
+
+  // ---- QW4 ---------------------------------------------------------------------------------
+  function veil(page) {
+    return page.evaluate(function () {
+      var v = document.getElementById('pausedVeil'), s = RD.__dev.service();
+      return { on: !!(v && v.classList.contains('on')), running: !!s.running, t: s.simTime,
+               playPaused: document.getElementById('playBtn').classList.contains('paused') };
+    });
+  }
+  var v = await session({ width: 1366, height: 768 });
+  var v0 = await veil(v.page);
+  ck('QW4 a running plant has no veil', v0.running && !v0.on, JSON.stringify(v0));
+  await v.page.click('[data-open-tour]');
+  await v.page.waitForTimeout(500);
+  var vt = await veil(v.page);
+  ck('QW4 no veil under the tour itself', !vt.running && !vt.on, JSON.stringify(vt));
+  await v.page.keyboard.press('Escape');
+  await v.page.waitForTimeout(700);
+  var ve = await veil(v.page);
+  await v.page.waitForTimeout(600);
+  var ve2 = await veil(v.page);
+  ck('QW4 Escape out of the Quick tour: plant stays held AND the board says PAUSED', !ve.running && ve.on && ve2.t === ve.t, JSON.stringify({ on: ve.on, running: ve.running, dt: ve2.t - ve.t }));
+  await shot(v.page, 'qw4_paused');
+  var passes = await v.page.evaluate(function () {
+    var e = document.elementFromPoint(60, 200);
+    return e && !e.closest('#pausedVeil');
+  });
+  ck('QW4 the veil passes clicks through everywhere but its Resume button', passes === true);
+  await v.page.click('#pausedVeilBtn');
+  await v.page.waitForTimeout(500);
+  var vr = await veil(v.page);
+  ck('QW4 clicking the veil resumes (running, veil gone)', vr.running && !vr.on && !vr.playPaused, JSON.stringify(vr));
+  await v.page.click('#playBtn');
+  await v.page.waitForTimeout(300);
+  var vp = await veil(v.page);
+  ck('QW4 the player pausing with Play shows it too', !vp.running && vp.on, JSON.stringify(vp));
+  await v.page.click('#playBtn');
+  await v.page.waitForTimeout(300);
+  await v.page.click('#settingsBtn');
+  await v.page.waitForTimeout(500);
+  var vm = await veil(v.page);
+  ck('QW4 no veil under a dialog (Settings holds the clock itself)', !vm.running && !vm.on, JSON.stringify(vm));
+  await v.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
