@@ -5949,7 +5949,7 @@
          * live-checklist route harness (inbox/tmi_review/route.js, seed 42, typical and slow
          * routes alike) FEED FLOW reads 1002 gpm while paused, 955 gpm 1 s after Continue, 447 at
          * 7.5 s, 11 at 37.5 s and 0 by about 63 s. So the line points at the fall instead. */
-        { text: 'No action. The main feed pumps are tripping: press Continue and watch FEED FLOW fall.',
+        { text: 'No action. The main feed pumps are tripping: press Continue, then watch FEED FLOW fall.',
           why: 'With feedwater gone, the only way out for the heat is the pressurizer relief valve.',
           story: { clock: '04:00:37', line: 'Both main feedwater pumps trip; the alarms come in a wall.',
             saw: 'Both main feedwater pumps tripped and the alarms came in a wall.',
@@ -6052,7 +6052,7 @@
           hl_watch: ['Relief Valve (PORV)'] },
         /* 9 — 04:02:39. App. II.1 E31, ESF actuation on low RCS pressure (1600 psig).
          * MEASURED: hpi_active true at t+63 s. Manuals/08 §3. */
-        { text: 'Verify safety injection started: high-pressure pump running on the ECCS card.',
+        { text: 'Verify safety injection started: START lit on the ECCS card.',
           why: 'Pressure fell through the injection setpoint: the plant is losing water through the PORV.',
           /* RESTORED AFTER THE CALLOUT CUT (2026-10-10 review; the c9525041^ note said it at length).
            * CONDITIONAL ON PURPOSE: MEASURED on the route harness, first ECCS FLOW above 0 at 1375 psia
@@ -6237,7 +6237,7 @@
           control: 'AFW', target: 'STEAM GENERATOR LEVEL back above 5 %, climbing off zero',
           why: 'The auxiliary pumps ran eight minutes into shut valves. This restores the heat sink.',
           wait_hint: 'The relief valve is still open the whole way. The plant takes 600× here; if it drops back to 60× on a pressure swing, press 600× again.',
-          story: { clock: '04:08:37', line: 'An operator finds the two block valves shut, and opens them.',
+          story: { clock: '04:08:37', line: 'An operator finds the block valves shut, and opens them.',
             saw: 'Low generator level, low steam pressure and high auxiliary feed discharge pressure — three cues to a blocked line.',
             knew: 'The auxiliary pumps were running. Nobody had checked whether the water was getting past the valves.',
             did: 'An operator found the two block valves shut and opened them.' },
@@ -6294,7 +6294,7 @@
          * the `tavg` channel and these rows grade `subcooling_margin`. */
         { text: 'Once SUBCOOLING MARGIN pegs low, press OFF on the reactor coolant pumps.',
           crew: true,
-          control: 'RCP ON/OFF', target: 'the pump cavitation alarm clears',
+          control: 'RCP ON/OFF', target: 'after OFF, the pump cavitation alarm clears',
           why: 'They are cavitating. Stopping them also removes the only thing stirring the core.',
           wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale near 57 plant-minutes. That is the reading to wait for before securing the pumps.',
           wait_first: true,   // the wait comes BEFORE the press — see cklActionPending (ui/app.js)
@@ -6302,9 +6302,15 @@
             saw: 'Rising vibration on the loop B pumps, with flow and amperage falling away.',
             knew: '"Further operation could cause severe damage." The pumps had been running without suction head for an hour.',
             did: 'They stopped the loop B pumps, and the loop A pumps 28 minutes later.' },
+          /* TMI layman pass 2, 2026-10-11 (S-3): the bar read "About 28 plant-minutes left" for the
+           * whole step and never counted down. MEASURED (inbox/tmi_review3/route3.js): the step
+           * lasts 2,886 plant-s at 60× and 3,210 at 600× (48 / 53 plant-min), and the cavitation
+           * row can only clear AFTER the OFF press (true from step 12 until 6-60 plant-s after it,
+           * both routes) — hence its "after OFF" label. No honest single number: drop it. */
+          wait_est_s: false,
           cmd: { action: 'set_rcp', running: false }, hold: 1680,
           accs: [{ p: 'subcooling_c', op: '<=', v: -27.778, label: 'SUBCOOLING MARGIN pegged at -50 °F' },
-                 { p: 'rcp_cavitating', op: '<', v: 1, label: 'the pump cavitation alarm clears' }],
+                 { p: 'rcp_cavitating', op: '<', v: 1, label: 'after OFF: the pump cavitation alarm clears' }],
           hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF', 'Subcooling Margin'] },
         /* 16 — 05:41:37, loop A's clock (E111) and §II.A's "circulation of coolant decreased
          * drastically, because natural circulation was blocked by steam". A VERIFY, and it
@@ -6323,7 +6329,7 @@
          * 3.89 MPa / 564 psia here, 4.14 MPa / 600 psia 14 plant-minutes earlier). Read step 15's
          * note for the one row on this leg that COULD honestly move, and why this one cannot. */
         { text: 'Verify PRESSURIZER LEVEL falling below 50 %.',
-          why: 'Too little water is left to hold the level up. The core starts to uncover.',
+          why: 'Too little water is left to hold the level up. The core is uncovering.',
           story: { clock: '05:41:37', line: 'All pumps off, and the loops go quiet.',
             saw: 'All four pumps off, and the loops going quiet.',
             knew: 'They believed the system was full, because the pressurizer had said so for the better part of an hour.',
@@ -6356,7 +6362,7 @@
            * replay and player alike), so "About 7 plant-minutes at 1×" sent the operator to the
            * speed bar for a step that was already done. */
           wait_hint: false,
-          story: { clock: '06:11:37', line: 'Hot-leg temperature reads off the top of its scale.',
+          story: { clock: '06:11:37', line: 'A coolant temperature reads off the top of its scale.',
             saw: 'The loop A hot leg read off the top of its scale, so the average coolant temperature could not be shown correctly.',
             knew: 'Instruments were reading past their limits and the printer was hours behind.',
             did: 'They went on treating pressurizer level as the measure of how much water was in the plant.' },
@@ -6449,7 +6455,7 @@
           control: 'ECCS', target: 'SUBCOOLING MARGIN back above 10 °F',
           why: 'Injection puts water back. If high containment pressure already started it, the press changes nothing.',
           wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It takes 50 to 90 plant-minutes to reach +10 °F.',
-          story: { clock: '07:20:37', line: 'They start a makeup pump, then stop it 17 minutes later.',
+          story: { clock: '07:20:37', line: 'They start a makeup pump by hand.',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
             did: 'They started a makeup pump, and stopped it again 17 minutes later.' },

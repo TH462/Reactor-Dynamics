@@ -3280,7 +3280,21 @@
     }
     if (warpNote) {
       cls = 'dropped';
-      text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
+      /* A RATE REASON IS A HALF-SECOND READING, NOT A STANDING ONE (2026-10-11 TMI-2 layman pass,
+       * S-1). MEASURED on pwr_tmi2_incident step 18 (service probe, inbox/tmi_review3): 600× was
+       * ACCEPTED, the first WARP steps kicked primary pressure 476 -> 508 psia, the in-loop watch
+       * dropped to 60× on "pressure moving 43 psi/s right now", and pressure settled back to 494
+       * within one 6 s broadcast; `warp_available` was true from then on. The line kept the
+       * 43 psi/s figure for the ~6 wall-minutes the player then waited, beside a gauge rising
+       * 0.2 psi per wall-second. Once the plant would take WARP again, say the swing has passed
+       * instead of quoting it. Alarm, trip and failure reasons are events, not rates: unchanged. */
+      var noteText = warpNote.text;
+      var pcg = s.metadata && s.metadata.pacing;
+      var rateM = /^(pressure|power) moving /.exec(warpNote.detail || '');
+      if (warpNote.reason === 'transient' && pcg && pcg.warp_available === true && (rateM || warpNote.detail === 'loop transient')) {
+        noteText = 'WARP dropped to 60× on a brief ' + (rateM ? rateM[1] : 'coolant-loop') + ' swing — it has passed';
+      }
+      text = noteText + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
     } else {
       text = advice;
       if (autoSpeedNote) {
@@ -3358,7 +3372,7 @@
        * speed buttons until the player next acts — the other reasons rely on the toast +
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
-      warpNote = { text: speedSnapText(snap), reason: snap.reason, step: cklNoteStepKey(s) };
+      warpNote = { text: speedSnapText(snap), reason: snap.reason, detail: snap.detail || '', step: cklNoteStepKey(s) };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
