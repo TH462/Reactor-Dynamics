@@ -5942,9 +5942,15 @@
          *
          * `saw`, not `acc`: live, the pause IS this step's completion and no predicate is
          * graded; the replay still has to prove the spike happened, and an `acc` read at the
-         * step's END would be read after it. Measured: peak 2356 psia at t+7.4 s. */
-        { text: 'No action. The condensate and main feed pumps have tripped. Press Continue.',
-          why: 'Feedwater is gone; the only way out for the heat is the pressurizer relief valve.',
+         * step's END would be read after it. Measured: peak 2356 psia at t+7.4 s.
+         *
+         * PRESENT TENSE, BECAUSE THE CLOCK STOPS ONE TICK AFTER THE INJECTION (2026-10-10 review).
+         * "Have tripped" was false on the board the player reads it against: MEASURED on the
+         * live-checklist route harness (inbox/tmi_review/route.js, seed 42, typical and slow
+         * routes alike) FEED FLOW reads 1002 gpm while paused, 955 gpm 1 s after Continue, 447 at
+         * 7.5 s, 11 at 37.5 s and 0 by about 63 s. So the line points at the fall instead. */
+        { text: 'No action. The main feed pumps are tripping: press Continue and watch FEED FLOW fall.',
+          why: 'With feedwater gone, the only way out for the heat is the pressurizer relief valve.',
           story: { clock: '04:00:37', line: 'Both main feedwater pumps trip; the alarms come in a wall.',
             saw: 'Both main feedwater pumps tripped and the alarms came in a wall.',
             knew: 'A feedwater transient, which they had drilled.',
@@ -6044,6 +6050,11 @@
          * MEASURED: hpi_active true at t+63 s. Manuals/08 §3. */
         { text: 'Verify safety injection started: high-pressure pump running on the ECCS card.',
           why: 'Pressure fell through the injection setpoint: the plant is losing water through the PORV.',
+          /* RESTORED AFTER THE CALLOUT CUT (2026-10-10 review; the c9525041^ note said it at length).
+           * CONDITIONAL ON PURPOSE: MEASURED on the route harness, first ECCS FLOW above 0 at 1375 psia
+           * (typical, during step 11) and 1376 psia (slow, during step 4) — so a quick player reads
+           * 0 GPM through all of this step and a slow one already reads ~42 gpm. "Until" is true on both. */
+          note: 'ECCS FLOW reads 0 GPM until pressure falls below about 1380 psi: the pump cannot push against more.',
           /* TWO BOARD READINGS THAT CONTRADICT THE STORY BLOCK AT THIS INSTANT (#670 Phase 3,
            * layman pass S-2 and S-3). Measured full-stack at the step's first tick:
            *   PRESSURIZER LEVEL 43.1 % and FALLING — 80.1 % at the end of the feed-loss chain and
@@ -6084,7 +6095,13 @@
            * sit in the amber `bd-blocked`/`BLOCKED` branch, where "lit" is loose rather than
            * false. They are named in #670 rather than rewritten from a reading taken here. */
           control: 'Trip Blocks', target: 'SI REACTOR TRIP blocked — its button now reads RELEASE?',
-          why: 'Blocking stops the plant restarting injection by itself. The core is now on the operator.',
+          /* THE BLOCK DOES NOT COVER CONTAINMENT PRESSURE (#784, `unblockable` in pwr2_protection.js).
+           * MEASURED on the route harness, all three routes (typical / slow / 600x after step 14):
+           * no re-actuation on low pressure through the whole ride with SI blocked, and Safety
+           * Injection latches on `si_hi_ctmt_press` during step 18 at t = 12523 / 13681 / 12962 s
+           * (3 h 29 min / 3 h 48 min / 3 h 36 min). The old "stops the plant restarting injection"
+           * was false on every player route. */
+          why: 'Low pressure can no longer restart injection by itself. High containment pressure still can.',
           story: { clock: '04:03:50', line: 'Level climbs as pressure falls; they block automatic injection.',
             saw: 'Pressurizer level climbing hard while pressure fell.',
             knew: 'Level and pressure were saying opposite things, and level was the gauge they trusted.',
@@ -6142,6 +6159,11 @@
          * mechanism and owes a ruling. */
         { text: 'Verify PRESSURIZER LEVEL is pegged at the top of its scale.',
           why: 'It reads full while the plant empties. Level is not inventory.',
+          /* RESTORED AFTER THE CALLOUT CUT (2026-10-10 review). MEASURED on the route harness:
+           * `core_uncovered_frac` exactly 0 at this step's entry and exit on both routes (core
+           * inventory 98.1 -> 97.2 % typical, 84.0 -> 80.3 % slow). The drawing is fed from core
+           * uncovery and hot-leg void (pwr_board_wiring.js coreInv), not the mass fraction. */
+          note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered.',
           /* THE VESSEL IS DRAWN FULL HERE AND THAT IS CORRECT (#670 Phase 3, layman pass S-8).
            * The reviewer read "the plant empties" against a vessel graphic full of water and
            * called it a defect. Measured at this step: core coolant inventory 95.7 % -> 93.9 %
@@ -6391,10 +6413,18 @@
          * MEASURED: accepted at 12000 s; SUBCOOLING MARGIN back above 0 near 220 min and above
          * 10 °F at 222 min, reaching +25.7 °F at 260 min; inventory 19.6 % -> 81.1 %.
          * Manuals/08 §5. */
-        { text: 'Press START on the ECCS card to restore high-pressure injection.',
+        /* ON A PLAYER'S ROUTE INJECTION IS USUALLY ALREADY RUNNING HERE (2026-10-10 review).
+         * MEASURED on the route harness (seed 42): Safety Injection latches on HIGH CONTAINMENT
+         * PRESSURE, which the step-10 block cannot stop, during step 18 on all three routes, and
+         * step 19 arrives with `hpi_active` true, ECCS FLOW 52-54 gpm and SUBCOOLING MARGIN 0 °F.
+         * The authored replay presses START at 12000 s, before that. So the line asks the player
+         * to CHECK and press only if needed. Grading is unchanged and is on the margin alone, so a
+         * running pump strands nothing and nothing ticks on entry (0 °F against > 10 °F). Time to
+         * +10 °F from entry: 89.7 / 89.6 / 89.3 plant-min (typical / slow / 600x routes). */
+        { text: 'Check high-pressure injection is running: if not, press START on the ECCS card.',
           control: 'ECCS', target: 'SUBCOOLING MARGIN back above 10 °F',
-          why: 'Injection puts water back. SUBCOOLING MARGIN shows whether it is working.',
-          wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It leaves the floor within minutes and takes 30 to 70 plant-minutes to reach +10 °F.',
+          why: 'Injection puts water back. High containment pressure may already have started it.',
+          wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It can take about 90 plant-minutes to reach +10 °F.',
           story: { clock: '07:20:37', line: 'They start a makeup pump, then stop it 17 minutes later.',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
