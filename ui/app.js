@@ -4197,6 +4197,18 @@
       '<div class="ico-head"><span class="ico-who">Instructor</span>' +
       '<button type="button" class="ico-hist-btn" data-ico-hist="1" data-scanner-hint="Show or hide everything the instructor has said so far.">History</button></div>' +
       '<div class="ico-hist" hidden></div><div class="ico-body"></div><div class="ico-btns"></div>';
+    /* A NEW STEP DRAWN UNDER A RESTING POINTER IS NOT A HOVER (TMI quality pass, 2026-10-10). The
+     * fade-on-hover lets the player peek at the board; but Continue is IN the card, so the next
+     * step's card usually lands under the pointer that just pressed it and was drawn at 25 %.
+     * `ico-held` (set when the step/line group changes) holds it solid until the pointer leaves. */
+    el.addEventListener('mouseleave', function () { el.classList.remove('ico-held'); });
+    // ...or until it MOVES on the card (a real hover): the first move only records where it rests
+    el.addEventListener('mousemove', function (e) {
+      if (!el.classList.contains('ico-held')) return;
+      var h = callout.heldAt;
+      if (!h) { callout.heldAt = { x: e.clientX, y: e.clientY }; return; }
+      if (Math.abs(e.clientX - h.x) + Math.abs(e.clientY - h.y) > 12) el.classList.remove('ico-held');
+    });
     el.addEventListener('click', function (e) {
       if (e.target.closest('[data-ico-why]')) { callout.whyOpen = !callout.whyOpen; callout.key = null; calloutSync(); return; }
       if (e.target.closest('[data-ico-hist]')) {
@@ -4269,7 +4281,7 @@
       // observation shows ONE sentence (the "Watch …" one, else the first that is not a clock
       // note); the rest of it is in History.
       var gk = JSON.stringify(grp.map(function (e) { return e.t; }));
-      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
+      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; el.classList.add('ico-held'); callout.heldAt = null; }
       var body = '';
       if (acts.length) {
         body += '<div class="ico-act"' + ptAttr + '>' + acts.map(mesc).join(' ') + '</div>';
@@ -4517,7 +4529,7 @@
     var rc = document.querySelector('#cklRun [data-ckl-check]'), rw = document.querySelector('#cklRun [data-wt-rewind]');
     var sp = (cklIsWaitStep(st) && !ck.awaiting_ack && !ck.acc_met) ? cklStepSpeed(s, a) : 1;
     var gk = pr.id + '#' + idx;
-    if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
+    if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; el.classList.add('ico-held'); callout.heldAt = null; }
     var key = JSON.stringify(['ckl', gk, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
       !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, sp, callout.whyOpen, callout.histOpen]);
     if (key === callout.key) return;
@@ -4608,7 +4620,11 @@
     var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
     var plant = cklCalloutPlantRects();
     var hard = top.concat(plant, panel ? [panel] : [], acts, watches, cards);
-    var anchor = callout.kind === 'act' ? (panel || acts[0] || null) : (watches[0] || cards[0] || null);
+    /* ACTION: THE CONTROL ITSELF, NOT ITS PANEL (review 2026-10-10). The panel is the smallest board
+     * tile around the lit control; for a valve drawn ON a component that tile is the component, so
+     * on step 18 the leader ran to the pressurizer's edge and ended on PZR SPRAY, 50 px from the
+     * block valve the step is about. The panel stays a hard keep-out above. */
+    var anchor = callout.kind === 'act' ? (acts[0] || panel || null) : (watches[0] || cards[0] || null);
     return { hard: hard, top: top, panel: panel, points: watches, anchor: anchor };
   }
 
@@ -5095,6 +5111,12 @@
    * scroller. Resolve it rather than naming one, so the scroll-preservation above cannot be
    * silently pointed at an element that never scrolls — which would read as "the fix works"
    * while the panel jumped exactly as before. */
+  /* The row that stands for the active step in the log: on a callout leg the step card is hidden
+   * (display:none, so its offsets read 0) and the progress list's row is what the reader sees
+   * (review 2026-10-10: at 1366x768 step 20 fell off the bottom of the list unscrolled). */
+  function cklActiveRow(log) {
+    return log.querySelector('#cklRun.ckl-co .ckl-prog-list li.active') || log.querySelector('.ckl-active');
+  }
   function cklScroller() {
     var el = $('cklLog');
     while (el && el !== document.body) {
@@ -6371,7 +6393,7 @@
         log.addEventListener('scroll', function () {
           cklMoreCue(log);                           /* #818: before the early return, every scroll */
           if (cklAutoScroll) return;                 /* our write, not theirs */
-          var act = log.querySelector('.ckl-active');
+          var act = cklActiveRow(log);
           if (!act) { cklState.userScrolled = true; return; }
           /* Back at the active step = back in step with the checklist; let it drive again. */
           var top = act.offsetTop - log.offsetTop;
@@ -6402,7 +6424,7 @@
            * so the outer container snapped to the top. The pane owns its height (the instructor pane, wt-headerless),
            * which removes the outer scroller; this makes the step-advance scroll incapable of
            * reaching an ancestor even if a future layout reintroduces one. */
-          var act = log.querySelector('.ckl-active');
+          var act = cklActiveRow(log);
           if (act) {
             var top = act.offsetTop - log.offsetTop;
             var bot = top + act.offsetHeight;

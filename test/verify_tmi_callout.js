@@ -77,6 +77,15 @@ var BUB = '#instrCallout';
       var prog = [].map.call(document.querySelectorAll('#cklRun .ckl-prog-list li'), function (li) { return li.className; });
       var base = { idx: c ? c.idx : -1, hasHl: !!(st && st.hl && st.hl.length), text: st ? st.text : '',
         colStepShown: !!(colStep && colStep.getClientRects().length), prog: prog.length, progActive: prog.indexOf('active') };
+      // the ACTIVE progress row is on screen inside its scroller (review 2026-10-10: step 20 sat
+      // below the fold at 1366x768 — the step-advance scroll aimed at the hidden step card)
+      var li = document.querySelector('#cklRun .ckl-prog-list li.active');
+      if (li) {
+        var sc = li.parentElement;
+        while (sc && sc !== document.body && !(sc.scrollHeight > sc.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+        var lr = li.getBoundingClientRect(), vr = sc && sc !== document.body ? sc.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+        base.rowVis = lr.top >= Math.max(0, vr.top) - 1 && lr.bottom <= Math.min(innerHeight, vr.bottom) + 1;
+      }
       if (!b || b.hidden) { base.shown = false; return base; }
       var r = b.getBoundingClientRect();
       function ok(q) { return q.width > 2 && q.height > 2; }
@@ -107,6 +116,10 @@ var BUB = '#instrCallout';
       }
       var ld = document.querySelector('#instrCalloutLead'), dot = ld && !ld.hidden ? ld.querySelector('i').getBoundingClientRect() : null;
       var dx = dot ? (dot.left + dot.right) / 2 : 0, dy = dot ? (dot.top + dot.bottom) / 2 : 0;
+      // an ACTION card's leader ends ON the control it asks for, not merely inside its panel (review
+      // 2026-10-10: step 18's ran to the pressurizer tile's edge and ended on PZR SPRAY)
+      var acts = [].map.call(document.querySelectorAll('#viewArea .ckl-step-glow'), function (x) { return x.getBoundingClientRect(); }).filter(ok);
+      base.leadAct = dot && acts.length ? acts.some(function (q) { return dx >= q.left - 10 && dx <= q.right + 10 && dy >= q.top - 10 && dy <= q.bottom + 10; }) : null;
       base.shown = true;
       base.kind = b.getAttribute('data-kind');
       base.onScreen = r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
@@ -155,11 +168,13 @@ var BUB = '#instrCallout';
         if (g.plant !== 8 || g.plantHit !== 0) why.push('plant keep-outs ' + g.plant + '/8 hit ' + g.plantHit + ' px2');
         if (g.compact) compact.push(g.idx + 1);
         if (g.lit && g.lead === false) why.push('leader misses the anchor');
+        if (g.kind === 'act' && g.leadAct === false) why.push('leader misses the control it asks for');
         if (!g.cont) why.push('no Continue in the card');
         if (g.who.indexOf('Step ' + (g.idx + 1) + ' of ' + N) !== 0) why.push('head "' + g.who + '"');
       }
       if (g.colStepShown) why.push('the column still draws the step card');
       if (g.prog !== N || g.progActive !== g.idx) why.push('progress list ' + g.prog + ' rows, active ' + g.progActive);
+      if (g.rowVis === false) why.push('the active progress row is scrolled out of view');
       if (why.length) bad.push('step ' + (i + 1) + ': ' + why.join('; ') + ' ' + JSON.stringify(g.box || null));
     }
     ck(tag + ': every one of the ' + N + ' TMI steps draws the card — right kind, the step line, on-screen, clear of the six top tiles and every lit item, leader to the anchor, Continue in it; the column is a progress list',
@@ -190,6 +205,21 @@ var BUB = '#instrCallout';
       await page.click(BUB + ' [data-ico-fwd="[data-ckl-check]"]').catch(function () {});
       var moved = await page.waitForFunction(function (k) { return RD.__dev.service().instructor.checklist.idx === k + 1; }, pIdx, { timeout: 8000 }).then(function () { return true; }).catch(function () { return false; });
       ck(tag + ': Continue clicked in the card advances a pause step (step ' + (pIdx + 1) + ')', pIdx >= 0 && moved);
+      /* THE NEXT CARD IS DRAWN UNDER THE POINTER THAT PRESSED CONTINUE and must not come up faded
+       * (review 2026-10-10: steps 5 and 9 rendered at 25 % on a real run). Solid while the pointer
+       * rests on it; the hover fade still works once the pointer has left and come back. */
+      await page.waitForTimeout(700);
+      var tc = await page.evaluate(function () { var t = document.querySelector('#instrCallout .ico-say, #instrCallout .ico-act'); if (!t) return null; var q = t.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; });
+      var opac = async function () { await page.waitForTimeout(450); return page.evaluate(function () { return +getComputedStyle(document.querySelector('#instrCallout')).opacity; }); };
+      var opA = -1, opB = -1, opC = -1;
+      if (tc) {
+        await page.mouse.move(tc.x, tc.y); opA = await opac();
+        await page.mouse.move(tc.x + 30, tc.y, { steps: 3 }); opC = await opac();   // a hover that MOVES on the card fades it
+        await page.mouse.move(2, 2); await page.mouse.move(tc.x, tc.y); opB = await opac();
+        await page.mouse.move(2, 2);
+      }
+      ck(tag + ': the card Continue just drew is solid under the resting pointer; moving on it, or hovering again after leaving, still fades it',
+         opA > 0.9 && opB > 0 && opB < 0.5 && opC > 0 && opC < 0.5, 'opacity at rest ' + opA + ', moving on it ' + opC + ', after leave+return ' + opB);
     }
     await S.ctx.close();
   }

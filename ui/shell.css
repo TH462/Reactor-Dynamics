@@ -3492,7 +3492,7 @@ select.num-input { width: auto; }
 .instr-callout[hidden] { display: none; }
 /* OBSERVATION: what to look at, not what to do — lighter still, no weight. */
 .instr-callout[data-kind="observe"] { --ico-bg: #eef1f4; border-style: dashed; }
-.instr-callout:hover:not(:has(button:hover)) { opacity: .25; }
+.instr-callout:not(.ico-held):hover:not(:has(button:hover)) { opacity: .25; }   /* ico-held: drawn under a resting pointer (app.js) */
 .ico-arrow { display: none; }
 .ico-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
 .ico-who { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ico-sub); }
