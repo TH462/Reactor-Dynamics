@@ -5867,8 +5867,8 @@
      * treat the incident category separately. */
     {
       id: 'pwr_tmi2_incident', category: 'incident', manual_ref: 'PWR-E08',
-      title: 'Three Mile Island Unit 2, 28 March 1979 — the first four hours, as the crew lived them',
-      purpose: 'Walk the first four hours of the Three Mile Island Unit 2 accident as the crew lived them: what their board showed, what they concluded, and what they then did. The failures arrive on their own. About four and a half plant-hours.',
+      title: 'Three Mile Island Unit 2, 28 March 1979 — the first four hours and the pump restart, as the crew lived them',
+      purpose: 'Walk the first four hours of the Three Mile Island Unit 2 accident as the crew lived them: what their board showed, what they concluded, and what they then did. The last step jumps to the pump restart sixteen hours in. The failures arrive on their own. Three to five and a half plant-hours, depending on the speed you run it at.',
       from: 'hot_full_power',
       callout: true,   // the step is drawn as an anchored callout on the board (OWNER 2026-10-10)
       prereq: [
@@ -6025,8 +6025,12 @@
          * trips at 52.5 s on `ot_delta_t` — the DECLARED DIVERGENCE, and it lives in the `why`
          * where the plan put it. Manuals/08 §2. */
         { text: 'Verify the reactor tripped: REACTOR POWER collapsing, REACTOR TRIP alarm in.',
-          why: 'This relief valve is larger, so pressure turns first and the trip comes later.',
-          story: { clock: '04:00:45', line: 'Eight seconds in, the reactor trips on high pressure.',
+          why: 'This relief valve is larger, so pressure turns first and the trip comes later, on overtemperature.',
+          /* HISTORY, NOT THIS BOARD (TMI layman pass, 2026-10-10, S-3): the line said "the reactor
+           * trips on high pressure" while the board's alarm reads Overtemperature Delta-T with
+           * pressure falling. MEASURED (route2.js, every route): trip at t+58.6 s on `ot_delta_t`,
+           * 1901 psia and falling. The line keeps the history and says this plant differs. */
+          story: { clock: '04:00:45', line: 'At TMI the reactor tripped on high pressure, eight seconds in. This one trips later.',
             saw: 'Pressure spiked near 2255 psi and the relief valve opened as designed. Eight seconds in, the reactor tripped on high pressure.',
             knew: 'The plant was doing what a plant does after a feedwater trip.',
             did: 'They read the trip and moved to the post-trip checks.' },
@@ -6054,7 +6058,7 @@
            * CONDITIONAL ON PURPOSE: MEASURED on the route harness, first ECCS FLOW above 0 at 1375 psia
            * (typical, during step 11) and 1376 psia (slow, during step 4) — so a quick player reads
            * 0 GPM through all of this step and a slow one already reads ~42 gpm. "Until" is true on both. */
-          note: 'ECCS FLOW reads 0 GPM until pressure falls below about 1380 psi: the pump cannot push against more.',
+          note: 'INJ FLOW reads 0 GPM until pressure falls below about 1380 psi: the pump cannot push against more.',
           /* TWO BOARD READINGS THAT CONTRADICT THE STORY BLOCK AT THIS INSTANT (#670 Phase 3,
            * layman pass S-2 and S-3). Measured full-stack at the step's first tick:
            *   PRESSURIZER LEVEL 43.1 % and FALLING — 80.1 % at the end of the feed-loss chain and
@@ -6102,7 +6106,10 @@
            * (3 h 29 min / 3 h 48 min / 3 h 36 min). The old "stops the plant restarting injection"
            * was false on every player route. */
           why: 'Low pressure can no longer restart injection by itself. High containment pressure still can.',
-          story: { clock: '04:03:50', line: 'Level climbs as pressure falls; they block automatic injection.',
+          /* NOT "LEVEL CLIMBS" (TMI layman pass, 2026-10-10, S-4). MEASURED (route2.js): typical
+           * route PRESSURIZER LEVEL 47.5 -> 44.0 % across this step (falling; it turns up 30 s into
+           * step 11); slow route pegged at 100 % throughout. Neither climbs here. */
+          story: { clock: '04:03:50', line: 'Before touching a valve, they block automatic injection.',
             saw: 'Pressurizer level climbing hard while pressure fell.',
             knew: 'Level and pressure were saying opposite things, and level was the gauge they trusted.',
             did: 'They took the automatic injection out of service before touching a valve.' },
@@ -6325,8 +6332,12 @@
            * S-6). Measured: the replay satisfies this step 1 s in and dwells 1,800 s anyway for
            * the narrative clock; a player who advanced on the criteria reaches it 756 s in. The
            * generated "About 30 plant-minutes" is therefore an upper bound on one route and
-           * wrong by 40 × on the other, so the hint says to read the tile before waiting. */
-          wait_hint: 'Read PRESSURIZER LEVEL before you wait — on a plant you have driven yourself it may already be below 50 %.',
+           * wrong by 40 × on the other, so the hint says to read the tile before waiting.
+           * TMI layman pass, 2026-10-10 (S-2): the bar still printed "About 30 plant-minutes"; the
+           * layman waited ~66. MEASURED (route2.js): 67 / 69 plant-min at 60× (typical / slow), 31 at
+           * 600×, never met on entry. So `wait_est_s: false` and the range goes in the hint. */
+          wait_hint: 'PRESSURIZER LEVEL takes 30 to 70 plant-minutes to fall below 50 %, depending on the speed you run it at.',
+          wait_est_s: false,
           hold: 1800,
           acc: { p: 'pzr_level_pct', op: '<', v: 50 },
           /* #685 — glowed nothing. The deception REVERSING is the teaching point, so the level
@@ -6395,11 +6406,13 @@
            * instead — which is what step 15's authored range does, and what the operator pass
            * singled out as the model the others should follow. */
           wait_est_s: false,
-          /* THE AUTHORED HINT OVERRIDES THE GENERATED ONE HERE AND HAS TO SAY SO (#653 S-5). The
-           * `hold` is 3720 s, so ui/app.js offers 600× on the same line; this step is the one
-           * place in the pool where that rung is wrong, and the old wording put "600×" and
-           * "use 60×" side by side with nothing to say which won. */
-          wait_hint: 'Ignore the 600× above — this step is the exception. Pressure moves faster here than anywhere else in the run, so WARP will refuse it or drop out; use 60×. Watch for pressure turning upward, not the clock: it can sit near 500 to 600 psi for over an hour, until high containment pressure starts injection, then climbs past 750 psi within about two minutes. A flat gauge is not a stuck step.',
+          /* "USE 60×" WAS REFUTED (TMI layman pass, 2026-10-10). This hint said WARP would refuse
+           * this step and told the player to use 60×; the layman sat 7.5 min of wall time at 60×
+           * (achieved 6×) and got through only by pressing 3600× himself. MEASURED on
+           * inbox/tmi_review2/route2.js, seed 42, re-pressing after any drop: 600× held 1620 of
+           * 1624 plant-s (one drop, at the click), 3600× held 3600 of 3604. Step duration 27 / 60 /
+           * 86 / 89 plant-min (600× / 3600× / 60× typical / 60× slow); pressure 460-690 psia. */
+          wait_hint: 'If the speed drops to 60× as you click, press 600× again. Watch for pressure turning upward, not the clock: it can sit between 450 and 700 psi for 25 to 90 plant-minutes before it climbs past 750 psi. A flat gauge is not a stuck step.',
           story: { clock: '06:18:37', line: 'A fresh shift supervisor reads the hot relief line and orders it blocked.',
             saw: 'The relief line discharge running about 30 degrees hotter than the safety valve discharge lines.',
             knew: 'A relieving shift supervisor set the pressurizer level aside and read the temperatures instead. His conclusion was that the relief valve was leaking.',
@@ -6413,7 +6426,18 @@
          * MEASURED: accepted at 12000 s; SUBCOOLING MARGIN back above 0 near 220 min and above
          * 10 °F at 222 min, reaching +25.7 °F at 260 min; inventory 19.6 % -> 81.1 %.
          * Manuals/08 §5. */
-        /* ON A PLAYER'S ROUTE INJECTION IS USUALLY ALREADY RUNNING HERE (2026-10-10 review).
+        /* PRESS START, UNCONDITIONALLY (TMI layman pass, 2026-10-10, S-1). The line read "check …
+         * if not, press START", and a `cmd` step is held at 1× until its command is seen
+         * (`cklActionPending`, ui/app.js) — so the player who correctly did nothing waited ~90
+         * plant-minutes at REAL TIME, Continue dark; the layman lit it only by pressing START.
+         * And "usually already running" is route-dependent: MEASURED (inbox/tmi_review2/route2.js)
+         * with WARP on step 18 (600× or 3600×) the pressure cue is met BEFORE containment pressure
+         * starts injection, and step 19 arrives with `hpi_active` FALSE (752 / 762 psia). So the
+         * press is asked for on every route; on a running pump it lands on `EN.command(hhsi, true)`
+         * and changes nothing (pwr2_shell.js eccsStop). Time to +10 °F from entry: 52-55 plant-min
+         * on the WARP routes, ~90 at 60×.
+         *
+         * EARLIER NOTE: ON A PLAYER'S ROUTE INJECTION IS USUALLY ALREADY RUNNING HERE (2026-10-10 review).
          * MEASURED on the route harness (seed 42): Safety Injection latches on HIGH CONTAINMENT
          * PRESSURE, which the step-10 block cannot stop, during step 18 on all three routes, and
          * step 19 arrives with `hpi_active` true, ECCS FLOW 52-54 gpm and SUBCOOLING MARGIN 0 °F.
@@ -6421,10 +6445,10 @@
          * to CHECK and press only if needed. Grading is unchanged and is on the margin alone, so a
          * running pump strands nothing and nothing ticks on entry (0 °F against > 10 °F). Time to
          * +10 °F from entry: 89.7 / 89.6 / 89.3 plant-min (typical / slow / 600x routes). */
-        { text: 'Check high-pressure injection is running: if not, press START on the ECCS card.',
+        { text: 'Press START on the ECCS card for high-pressure injection.',
           control: 'ECCS', target: 'SUBCOOLING MARGIN back above 10 °F',
-          why: 'Injection puts water back. High containment pressure may already have started it.',
-          wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It can take about 90 plant-minutes to reach +10 °F.',
+          why: 'Injection puts water back. If high containment pressure already started it, the press changes nothing.',
+          wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It takes 50 to 90 plant-minutes to reach +10 °F.',
           story: { clock: '07:20:37', line: 'They start a makeup pump, then stop it 17 minutes later.',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
@@ -6451,7 +6475,7 @@
            * had welded them together — so the last thing the walkthrough said was contradicted by
            * the board it handed back. */
           why: 'Core damage, radiation and the hydrogen burn are not modelled; everything before this was.',
-          story: { clock: '19:50:37', line: 'Nearly sixteen hours in, a pump runs and core cooling returns.',
+          story: { clock: '19:50:37', line: 'Twelve hours on, sixteen hours in: a pump runs and core cooling returns.',
             saw: 'Nearly sixteen hours in, a pump started and ran satisfactorily. Core cooling was established.',
             knew: 'Almost nothing about the state of the core. The instrument that would have told them did not exist.',
             did: 'They kept the pump running. "All will grope in bewilderment for another whole day before the truth strikes."' },
@@ -6466,7 +6490,7 @@
        * the plant on line, and a post-trip maximum of 1130 °F (clad 1126 °F) at t = 13,772 s,
        * while injection refloods the core. Core uncovery peaks at 94.3 % and coolant inventory
        * bottoms at 7.4 %, so the uncovery half of the sentence stands. */
-      outcome: 'Injection restored, forced circulation back and the relief line isolated. At its worst 94 % of the core was uncovered — and the fuel still never got hotter than it runs at full power, 1130 °F against 1298 °F on line before the trip. The real one went far past 2500 °F, and this plant stops short of it by design.',
+      outcome: 'Injection restored, forced circulation back and the relief line isolated. If the pump start has just emptied the pressurizer and zeroed the margin, both recover within half an hour of plant time. At its worst 94 % of the core was uncovered — and the fuel still never got hotter than it runs at full power, 1130 °F against 1298 °F on line before the trip. The real one went far past 2500 °F, and this plant stops short of it by design.',
     },
   ];
 

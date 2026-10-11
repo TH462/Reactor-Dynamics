@@ -119,6 +119,11 @@ var BUB = '#instrCallout';
       // an ACTION card's leader ends ON the control it asks for, not merely inside its panel (review
       // 2026-10-10: step 18's ran to the pressurizer tile's edge and ended on PZR SPRAY)
       var acts = [].map.call(document.querySelectorAll('#viewArea .ckl-step-glow'), function (x) { return x.getBoundingClientRect(); }).filter(ok);
+      // CLEAR AIR round the control it asks for (layman pass 2026-10-10, S-10: a 7 px tangent on
+      // step 14 read as the card covering the AFW block valve). Edge-to-edge gap, px.
+      base.actGap = acts.length ? Math.round(Math.min.apply(null, acts.map(function (q) {
+        var gx = Math.max(0, q.left - r.right, r.left - q.right), gy = Math.max(0, q.top - r.bottom, r.top - q.bottom);
+        return Math.sqrt(gx * gx + gy * gy); }))) : null;
       base.leadAct = dot && acts.length ? acts.some(function (q) { return dx >= q.left - 10 && dx <= q.right + 10 && dy >= q.top - 10 && dy <= q.bottom + 10; }) : null;
       base.shown = true;
       base.kind = b.getAttribute('data-kind');
@@ -169,6 +174,7 @@ var BUB = '#instrCallout';
         if (g.compact) compact.push(g.idx + 1);
         if (g.lit && g.lead === false) why.push('leader misses the anchor');
         if (g.kind === 'act' && g.leadAct === false) why.push('leader misses the control it asks for');
+        if (g.kind === 'act' && g.actGap != null && g.actGap < 10) why.push('card within ' + g.actGap + ' px of the control it asks for');
         if (!g.cont) why.push('no Continue in the card');
         if (g.who.indexOf('Step ' + (g.idx + 1) + ' of ' + N) !== 0) why.push('head "' + g.who + '"');
       }
@@ -177,7 +183,7 @@ var BUB = '#instrCallout';
       if (g.rowVis === false) why.push('the active progress row is scrolled out of view');
       if (why.length) bad.push('step ' + (i + 1) + ': ' + why.join('; ') + ' ' + JSON.stringify(g.box || null));
     }
-    ck(tag + ': every one of the ' + N + ' TMI steps draws the card — right kind, the step line, on-screen, clear of the six top tiles and every lit item, leader to the anchor, Continue in it; the column is a progress list',
+    ck(tag + ': every one of the ' + N + ' TMI steps draws the card — right kind, the step line, on-screen, clear of the six top tiles and every lit item, 10 px clear of the control it asks for, leader to the anchor, Continue in it; the column is a progress list',
        N >= 15 && bad.length === 0 && skipped.length <= 2, bad.length ? bad.join(' | ') : N + ' steps' + (skipped.length ? ', overtaken on the jump: ' + skipped : '') + ', compact fallback on: ' + (compact.join(',') || 'none'));
 
     // "why?" on an ACTION step

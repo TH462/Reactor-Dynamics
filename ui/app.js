@@ -4435,13 +4435,14 @@
       if (ch && now - ch < 4000) wt *= 4;
       soft.push({ r: q, wt: wt });
     });
-    function search(w, h) {
+    function search(w, h, HK) {
+      HK = HK || K.hard;
       var best = null, STEP = 16;
       for (var y = B.top; y <= B.bottom - h; y += STEP) {
         for (var x = B.left; x <= B.right - w; x += STEP) {
           var R = { left: x, top: y, right: x + w, bottom: y + h };
           var hard = 0, s2 = 0, i;
-          for (i = 0; i < K.hard.length; i++) hard += overlapArea(R, K.hard[i]);
+          for (i = 0; i < HK.length; i++) hard += overlapArea(R, HK[i]);
           for (i = 0; i < soft.length; i++) s2 += soft[i].wt * overlapArea(R, soft[i].r);
           var d = A ? rectGap(R, A) : Math.abs((y + h) - B.bottom) + Math.abs(x + w / 2 - (B.left + B.right) / 2) * 0.5;
           var c = hard * 1000 + s2 + d * 60;
@@ -4453,10 +4454,14 @@
     el.classList.remove('ico-compact');
     var w = el.offsetWidth, h = el.offsetHeight;
     var pick = search(w, h);
+    // the acted-on control's margin is wanted, not required: full size without it beats compact
+    if (pick && pick.hard > 0 && K.hardTight) pick = search(w, h, K.hardTight);
     if (pick && pick.hard > 0) {               // nothing clear at full size: action line only
       el.classList.add('ico-compact');
       w = el.offsetWidth; h = el.offsetHeight;
-      pick = search(w, h) || pick;
+      var pc = search(w, h);
+      if (pc && pc.hard > 0 && K.hardTight) pc = search(w, h, K.hardTight);
+      pick = pc || pick;
     }
     if (!pick) pick = { x: B.left, y: B.top, c: 0, hard: 0 };
     // Hysteresis: stay put unless the new spot is clearly better (a ticking readout must not
@@ -4528,10 +4533,24 @@
     var act = !!((st.hl && st.hl.length) || (stepHlLabels(st, ck) || []).length);
     var rc = document.querySelector('#cklRun [data-ckl-check]'), rw = document.querySelector('#cklRun [data-wt-rewind]');
     var sp = (cklIsWaitStep(st) && !ck.awaiting_ack && !ck.acc_met) ? cklStepSpeed(s, a) : 1;
+    /* THE WAIT LINE NAMES THE CLOCK THE PLANT IS ON, NOT THE RUNG AUTO ASKED FOR (TMI layman pass,
+     * 2026-10-10, S-2). It printed `sp` — the step's wanted rung — so after a WARP drop the card
+     * read "Waiting at 600×" beside a speed bar on 60× and a red "actual 6×" badge, for 7.5 min of
+     * wall time on step 18. The drop is the service's (`_dropWarp`) and auto does not re-raise it:
+     * the player does, which is what the speed-bar flash is for, so the card says which button.
+     * MEASURED (inbox/tmi_review2/route2.js, re-pressing after each drop): 600× on step 16 kept
+     * 1560 of 1855 plant-s at 600× through 124 drops; 3600× on step 18 held 3600 of 3604 plant-s.
+     * "actual" (the board badge's own word) only when the computer delivers under half the clock. */
+    var spCur = (s.metadata && s.metadata.time_acceleration) || 1, spTxt = '';
+    if (sp > 1) {
+      var spAch = s.metadata && s.metadata.pacing ? s.metadata.pacing.achieved : null;
+      spTxt = '⏩ Waiting at ' + spCur + '×' + (spCur < sp ? ' — press ' + sp + '× to skip ahead'
+        : (spAch != null && spAch < spCur / 2 ? ' · actual ' + (spAch >= 100 ? Math.round(spAch / 10) * 10 : Math.max(1, Math.round(spAch))) + '×' : ''));
+    }
     var gk = pr.id + '#' + idx;
     if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; el.classList.add('ico-held'); callout.heldAt = null; }
     var key = JSON.stringify(['ckl', gk, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
-      !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, sp, callout.whyOpen, callout.histOpen]);
+      !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen]);
     if (key === callout.key) return;
     callout.key = key;
     var sy = st.story || {};
@@ -4558,7 +4577,7 @@
           mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
       }).join('');
     }
-    if (sp > 1) b += '<div class="ico-wait">⏩ Waiting at ' + sp + '×</div>';
+    if (spTxt) b += '<div class="ico-wait">' + mesc(spTxt) + '</div>';
     el.querySelector('.ico-body').innerHTML = b;
     var bEl = el.querySelector('.ico-btns');
     bEl.innerHTML =
@@ -4619,13 +4638,20 @@
     var panel = acts[0] ? calloutPanelOf(acts[0]) : null;
     var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
     var plant = cklCalloutPlantRects();
-    var hard = top.concat(plant, panel ? [panel] : [], acts, watches, cards);
+    /* THE ACTED-ON CONTROL GETS A 12 px MARGIN (TMI layman pass, 2026-10-10, S-10). Measured on step
+     * 14 at 1366x768: the card stood 7 px right of the AFW block valve's halo (0 px2 overlap) with
+     * the leader's dot on the halo's corner, and the reviewer read that as the card covering the
+     * symbol. A control the player must find and click wants clear air round it, not a tangent. */
+    var PAD = 12;
+    var actsPad = acts.map(function (r) { return { left: r.left - PAD, top: r.top - PAD, right: r.right + PAD, bottom: r.bottom + PAD }; });
+    var hard = top.concat(plant, panel ? [panel] : [], actsPad, watches, cards);
+    var hardTight = top.concat(plant, panel ? [panel] : [], acts, watches, cards);
     /* ACTION: THE CONTROL ITSELF, NOT ITS PANEL (review 2026-10-10). The panel is the smallest board
      * tile around the lit control; for a valve drawn ON a component that tile is the component, so
      * on step 18 the leader ran to the pressurizer's edge and ended on PZR SPRAY, 50 px from the
      * block valve the step is about. The panel stays a hard keep-out above. */
     var anchor = callout.kind === 'act' ? (acts[0] || panel || null) : (watches[0] || cards[0] || null);
-    return { hard: hard, top: top, panel: panel, points: watches, anchor: anchor };
+    return { hard: hard, hardTight: hardTight, top: top, panel: panel, points: watches, anchor: anchor };
   }
 
   // ============================================================ auto-checklists (Path 3)
