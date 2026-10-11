@@ -149,11 +149,13 @@
   function dQ(gpm) { return fmtFam('flow', gpm); }           // flow, gpm in
   // The unit string for a family in the active mode. In US the AUTHORED string wins, so
   // this can never overwrite the board's own spelling — and switching back restores it.
+  /* `F`, `C`, `F/hr`, `C/hr` -> with the degree sign; every other unit (%, psi, gpm, ...) untouched. */
+  function degU(u) { return (typeof u === 'string' && /^[FC](\/hr)?$/.test(u)) ? '°' + u : u; }
   function uStr(name, authored) {
     var f = UNIT_FAMILIES[name];
     if (!f) return authored == null ? '' : authored;
-    if (U() === 'SI') return f.SI.u;
-    return authored == null ? f.US.u : authored;
+    if (U() === 'SI') return degU(f.SI.u);
+    return degU(authored == null ? f.US.u : authored);
   }
 
   // Which family each converting indication belongs to. Items absent from this map are
@@ -1136,7 +1138,7 @@
      * Tavg program, HR1). */
     { id: 'bdTrefDev', kind: 'value',
       name: 'Tavg minus Tref — indicated average temperature against its program  ·  sim: in.tavg_tref_dev, °C in',
-      left: 520, top: 200, value: '—', unit: 'F', color: '#9fb3c4', fontSize: 11, rAnchor: true },
+      left: 520, top: 200, value: '—', unit: '°F', color: '#9fb3c4', fontSize: 11, rAnchor: true },
     { id: 'bdDtMargin', kind: 'value',
       name: 'Core ΔT margin to the nearer of the OTΔT / OPΔT trip lines  ·  sim: in.otdt_margin / in.opdt_margin, % of rated ΔT',
       // top 234, NOT the 243 copied from bdRodStatus. MEASURED: at 243 the rendered box runs a
@@ -5492,7 +5494,14 @@
     // what used to be here and where each piece is authored now.
     extraItems: function () { return EXTRA_ITEMS; },
     // Absolute, idempotent geometry corrections to the generated doc — see DOC_PATCHES.
-    docPatches: function (doc) { applyDocPatches(doc); },
+    docPatches: function (doc) {
+      applyDocPatches(doc);
+      /* DEGREE SIGN ON BOARD TEMPERATURES (quick win 5, owner 2026-10-10): the board printed `581 F`
+       * while the chart and the manual say `581 °F`. The authored doc spells the unit `F`; one pass
+       * here rewrites it for every readout, number box and tile (the dynamic path goes through
+       * uStr, below). Nothing in the driver compares a unit string -- they are display only. */
+      (doc.items || []).forEach(function (it) { if (it && it.unit != null) it.unit = degU(it.unit); });
+    },
     // Live fluid temperature (°C) for a pipe id, or null to keep its authored temp.
     // Lets the renderer repaint pipe fluid color each snapshot (see PIPE_TEMP).
     pipeTemp: function (id, s) { var f = PIPE_TEMP[id]; return f ? f(s) : null; },

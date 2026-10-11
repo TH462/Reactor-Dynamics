@@ -377,6 +377,20 @@
   width: 20px; height: 14px; cursor: pointer; padding: 0;
 }
 .bd-num-steps button:first-child { border-bottom: 1px solid #2a3a46; }
+/* HIT ZONES FOR THE STEP ARROWS (quick win 6, owner 2026-10-10): the arrows are 20x14 board px, which is
+   12x8 on screen at the 1366x768 scale of 0.605 -- a pixel hunt. The VISUAL is unchanged; an invisible
+   ::before grows each button's hit zone to 24 screen px (24 / --bd-s board px, set by layout()): the up arrow
+   upward, the down arrow downward, both toward the right edge. The frame no longer clips (it only rounded
+   the corners; the end buttons carry that radius now) or the zone would be cut at the frame's edge. */
+.bd-num-frame { overflow: visible; }
+.bd-num-frame input { border-radius: 3px 0 0 3px; }
+.bd-num-steps button { position: relative; }
+.bd-num-steps button:first-child { border-top-right-radius: 3px; }
+.bd-num-steps button:last-child  { border-bottom-right-radius: 3px; }
+.bd-num-steps button::before { content: ''; position: absolute; left: 0; right: calc(-1 * max(0px, 24px / var(--bd-s, 1) - 20px)); }
+.bd-num-steps button:first-child::before { bottom: 0; top: calc(-1 * max(0px, 24px / var(--bd-s, 1) - 14px)); }
+.bd-num-steps button:last-child::before  { top: 0; bottom: calc(-1 * max(0px, 24px / var(--bd-s, 1) - 14px)); }
+
 .bd-num-steps button:hover { color: #e8f2f8; }
 
 /* THE REFUSED ENTRY — a typed or nudged value the box would not take *(OWNER, 2026-09-14, #755

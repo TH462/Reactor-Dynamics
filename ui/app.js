@@ -45,7 +45,8 @@
     diagMode: 'learning',   // synoptic: 'learning' (M8 Education) | 'realistic'
     physOverlay: false,     // synoptic: Physics Overlay toggle (Learning only)
     rodSpeed: 'normal',
-    window: 300,            // strip-chart seconds
+    window: 300,            // strip-chart seconds (the rung: a CAP while windowAuto, the choice once clicked)
+    windowAuto: true,       // QW3: until the player clicks a rung, the shown window fits the data (chartWindowEff)
     series: {},             // per-plant; defaults set on plant load — "is it plotted at all"
     /* WHICH SIDE(S) each plotted channel traces (#454): id -> 'ind' | 'phys' | 'both'.
      * ABSENT MEANS "follow the global Learning/Realistic rule", which is why this starts
@@ -3070,10 +3071,28 @@
     var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
     return 'T+' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
   }
+  /* QUIET-BOARD LAYOUT (quick win 1, owner 2026-10-10: "more intuitive and easier"). With no alarm
+   * up, the alarm panel is a one-line strip under a shorter chart and the board takes the height
+   * (CSS: .alarms-quiet). LAYOUT ONLY -- the alarm list and its behaviour are untouched (#822).
+   * The first alarm expands it at once; collapsing waits ALARM_QUIET_HOLD_MS of continuous quiet so a
+   * chattering alarm cannot make the board resize every second. A pinned (dragged) strip height is
+   * the operator's and is never collapsed. */
+  var ALARM_QUIET_HOLD_MS = 8000, alarmQuietSince = -1e9, alarmQuietOn = null;
+  function updateAlarmQuiet(activeCount) {
+    var app = document.querySelector('.app.pwr-synoptic');
+    if (!app) return;
+    var t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (activeCount) alarmQuietSince = null;
+    else if (alarmQuietSince == null) alarmQuietSince = t;
+    var pinned = !!app.style.getPropertyValue('--bottomrow-h');
+    var want = !pinned && alarmQuietSince != null && (t - alarmQuietSince) >= ALARM_QUIET_HOLD_MS;
+    if (want !== alarmQuietOn) { alarmQuietOn = want; app.classList.toggle('alarms-quiet', want); }
+  }
   function renderAlarms(s) {
     var stack = $('alarmStack');
     var now = s.metadata ? s.metadata.sim_time : 0;
     var active = s.alarms.filter(function (a) { return a.state !== 'clear'; });
+    updateAlarmQuiet(active.length);
     var liveIds = {};
     active.forEach(function (a) {
       liveIds[a.id] = true;
@@ -8445,10 +8464,26 @@
   // through, every reachable checkpoint sat off the left edge and the picker had
   // nothing to click. The traces then occupy only the right-hand sliver, which is
   // honest: chartBuf keeps CHART_RECORD_SEC of trend and no more.
+  /* THE WINDOW FITS THE DATA (quick win 3, owner 2026-10-10: at 60x the rung jumped to 1 h and a
+   * change a minute old was a hairline). Until the player clicks a rung, the shown window is the
+   * smallest step that keeps the time since their last command at or under half the width
+   * (>= 1 min), CAPPED by the rung the speed rule picked (ui.window) -- so it opens at 1 min and
+   * widens as the plant is watched. A click on 1m/5m/10m/30m (or in chart settings) sets
+   * ui.windowAuto = false and that choice stands. Steps, not a continuous slide, so the axis
+   * labels move only when the window does. */
+  var CHART_AUTO_STEPS = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200];
+  var chartLastActSim = 0;     // sim time of the player's last command (set in cmd())
+  function chartWindowEff(t1) {
+    if (!ui.windowAuto) return ui.window;
+    if (chartLastActSim > t1) chartLastActSim = 0;     // a rewind or a new plant: the clock went backwards
+    var want = Math.max(60, 2 * (t1 - chartLastActSim)), w = CHART_AUTO_STEPS[CHART_AUTO_STEPS.length - 1];
+    for (var i = 0; i < CHART_AUTO_STEPS.length; i++) if (CHART_AUTO_STEPS[i] >= want) { w = CHART_AUTO_STEPS[i]; break; }
+    return Math.min(ui.window, w);
+  }
   function chartExtent() {
     if (!chartBuf.length) return { t0: 0, t1: 0, span: 1 };
     var t1 = chartBuf[chartBuf.length - 1].t;
-    var t0 = t1 - ui.window;
+    var t0 = t1 - chartWindowEff(t1);
     var cps = ui.rewindPick && service ? (service.checkpoints || []) : [];
     if (cps.length) {
       var oldest = cps[0].metadata.sim_time;
@@ -8475,11 +8510,12 @@
   var chartDrawnKey = '';
   function chartDrawKey() {
     return chartBuf.length + ':' + (chartBuf.length ? chartBuf[chartBuf.length - 1].t : -1) +
-           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0) +
+           ':' + (chartBuf.length ? chartWindowEff(chartBuf[chartBuf.length - 1].t) : ui.window) + ':' + (RD.Events ? RD.Events.count() : 0) +
            ':' + (ui.rewindPick ? 1 : 0);
   }
   function drawChart() {
     chartDrawnKey = chartDrawKey();
+    var gwSeg = $('graphWindow'); if (gwSeg) gwSeg.classList.toggle('win-auto', !!ui.windowAuto);
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
@@ -9183,13 +9219,38 @@
       if (speedSeg) speedSeg.querySelectorAll('[data-speed].on').forEach(function (x) { x.classList.remove('on'); });
       lastSpeedSync = null;
     }
+    updatePausedVeil();
+  }
+  /* THE PAUSED VEIL (quick win 4, owner 2026-10-10). A stopped clock was a small amber icon:
+   * leaving the Quick tour with Escape left the plant frozen (measured: simTime 1.4 s and
+   * not moving, play button 'play paused') with nothing on the board to say so. The veil is a
+   * big "PAUSED" over the board whose Resume button presses the play button (the one source of
+   * truth). It shows ONLY for a plain stop -- the player's own pause, the tour's hold, a stop with
+   * no named reason. It stays off for a hold that already explains itself or covers the board:
+   * the walkthrough step's pause (its card says so), a modal, a rewind review, scenario content,
+   * a plant rebuild -- and while the tour is up. The veil passes clicks through except its
+   * button, so a paused plant can still be inspected and commanded. The 2026-08-11 removal of
+   * the old full-board curtain was about a pause the plant no longer starts in; it loads running. */
+  function updatePausedVeil() {
+    var area = $('viewArea'); if (!area || !service) return;
+    var el = $('pausedVeil');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'pausedVeil'; el.className = 'paused-veil';
+      el.innerHTML = '<button type="button" class="paused-veil-btn" id="pausedVeilBtn" aria-label="Paused. Resume the simulation">' +
+        '<span class="pv-word">PAUSED</span><span class="pv-go">▶ Resume</span></button>';
+      el.querySelector('button').addEventListener('click', function () { if (!service.running) $('playBtn').click(); });
+      area.appendChild(el);
+    }
+    var plain = Object.keys(pauseWhy).every(function (k) { return k === 'user'; });
+    el.classList.toggle('on', !service.running && plain && !tourOn);
   }
   function pauseSim(reason) {
     pauseWhy[reason || 'user'] = true;
     if (service.running) service.stop();
     syncPlayBtn();
   }
-  function clearPause(reason) { delete pauseWhy[reason || 'user']; }   // NOT a resume — see above
+  function clearPause(reason) { delete pauseWhy[reason || 'user']; updatePausedVeil(); }   // NOT a resume — see above
   function pausedFor(reason) { return !!pauseWhy[reason]; }
   function resumeSim() {
     pauseWhy = {};                       // the player said go: every hold is released
@@ -9383,6 +9444,7 @@
                                   : { type: 'error', code: 'COMMAND_ERROR', message: em };
     }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
+    if (c && c.action !== 'instructor_interact' && !(r && (r.type === 'blocked' || r.type === 'error'))) chartLastActSim = cmdT;   // QW3: the player acted
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
     // this is the player acting. Blocked commands are dropped inside command().
@@ -10412,7 +10474,7 @@
     if (tabBody) tabBody.addEventListener('click', function (e) {
       if (e.target.closest('.plot-cell')) e.stopPropagation();
     }, true);
-    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
+    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); ui.windowAuto = false; chartRange = {}; drawChart(); });
 
     /* Redraw on RESIZE — the lane split reads the live plot height, but drawChart only ran
      * on the next snapshot tick (never, if paused), so a splitter drag or window resize
@@ -10435,7 +10497,7 @@
     $('coFilter').addEventListener('input', applyCsFilter);
     $('chartOptsWin').addEventListener('click', function (e) {
       var b = e.target.closest('[data-win]'); if (!b) return;
-      ui.window = +b.getAttribute('data-win');
+      ui.window = +b.getAttribute('data-win'); ui.windowAuto = false;
       chartRange = {};
       // Keep the on-chart ladder in step — they are two views of one setting.
       var src = $('graphWindow').querySelectorAll('[data-win]');
@@ -10599,7 +10661,21 @@
     // Level Complete actions (Continue / Retry / Rewind) render inside the card.
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
-      if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      if (cb) {
+        /* "SHOW ME" ANSWERS AT ONCE (quick win 7): the do-it-for-me step takes ~1.5 s of plant time
+         * before the instructor's next line appears, and until then the press looked dead. Acknowledge
+         * on the press itself -- the button (and the callout's mirror of it) reads "Doing it..." and
+         * goes inert. The next render re-keys the buttons and replaces them; if nothing does within 4 s
+         * (a refused step) the label is handed back so it can never strand. */
+        if (cb.getAttribute('data-chatbtn') === 'show_me') {
+          [].forEach.call(document.querySelectorAll('[data-chatbtn="show_me"]'), function (sb) {
+            var was = sb.textContent;
+            sb.textContent = 'Doing it…'; sb.disabled = true; sb.setAttribute('aria-busy', 'true');
+            setTimeout(function () { if (sb.isConnected && sb.disabled) { sb.disabled = false; sb.textContent = was; sb.removeAttribute('aria-busy'); } }, 4000);
+          });
+        }
+        chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return;
+      }
       var pl = e.target.closest('.chat-line[data-point]');
       if (pl) { chatPoint(pl.getAttribute('data-point').split('|')); return; }   // re-show the line's pointer (#811)
       var ra = e.target.closest('[data-chatrevealall]');
@@ -11139,6 +11215,56 @@
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
     document.body.addEventListener('mouseover', function (e) { inspectAt(e); });
+    /* HOVER HELP AT THE CURSOR (quick win 2, owner 2026-10-10: "more intuitive"). The Scanner line
+     * sits under the board, a long way from the thing the eye is on. After HOVER_TIP_MS of
+     * resting on a described thing, its one-line brief -- the SAME text the Scanner shows,
+     * resolved by the same inspectResolve -- appears beside the cursor. The Scanner stays the
+     * expanded view. Never over the instructor callout card, the Scanner panel itself, or a
+     * dialog; any press, key, wheel or leaving the window dismisses it. Mouse only. */
+    (function () {
+      var HOVER_TIP_MS = 400, tip = null, timer = null, tipKey = null, shown = false, mx = 0, my = 0, lastMove = 0;
+      function hide() {
+        if (timer) { clearTimeout(timer); timer = null; }
+        tipKey = null; shown = false;
+        if (tip) tip.classList.remove('on');
+      }
+      function place() {
+        if (!tip) return;
+        var w = tip.offsetWidth, h = tip.offsetHeight, x = mx + 14, y = my + 20;
+        if (x + w > window.innerWidth - 6) x = Math.max(6, mx - w - 10);
+        if (y + h > window.innerHeight - 6) y = Math.max(6, my - h - 12);
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+      }
+      function show(res) {
+        if (!tip) {
+          tip = document.createElement('div');
+          tip.id = 'hoverTip'; tip.className = 'hover-tip'; tip.setAttribute('role', 'tooltip');
+          document.body.appendChild(tip);
+        }
+        tip.innerHTML = (res.title ? '<strong>' + mesc(res.title) + '</strong> — ' : '') + mesc(res.brief);
+        place();
+        tip.classList.add('on');
+        shown = true;
+      }
+      document.addEventListener('mousemove', function (e) {
+        mx = e.clientX; my = e.clientY;
+        if (shown) place();
+        var now = Date.now();
+        if (now - lastMove < 60) return;         // resolving walks the board's geometry; do not do it every pixel
+        lastMove = now;
+        var t = e.target;
+        if (!t || !t.closest || t.closest('#instrCallout, .instr-callout, #scannerPanel, .mission-overlay, .oom-win, #tourRoot, .hover-tip')) { hide(); return; }
+        var res = inspectResolve(e);
+        if (!res || !res.brief) { hide(); return; }
+        if (res.key === tipKey) return;          // still resting on the same thing
+        hide();
+        tipKey = res.key;
+        timer = setTimeout(function () { timer = null; show(res); }, HOVER_TIP_MS);
+      }, true);
+      ['mousedown', 'keydown', 'wheel'].forEach(function (n) { window.addEventListener(n, hide, true); });
+      window.addEventListener('blur', function (e) { if (e.target === window) hide(); });   /* capture would catch every element's blur */
+      document.documentElement.addEventListener('mouseleave', hide);
+    }());
     /* THE CLICK PATH IS FLASH-AWARE (#558) — see inspectAt. A press that raises a refusal
      * writes it here and this listener, running later in the SAME dispatch, used to
      * overwrite it with the button's own help text before a single frame was painted. */
@@ -11596,6 +11722,7 @@
     tourClearLive();
     if ($('tourRoot')) $('tourRoot').hidden = true;
     document.body.classList.remove('tour-active');
+    updatePausedVeil();   // the tour holds the clock and leaves it held (#818): say so once the tour is gone
   }
   /* `r` is a RECT, not an element, since #720 — a group step's spotlight is the union of its
    * members and there is no element whose box that is. */

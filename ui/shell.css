@@ -362,6 +362,8 @@ body {
    stays muted gray. Exactly one accented chip per control = a calm board.
    .run = energized/armed (green), .warn = caution (amber). */
 .seg button.on { background: transparent; color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px #38424d; }
+/* QW3: while the window is AUTO the lit width is only the cap, so it reads as a limit, not a choice. */
+.seg.win-auto button.on { font-weight: 400; color: var(--text-2); box-shadow: none; text-decoration: underline dotted; text-underline-offset: 3px; }
 .seg button.on.run { color: #6FD089; background: rgba(70,163,94,.08); box-shadow: inset 0 0 0 1px rgba(70,163,94,.65); }
 .seg button.on.warn { color: var(--caution); background: rgba(217,164,65,.10); box-shadow: inset 0 0 0 1px rgba(217,164,65,.65); }
 /* press-and-hold (rod drive) active state */
@@ -764,6 +766,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 .scrubber .head { position: absolute; right: 0; top: -3px; width: 3px; height: 10px; background: var(--normal); border-radius: 2px; pointer-events: none; }
 .scrubber .lbl { font-size: 10px; color: var(--muted); }
 
+/* PAUSED VEIL (quick win 4): a big PAUSED over the board while the clock is plainly stopped. Clicks pass
+   through to the board; only the Resume button takes them. */
+.paused-veil { position: absolute; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
+  pointer-events: none; background: rgba(8, 12, 16, 0.30); }
+.paused-veil.on { display: flex; }
+.paused-veil-btn { pointer-events: auto; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: rgba(10, 14, 19, 0.72); border: 1px solid #3a4c58; border-radius: 12px; padding: 14px 40px 16px;
+  color: var(--text); font-family: inherit; }
+.paused-veil-btn:hover { border-color: var(--running, #6FD089); }
+.paused-veil-btn .pv-word { font-size: 40px; font-weight: 800; letter-spacing: .18em; line-height: 1; color: var(--caution, #d9a441); }
+.paused-veil-btn .pv-go { font-size: 15px; font-weight: 600; letter-spacing: .06em; color: var(--running, #6FD089); }
+
+/* HOVER HELP AT THE CURSOR (quick win 2): the Scanner's one-line brief beside the pointer. */
+.hover-tip {
+  position: fixed; left: 0; top: 0; z-index: 9500; max-width: 300px; pointer-events: none;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text); font-size: 12px; line-height: 1.35; padding: 5px 9px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .5); opacity: 0; transition: opacity .1s ease;
+}
+.hover-tip.on { opacity: 1; }
+.hover-tip strong { color: var(--text); }
+
 /* App-level feedback toast (save / load / file errors) */
 .app-toast {
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%) translateY(-6px);
@@ -809,6 +833,23 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
 .app.pwr-synoptic .plant-area > .bottom-row > .alarm-panel > .alarm-stack > .alarm-empty {
   grid-column: 1 / -1;
 }
+/* QUIET BOARD (quick win 1): no alarm up -> the alarm panel becomes a one-line strip laid over the
+   chart's (always empty) legend corner, the row shrinks to the chart alone, and the board takes the
+   height. The chart keeps THREE 36 px lanes (LANE_FLOOR_PX) -- any shorter and the default channels
+   demote to numeric rows. app.js toggles .alarms-quiet (8 s of quiet to collapse, instant expand;
+   never when the operator has dragged the strip, never with the side panel hidden). */
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .plant-area > .bottom-row {
+  flex: 0 0 var(--bottomrow-quiet-h, 176px); min-height: 0; position: relative;
+}
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .plant-area > .bottom-row > .alarm-panel {
+  position: absolute; left: 9px; top: 7px; z-index: 3; height: 22px; width: auto; max-width: calc(100% - 330px);
+  flex-direction: row; align-items: center; min-width: 0; overflow: hidden;
+  background: transparent; border: none;
+}
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel > .alarm-head { border-bottom: none; padding: 0; gap: 8px; flex: 0 0 auto; }
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel > .alarm-stack { padding: 0 8px; flex: 1 1 auto; min-width: 0; display: block; overflow: hidden; }
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel .alarm-empty { padding: 0; text-align: left; font-size: 11px; white-space: nowrap; }
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel .btn { padding: 1px 6px; font-size: 10px; min-height: 18px; }
 .alarm-empty { color: var(--muted); font-size: 11px; padding: 10px; text-align: center; font-style: italic; }
 .alarm-tile {
   display: flex; gap: 7px; align-items: flex-start; padding: 6px 8px; border-radius: 5px;
