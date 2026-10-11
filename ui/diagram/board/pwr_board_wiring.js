@@ -679,7 +679,7 @@
      * started here — it stays the casualty backup its own AFAS starts. */
     imrmssr9ihq: { press: function () { cmd({ action: 'set_afw', active: true, pump: 'mdafw' }); cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
     // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
-    //     OFF stops the charging pump, AUTO/MAN run it in auto make-up / manual charging) ---
+    //     OFF stops the charging pump, AUTO/MANUAL run it in auto make-up / manual charging) ---
     imrmtg3r8ez: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).charging_pump_running && CS(s).cvcs_auto; } },
     imrprbi6ui1: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: false }); }, active: function (s) { return CS(s).charging_pump_running && !CS(s).cvcs_auto; } },
     imrqn630s3b: { press: function () { cmd({ action: 'set_charging_pump', running: false }); }, active: function (s) { return !CS(s).charging_pump_running; } },
@@ -687,7 +687,7 @@
     // rendered art-only so these are its controls — not a redundant built-in toggle).
     imrsjy1m9g: { press: function () { cmd({ action: 'set_rcp', running: true }); }, active: function (s) { return IN(s).rcp_running; } },
     imrsjy59pnu: { press: function () { cmd({ action: 'set_rcp', running: false }); }, active: function (s) { return !IN(s).rcp_running; } },
-    // --- Letdown orifices: CLOSED / A 3% / B 4% / A+B 7% ---
+    // --- Letdown orifices: CLOSE / A 3% / B 4% / A+B 7% ---
     /* THE LINEUP LAMPS READ THE VALVES, NOT THE SELECTION (#624 / #619 item 24, 2026-09-04).
      * `control_state.letdown_isolated` — the 17 % low-level protective cut, which shuts the
      * letdown path and sheds the heaters — had ZERO consumers anywhere in `ui/`. So while the
@@ -1041,9 +1041,9 @@
       left: 660, top: 415, width: 120, height: 50,
       bg: '#0b1119', border: '#25333e', radius: 8, title: '', fontSize: 10, ports: [], stick: false },
     { id: 'bdAdvAuto', kind: 'button', name: 'ADV auto  ·  sim: set_adv mode:auto',
-      left: 1351, top: 458, label: 'AUTO', width: 44, height: 22, color: '#5aad7c', fontSize: 11 },
+      left: 1351, top: 458, label: 'AUTO', width: 40, height: 22, color: '#5aad7c', fontSize: 11 },
     { id: 'bdAdvClose', kind: 'button', name: 'ADV shut  ·  sim: set_adv mode:closed',
-      left: 1398, top: 458, label: 'SHUT', width: 44, height: 22, color: '#ffd166', fontSize: 11 },
+      left: 1394, top: 458, label: 'CLOSE', width: 48, height: 22, color: '#ffd166', fontSize: 11 },
     { id: 'bdAdvSp', kind: 'number', name: 'ADV SET POINT  ·  sim: set_adv_setpoint',
       // No `unit` on the tile: the derived range hint above the box already names it
       // ("29-1350 psi" / "0.2-9.31 MPa"), and in 90 px of card the suffix cost the

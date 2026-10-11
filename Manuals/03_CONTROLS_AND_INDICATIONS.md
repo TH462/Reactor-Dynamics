@@ -427,7 +427,7 @@ AUTO at **PWR-N01 step 5b**, after the pumps are started at step 2.
   pressurizer level the protective isolate shuts the orifice path *and* the cross-connect
   (annunciated **PZR LTDN ISOL**, **09** §3.0). While it stands, **all four lineup lamps go dark**
   — a lineup lamp reports where the valve *is*, and both orifices are shut whatever you last
-  selected — **CLOSED** lights amber to say the plant did that rather than you, and the card's
+  selected — **CLOSE** lights amber to say the plant did that rather than you, and the card's
   status word reads **ISOLATED**. There is **no automatic restoration**: past **20 %** the latch
   clears, and letdown stays shut until you re-select an orifice by hand, which lights the lamp
   again — see **06** PWR-A13a.  
