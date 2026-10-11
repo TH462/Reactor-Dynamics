@@ -493,7 +493,7 @@
       'Charging pump runs with automatic inventory make-up.',
       'The controller modulates charging flow to hold inventory, which in practice holds pressurizer ' +
       'level against normal letdown. The everyday lineup at power.', CI, '7.4'),
-    imrprbi6ui1: e('MAN (charging)',
+    imrprbi6ui1: e('MANUAL (charging)',
       'Charging pump runs at the flow you set.',
       'You own the balance: set a charging flow against the letdown lineup and watch pressurizer ' +
       'level respond over minutes, not seconds.', CI, '7.4'),
@@ -521,17 +521,17 @@
 
     imrmslvu2c0: e('Letdown',
       'The letdown orifices — coolant OUT of the primary. Lowers inventory and pressurizer level.',
-      'Two fixed orifices, each independently in or out, giving four lineups: CLOSED, A at about 3 %, ' +
+      'Two fixed orifices, each independently in or out, giving four lineups: CLOSE, A at about 3 %, ' +
       'B at about 4 %, A+B at about 7 % of rated. Flow is pressure-driven, not a throttled setpoint, ' +
       'so it tails off as Reactor Coolant System (RCS) pressure falls during a cooldown. A+B uncompensated walks level down ' +
       'about 5 % a minute. The status word at the bottom of the card reads NORMAL while letdown is ' +
       'flowing, SHUT when it is not, and ISOLATED when the automatic low-level cut has shut it for you.',
       CI, '7.3'),
-    imrmtin8wm3: e('CLOSED (letdown)',
+    imrmtin8wm3: e('CLOSE (letdown)',
       'Both orifices out — letdown isolated, no flow.',
       'The lineup for raising level quickly, and the automatic response to a low pressurizer level ' +
       '(17 %), which isolates letdown to protect inventory. When that cut is standing, all four ' +
-      'lineup lamps go dark — the valves are shut whatever you last selected — CLOSED lights amber ' +
+      'lineup lamps go dark — the valves are shut whatever you last selected — CLOSE lights amber ' +
       'to say the plant did it rather than you, and the status word reads ISOLATED. Press any ' +
       'orifice to line letdown back up once level is above 20 %.', CI, '7.3'),
     imrmtimrch3: e('A 3% (letdown)',
@@ -778,7 +778,7 @@
       'holding it shut but your own lineup. ISOLATED is the one to know: pressurizer level reached ' +
       'the 17 % low-level cut, the plant shut letdown to stop the drain, and it also shed the ' +
       'pressurizer heaters. While that stands the four lineup lamps are dark — the valves are shut ' +
-      'whatever you last selected — and CLOSED lights amber to say the plant did it. Press any ' +
+      'whatever you last selected — and CLOSE lights amber to say the plant did it. Press any ' +
       'orifice to line back up once level is above 20 %.', CI, '7.3'),
     // (A `bdRodStatus` entry stood here for the #306 rod status word, removed 2026-08-03 as
     // redundant against the IN-OUT lamps. This file is a THIRD independent copy of the

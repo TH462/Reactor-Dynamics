@@ -446,7 +446,7 @@
       // charging panel is the charging pump's control (OFF = pump off)
       clickBtn('imrqn630s3b'); ck('func: charging OFF -> charging pump off', cs().charging_pump_running === false);
       clickBtn('imrmtg3r8ez'); ck('func: charging AUTO -> pump on + cvcs auto', cs().charging_pump_running === true && cs().cvcs_auto === true);
-      clickBtn('imrprbi6ui1'); ck('func: charging MAN -> pump on + cvcs manual', cs().charging_pump_running === true && cs().cvcs_auto === false);
+      clickBtn('imrprbi6ui1'); ck('func: charging MANUAL -> pump on + cvcs manual', cs().charging_pump_running === true && cs().cvcs_auto === false);
       // every pump is marked art-only (no built-in control box)
       ck('board: all 5 pumps art-only', ['imrobpq4a70','imrobnzlha1','imrobph7xrq','imrqp87ueqb','imrqvzbd9hd'].every(function (id) {
         return RD.PwrBoardDriver.suppressBuiltInControls(id);
@@ -493,7 +493,7 @@
       // slide past, which is what caught the reversal itself.
       ck('func: ADV ships in AUTO, like the condenser dump', cs().adv_auto === true);
       clickBtn('bdAdvAuto'); ck('func: ADV AUTO -> auto', cs().adv_auto === true);
-      clickBtn('bdAdvClose'); ck('func: ADV SHUT -> shut and out of auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
+      clickBtn('bdAdvClose'); ck('func: ADV CLOSE -> shut and out of auto', cs().adv_auto === false && (cs().adv_pct || 0) === 0);
       setNum('bdAdvSp', 1000); ck('func: ADV setpoint 1000 psi -> ~6.89 MPa', Math.abs(cs().adv_setpoint - 1000 / 145.038) < 0.05);
 
       // --- vital-gauge sparklines (2026-08-06) -----------------------------------
