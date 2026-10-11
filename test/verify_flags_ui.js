@@ -843,6 +843,18 @@ function pinChannel(ch) {
   ck('dev (pwr2): "Held at real time" does not stand under a clock the walkthrough has raised',
     /Held at real time/.test(pa3a.info) && !/Held at real time/.test(pa3b.info),
     'before: "' + pa3a.info + '" · after, at ' + pa3b.accel + '×: "' + pa3b.info + '"');
+  /* A WARP RATE DROP DOES NOT QUOTE ITS HALF-SECOND FIGURE ONCE WARP IS OPEN AGAIN (2026-10-11
+   * TMI-2 layman pass, S-1: "pressure moving 41 psi/s right now" stood ~6 wall-minutes over a
+   * gauge rising 0.2 psi per wall-second). Clock at 60× on a quiet plant, so `warp_available`
+   * is true. INJECTION-PROVEN: without the `rateM` branch in `syncWarpInfo` the line still reads
+   * "43 psi/s". */
+  await injectSnap({ reason: 'transient', detail: 'pressure moving 43 psi/s right now (the gauge is damped and shows the trend)' });
+  await b.page.waitForTimeout(1500);
+  var pa4 = await paceRead();
+  var pa4av = await b.page.evaluate(function () { var q = globalThis.RD.__dev.service()._pacingBlock(); return q.warp_available; });
+  ck('dev (pwr2): a WARP drop on a pressure rate stops quoting the rate once WARP is available again',
+    pa4av === true && pa4.accel === 60 && /brief pressure swing — it has passed/.test(pa4.info) && !/43 psi\/s/.test(pa4.info),
+    'warp_available ' + pa4av + ', clock ' + pa4.accel + '× · line: "' + pa4.info + '"');
   await b.ctx.close();
   b = await build('dev', WT2 + '&run=1&dev=1');
   await b.page.evaluate(function () {

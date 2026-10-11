@@ -3299,7 +3299,21 @@
     }
     if (warpNote) {
       cls = 'dropped';
-      text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
+      /* A RATE REASON IS A HALF-SECOND READING, NOT A STANDING ONE (2026-10-11 TMI-2 layman pass,
+       * S-1). MEASURED on pwr_tmi2_incident step 18 (service probe, inbox/tmi_review3): 600× was
+       * ACCEPTED, the first WARP steps kicked primary pressure 476 -> 508 psia, the in-loop watch
+       * dropped to 60× on "pressure moving 43 psi/s right now", and pressure settled back to 494
+       * within one 6 s broadcast; `warp_available` was true from then on. The line kept the
+       * 43 psi/s figure for the ~6 wall-minutes the player then waited, beside a gauge rising
+       * 0.2 psi per wall-second. Once the plant would take WARP again, say the swing has passed
+       * instead of quoting it. Alarm, trip and failure reasons are events, not rates: unchanged. */
+      var noteText = warpNote.text;
+      var pcg = s.metadata && s.metadata.pacing;
+      var rateM = /^(pressure|power) moving /.exec(warpNote.detail || '');
+      if (warpNote.reason === 'transient' && pcg && pcg.warp_available === true && (rateM || warpNote.detail === 'loop transient')) {
+        noteText = 'WARP dropped to 60× on a brief ' + (rateM ? rateM[1] : 'coolant-loop') + ' swing — it has passed';
+      }
+      text = noteText + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
     } else {
       text = advice;
       if (autoSpeedNote) {
@@ -3377,7 +3391,7 @@
        * speed buttons until the player next acts — the other reasons rely on the toast +
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
-      warpNote = { text: speedSnapText(snap), reason: snap.reason, step: cklNoteStepKey(s) };
+      warpNote = { text: speedSnapText(snap), reason: snap.reason, detail: snap.detail || '', step: cklNoteStepKey(s) };
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -3852,6 +3866,7 @@
       /* The walkthrough IS the Instructor's card (#660 item 15): the step card above, the
        * instructor's own line (check-offs, overtaken notes) as plain text beneath it. */
       renderChecklist(s, ckb);
+      calloutSync();
       syncInstrNav('idle');
       instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
       var curW = $('instrCurrent');
@@ -4154,17 +4169,27 @@
   function calloutPref() {
     var m = /[?&]callout=([01])/.exec(location.search || '');
     if (m) return m[1] === '1';
-    try { return localStorage.getItem(CALLOUT_LS) === '1'; } catch (e) { return false; }
+    // TRI-STATE (2026-10-10): null = never chosen. The opener needs an explicit On; a walkthrough
+    // authored `callout: true` (TMI-2) draws it unless the player chose Off.
+    try { var v = localStorage.getItem(CALLOUT_LS); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; }
   }
-  function setCalloutPref(on) {
-    ui.callout = !!on;
-    try { localStorage.setItem(CALLOUT_LS, on ? '1' : '0'); } catch (e) { /* private mode */ }
+  // v: true (On), false (Off) or null (Auto: unset; only a `callout: true` walkthrough draws it)
+  function setCalloutPref(v) {
+    var on = v === true;
+    ui.callout = on; ui.calloutSet = v === null ? null : on;
+    cklState.key = null;   // the walkthrough column swaps step card <-> progress list
+    if (latest && latest.instructor && latest.instructor.checklist) renderChecklist(latest, latest.instructor.checklist);
+    try { if (v === null) localStorage.removeItem(CALLOUT_LS); else localStorage.setItem(CALLOUT_LS, on ? '1' : '0'); } catch (e) { /* private mode */ }
     syncCalloutSeg();
     calloutSync();
   }
   function syncCalloutSeg() {
     var seg = $('calloutSeg'); if (!seg) return;
-    [].forEach.call(seg.querySelectorAll('[data-callout]'), function (b) { b.classList.toggle('on', (b.getAttribute('data-callout') === 'on') === !!ui.callout); });
+    [].forEach.call(seg.querySelectorAll('[data-callout]'), function (b) {
+      // the EFFECTIVE state: Auto when the player has not chosen (the TMI-2 walkthrough draws it)
+      var cur = ui.calloutSet === true ? 'on' : ui.calloutSet === false ? 'off' : 'auto';
+      b.classList.toggle('on', b.getAttribute('data-callout') === cur);
+    });
   }
   var callout = { el: null, histOpen: false, key: null, timer: null, raf: 0, obs: null, points: [] };
   function calloutActive() {
@@ -4205,11 +4230,26 @@
       '<div class="ico-head"><span class="ico-who">Instructor</span>' +
       '<button type="button" class="ico-hist-btn" data-ico-hist="1" data-scanner-hint="Show or hide everything the instructor has said so far.">History</button></div>' +
       '<div class="ico-hist" hidden></div><div class="ico-body"></div><div class="ico-btns"></div>';
+    /* A NEW STEP DRAWN UNDER A RESTING POINTER IS NOT A HOVER (TMI quality pass, 2026-10-10). The
+     * fade-on-hover lets the player peek at the board; but Continue is IN the card, so the next
+     * step's card usually lands under the pointer that just pressed it and was drawn at 25 %.
+     * `ico-held` (set when the step/line group changes) holds it solid until the pointer leaves. */
+    el.addEventListener('mouseleave', function () { el.classList.remove('ico-held'); });
+    // ...or until it MOVES on the card (a real hover): the first move only records where it rests
+    el.addEventListener('mousemove', function (e) {
+      if (!el.classList.contains('ico-held')) return;
+      var h = callout.heldAt;
+      if (!h) { callout.heldAt = { x: e.clientX, y: e.clientY }; return; }
+      if (Math.abs(e.clientX - h.x) + Math.abs(e.clientY - h.y) > 12) el.classList.remove('ico-held');
+    });
     el.addEventListener('click', function (e) {
       if (e.target.closest('[data-ico-why]')) { callout.whyOpen = !callout.whyOpen; callout.key = null; calloutSync(); return; }
       if (e.target.closest('[data-ico-hist]')) {
         callout.histOpen = !callout.histOpen; callout.key = null; calloutSync(); return;
       }
+      // A walkthrough button forwards to the real one in #cklRun (hidden under the callout).
+      var fw = e.target.closest('[data-ico-fwd]');
+      if (fw) { var rb = document.querySelector('#cklRun ' + fw.getAttribute('data-ico-fwd')); if (rb && !rb.disabled) rb.click(); return; }
       // Forward to the real button in the chat panel — one handler per button, always.
       var b = e.target.closest('[data-chatbtn],[data-chatrevealall],[data-lc]');
       if (b) {
@@ -4229,9 +4269,11 @@
   }
   function calloutSync() {
     var card = $('instructorCard');
-    var on = calloutActive();
-    if (card) card.classList.toggle('callout-on', on);
-    if (!on) {
+    var on = calloutActive(), ckOn = !on && cklCalloutActive();
+    if (card) { card.classList.toggle('callout-on', on); card.classList.toggle('ckl-callout-on', ckOn); }
+    var mode = on ? 'chat' : ckOn ? 'ckl' : null;
+    if (mode !== callout.mode) { callout.mode = mode; callout.key = null; callout.pos = null; callout.histOpen = false; }
+    if (!on && !ckOn) {
       if (callout.el) callout.el.hidden = true;
       if (callout.lead) callout.lead.hidden = true;
       if (callout.boardObs) { callout.boardObs.disconnect(); callout.boardObs = null; }
@@ -4244,6 +4286,12 @@
       callout.obs.observe($('instrCurrent'), { childList: true, subtree: true });
     }
     calloutWatchBoard();
+    if (ckOn) {
+      cklCalloutFill(el);
+      calloutPlace();
+      if (!callout.timer) callout.timer = setInterval(calloutPlace, 400);
+      return;
+    }
     var grp = calloutGroup();
     var btnSrc = $('chatBtns');
     var btnHtml = btnSrc ? btnSrc.innerHTML : '';
@@ -4266,7 +4314,7 @@
       // observation shows ONE sentence (the "Watch …" one, else the first that is not a clock
       // note); the rest of it is in History.
       var gk = JSON.stringify(grp.map(function (e) { return e.t; }));
-      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
+      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; el.classList.add('ico-held'); callout.heldAt = null; }
       var body = '';
       if (acts.length) {
         body += '<div class="ico-act"' + ptAttr + '>' + acts.map(mesc).join(' ') + '</div>';
@@ -4291,6 +4339,7 @@
         hist.innerHTML = log ? log.innerHTML : '';
         hist.scrollTop = hist.scrollHeight;
       }
+      el.querySelector('.ico-who').textContent = 'Instructor';
       callout.points = pts;
       callout.kind = acts.length ? 'act' : 'observe';
       el.setAttribute('data-kind', callout.kind);
@@ -4377,6 +4426,7 @@
   }
   // What the placement must not cover, and what it points at.
   function calloutKeepOut() {
+    if (callout.mode === 'ckl') return cklCalloutKeepOut();
     var glow = null;
     [].some.call(document.querySelectorAll('#viewArea .instr-glow'), function (g) {
       var r = g.getBoundingClientRect(); if (rectOk(r)) { glow = r; return true; } return false;
@@ -4418,13 +4468,14 @@
       if (ch && now - ch < 4000) wt *= 4;
       soft.push({ r: q, wt: wt });
     });
-    function search(w, h) {
+    function search(w, h, HK) {
+      HK = HK || K.hard;
       var best = null, STEP = 16;
       for (var y = B.top; y <= B.bottom - h; y += STEP) {
         for (var x = B.left; x <= B.right - w; x += STEP) {
           var R = { left: x, top: y, right: x + w, bottom: y + h };
           var hard = 0, s2 = 0, i;
-          for (i = 0; i < K.hard.length; i++) hard += overlapArea(R, K.hard[i]);
+          for (i = 0; i < HK.length; i++) hard += overlapArea(R, HK[i]);
           for (i = 0; i < soft.length; i++) s2 += soft[i].wt * overlapArea(R, soft[i].r);
           var d = A ? rectGap(R, A) : Math.abs((y + h) - B.bottom) + Math.abs(x + w / 2 - (B.left + B.right) / 2) * 0.5;
           var c = hard * 1000 + s2 + d * 60;
@@ -4436,10 +4487,14 @@
     el.classList.remove('ico-compact');
     var w = el.offsetWidth, h = el.offsetHeight;
     var pick = search(w, h);
+    // the acted-on control's margin is wanted, not required: full size without it beats compact
+    if (pick && pick.hard > 0 && K.hardTight) pick = search(w, h, K.hardTight);
     if (pick && pick.hard > 0) {               // nothing clear at full size: action line only
       el.classList.add('ico-compact');
       w = el.offsetWidth; h = el.offsetHeight;
-      pick = search(w, h) || pick;
+      var pc = search(w, h);
+      if (pc && pc.hard > 0 && K.hardTight) pc = search(w, h, K.hardTight);
+      pick = pc || pick;
     }
     if (!pick) pick = { x: B.left, y: B.top, c: 0, hard: 0 };
     // Hysteresis: stay put unless the new spot is clearly better (a ticking readout must not
@@ -4479,6 +4534,157 @@
     ln.style.left = Math.round(bx) + 'px'; ln.style.top = Math.round(by) + 'px';
     ln.style.width = Math.round(len) + 'px';
     ln.style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad)';
+  }
+
+  /* ---- THE WALKTHROUGH CALLOUT (2026-10-10, OWNER: "We should build TMI with the concise
+   * callouts like the starting instruction.") ------------------------------------------------
+   * The opener's card, driven by the ACTIVE WALKTHROUGH STEP instead of the chat log. Only a
+   * procedure that authors `callout: true` (the TMI-2 incident) gets it — its steps are written
+   * for it (one action line, one short why); the other legs' step prose is not, so they never
+   * draw it. The player's Settings > Instructor callout = Off turns it off here too.
+   *
+   *   step with `hl` (a control to act on) -> ACTION card: the step line big, its `why` behind
+   *     "why?", anchored to the control's panel.
+   *   otherwise (verify / watch / narrated)  -> OBSERVATION card: the step line and its `why`
+   *     small beneath it, dashed, anchored to the first watched item.
+   * Both carry the story clock in the head, the event's one `story.line`, a `note` only where the
+   * step cannot be done without it, the done-when rows when there are several, and Rewind /
+   * Continue — forwarded to the real buttons in #cklRun, so each keeps exactly one handler.
+   * History lists the morning so far (clock + saw / knew / did) — the long form lives there. */
+  function cklCalloutOn(pr) {
+    return !!(pr && pr.callout && ui.plant === 'pwr' && ui.calloutSet !== false);
+  }
+  function cklCalloutActive() {
+    var a = latest && cklActiveStep(latest);
+    return !!(a && cklState.view === 'run' && cklCalloutOn(a.pr));
+  }
+  function cklCalloutFill(el) {
+    var s = latest, a = cklActiveStep(s);
+    if (!a) { el.hidden = true; return; }
+    var st = a.st, ck = a.ck, pr = a.pr, idx = ck.step_index;
+    // the AUTHORED kind: once its rows are met the step lights nothing, but it is still an ask
+    var act = !!((st.hl && st.hl.length) || (stepHlLabels(st, ck) || []).length);
+    var rc = document.querySelector('#cklRun [data-ckl-check]'), rw = document.querySelector('#cklRun [data-wt-rewind]');
+    var sp = (cklIsWaitStep(st) && !ck.awaiting_ack && !ck.acc_met) ? cklStepSpeed(s, a) : 1;
+    /* THE WAIT LINE NAMES THE CLOCK THE PLANT IS ON, NOT THE RUNG AUTO ASKED FOR (TMI layman pass,
+     * 2026-10-10, S-2). It printed `sp` — the step's wanted rung — so after a WARP drop the card
+     * read "Waiting at 600×" beside a speed bar on 60× and a red "actual 6×" badge, for 7.5 min of
+     * wall time on step 18. The drop is the service's (`_dropWarp`) and auto does not re-raise it:
+     * the player does, which is what the speed-bar flash is for, so the card says which button.
+     * MEASURED (inbox/tmi_review2/route2.js, re-pressing after each drop): 600× on step 16 kept
+     * 1560 of 1855 plant-s at 600× through 124 drops; 3600× on step 18 held 3600 of 3604 plant-s.
+     * "actual" (the board badge's own word) only when the computer delivers under half the clock. */
+    var spCur = (s.metadata && s.metadata.time_acceleration) || 1, spTxt = '';
+    if (sp > 1) {
+      var spAch = s.metadata && s.metadata.pacing ? s.metadata.pacing.achieved : null;
+      spTxt = '⏩ Waiting at ' + spCur + '×' + (spCur < sp ? ' — press ' + sp + '× to skip ahead'
+        : (spAch != null && spAch < spCur / 2 ? ' · actual ' + (spAch >= 100 ? Math.round(spAch / 10) * 10 : Math.max(1, Math.round(spAch))) + '×' : ''));
+    }
+    var gk = pr.id + '#' + idx;
+    if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; el.classList.add('ico-held'); callout.heldAt = null; }
+    var key = JSON.stringify(['ckl', gk, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
+      !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen]);
+    if (key === callout.key) return;
+    callout.key = key;
+    var sy = st.story || {};
+    el.querySelector('.ico-who').textContent = 'Step ' + (idx + 1) + ' of ' + pr.steps.length + (sy.clock ? ' · ' + sy.clock : '');
+    var b = '';
+    if (sy.line) b += '<div class="ico-story">' + mesc(sy.line) + '</div>';
+    if (act) {
+      b += '<div class="ico-act">' + mesc(st.text) + '</div>';
+      if (st.why) {
+        b += '<button type="button" class="ico-more" data-ico-why="1">' + (callout.whyOpen ? 'hide' : 'why?') + '</button>';
+        if (callout.whyOpen) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+      }
+    } else {
+      b += '<div class="ico-say">' + mesc(st.text) + '</div>';
+      if (st.why) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+    }
+    if (st.crew) b += '<div class="ico-crew">The crew\'s action, as taken — not a recommendation.</div>';
+    if (st.note) b += '<div class="ico-tip">' + mesc(st.note) + '</div>';
+    var rows = (st.accs || []).map(function (en, k) { return { en: en, met: !!((ck.accs && ck.accs[k]) || {}).met }; })
+      .filter(function (r) { return !r.en.hidden && !r.en.cont; });
+    if (rows.length > 1) {
+      b += rows.map(function (r) {
+        return '<div class="ico-crit' + (r.met ? ' met' : '') + '">' + (r.met ? '✓ ' : '○ ') +
+          mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
+      }).join('');
+    }
+    if (spTxt) b += '<div class="ico-wait">' + mesc(spTxt) + '</div>';
+    el.querySelector('.ico-body').innerHTML = b;
+    var bEl = el.querySelector('.ico-btns');
+    bEl.innerHTML =
+      '<button type="button" class="btn ico-rw" data-ico-fwd="[data-wt-rewind]"' + (rw && !rw.disabled ? '' : ' disabled') + '>⏪ Rewind</button>' +
+      '<button type="button" class="btn ico-cont' + (ck.awaiting_ack ? ' ready' : '') + '" data-ico-fwd="[data-ckl-check]"' +
+        (rc && !rc.disabled ? '' : ' disabled') + '>Continue ▶</button>';
+    bEl.hidden = false;
+    var hist = el.querySelector('.ico-hist');
+    hist.hidden = !callout.histOpen;
+    el.querySelector('[data-ico-hist]').classList.toggle('on', callout.histOpen);
+    if (callout.histOpen) {
+      var hh = '';
+      for (var k = 0; k <= idx && k < pr.steps.length; k++) {
+        var y = pr.steps[k].story;
+        if (!y) continue;
+        hh += '<div class="ico-h"><b>' + mesc(y.clock || '') + '</b> ' + mesc(y.saw || y.line || '') +
+          (y.knew ? '<div><i>They knew:</i> ' + mesc(y.knew) + '</div>' : '') +
+          (y.did ? '<div><i>They did:</i> ' + mesc(y.did) + '</div>' : '') + '</div>';
+      }
+      hist.innerHTML = hh;
+      hist.scrollTop = hist.scrollHeight;
+    }
+    callout.points = [];
+    callout.kind = act ? 'act' : 'observe';
+    el.setAttribute('data-kind', callout.kind);
+    el.hidden = false;
+  }
+  /* THE PLANT ITSELF IS A KEEP-OUT on a callout walkthrough (2026-10-10, OWNER: "it blocks part of the
+   * diagram and it might block important info"). On TMI-2 the pressurizer's level and the vessel's
+   * water are the lesson, and the opener's placement treats a big drawing as cheap to cover. Board
+   * item ids (pwr_board_data.js): the two component drawings and the PZR SPRAY / PZR TEMP / HTR PWR
+   * label+value pairs beside the pressurizer. PRESSURIZER LEVEL and PRIMARY PRESSURE are top tiles.
+   * verify_tmi_callout asserts all eight resolve, so a board re-export that renames one goes red. */
+  var CKL_CALLOUT_PLANT = ['pressurizer', 'reactorVessel', 'imsgt6tl11c', 'imsgt6qmdgx', 'ims5gp0aicx', 'ims5gq44zgr', 'ims5gpdv96m', 'ims5gprvl7n'];
+  RD.CklCalloutPlant = CKL_CALLOUT_PLANT;
+  function cklCalloutPlantRects() {
+    var st = calloutStage(), out = [];
+    if (!st) return out;
+    CKL_CALLOUT_PLANT.forEach(function (id) {
+      var t = st.querySelector('[data-item="' + id + '"]');
+      var r = t && t.getBoundingClientRect();
+      if (r && rectOk(r)) out.push(r);
+    });
+    return out;
+  }
+  // Keep-outs for a walkthrough step: the six top tiles, every lit control / watched item / lit
+  // card on the board, and the acted-on control's panel. Anchor: that panel (action) or the
+  // first watched item (observation).
+  function cklCalloutKeepOut() {
+    function rects(sel) {
+      var out = [];
+      [].forEach.call(document.querySelectorAll(sel), function (g) { var r = g.getBoundingClientRect(); if (rectOk(r)) out.push(r); });
+      return out;
+    }
+    var acts = rects('#viewArea .ckl-step-glow');
+    var watches = rects('#viewArea .ckl-watch-glow, #viewArea .ckl-check-glow');
+    var cards = rects('#viewArea .ckl-panel-glow');
+    var panel = acts[0] ? calloutPanelOf(acts[0]) : null;
+    var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
+    var plant = cklCalloutPlantRects();
+    /* THE ACTED-ON CONTROL GETS A 12 px MARGIN (TMI layman pass, 2026-10-10, S-10). Measured on step
+     * 14 at 1366x768: the card stood 7 px right of the AFW block valve's halo (0 px2 overlap) with
+     * the leader's dot on the halo's corner, and the reviewer read that as the card covering the
+     * symbol. A control the player must find and click wants clear air round it, not a tangent. */
+    var PAD = 12;
+    var actsPad = acts.map(function (r) { return { left: r.left - PAD, top: r.top - PAD, right: r.right + PAD, bottom: r.bottom + PAD }; });
+    var hard = top.concat(plant, panel ? [panel] : [], actsPad, watches, cards);
+    var hardTight = top.concat(plant, panel ? [panel] : [], acts, watches, cards);
+    /* ACTION: THE CONTROL ITSELF, NOT ITS PANEL (review 2026-10-10). The panel is the smallest board
+     * tile around the lit control; for a valve drawn ON a component that tile is the component, so
+     * on step 18 the leader ran to the pressurizer's edge and ended on PZR SPRAY, 50 px from the
+     * block valve the step is about. The panel stays a hard keep-out above. */
+    var anchor = callout.kind === 'act' ? (acts[0] || panel || null) : (watches[0] || cards[0] || null);
+    return { hard: hard, hardTight: hardTight, top: top, panel: panel, points: watches, anchor: anchor };
   }
 
   // ============================================================ auto-checklists (Path 3)
@@ -4964,6 +5170,12 @@
    * scroller. Resolve it rather than naming one, so the scroll-preservation above cannot be
    * silently pointed at an element that never scrolls — which would read as "the fix works"
    * while the panel jumped exactly as before. */
+  /* The row that stands for the active step in the log: on a callout leg the step card is hidden
+   * (display:none, so its offsets read 0) and the progress list's row is what the reader sees
+   * (review 2026-10-10: at 1366x768 step 20 fell off the bottom of the list unscrolled). */
+  function cklActiveRow(log) {
+    return log.querySelector('#cklRun.ckl-co .ckl-prog-list li.active') || log.querySelector('.ckl-active');
+  }
   function cklScroller() {
     var el = $('cklLog');
     while (el && el !== document.body) {
@@ -5485,6 +5697,7 @@
        * churn: `time_acceleration` moves only when the player, this walkthrough, or an attention
        * stop moves it, which is a handful of times in a whole leg. */
       (s && s.metadata && s.metadata.time_acceleration) || 1,
+      cklCalloutOn(pr) ? 'co' : '',
       cklState.view].join('|');
     if (key === cklState.key) return;
     var firstBuild = !cklState.key;
@@ -5629,6 +5842,18 @@
           return '<div class="ckl-caut-l">' + mesc(c) + '</div>';
         }).join('') : '') +
         '</div>';
+    }
+    /* THE CALLOUT LEG'S COLUMN IS A PROGRESS LIST (2026-10-10, OWNER: "We should build TMI with the
+     * concise callouts like the starting instruction."). The step itself is drawn on the board by
+     * cklCalloutFill; the step card below is still built (the engine of record: its Continue and
+     * Rewind are the buttons the callout forwards to) and hidden by `#cklRun.ckl-co`. */
+    var coOn = cklCalloutOn(pr);
+    if (coOn) {
+      h += '<ol class="ckl-prog-list">' + pr.steps.map(function (sx, k) {
+        var dn = !!(ck.steps_done && ck.steps_done[k]), ac = !ck.complete && k === ck.step_index;
+        return '<li class="' + (dn ? 'done' : ac ? 'active' : 'pend') + '"><span class="ckl-pl-ico">' + (dn ? '✓' : ac ? '▸' : '○') +
+          '</span><span class="ckl-pl-n">' + (k + 1) + '</span><span class="ckl-pl-t">' + mesc(sx.text) + '</span></li>';
+      }).join('') + '</ol>';
     }
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
@@ -6164,6 +6389,7 @@
     var prevLog = cklScroller();
     var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
+    cur.classList.toggle('ckl-co', coOn);
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
@@ -6226,7 +6452,7 @@
         log.addEventListener('scroll', function () {
           cklMoreCue(log);                           /* #818: before the early return, every scroll */
           if (cklAutoScroll) return;                 /* our write, not theirs */
-          var act = log.querySelector('.ckl-active');
+          var act = cklActiveRow(log);
           if (!act) { cklState.userScrolled = true; return; }
           /* Back at the active step = back in step with the checklist; let it drive again. */
           var top = act.offsetTop - log.offsetTop;
@@ -6257,7 +6483,7 @@
            * so the outer container snapped to the top. The pane owns its height (the instructor pane, wt-headerless),
            * which removes the outer scroller; this makes the step-advance scroll incapable of
            * reaching an ancestor even if a future layout reintroduces one. */
-          var act = log.querySelector('.ckl-active');
+          var act = cklActiveRow(log);
           if (act) {
             var top = act.offsetTop - log.offsetTop;
             var bot = top + act.offsetHeight;
@@ -10439,10 +10665,11 @@
     // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
     // their defaults; stack still accepts set_register for tests.
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
-    ui.callout = calloutPref();
+    ui.calloutSet = calloutPref();
+    ui.callout = ui.calloutSet === true;
     syncCalloutSeg();
     var cseg = $('calloutSeg');
-    if (cseg) cseg.addEventListener('click', function (e) { var b = e.target.closest('[data-callout]'); if (b) setCalloutPref(b.getAttribute('data-callout') === 'on'); });
+    if (cseg) cseg.addEventListener('click', function (e) { var b = e.target.closest('[data-callout]'); if (b) { var cv = b.getAttribute('data-callout'); setCalloutPref(cv === 'on' ? true : cv === 'off' ? false : null); } });
     var aseg = $('attnSeg');
     if (aseg) aseg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-attn]'); if (!b) return;
