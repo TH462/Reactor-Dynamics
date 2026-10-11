@@ -30,13 +30,46 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.4-rc1] — 2026-10-11
+
+### Changed — board mode-button wording (`exp/selectors`)
+
+*(OWNER RULING, 2026-10-10: "Charging could and should probably be changed to MANUAL. … Maybe we try to fit MANUAL on the SG FEED buton. Aux Feed has stop and AUTO because the auto mode selects a flow … RCP is purly binary controlled.")*
+
+- Charging MAN → **MANUAL**; Letdown CLOSED → **CLOSE**; Atmospheric Dump SHUT → **CLOSE** (pair resized to 40/48 px; 9–13 % text margin, under the 15 % CI-font allowance — watch CI). SG Feed and the generator card stay **MAN**: MANUAL needs 50.8 px against a 49 px inner width. Aux Feed START/STOP/AUTO and RCP ON/OFF unchanged.
+- `Manuals/03` §7.3 (Rev 25 pending row, item b).
+
+### Changed — TMI-2 walkthrough drawn as anchored board cards (#811, #670; preview-gated, no `changelog.html` entry)
+
+*(OWNER, 2026-10-10: "We should build TMI with the concise callouts like the starting instruction.")*
+
+- `callout: true` on `pwr_tmi2_incident`; Settings › Instructor callout is now **Off / Auto / On**, Auto (default) = only walkthroughs that opt in. Visible step text 2,298 → 606 words; the story is behind History; the right column is a 20-step progress list. Pressurizer and vessel are keep-outs; the acted-on control gets a 12 px margin.
+- Reviewer play-through (20/20, 17,817 plant-s) + two fresh layman passes (20/20 each). Fixed: leader line ends on the lit control (it ended on PZR SPRAY on step 18); a new card no longer opens faded under the pointer; the progress row stays in view at 1366.
+- Text made true on the plant (measured on four routes, `inbox/tmi_review*/route*.js` in the lane tree): step 3 feed flow 1002 gpm → 0 over ~63 s; step 10 — containment-pressure SI still starts injection with SI blocked (3 h 29–48 min); step 19 asks for START unconditionally (the walkthrough speed-up waits for the press), +10 °F margin in 50–90 plant-min; step 7 trip is overtemperature ΔT at 58.6 s, not high pressure at 8 s; step 10 level falls 47.5 → 44.0 %; INJ FLOW (board caption) not ECCS FLOW; title covers the 16-hour pump restart.
+- The card's wait line prints the clock's actual speed (it printed the requested rung); a WARP drop on a brief pressure swing now says "it has passed" instead of holding a half-second rate for minutes (`verify_flags_ui` 98 → 99). Steps 15–16 drop the hold-based time estimate.
+- Open (#670 comment): each 600× entry on step 18 stepped primary pressure +32 to +169 psi; undiagnosed.
+
+### Changed — UX quick wins (#811)
+
+- Alarm strip folds into the chart corner when no alarm is up: bottom row 230 → 176 px, board scale at 1366×768 0.605 → 0.677, text under 8 px 185 → 83 of 264 items.
+- Hover help beside the pointer after 0.4 s; PAUSED veil when the clock is plainly stopped; chart window fits its data until a rung is clicked; °F on board temperatures (11 bare `F`); 24 px step-arrow hit zones; Show me answers at once ("Doing it…"). New gate `verify_quickwins_ui` 30/30.
+
+### Added — anchored instructor callout for the opener (#811, prototype)
+
+- Light card beside the control a line is about, with a leader line, action vs observation styles, a "why?" expander, History, and placement that keeps off the six top tiles, the active panel and pointed items; fades on hover. Off by default for openers (`?callout=1` or Settings › On). New gate `verify_opener_callout` 35/35 (flaky at 1920 under parallel load, green alone).
+
+### Fixed — telemetry: a tab-close opener abandon files its beat (`3000ecd9`)
+
+- `mission_abandon` from `TEL.end()` now carries the resting opener beat (it read 0). `run_telemetry` 351 → 353.
+
+
 ### Changed — TMI-2 walkthrough: the condensate polisher failure is shown on the board (#670; preview-gated, no `changelog.html` entry)
 
 *(OWNER RULING, 2026-10-10: "The condensate polisher failure should be a scripted event and we can have the indicator on the condensate polisher show that it has failed and we also should narrate what's going on so kind of a hybrid of both.")* Supersedes #693's narrated-only option.
 
 - Step 2 injects `condensate_polisher_trip`: POLISHER STATUS reads **FAILED** (amber) and the sim pauses; step text cut to one line pointing at the lamp (owner 2026-10-10: players read only enough to do the step). Indicator only — no polisher model; the feed loss stays step 3's. Measured: under 0.1 s of plant time before the clock stops.
 - New failure flag `scripted_only` (pwr_control.js): injectable by a walkthrough, skipped by `getFailureCatalog` (no Failures-tab row — a lamp with no consequence in free play), cleared by `InstructorLayer` on Stop / unload; a reset rebuilds the layer.
-- `Manuals/08` §1.0, §2.0, §6.0 updated (Rev 24 pending row, item m). Gate: `run_pwr2_board` 101 -> 107, 5 new mutations caught; `run_manual_controls` 1329 -> 1330; `run_inspect`'s group check skips scripted-only rows.
+- `Manuals/08` §1.0, §2.0, §6.0 updated (Rev 25 pending row, item a). Gate: `run_pwr2_board` 101 -> 107, 5 new mutations caught; `run_manual_controls` 1329 -> 1330; `run_inspect`'s group check skips scripted-only rows.
 - Quality pass: a restore (file load, autosave Continue, rewind) now drops a `scripted_only` failure when no walkthrough comes back with it (`SimulationService._restore` → `InstructorLayer.releaseOrphanScriptedFailures`). Before: a plant-only rewind after Stop, or a save whose walkthrough did not restore, left FAILED lit in free play with no row to clear it (measured, both shapes). No save-format change. Step 2's `why` reworded to history — on this board condensate flow still reads 99.7 % at that step. `run_pwr2_board` 107 -> 110, +1 mutation caught (43/43).
 
 ### Changed — full-power opener: help sooner, restart on an early trip (#811)
