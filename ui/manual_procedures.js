@@ -6399,7 +6399,7 @@
            * `hold` is 3720 s, so ui/app.js offers 600× on the same line; this step is the one
            * place in the pool where that rung is wrong, and the old wording put "600×" and
            * "use 60×" side by side with nothing to say which won. */
-          wait_hint: 'Ignore the 600× above — this step is the exception. Pressure moves faster here than anywhere else in the run, so WARP will refuse it or drop out; use 60×. Watch for pressure turning upward and the pipe cooling, not the clock: it creeps a long while and then arrives quickly, so a flat gauge is not a stuck step.',
+          wait_hint: 'Ignore the 600× above — this step is the exception. Pressure moves faster here than anywhere else in the run, so WARP will refuse it or drop out; use 60×. Watch for pressure turning upward, not the clock: it can sit near 500 to 600 psi for over an hour, until high containment pressure starts injection, then climbs past 750 psi within about two minutes. A flat gauge is not a stuck step.',
           story: { clock: '06:18:37', line: 'A fresh shift supervisor reads the hot relief line and orders it blocked.',
             saw: 'The relief line discharge running about 30 degrees hotter than the safety valve discharge lines.',
             knew: 'A relieving shift supervisor set the pressurizer level aside and read the temperatures instead. His conclusion was that the relief valve was leaking.',
