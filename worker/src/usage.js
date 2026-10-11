@@ -608,7 +608,7 @@ export const OPENER_BEATS = {
   opener_pwr2_hfp: ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_small', 'o3_dump',
     'o4_rods', 'o4_wrong', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help',
     'o7_spray_watch', 'o8_late', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help',
-    'o11_trip', 'o12_settle', 'o13_end', 'ox_trip_early'],
+    'o11_trip', 'o12_settle', 'o13_end', 'ox_trip_early', 'ox_trip_explain', 'o4_help_more'],
 };
 const beatName = (id, i) => {
   const n = (OPENER_BEATS[id] || [])[i];
