@@ -18,6 +18,11 @@ when they disagree, his quote wins.
 
 | Date | Reacting to | His words (verbatim) | Taste it implies |
 |---|---|---|---|
+| 2026-10-12 | Agent working the strip-chart captures alone | "Why don't you use some subagents to do some of this work for you?" | Process, not visual: delegate mechanical capture/measurement work; the coordinator should not grind. |
+| 2026-10-12 | Strip-chart options request | "Give me a few examples and options for the strip chart. Enlarge the chart a bit in the sim when screen shorting it and fit 4 plots." | Use the sim's OWN chart as the website artifact, not a redrawn imitation; four traces. |
+| 2026-10-12 | Pressurizer callout, follow-up | "Help me describe why the pressurized label is bad" | Wants the reason named so it can become a rule (see §2 #21). |
+| 2026-10-12 | Mockup v2 pressurizer callout ("Its level can read full while the core loses water. That is what fooled the TMI-2 operators.") — which the agent had ranked the MOST persuasive line | "The pressurizer label is an example of things that are bad. I'm not sure exactly how to describe why it is bad." | Agent's candidate readings, unconfirmed: a trivia-hook (setup, reveal, famous-disaster payoff); a lecture where a label belongs; leads with instruments lying, the premise he purged 2026-08-03. See §2 #21. |
+| 2026-10-12 | Mockup v2 copy | "Look for copy on the page that is vague and doesn't really have much meaning. Determine if it really has value and will convince people to actually try the simulator." | Every line must earn its place by making someone want to click. Vague or filler copy is a defect. |
 | 2026-10-12 | Mockup v1 — strip chart | "I also like having the strip chart. The chart should show an interesting plant interaction." | Real plant data is the site's signature; it must show a coupling, not just a trip. |
 | 2026-10-12 | Mockup v1 — alarm tiles | "I like the alarm tiles. It brings the control room element into the page." | Borrow real control-room elements into the site; the board is the brand. |
 | 2026-10-12 | Request for this log + tells list | "Create a list of obvious AI built website tells and check your design against it." | Looking machine-made is a defect in its own right; wants a checklist, not a vibe. |
@@ -55,6 +60,7 @@ item it keeps.
 | 18 | Perfect symmetry, identical blurb lengths, equal spacing everywhere | Nothing was edited by a person with an opinion. |
 | 19 | Four-column footer of links for a six-page site | Scaffolding bigger than the site. |
 | 20 | Copy that would still be true if you swapped the product name | Not about *this* thing. |
+| 21 | **Trivia-hook copy**: a setup, a twist, then a famous name as the payoff ("X can read Y while Z. That is what fooled the TMI-2 operators.") | Borrowed drama; a lecture where a label belongs. Owner flagged 2026-10-12. |
 
 ## 3. Checks run
 
