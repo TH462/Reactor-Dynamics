@@ -18,6 +18,7 @@ when they disagree, his quote wins.
 
 | Date | Reacting to | His words (verbatim) | Taste it implies |
 |---|---|---|---|
+| 2026-10-12 | The agent's six reasons the pressurizer label was bad | "Your six reasons the pressurizer line is bad are all partially right. Mostly it reads as AI slop" | The overriding test is whether it SOUNDS machine-written. Specific faults matter less than the voice. See §2 #22–#24. |
 | 2026-10-12 | Agent working the strip-chart captures alone | "Why don't you use some subagents to do some of this work for you?" | Process, not visual: delegate mechanical capture/measurement work; the coordinator should not grind. |
 | 2026-10-12 | Strip-chart options request | "Give me a few examples and options for the strip chart. Enlarge the chart a bit in the sim when screen shorting it and fit 4 plots." | Use the sim's OWN chart as the website artifact, not a redrawn imitation; four traces. |
 | 2026-10-12 | Pressurizer callout, follow-up | "Help me describe why the pressurized label is bad" | Wants the reason named so it can become a rule (see §2 #21). |
@@ -61,6 +62,9 @@ item it keeps.
 | 19 | Four-column footer of links for a six-page site | Scaffolding bigger than the site. |
 | 20 | Copy that would still be true if you swapped the product name | Not about *this* thing. |
 | 21 | **Trivia-hook copy**: a setup, a twist, then a famous name as the payoff ("X can read Y while Z. That is what fooled the TMI-2 operators.") | Borrowed drama; a lecture where a label belongs. Owner flagged 2026-10-12. |
+| 22 | **The demonstrative payoff sentence**: "That is what fooled…", "This is where…", "Here's the thing:" | A short second sentence that points back at the first and announces its significance. Pure LLM cadence. |
+| 23 | **Cute personification**: "hands its heat to", "the water pushes back", "watch the plant answer", "try to save the plant" | Makes machinery into characters to sound vivid; reads as written by no one. |
+| 24 | **Compressed parallel slogans**: "Reactivity in, heat out." | A slogan that rhymes in shape and means nothing. |
 
 ## 3. Checks run
 
@@ -77,6 +81,8 @@ item it keeps.
 | 17 | **PARTIAL** | Split hero, earned by the bleeding board image and its numbered callouts. |
 | 20 | **PARTIAL** | "What you can do here" is generic. |
 | 9–14, 18, 19 | PASS | No glow, no frame or tilt, no social proof, no closing banner, no motion, one-row footer. |
+
+**Owner verdict on v2 (2026-10-12): the pressurizer callout "reads as AI slop".** Re-checked v2 and the agent's own copy-audit rewrites against #22–24: v2 fails #22 (pressurizer callout), #23 ("hands its heat to the turbine") and #24 ("Reactivity in, heat out."); the audit's proposed rewrites fail #23 three times ("the water pushes power back down", "without the two waters ever touching", "try to save the plant"). All are withdrawn. Rule for callouts: the component's name, nothing else.
 
 **Fixes applied in mockup v2:** eyebrows cut to the hero spec line only; slogans rewritten as
 plain statements about this plant; monospace kept for data, version, figure caption and title
