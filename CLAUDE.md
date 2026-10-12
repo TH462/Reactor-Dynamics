@@ -323,6 +323,7 @@ to read everything.
 | **Argue a feature's EDUCATIONAL value (Q2)** | **`Blueprint/CURRICULUM.md`** — what each plant is meant to teach, in four tiers. PWR only. **All four tiers RULED 2026-08-03 and binding for the PWR.** A = 9 couplings; B = 8 evolutions (**list is a subset — a second pass is owed**); C = Core/Covered, Core owes a mission and Covered does not; D = adopt existing. |
 | **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
 | **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
+| **Design anything the owner sees** | **`Blueprint/TASTE_LOG.md`** — log his reactions verbatim; AI-tells list. |
 | **Write or review any player-facing text** | **Checklist steps: `Blueprint/CHECKLIST_WRITING_GUIDE.md`** (2026-09-06, built from two fresh-reader reviews in `Diagnostic/CHECKLIST_REVIEW_2026-09-06_*.md`). Everything else: `Blueprint/STYLE_GUIDE.md`. Both ADVISORY. |
 | **Play the walkthroughs as a fresh-context layman / operator** | `.claude/skills/layman-playthrough/` — no repo access, panel and board only; every claim re-measured before filing. |
 | **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
@@ -1124,8 +1125,7 @@ and `Blueprint/`, `Manuals/`, `CHANGELOG.md` (docs). **Not** source of truth —
 mine these for intent: `terminals/` (raw session logs), `inbox/` (handoff drafts),
 `mcps/`, `node_modules/`, and the `Diagnostic/*.json` dumps (the `.md` reports are
 curated). **Local-only (kept out of the public GitHub repo):** `terminals/`, `mcps/`,
-`inbox/`, `Diagnostic/*.json`, `GO_PUBLIC_CHECKLIST.md`. (**Not** `CLAUDE.md` — it is tracked
-and goes public with the repo, as line 6 says.) The curated
+`inbox/`, `Diagnostic/*.json`, `GO_PUBLIC_CHECKLIST.md`. The curated
 `Diagnostic/*.md` reports ARE published.
 
 **Running the SITE, as opposed to building it: `C:\grok_build\RD_Ops\`** *(owner, 2026-08-08:
