@@ -44,7 +44,11 @@
     }
     </script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="site/site.css">
+    <link rel="stylesheet" href="site/landing.css">
     <!-- Release channel + feature flags (#241). Loaded in <head> so gated copy
          rewrites in the same paint. -->
     <script src="site/channel.js"></script>
@@ -58,7 +62,7 @@
     }(window.RD_CHANNEL || 'dev'));</script>
     <script src="site/flags.js"></script>
 </head>
-<body>
+<body class="lp">
 
 <div class="dev-bar" role="status">
   <strong>TEST BUILD</strong> &mdash; an unstable work in progress, not the released
@@ -68,10 +72,10 @@
 
 <header class="site-header">
   <div class="bar">
-    <a class="brand" href="index.html">Reactor⚛️Dynamics</a>
-    <span class="brand-alpha" title="This is an early alpha build — a work in progress.">ALPHA</span>
+    <a class="brand" href="index.html">Reactor<span>/</span>Dynamics</a>
+    <span class="brand-alpha" title="This is an early alpha build, a work in progress.">ALPHA</span>
     <span class="brand-test" title="This is the unstable test build, not the released site.">TEST</span>
-    <span class="brand-ver" id="brandVer" title="The release this build ships as — see the Changelog."></span>
+    <span class="brand-ver" id="brandVer" title="The release this build ships as. See the Changelog."></span>
     <div class="nav-wrap">
       <button type="button" class="nav-burger" id="navBurger"
               aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">
@@ -79,121 +83,81 @@
       </button>
       <nav class="site-nav" id="siteNav">
       <a href="ui/shell.html?engine=pwr2">Simulator</a>
-      <a href="about.html">About</a>
+      <a href="manuals/index.html">Manual</a>
       <a href="physics.html">Physics</a>
       <a href="roadmap.html">Roadmap</a>
-      <a href="manuals/index.html">Manual</a>
       <a href="download.html">Download</a>
       <a href="changelog.html">Changelog</a>
-      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
+      <a href="about.html">About</a>
+      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">Source</a>
       </nav>
     </div>
   </div>
 </header>
 
 <section class="hero">
-  <!-- ANNOUNCEMENT (OWNER, 2026-09-28: "On the landing page we need something to announce the
-       full walkthroughs are now available. This should be short and concise."). Keyed to the
-       `walkthroughs` flag (stage:'public') and hidden outright when it is off. Remove it once
-       it is no longer news. -->
-  <p class="announce" data-flag="walkthroughs"><span class="announce-tag">NEW</span> Guided walkthroughs now take you through a full plant startup and shutdown.</p>
-  <h1>Run a nuclear power plant<br>from your browser.</h1>
-  <!-- HERO BLURB. Keyed to `walkthroughs`, which is stage:'public' in site/flags.js
-       (#722, 2026-09-12), so what it promises is what the released site actually offers.
-       It keyed on `campaign` until 2026-09-13 (#742) — that flag is stage:'preview', so
-       the public channel read the data-flag-off alternate instead. Any claim added here
-       must rest on a 'public' flag; check site/flags.js before you write one.
-       The "Who it's for" block that stood below this was deleted with #742 (owner:
-       "Its too wordy and i doubt anyone reads it").
-       THE PRIMARY SENTENCE IS THE OWNER'S OWN WORDS, VERBATIM (2026-09-13) — do not
-       re-punctuate or "tighten" it. His version folds the old "Nothing to install — it
-       all runs locally in your browser" clause into "right in your browser"; that
-       sentence is dropped deliberately, not lost. The data-flag-off alternate is the
-       same shape with the walkthrough claim removed, because it is what the site shows
-       when that flag is off and it must not promise them. -->
-  <p class="sub" data-flag="walkthroughs"
-     data-flag-off="Real reactor physics, a whole plant you take from cold shutdown to full power and back right in your browser.">Real reactor physics, with guided walkthroughs that take you from cold shutdown to full power and back right in your browser.</p>
-  <a class="cta" href="ui/shell.html?engine=pwr2">▶&nbsp; Enter the Control Room</a>
-  <div class="alpha-note">🚧 Alpha · desktop or laptop only — not for phones or tablets yet</div>
-  <!-- DEV-ONLY-START — build_site.js deletes this block from every published page.
-       The PWR2 physics-rebuild preview (#479): test_pwr2.html is in NOT_PUBLISHED, so a
-       published link to it would be dead (the builder's dead-link check proves that, which
-       is why this is a STRIP, not a CSS hide). The CSS gate (html[data-channel="dev"],
-       default-hidden like .dev-bar) still guards the local/preview copies. -->
-  <a class="pwr2-dev-link" href="test_pwr2.html">🧪 PWR2 physics rebuild &mdash; dev preview
-  (true values, no instruments)</a>
-  <!-- DEV-ONLY-END -->
-  <div class="hero-shot">
-    <!-- Full PWR control-room board (site/hero.png). onerror collapses the frame
-         if the asset is missing so the page still reads cleanly. -->
-    <img src="site/hero.png" alt="The Reactor Dynamics PWR control-room interface"
-         onerror="this.parentNode.style.display='none'">
+  <div class="left">
+    <div class="tag">SLS-100 &middot; single-loop PWR &middot; <b>100 MWe</b></div>
+    <h1>Run a nuclear power plant from your browser.</h1>
+    <!-- HERO BLURB. Keyed to `walkthroughs` (stage:'public' in site/flags.js). Any claim added
+         here, in the walkthrough link or in the tiles must rest on a 'public' flag; check
+         site/flags.js first. THE PRIMARY SENTENCE IS THE OWNER'S OWN WORDS, VERBATIM
+         (2026-09-13): do not re-punctuate it. The data-flag-off alternate drops the walkthrough
+         claim because it is what the site shows when that flag is off. verify_flags_ui reads
+         `.hero .sub`. -->
+    <p class="sub" data-flag="walkthroughs"
+       data-flag-off="Real reactor physics, a whole plant you take from cold shutdown to full power and back right in your browser.">Real reactor physics, with guided walkthroughs that take you from cold shutdown to full power and back right in your browser.</p>
+    <a class="btn cta" href="ui/shell.html?engine=pwr2"><i></i>Enter the control room</a>
+    <div class="alt" data-flag="walkthroughs"><a href="ui/shell.html?engine=pwr2&amp;mmode=walkthroughs">Start with a walkthrough &rarr;</a></div>
+    <!-- DEV-ONLY-START - build_site.js deletes this block from every published page.
+         The PWR2 physics-rebuild preview (#479): test_pwr2.html is in NOT_PUBLISHED, so a
+         published link to it would be dead. The CSS gate (html[data-channel="dev"]) still
+         guards the local/preview copies. -->
+    <a class="pwr2-dev-link" href="test_pwr2.html">🧪 PWR2 physics rebuild &mdash; dev preview
+    (true values, no instruments)</a>
+    <!-- DEV-ONLY-END -->
+    <div class="ann">
+      <div class="tile lit">Alpha<br>build</div><div class="tile lit">Desktop<br>only</div><div class="tile">No<br>install</div>
+      <div class="tile">Free<br>&amp; open</div><div class="tile">Works<br>offline</div><div class="tile" data-flag="walkthroughs">New: full<br>walkthroughs</div>
+    </div>
   </div>
-  <p class="hero-intro">The live plant is the <strong>SLS-100</strong>, a
-  compact single-loop pressurized water reactor (PWR) simulator (~100&nbsp;MWe) — cold shutdown to full power, with
-  procedures and failures on the same model. Start with
-  <a href="about.html">About</a> for what this is and how to approach it.</p>
-</section>
-
-<section class="section">
-  <h2>What&rsquo;s here</h2>
-  <div class="features">
-    <div class="feature">
-      <h3>Plant operation</h3>
-      <p>Run the board: rods, boron, pressurizer, feed, steam, turbine, and
-      alarms. Learn the order of a startup and how to hold the plant online —
-      the <strong>what</strong> operators do. Free play: every start condition,
-      every control live.</p>
+  <div class="board">
+    <div class="shot">
+      <img src="site/hero.png" width="1915" height="1045" alt="The Reactor Dynamics PWR control-room interface">
+      <span class="ld" style="left:22.4%;--y:63.7%"></span><span class="ld" style="left:39.1%;--y:41.4%"></span><span class="ld" style="left:55%;--y:41.4%"></span>
+      <span class="mk" style="left:22.4%;top:63.7%">1</span><span class="mk" style="left:39.1%;top:41.4%">2</span><span class="mk" style="left:55%;top:41.4%">3</span>
+      <span class="cl" style="left:22.4%"><b>1</b>Core &amp; rods</span><span class="cl" style="left:39.1%"><b>2</b>Pressurizer</span><span class="cl" style="left:55%"><b>3</b>Steam generator</span>
     </div>
-    <div class="feature">
-      <h3>Plant dynamics</h3>
-      <p>Core, primary, steam generator, and turbine are one coupled model. A
-      load change or a trip has consequences you can reason about — the
-      <strong>why</strong> behind the board. Model form and limits are on the
-      <a href="physics.html">Physics</a> page.</p>
-    </div>
-    <div class="feature">
-      <h3>Casualties and recovery</h3>
-      <p>Trips, stuck valves, pump trips, sensor failures, tube leaks, loss of
-      heat sink — inject them yourself and work the recovery. Same plant every
-      session; an easier run is a gentler situation, not a simpler model.</p>
-    </div>
-    <div class="feature">
-      <!-- The fourth card claimed "an instructor watches the board and gates progress
-           through procedures" until 2026-09-13 (#742). There is no instructor — owner:
-           "we dont have an instructor yet". The manual is the honest fourth thing: the
-           `manual` flag is stage:'public' and the control room's Manual button carries
-           no data-flag, so this holds on the released site. Do not name the walkthroughs
-           here; the hero blurb carries them (same directive). -->
-      <h3>Operator&rsquo;s manual</h3>
-      <p>A commercial-format manual set for this plant, open in the control
-      room: controls and indications, normal and emergency procedures, alarm
-      response, setpoints and limits, and a glossary.</p>
-    </div>
+    <ol class="legend"><li><b>1</b>Core &amp; rods</li><li><b>2</b>Pressurizer</li><li><b>3</b>Steam generator</li></ol>
+    <p class="figno">FIG. 1 &mdash; THE SLS-100 BOARD, AT 59 % POWER</p>
   </div>
 </section>
 
-<footer class="site-footer">
-  <div class="inner">
-    <div>Reactor Dynamics is an educational simulation — not engineering
-    software, and no substitute for real operator training.</div>
-    <div style="margin-top: 8px;">Found a bug, or something that does not match
-    plant behavior? <a href="https://github.com/TH462/Reactor-Dynamics/issues"
-    rel="noopener">Open a GitHub issue</a> &mdash; public and tracked, and you can
-    read what is already known before you write. Anything else: <a
-    href="mailto:reactordynamics@gmail.com">reactordynamics@gmail.com</a>.</div>
-    <div class="links">
-      <a href="about.html">About</a>
-      <a href="physics.html">Physics</a>
-      <a href="roadmap.html">Roadmap</a>
-      <a href="manuals/index.html">Manual</a>
-      <a href="changelog.html">Changelog</a>
-      <a href="privacy.html">Privacy</a>
-      <a href="legal.html">Legal</a>
-      <a href="https://github.com/TH462/Reactor-Dynamics" rel="noopener">GitHub</a>
-      <span id="ver" class="mono"></span>
-    </div>
+<section class="strip">
+  <div><h2>Two load changes and two rod moves</h2>
+  <p>Recorded in the simulator, from 50 % power.</p></div>
+  <div class="chart"><img src="site/strip_load_rods.png" width="1820" height="920" alt="Strip chart: reactor power, average coolant temperature, pressure and electrical output through two load changes and two rod moves."></div>
+</section>
+
+<section class="index">
+  <div><h2>In the simulator</h2></div>
+  <div class="rows">
+    <div class="row"><h3>Operate the plant</h3><p>Rods, boron, pressurizer, feed, steam, turbine. Every start condition, every control live.</p><a href="ui/shell.html?engine=pwr2">Free play</a></div>
+    <div class="row"><h3>Learn the dynamics</h3><p>Core, primary, steam generator and turbine are one coupled model. A load change has consequences you can reason about.</p><a href="physics.html">Physics page</a></div>
+    <div class="row"><h3>Casualties</h3><p>Trips, stuck valves, pump trips, tube leaks, loss of heat sink. Inject them and work the recovery.</p><a href="ui/shell.html?engine=pwr2&amp;tab=failures">Failure list</a></div>
+    <div class="row" data-flag="walkthroughs"><h3>Startup and shutdown</h3><p>Guided walkthroughs from cold shutdown to full power and back.</p><a href="ui/shell.html?engine=pwr2&amp;mmode=walkthroughs">Start a walkthrough</a></div>
   </div>
+</section>
+
+<footer class="lp-foot">
+  <div class="tb">
+    <div><label>Title</label><span>Reactor Dynamics, educational PWR simulator</span></div>
+    <div><label>Rev</label><span id="ver"></span></div>
+    <div><label>Sheet</label><span>1 of 1</span></div>
+    <div><label>Drawn</label><span>T. Holt, 2026</span></div>
+    <div><label>License</label><span>AGPL-3.0 / CC BY 4.0</span></div>
+  </div>
+  <div class="fl"><a href="privacy.html">Privacy</a><a href="legal.html">Legal</a><a href="https://github.com/TH462/Reactor-Dynamics/issues" rel="noopener">Report a bug</a><a href="mailto:reactordynamics@gmail.com">Contact</a><span class="note">An educational simulation. Not engineering software, and no substitute for operator training.</span></div>
 </footer>
 
 <script src="site/version.js"></script>

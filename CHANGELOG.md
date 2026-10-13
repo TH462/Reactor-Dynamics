@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — landing page redesign (website only, no version bump)
+
+`index.html` rebuilt to the owner-approved "v3" layout: hero with the SLS-100 board and three component callouts (core and rods, pressurizer, steam generator), a recorded strip chart (`site/strip_load_rods.png`, 50 % power, two load changes and two rod moves), an "In the simulator" index, and a title-block footer. Page CSS is `site/landing.css`; Barlow Condensed, IBM Plex Sans and IBM Plex Mono load from Google Fonts. Every walkthrough claim (blurb, link, row, "New" tile) stays behind the `walkthroughs` flag. The dev-only PWR2 link, telemetry hooks, meta tags and version stamping are unchanged.
+
 ## [Alpha 1.8.4-rc1] — 2026-10-11
 
 ### Changed — board mode-button wording (`exp/selectors`)
