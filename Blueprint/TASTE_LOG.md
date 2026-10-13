@@ -18,6 +18,7 @@ when they disagree, his quote wins.
 
 | Date | Reacting to | His words (verbatim) | Taste it implies |
 |---|---|---|---|
+| 2026-10-13 | Strip-chart options (A load follow, C SGTR, D RCP trip, F TMI-2) | "Let's put a few maneuvers in the main page strip chart image." | One event is not enough: the chart should show the plant answering a sequence of operator actions. |
 | 2026-10-12 | The agent's six reasons the pressurizer label was bad | "Your six reasons the pressurizer line is bad are all partially right. Mostly it reads as AI slop" | The overriding test is whether it SOUNDS machine-written. Specific faults matter less than the voice. See §2 #22–#24. |
 | 2026-10-12 | Agent working the strip-chart captures alone | "Why don't you use some subagents to do some of this work for you?" | Process, not visual: delegate mechanical capture/measurement work; the coordinator should not grind. |
 | 2026-10-12 | Strip-chart options request | "Give me a few examples and options for the strip chart. Enlarge the chart a bit in the sim when screen shorting it and fit 4 plots." | Use the sim's OWN chart as the website artifact, not a redrawn imitation; four traces. |
