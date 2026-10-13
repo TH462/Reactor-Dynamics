@@ -1,10 +1,18 @@
 /* landing.css - index.html only. Loaded AFTER site.css, which still supplies the
  * channel markers (.dev-bar, .brand-test, .pwr2-dev-link) and the burger menu.
  * Nothing here is shared with the other site pages. */
-:root{--lp-bg:#0A0D0F;--lp-panel:#11161A;--lp-rule:#262D34;--lp-text:#E6EAEE;--lp-dim:#8C97A2;--lp-mute:#5C6670;
+:root{--lp-bg:#0A0D0F;--lp-panel:#11161A;--lp-rule:#262D34;--lp-text:#E6EAEE;--lp-dim:#8C97A2;--lp-mute:#8A949E;
 --lp-teal:#5BB3C4;--lp-amber:#D9A441;--lp-green:#46A35E;--g:16px}
 @media (min-width:700px){:root{--g:48px}}
 body.lp{background:var(--lp-bg);color:var(--lp-text);font:16px/1.55 "IBM Plex Sans",ui-sans-serif,"Segoe UI",Roboto,system-ui,sans-serif;overflow-x:hidden}
+/* self-hosted fonts (latin subset, SIL OFL - see site/fonts/OFL-*.txt) */
+@font-face{font-family:"Barlow Condensed";font-weight:500;font-style:normal;font-display:swap;src:url(fonts/barlow-condensed-500.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-style:normal;font-display:swap;src:url(fonts/barlow-condensed-600.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:700;font-style:normal;font-display:swap;src:url(fonts/barlow-condensed-700.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:400;font-style:normal;font-display:swap;src:url(fonts/ibm-plex-sans-400.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:500;font-style:normal;font-display:swap;src:url(fonts/ibm-plex-sans-500.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-weight:400;font-style:normal;font-display:swap;src:url(fonts/ibm-plex-mono-400.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-weight:500;font-style:normal;font-display:swap;src:url(fonts/ibm-plex-mono-500.woff2) format("woff2")}
 /* header */
 .lp .site-header{background:var(--lp-bg);backdrop-filter:none;border-bottom:1px solid var(--lp-rule)}
 .lp .site-header .bar{max-width:none;padding:0 var(--g);height:56px;gap:14px}
@@ -15,9 +23,9 @@ body.lp{background:var(--lp-bg);color:var(--lp-text);font:16px/1.55 "IBM Plex Sa
 .lp .nav-burger{background:var(--lp-panel);border-color:var(--lp-rule)}
 .lp .site-nav{background:var(--lp-panel);border-color:var(--lp-rule)}
 .lp .site-nav a{color:var(--lp-dim)}
-@media (min-width:1000px){
+@media (min-width:1100px){
  .lp .nav-burger{display:none}
- .lp .site-nav{display:flex;flex-direction:row;position:static;min-width:0;background:none;border:0;box-shadow:none;padding:0;gap:26px}
+ .lp .site-nav{display:flex;flex-direction:row;position:static;min-width:0;background:none;border:0;box-shadow:none;padding:0;gap:22px}
  .lp .site-nav a{padding:0;font:500 15px "IBM Plex Sans",sans-serif}
  .lp .site-nav a:hover{background:none;color:var(--lp-text)}
 }
@@ -57,6 +65,10 @@ body.lp{background:var(--lp-bg);color:var(--lp-text);font:16px/1.55 "IBM Plex Sa
  .lp .cl b{color:var(--lp-amber);font-weight:500;margin-right:10px}
  .lp .legend{display:none}
  .lp .figno{position:absolute;left:40px;bottom:0}
+}
+@media (min-width:1200px) and (max-width:1299px){ /* callout 3 would clip at the board edge: drop it to a second row, right-aligned */
+ .lp .cl.cl-r{top:calc(100% + 54px);margin-left:-8px;transform:translateX(-100%);text-align:right}
+ .lp .ld:nth-of-type(3){height:calc(100% - var(--y) + 62px)}
 }
 /* strip chart + index */
 .lp .strip,.lp .index{padding:48px var(--g);border-bottom:1px solid var(--lp-rule);display:grid;grid-template-columns:minmax(0,1fr);gap:28px}

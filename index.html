@@ -44,9 +44,6 @@
     }
     </script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="site/site.css">
     <link rel="stylesheet" href="site/landing.css">
     <!-- Release channel + feature flags (#241). Loaded in <head> so gated copy
@@ -123,10 +120,10 @@
   </div>
   <div class="board">
     <div class="shot">
-      <img src="site/hero.png" width="1915" height="1045" alt="The Reactor Dynamics PWR control-room interface">
+      <img src="site/hero.webp" width="1915" height="1045" alt="The Reactor Dynamics PWR control-room interface">
       <span class="ld" style="left:22.4%;--y:63.7%"></span><span class="ld" style="left:39.1%;--y:41.4%"></span><span class="ld" style="left:55%;--y:41.4%"></span>
       <span class="mk" style="left:22.4%;top:63.7%">1</span><span class="mk" style="left:39.1%;top:41.4%">2</span><span class="mk" style="left:55%;top:41.4%">3</span>
-      <span class="cl" style="left:22.4%"><b>1</b>Core &amp; rods</span><span class="cl" style="left:39.1%"><b>2</b>Pressurizer</span><span class="cl" style="left:55%"><b>3</b>Steam generator</span>
+      <span class="cl" style="left:22.4%"><b>1</b>Core &amp; rods</span><span class="cl" style="left:39.1%"><b>2</b>Pressurizer</span><span class="cl cl-r" style="left:55%"><b>3</b>Steam generator</span>
     </div>
     <ol class="legend"><li><b>1</b>Core &amp; rods</li><li><b>2</b>Pressurizer</li><li><b>3</b>Steam generator</li></ol>
     <p class="figno">FIG. 1 &mdash; THE SLS-100 BOARD, AT 59 % POWER</p>
@@ -136,7 +133,7 @@
 <section class="strip">
   <div><h2>Two load changes and two rod moves</h2>
   <p>Recorded in the simulator, from 50 % power.</p></div>
-  <div class="chart"><img src="site/strip_load_rods.png" width="1820" height="920" alt="Strip chart: reactor power, average coolant temperature, pressure and electrical output through two load changes and two rod moves."></div>
+  <div class="chart"><picture><source media="(max-width:699px)" srcset="site/strip_load_rods_m.png" width="1200" height="1400"><img loading="lazy" src="site/strip_load_rods.png" width="1820" height="920" alt="Strip chart: reactor power, average coolant temperature, pressure and electrical output through two load changes and two rod moves."></picture></div>
 </section>
 
 <section class="index">
@@ -144,7 +141,7 @@
   <div class="rows">
     <div class="row"><h3>Operate the plant</h3><p>Rods, boron, pressurizer, feed, steam, turbine. Every start condition, every control live.</p><a href="ui/shell.html?engine=pwr2">Free play</a></div>
     <div class="row"><h3>Learn the dynamics</h3><p>Core, primary, steam generator and turbine are one coupled model. A load change has consequences you can reason about.</p><a href="physics.html">Physics page</a></div>
-    <div class="row"><h3>Casualties</h3><p>Trips, stuck valves, pump trips, tube leaks, loss of heat sink. Inject them and work the recovery.</p><a href="ui/shell.html?engine=pwr2&amp;tab=failures">Failure list</a></div>
+    <div class="row"><h3>Casualties</h3><p>Trips, stuck valves, pump trips, tube leaks, loss of heat sink. Inject them and work the recovery.</p><a href="manuals/07-abnormal-emergency.html">Casualty procedures</a></div>
     <div class="row" data-flag="walkthroughs"><h3>Startup and shutdown</h3><p>Guided walkthroughs from cold shutdown to full power and back.</p><a href="ui/shell.html?engine=pwr2&amp;mmode=walkthroughs">Start a walkthrough</a></div>
   </div>
 </section>
