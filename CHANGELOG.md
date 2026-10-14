@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — instructor callout no longer fades on hover
+
+The floating walkthrough/opener card stays fully opaque under the pointer (OWNER 2026-10-13: "they also shouldnt go clear when moused over"). The 25 % hover fade and its `ico-held` resting-pointer guard are removed; `verify_opener_callout` and `verify_tmi_callout` assert opacity 1.
+
 ### Changed — landing page redesign (website only, no version bump)
 
 `index.html` rebuilt to the owner-approved "v3" layout: hero with the SLS-100 board and three component callouts (core and rods, pressurizer, steam generator), a recorded strip chart (`site/strip_load_rods.png`, 50 % power, two load changes and two rod moves), an "In the simulator" index, and a title-block footer. Page CSS is `site/landing.css`; Barlow Condensed, IBM Plex Sans and IBM Plex Mono are now self-hosted (`site/fonts/`, latin woff2, SIL OFL licences alongside; no third-party font request). Review fixes: casualties row links the web manual's abnormal/emergency chapter (the `?tab=failures` deep link never opened the tab); desktop nav breakpoint 1000 to 1100 px (no horizontal scroll 390-1440); steam-generator callout no longer clips at 1200-1299 px; muted text raised to 6:1 contrast; strip chart re-captured without the sim toolbar plus a 600x700 phone variant via `<picture>`, lazy-loaded; hero shown as WebP (PNG kept for og:image). Later pass: strip-chart headline and caption state the finding, with event labels under the plot at each load change and rod move (FIG. 2); hero headline breaks by phrase; SVG favicon (`site/favicon.svg`, amber slash) on `index.html` only. Every walkthrough claim (blurb, link, row, "New" tile) stays behind the `walkthroughs` flag. The dev-only PWR2 link, telemetry hooks, meta tags and version stamping are unchanged.

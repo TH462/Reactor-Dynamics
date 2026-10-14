@@ -8,7 +8,7 @@
  *   1. DEFAULT UNCHANGED — no flag, no bubble; the chat transcript is where it was.
  *   2. PLACEMENT (iteration 2, owner: "it blocks part of the diagram") — on every beat the card is
  *      on-screen and covers NONE of the six top tiles, the highlighted control's panel, or any item
- *      the line points at; a leader line runs to the anchor. Hovering the card fades it to ~25 %.
+ *      the line points at; a leader line runs to the anchor. Hovering the card leaves it fully opaque (OWNER 2026-10-13).
  *   3. COMPACT — an ask shows its action sentence only (.ico-act), the rest behind "why?"; a watch
  *      line is an OBSERVATION callout of ONE sentence (data-kind="observe", no .ico-act).
  *   4. BUTTONS WORK FROM THE BUBBLE — Ready starts the load ask, Show me does the step (o1_help),
@@ -168,15 +168,19 @@ var BUB = '#instrCallout';
     ck(tag + ' o1_load: "why?" opens the explanation, and the card is still clear of the top tiles and the panel',
        /less steam/.test(g1w.why) && g1w.topHit === 0 && g1w.overlap === 0, JSON.stringify([g1w.why, g1w.topHit, g1w.overlap]));
     await page.click(BUB + ' [data-ico-why]').catch(function () {});
-    // HOVER FADE: over the card it fades so the board under it reads; over a button it stays solid.
+    // NO HOVER FADE (OWNER 2026-10-13: "they also shouldnt go clear when moused over"): solid over the text, over a button, and while moving on the card.
     await page.hover(BUB + ' .ico-act').catch(function () {});
     await page.waitForTimeout(400);
     var opCard = await page.evaluate(function () { return +getComputedStyle(document.querySelector('#instrCallout')).opacity; });
     await page.hover(BUB + ' [data-chatbtn="show_me"]').catch(function () {});
     await page.waitForTimeout(400);
     var opBtn = await page.evaluate(function () { return +getComputedStyle(document.querySelector('#instrCallout')).opacity; });
+    var tb = await page.evaluate(function () { var q = document.querySelector('#instrCallout .ico-act').getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; });
+    await page.mouse.move(tb.x, tb.y); await page.mouse.move(tb.x + 20, tb.y, { steps: 3 });
+    await page.waitForTimeout(400);
+    var opMove = await page.evaluate(function () { return +getComputedStyle(document.querySelector('#instrCallout')).opacity; });
     await page.mouse.move(2, 2);
-    ck(tag + ' hover: the card fades to ~25 % over its text, stays solid over a button', opCard <= 0.3 && opBtn === 1, 'card ' + opCard + ', button ' + opBtn);
+    ck(tag + ' hover: the card stays fully opaque over its text, over a button, and while the pointer moves on it', opCard === 1 && opBtn === 1 && opMove === 1, 'card ' + opCard + ', button ' + opBtn + ', moving ' + opMove);
     if (v === 0) {
       await page.click(BUB + ' [data-chatbtn="show_me"]').catch(function () {});
       ck(tag + ': Show me clicked in the bubble does the step (o1_help fires)', await fired(page, 'o1_help', 30000));

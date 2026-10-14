@@ -3521,19 +3521,18 @@ select.num-input { width: auto; }
    what it is about. Iteration 2 (same day): "it blocks part of the diagram" -> compact (action
    line only, "why?" behind a click), placed in low-value board space; "a light grey … background
    … so it doesn't look like part of the plant" -> a LIGHT card with dark text on the dark board.
-   Hovering the card fades it so the board under it reads; a button under the cursor stays solid.
+   The card stays solid under the pointer (OWNER 2026-10-13: "they also shouldnt go clear when moused over").
    Off by default (?callout=1, Settings). Below the modals (200). */
 .instr-callout {
   --ico-bg: #dfe4ea; --ico-ink: #141a21; --ico-sub: #4a5562; --ico-edge: #8e9cab; --ico-link: #1f5fa8;
   position: fixed; z-index: 55; box-sizing: border-box; min-width: 200px; max-width: 340px;
   background: var(--ico-bg); color: var(--ico-ink); border: 1px solid var(--ico-edge); border-radius: 8px;
   padding: 6px 10px 8px; box-shadow: 0 4px 16px rgba(0,0,0,.5);
-  transition: left .2s ease, top .2s ease, opacity .15s ease;
+  transition: left .2s ease, top .2s ease;
 }
 .instr-callout[hidden] { display: none; }
 /* OBSERVATION: what to look at, not what to do — lighter still, no weight. */
 .instr-callout[data-kind="observe"] { --ico-bg: #eef1f4; border-style: dashed; }
-.instr-callout:not(.ico-held):hover:not(:has(button:hover)) { opacity: .25; }   /* ico-held: drawn under a resting pointer (app.js) */
 .ico-arrow { display: none; }
 .ico-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
 .ico-who { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ico-sub); }

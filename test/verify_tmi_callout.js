@@ -13,7 +13,7 @@
  *   3. THE COLUMN is a step-progress list (one row per step, the active one marked) and the
  *      step's prose card is not drawn.
  *   4. BUTTONS WORK FROM THE CARD — Continue on a pause step advances the leg; "why?" opens the
- *      explanation on an action step; History lists the morning so far.
+ *      explanation on an action step; History lists the morning so far; the card never fades on hover (OWNER 2026-10-13).
  *   5. DEFAULT ELSEWHERE IS UNCHANGED — another walkthrough draws no card and its step card shows;
  *      `?callout=0` (the player's Off) on TMI draws no card and the step card shows.
  *
@@ -211,21 +211,21 @@ var BUB = '#instrCallout';
       await page.click(BUB + ' [data-ico-fwd="[data-ckl-check]"]').catch(function () {});
       var moved = await page.waitForFunction(function (k) { return RD.__dev.service().instructor.checklist.idx === k + 1; }, pIdx, { timeout: 8000 }).then(function () { return true; }).catch(function () { return false; });
       ck(tag + ': Continue clicked in the card advances a pause step (step ' + (pIdx + 1) + ')', pIdx >= 0 && moved);
-      /* THE NEXT CARD IS DRAWN UNDER THE POINTER THAT PRESSED CONTINUE and must not come up faded
-       * (review 2026-10-10: steps 5 and 9 rendered at 25 % on a real run). Solid while the pointer
-       * rests on it; the hover fade still works once the pointer has left and come back. */
+      /* NO HOVER FADE (OWNER 2026-10-13: "they also shouldnt go clear when moused over"). The next
+       * card is drawn under the pointer that pressed Continue; it must be solid at rest, while the
+       * pointer moves on it, and after leaving and returning. */
       await page.waitForTimeout(700);
       var tc = await page.evaluate(function () { var t = document.querySelector('#instrCallout .ico-say, #instrCallout .ico-act'); if (!t) return null; var q = t.getBoundingClientRect(); return { x: q.left + q.width / 2, y: q.top + q.height / 2 }; });
       var opac = async function () { await page.waitForTimeout(450); return page.evaluate(function () { return +getComputedStyle(document.querySelector('#instrCallout')).opacity; }); };
       var opA = -1, opB = -1, opC = -1;
       if (tc) {
         await page.mouse.move(tc.x, tc.y); opA = await opac();
-        await page.mouse.move(tc.x + 30, tc.y, { steps: 3 }); opC = await opac();   // a hover that MOVES on the card fades it
+        await page.mouse.move(tc.x + 30, tc.y, { steps: 3 }); opC = await opac();   // a hover that MOVES on the card
         await page.mouse.move(2, 2); await page.mouse.move(tc.x, tc.y); opB = await opac();
         await page.mouse.move(2, 2);
       }
-      ck(tag + ': the card Continue just drew is solid under the resting pointer; moving on it, or hovering again after leaving, still fades it',
-         opA > 0.9 && opB > 0 && opB < 0.5 && opC > 0 && opC < 0.5, 'opacity at rest ' + opA + ', moving on it ' + opC + ', after leave+return ' + opB);
+      ck(tag + ': the card stays fully opaque under the pointer - at rest, moving on it, and after leaving and returning',
+         opA === 1 && opB === 1 && opC === 1, 'opacity at rest ' + opA + ', moving on it ' + opC + ', after leave+return ' + opB);
     }
     await S.ctx.close();
   }

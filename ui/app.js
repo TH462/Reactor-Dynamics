@@ -4230,18 +4230,6 @@
       '<div class="ico-head"><span class="ico-who">Instructor</span>' +
       '<button type="button" class="ico-hist-btn" data-ico-hist="1" data-scanner-hint="Show or hide everything the instructor has said so far.">History</button></div>' +
       '<div class="ico-hist" hidden></div><div class="ico-body"></div><div class="ico-btns"></div>';
-    /* A NEW STEP DRAWN UNDER A RESTING POINTER IS NOT A HOVER (TMI quality pass, 2026-10-10). The
-     * fade-on-hover lets the player peek at the board; but Continue is IN the card, so the next
-     * step's card usually lands under the pointer that just pressed it and was drawn at 25 %.
-     * `ico-held` (set when the step/line group changes) holds it solid until the pointer leaves. */
-    el.addEventListener('mouseleave', function () { el.classList.remove('ico-held'); });
-    // ...or until it MOVES on the card (a real hover): the first move only records where it rests
-    el.addEventListener('mousemove', function (e) {
-      if (!el.classList.contains('ico-held')) return;
-      var h = callout.heldAt;
-      if (!h) { callout.heldAt = { x: e.clientX, y: e.clientY }; return; }
-      if (Math.abs(e.clientX - h.x) + Math.abs(e.clientY - h.y) > 12) el.classList.remove('ico-held');
-    });
     el.addEventListener('click', function (e) {
       if (e.target.closest('[data-ico-why]')) { callout.whyOpen = !callout.whyOpen; callout.key = null; calloutSync(); return; }
       if (e.target.closest('[data-ico-hist]')) {
@@ -4314,7 +4302,7 @@
       // observation shows ONE sentence (the "Watch …" one, else the first that is not a clock
       // note); the rest of it is in History.
       var gk = JSON.stringify(grp.map(function (e) { return e.t; }));
-      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; el.classList.add('ico-held'); callout.heldAt = null; }
+      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
       var body = '';
       if (acts.length) {
         body += '<div class="ico-act"' + ptAttr + '>' + acts.map(mesc).join(' ') + '</div>';
@@ -4581,7 +4569,7 @@
         : (spAch != null && spAch < spCur / 2 ? ' · actual ' + (spAch >= 100 ? Math.round(spAch / 10) * 10 : Math.max(1, Math.round(spAch))) + '×' : ''));
     }
     var gk = pr.id + '#' + idx;
-    if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; el.classList.add('ico-held'); callout.heldAt = null; }
+    if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
     var key = JSON.stringify(['ckl', gk, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
       !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen]);
     if (key === callout.key) return;
