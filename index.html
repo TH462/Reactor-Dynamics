@@ -43,7 +43,7 @@
       "license": "https://www.gnu.org/licenses/agpl-3.0.html"
     }
     </script>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚛️</text></svg>">
+    <link rel="icon" type="image/svg+xml" href="site/favicon.svg">
     <link rel="stylesheet" href="site/site.css">
     <link rel="stylesheet" href="site/landing.css">
     <!-- Release channel + feature flags (#241). Loaded in <head> so gated copy
@@ -95,7 +95,7 @@
 <section class="hero">
   <div class="left">
     <div class="tag">SLS-100 &middot; single-loop PWR &middot; <b>100 MWe</b></div>
-    <h1>Run a nuclear power plant from your browser.</h1>
+    <h1>Run a nuclear<br>power plant<br>from your<br>browser.</h1>
     <!-- HERO BLURB. Keyed to `walkthroughs` (stage:'public' in site/flags.js). Any claim added
          here, in the walkthrough link or in the tiles must rest on a 'public' flag; check
          site/flags.js first. THE PRIMARY SENTENCE IS THE OWNER'S OWN WORDS, VERBATIM
@@ -131,16 +131,20 @@
 </section>
 
 <section class="strip">
-  <div><h2>Reactor power follows turbine load without a rod moving</h2>
-  <p>Two load changes and two rod moves, recorded in the simulator from 50 % power.</p></div>
-  <div class="chart"><picture><source media="(max-width:699px)" srcset="site/strip_load_rods_m.png" width="1200" height="1400"><img loading="lazy" src="site/strip_load_rods.png" width="1820" height="920" alt="Strip chart: reactor power, average coolant temperature, pressure and electrical output through two load changes and two rod moves."></picture></div>
+  <div><h2>Raise turbine load 25 MWe and reactor power climbs 25 points before you touch a rod.</h2>
+  <p>Recorded in the simulator from 50 % power: load 50&rarr;75 MWe, rods out 20 steps, load 75&rarr;40 MWe, rods in 20 steps. Average coolant temperature (Tavg) falls 24 &deg;F on the way up; pressure spikes to 2302 psi on the way down.</p></div>
+  <div class="chart"><picture><source media="(max-width:699px)" srcset="site/strip_load_rods_m.png" width="1200" height="1366"><img loading="lazy" src="site/strip_load_rods.png" width="1820" height="886" alt="Strip chart: reactor power, average coolant temperature, pressure and electrical output through two load changes and two rod moves."></picture>
+    <div class="ev" aria-hidden="true"><span style="left:4.2%"><b>1</b><i>Load 50&rarr;75 MWe</i></span><span style="left:22.8%"><b>2</b><i>Rods out 20 steps</i></span><span style="left:42.9%"><b>3</b><i>Load 75&rarr;40 MWe</i></span><span style="left:64.3%"><b>4</b><i>Rods in 20 steps</i></span></div>
+    <ol class="evlist"><li>Load 50&rarr;75 MWe</li><li>Rods out 20 steps</li><li>Load 75&rarr;40 MWe</li><li>Rods in 20 steps</li></ol>
+    <p class="figcap">FIG. 2 &mdash; STRIP CHART, 30 MIN FROM 50 % POWER</p>
+  </div>
 </section>
 
 <section class="index">
   <div><h2>In the simulator</h2></div>
   <div class="rows">
-    <div class="row"><h3>Operate the plant</h3><p>Rods, boron, pressurizer, feed, steam, turbine. Every start condition, every control live.</p><a href="ui/shell.html?engine=pwr2">Free play</a></div>
-    <div class="row"><h3>Learn the dynamics</h3><p>Core, primary, steam generator and turbine are one coupled model. A load change has consequences you can reason about.</p><a href="physics.html">Physics page</a></div>
+    <div class="row"><h3>Operate the plant</h3><p>Rods, boron, pressurizer, feed, steam, turbine.</p><a href="ui/shell.html?engine=pwr2">Free play</a></div>
+    <div class="row"><h3>Learn the dynamics</h3><p>Core, primary, steam generator and turbine are one coupled model, so a load change moves power, coolant temperature and pressure together.</p><a href="physics.html">Physics page</a></div>
     <div class="row"><h3>Casualties</h3><p>Trips, stuck valves, pump trips, tube leaks, loss of heat sink. Inject them and work the recovery.</p><a href="manuals/07-abnormal-emergency.html">Casualty procedures</a></div>
     <div class="row" data-flag="walkthroughs"><h3>Startup and shutdown</h3><p>Guided walkthroughs from cold shutdown to full power and back.</p><a href="ui/shell.html?engine=pwr2&amp;mmode=walkthroughs">Start a walkthrough</a></div>
   </div>

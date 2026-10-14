@@ -34,7 +34,7 @@ body.lp{background:var(--lp-bg);color:var(--lp-text);font:16px/1.55 "IBM Plex Sa
 .lp .left{padding:48px var(--g) 32px;display:flex;flex-direction:column;min-width:0}
 .lp .tag{font:500 12px "IBM Plex Mono",ui-monospace,monospace;color:var(--lp-dim);letter-spacing:1.5px;text-transform:uppercase}
 .lp .tag b{color:var(--lp-amber);font-weight:500}
-.lp .hero h1{font:600 clamp(44px,13vw,64px)/.98 "Barlow Condensed",system-ui,sans-serif;text-transform:uppercase;letter-spacing:.5px;margin:22px 0}
+.lp .hero h1{font:600 clamp(44px,13vw,60px)/.98 "Barlow Condensed",system-ui,sans-serif;text-transform:uppercase;letter-spacing:.5px;margin:22px 0}
 .lp .hero .sub{color:var(--lp-dim);font-size:17px;max-width:360px;margin:0 0 34px}
 .lp .btn{display:inline-flex;align-items:center;gap:14px;border:2px solid var(--lp-green);color:#9FE3B0;background:#0F1F14;
  font:600 19px "Barlow Condensed",system-ui,sans-serif;letter-spacing:2.5px;text-transform:uppercase;padding:14px 22px;border-radius:2px;width:max-content;max-width:100%;box-shadow:inset 0 0 0 1px #0A0D0F,0 0 0 1px #1d3a25;transform:none}
@@ -76,6 +76,12 @@ body.lp{background:var(--lp-bg);color:var(--lp-text);font:16px/1.55 "IBM Plex Sa
 .lp .strip p{color:var(--lp-dim);font-size:15px;margin:0}
 .lp .chart{background:var(--lp-panel);border:1px solid var(--lp-rule)}
 .lp .chart img{display:block;width:100%;height:auto}
+.lp .ev{position:relative;height:34px;margin:0}
+.lp .ev span{position:absolute;top:0;padding:10px 0 0 6px;border-left:1px solid var(--lp-amber);height:34px;white-space:nowrap;font:500 10.5px "IBM Plex Mono",ui-monospace,monospace;color:var(--lp-dim);letter-spacing:.3px;text-transform:uppercase;box-sizing:border-box}
+.lp .ev i{font-style:normal}.lp .ev b{display:none;color:var(--lp-amber);font-weight:500}
+.lp .evlist{display:none;margin:0;padding:0 var(--g) 10px 34px;font:500 11px "IBM Plex Mono",ui-monospace,monospace;color:var(--lp-dim);text-transform:uppercase;letter-spacing:.5px;line-height:1.8}
+.lp .figcap{margin:0;padding:8px 12px 12px;font:500 11px "IBM Plex Mono",ui-monospace,monospace;color:var(--lp-mute);letter-spacing:1px}
+@media (max-width:699px){.lp .ev i{display:none}.lp .ev b{display:inline}.lp .evlist{display:block}}
 .lp .rows{border-top:1px solid var(--lp-rule)}
 .lp .row{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:20px 0;border-bottom:1px solid var(--lp-rule)}
 .lp .row h3{font:600 22px "Barlow Condensed",system-ui,sans-serif;text-transform:uppercase;letter-spacing:1px;margin:0;color:var(--lp-text)}
