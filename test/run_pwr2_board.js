@@ -1153,10 +1153,24 @@ function runSuite(quietRec) {
     'resp ' + JSON.stringify(rReSI && rReSI.reason) + ', si ' + e3.pt.si);
   w3.cmd({ action: 'set_hpi', active: false }); w3.tick(2);
   var rRe2 = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
+  /* SPLIT 2026-10-14 (the SI re-arm fix). This check asserted the press takes AND stays
+   * (scrammed false), which held only because the SI reset's re-arm block outlived the RPS
+   * reset while an SI signal still stood. WTSM 12.3.2.3 (ML11223A310): after the SI reset,
+   * automatic SI is disabled "until ... (permissive P-4) is cleared by closing the reactor trip
+   * breakers ... Otherwise ... the actuation sequence restarts." So the press is still ACCEPTED
+   * (not a wedge — the #509 concern), and the standing signal then restarts SI, which re-trips.
+   * There is no breaker-closing exit while containment stands over 3.5 psig: that SI channel is
+   * unblockable (WTSM 12.3), so this fixture's way out is the plant recovering, not a button. */
   q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) and resetting SI releases ' +
-    'the permissive and the same press then takes',
-    (rRe2 == null || !rRe2.type) && w3.snap().rps_state.scrammed === false,
-    'resp ' + JSON.stringify(rRe2) + ', scrammed ' + w3.snap().rps_state.scrammed);
+    'the permissive and the same press is ACCEPTED',
+    (rRe2 == null || !rRe2.type),
+    'resp ' + JSON.stringify(rRe2));
+  q('...but with an SI signal still STANDING the breakers closing restart SI, which re-trips ' +
+    '(WTSM 12.3.2.3: "Otherwise ... the actuation sequence restarts")',
+    e3.pt.si_live === true && e3.pt.si === true && e3.pt.reactor_trip === true &&
+    e3.pt.trip_cause === 'safety_injection',
+    'si_live ' + e3.pt.si_live + ', si ' + e3.pt.si + ' (' + e3.pt.si_cause + '), trip ' +
+    e3.pt.trip_cause);
 
   /* items 1/5 recovery: manual scram -> blocked during the drop -> accepted at the seat */
   var w4 = mkWorld();

@@ -787,7 +787,7 @@
       /* THE RESET LOGIC (#512) [sourced — WTSM 12.3.2.3, ML11223A310]: the reset circuit's
        * time-delay relay ("usually 45 - 60 sec") gates the operator's reset; *_t is each
        * latch's age against it. After a reset "all automatic SI actuation signals are
-       * blocked" — *_rearm_block — re-armed here when the live signal clears (the manual
+       * blocked" — *_rearm_block — re-armed by P-4 clearing for SI (2026-10-14, WTSM 12.3.2.3), by the live signal clearing for the rest (the manual
        * re-actuation pushbutton that also re-arms the real circuit is declared unmodeled;
        * the board's START starts pumps directly). */
       si_t: 0, afas_t: 0, fwi_t: 0,
@@ -1029,8 +1029,8 @@
 
     /* LATCH. A reactor trip and a safety injection both latch in a real plant until reset.
      * The SI latch honours the reset's re-arm block (#512) [sourced — after an SI reset
-     * "all automatic SI actuation signals are blocked"]; the block clears below when the
-     * live signal drops. */
+     * "all automatic SI actuation signals are blocked"]; the SI block clears below when
+     * P-4 clears (RPS reset), the others when their live signal drops. */
     if (anyRps && !pr.reactor_trip) { pr.reactor_trip = true; pr.trip_cause = anyRps; }
     if (anyEsfas && !pr.si && !pr.si_rearm_block) { pr.si = true; pr.si_cause = anyEsfas; }
 
@@ -1123,8 +1123,18 @@
     pr.afas_t = (pr.afas_mdafw || pr.afas_tdafw) ? pr.afas_t + dtT : 0;
     pr.fwi_t  = pr.fwi ? pr.fwi_t + dtT : 0;
     pr.cse_t  = pr.cse ? (pr.cse_t || 0) + dtT : 0;
-    /* the re-arm blocks clear when the live signal drops — a recovered plant re-arms */
-    if (!pr.si_live) pr.si_rearm_block = false;
+    /* THE SI RE-ARM CLEARS ON P-4, NOT ON THE SIGNAL (2026-10-14) [sourced — WTSM 12.3.2.3,
+     * ML11223A310]: "After the control room operator resets the SI actuation, all automatic SI
+     * actuation signals are disabled until the control room operator manually initiates an SI
+     * actuation or until the reactor trip input to the reset circuit (permissive P-4) is
+     * cleared by closing the reactor trip breakers." Manual SI is unmodeled, so the RPS reset
+     * (reactor_trip false) is the one re-arm. It used to clear when `si_live` dropped — and
+     * `si_live` is the DELAYED signal, so ONE noise sample under the setpoint zeroed the 2.0 s
+     * hold, cleared the block, and the still-present signal re-latched SI 2.0 s later with TRUE
+     * containment 3.83-3.99 psig on the way down (MEASURED, fixture, sigma 0.001 MPa, 5 seeds).
+     * Closing the breakers on a standing signal restarts SI next step — the source's own
+     * warning ("Otherwise ... the actuation sequence restarts"). AFAS/FWI/CSE keep the old law. */
+    if (!pr.reactor_trip) pr.si_rearm_block = false;
     if (!pr.afas_mdafw_live && !pr.afas_tdafw_live) pr.afas_rearm_block = false;
     if (!pr.fwi_live) pr.fwi_rearm_block = false;
     if (!pr.cse_live) pr.cse_rearm_block = false;

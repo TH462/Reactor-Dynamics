@@ -1148,8 +1148,20 @@ function runSuite(SH, rec, quiet, only) {
                 kQ.rpsResetBlock(eQ.getInstruments()) === null && facReset(eQ) === null;
        })(), 'blocked -> released, reset accepted');
     ridek(eQ, kQ, 5);
-    ck('...and it STAYS reset — the pre-fix accepted reset re-latched within one protection step',
-       eQ.eng.pt.reactor_trip === false, 'latch ' + eQ.eng.pt.reactor_trip + ' 5 s on');
+    /* REWRITTEN 2026-10-14 (the SI re-arm fix). This check read "...and it STAYS reset", and
+     * held only because the SI reset's re-arm block survived the RPS reset while the SI signal
+     * still stood (the large break keeps pressure under the SI setpoint here). The source says
+     * the opposite: "all automatic SI actuation signals are disabled until ... (permissive P-4)
+     * is cleared by closing the reactor trip breakers. Before closing the reactor trip breakers,
+     * the operator should ensure that all SI actuation signals have cleared. Otherwise ... the
+     * actuation sequence restarts" (WTSM 12.3.2.3, ML11223A310). Red on the old law (si false,
+     * trip false); the #800 refusal-while-latched claim is the check two above, unchanged. */
+    ck('...and closing the breakers on a STANDING SI signal restarts SI, which re-trips the ' +
+       'reactor (WTSM 12.3.2.3: "Otherwise ... the actuation sequence restarts")',
+       eQ.eng.pt.si_live === true && eQ.eng.pt.si === true && eQ.eng.pt.reactor_trip === true &&
+       eQ.eng.pt.trip_cause === 'safety_injection',
+       'si_live ' + eQ.eng.pt.si_live + ', si ' + eQ.eng.pt.si + ' (' + eQ.eng.pt.si_cause +
+       '), trip ' + eQ.eng.pt.reactor_trip + ' (' + eQ.eng.pt.trip_cause + ') 5 s on');
   })();
 
   /* ---- 1e-ii. THE AUX FEED COMMAND SURFACE (#541, #562) -------------------------------------

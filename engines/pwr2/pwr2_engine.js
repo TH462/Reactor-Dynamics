@@ -1222,7 +1222,7 @@
         break;
       /* THE PER-SYSTEM RESETS (#512). Each clears one function's latch and sets its
        * RE-ARM BLOCK [sourced — after an SI reset "all automatic SI actuation signals are
-       * blocked"; the block clears in pwr2_protection when the live signal drops]. WHEN a
+       * blocked"; the SI block clears in pwr2_protection when P-4 clears, the others when their live signal drops]. WHEN a
        * reset is permitted (the 45-60 s time-delay relay + P-4) is the SHELL's, read off
        * pt.*_t (HR5 shape: the doors stay dumb). */
       case 'reset_si':

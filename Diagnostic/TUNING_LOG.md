@@ -29,6 +29,41 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-10-14-develop-a (SI restarts by itself after its reset — the re-arm law, not tick ordering)
+
+**Filed claim (INHERITED, `inbox/670_redesign/si_relatch.md`):** after SI is reset and stopped, injection restarts by itself as containment pressure falls back through ~3.82 psig. The suspected cause was one-tick ordering: the re-arm block clears on the live signal while the delayed trip signal still asserts.
+
+**The ordering hypothesis is REFUTED, and the symptom is CONFIRMED.**
+- `si_live` IS the delayed `tripping` signal (`pwr2_protection.js`, `pr.si_live = !!anyEsfas`). The live signal and the latch cannot disagree inside one step.
+- The real defect is the re-arm law. The block cleared whenever `si_live` dropped, and the 2.0 s continuous hold resets on ONE sample under the setpoint. The containment instrument's sigma is 0.001 MPa (0.145 psi). So on a falling pressure still above 3.5 psig, a single noise dip cleared the block, and 2.0 s later the still-standing signal re-latched SI.
+- MEASURED in a protection-only fixture (rise to 6 psig, reset at 120 s, fall at 0.006 psi/s, 5 seeds): the block cleared at true containment pressure 3.83–3.99 psig and SI re-latched 2.0 s later. With sigma 0 the block cleared at exactly 3.500 psig and nothing re-latched.
+
+**Source:** WTSM 12.3.2.3 (ML11223A310), the text after the manual-SI paragraph:
+> "After the control room operator resets the SI actuation, all automatic SI actuation signals are disabled until the control room operator manually initiates an SI actuation or until the reactor trip input to the reset circuit (permissive P-4) is cleared by closing the reactor trip breakers. Before closing the reactor trip breakers, the operator should ensure that all SI actuation signals have cleared. Otherwise, when the control room operator closes the reactor trip breakers and removes the reset signal, the actuation sequence restarts."
+
+The #512 build (PWR2_VALIDATION §81) quoted the first half and chose "a recovered plant re-arms". That clear condition was an agent's choice, with no owner ruling behind it.
+
+**Fix:** one line. The SI block clears on `!pr.reactor_trip` (P-4 cleared by the RPS reset). Manual SI is still unmodeled. AFW, feedwater isolation and containment spray keep the live-signal re-arm. Their flicker has the same shape, but none of them is in this source paragraph, so they were not changed.
+
+**Gates:**
+- `run_pwr2_protection` 160 → 163. The new SI RESET group:
+  - a one-sample dip does not re-arm;
+  - a clearing signal followed by another channel does not actuate while P-4 stands;
+  - after P-4 clears, a fresh containment assertion latches with cause `si_hi_ctmt_press`.
+- Mutations 88/88. The old law reddens 2 checks; "never re-arms" reddens 1.
+- `run_pwr2_shell` 205/205 after ONE rewritten check. "...and it STAYS reset" held only because the block survived an RPS reset while `si_lo_pzr_press` still stood on a large break. The source says the sequence restarts, and it now does: `si_live` true, SI re-latched, re-trip cause `safety_injection`. The check read reactor_trip false on the old law, so the new form is red there. The #800 refusal-while-latched check is unchanged.
+- `run_pwr2_board` 110 → 111. "NOT A WEDGE" was the same stale shape, so it is split into two checks: the RPS reset is still ACCEPTED, and then the standing `si_lo_pzr_press` restarts SI, which re-trips. A third check was tried and dropped: block the SI signal too, then reset. It cannot pass, because containment SI is unblockable and still stands on that break. The way out there is the plant recovering, not a button.
+- `run_checklist_pwr2` still 254/2. That is the tracked #588 red on TMI steps 10 and 11, unchanged.
+- Green: `run_pwr2_*` (all), `run_checklist_pwr2_b`, `run_walkthrough_routes` A/B/C, `verify_tmi_callout`, `run_procedures_stack`, `run_procedures_chain`, `run_checklist`, `run_meltdown_stack`, `run_reachability`.
+
+**TMI-2 walkthrough, literal typical route** (live checklist; Continue 3 s after it lights; refused commands retried every 15 s; seed 42; scratch driver; same route on the old and new tree):
+- Step 9 done at 55.7 min: 836 psia, inventory 23.6 %, subcooling −52 °F.
+- Step 10 done at 59.8 min, block valve closed: 849 psia (834 psig, above 750). Tailpipe cooled. It passes WITHOUT any SI restart, on both trees.
+- Step 11: START at 59.9 min. Pressure 1,021–1,038 psia for 80 min, inventory 23.6 → 106 %. Done at 156.5 min.
+- Step 12 done at 156.8 min. Complete.
+- Old tree: SI re-latched at 139.9 min at 3.98 psig containment (cause `si_hi_ctmt_press`). HHSI was already running from the step-11 START, so nothing visible changed. New tree: no re-latch. Step timings are identical.
+- The filed "step 10 passes on the restart" and the T+05:27 never-press-OFF restart were NOT reproduced on this route.
+
 ## Session log — 2026-10-02-develop-a (#818 package B: manual + site copy pass; the plant changes of package D recorded)
 
 All numbers MEASURED on `68b73e31`, `node test/measure_stack.js --plant=pwr2`, full stack, `hot_full_power`, 10 plant-minutes settled unless noted.

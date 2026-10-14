@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — safety injection no longer restarts by itself after the operator resets it
+
+After an SI reset, automatic SI now stays disabled until the reactor trip is reset (P-4 clears), per WTSM 12.3.2.3 (ML11223A310): "all automatic SI actuation signals are disabled until the control room operator manually initiates an SI actuation or until ... (permissive P-4) is cleared by closing the reactor trip breakers." It used to re-arm when the delayed signal dropped, so one noise sample under the 3.5 psig containment setpoint (instrument sigma 0.145 psi) re-armed it, and the signal, still standing, re-latched SI 2.0 s later. Measured in a fixture, 5 seeds: true containment pressure was 3.83–3.99 psig and falling. In the live TMI-2 walkthrough this showed up as injection restarting at 144.5–156.8 plant-min. `run_pwr2_protection` 160 → 163, with two new mutations, both caught. AFW, feedwater isolation and containment spray keep the old live-signal re-arm.
+
 ### Changed — TMI-2 walkthrough redesigned: twelve steps, chart-led (#670, flag-gated `preview`)
 
 OWNER RULING 2026-10-14: "Redesign TMI – two as you recommend" (option 1). Not on the public channel, so no `changelog.html` entry.
