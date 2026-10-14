@@ -385,6 +385,58 @@ var BUB = '#instrCallout';
   ck('TMI with the player\'s Off (?callout=0): no card, the step card shows', !oo.shown && oo.colStepShown && oo.prog === 0, JSON.stringify(oo));
   await O.ctx.close();
 
+  // ---------------------------------------------------------------- 10. THE GENERAL PAIR (2026-10-14, one relationship per leg)
+  /* `pair: [idA, idB]` draws two strip-chart series as one line under the ACTIVE step in the side panel
+   * (non-callout legs). A SYNTHETIC step is stamped onto a leg that has none; the direction words are
+   * driven through RD.CklPairRow with hand-built snapshots so they are deterministic. `pair: true` is
+   * pinned to its exact TMI-2 string. INJECTIONS (2026-10-14): drop the `data-ckl-pair` placeholder in the
+   * step render -> the panel check red; make cklPairSeries read the newest sample instead of the trailing
+   * window (H[0] -> H[H.length-1]) -> the direction check red; skip the `cklSerHist` reset on a new key ->
+   * the step-change check red; route `pair: true` through cklPairSeries -> the byte-for-byte check red. */
+  var G = await session({ width: 1366, height: 768 });
+  var gOther = await G.page.evaluate(function () {
+    return (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return !p.callout && p.from === 'hot_full_power' && p.steps.length > 2; }).map(function (p) { return p.id; })[0];
+  });
+  await G.page.evaluate(function (id) {
+    var pr = RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === id; })[0];
+    pr.steps[1].pair = ['tavg', 'tavg_tref_dev'];
+  }, gOther);
+  await start(G.page, gOther);
+  await jump(G.page, 1);
+  await G.page.evaluate(function () { RD.__dev.service().timeAcceleration = 10; });   // 5 plant-s of history for a direction
+  await G.page.waitForTimeout(2500);
+  var gp = await G.page.evaluate(function () {
+    var e = document.querySelector('#cklRun [data-ckl-pair]');
+    return { txt: e ? e.textContent : null, shown: !!(e && e.getClientRects().length), card: !!document.querySelector('#instrCallout:not([hidden])') };
+  });
+  ck('side panel: a step with pair [tavg, tavg_tref_dev] draws ONE line under the active step, two chart-series labels, each with a direction',
+     gp.shown && !gp.card && /^TAVG .+ {2}\| {2}TAVG . TREF .+$/i.test(gp.txt || '') && ((gp.txt || '').match(/rising|falling|steady/g) || []).length === 2, JSON.stringify(gp));
+  var gd = await G.page.evaluate(function () {
+    function snap(t, tv, dv) { return { metadata: { sim_time: t }, instruments: { tavg: tv, tavg_tref_dev: dv }, true_state: { tavg_c: tv, tref_c: tv - dv, plant_mode: 1 }, control_state: {} }; }
+    var P = ['tavg', 'tavg_tref_dev'], out = {};
+    function run(key, a, b) { RD.CklPairRow(snap(0, a[0], a[1]), key, P); return RD.CklPairRow(snap(10, b[0], b[1]), key, P); }
+    out.up = run('g-up', [300, 0], [305, 3]); out.flat = run('g-flat', [300, 0], [300, 0]); out.down = run('g-dn', [310, 3], [300, 0]);
+    RD.CklPairRow(snap(0, 300, 0), 'g-chg', P); RD.CklPairRow(snap(10, 305, 3), 'g-chg', P);
+    out.fresh = RD.CklPairRow(snap(11, 305, 3), 'g-chg2', P);      // a new key (step change) starts from nothing
+    RD.CklPairRow(snap(0, 300, 0), 'g-rw', P); RD.CklPairRow(snap(10, 305, 3), 'g-rw', P);
+    out.rew = RD.CklPairRow(snap(2, 305, 3), 'g-rw', P);           // the clock went back inside the step
+    var ts = { metadata: { sim_time: 5 }, instruments: { pzr_level: 50.4 }, true_state: { core_inventory_pct: 80.2 }, control_state: {} };
+    out.t1 = RD.CklPairRow(ts, 'g-t1', true); out.t2 = RD.CklPairRow(ts, 'g-t2');
+    return out;
+  });
+  var dirs = function (t) { return ((t || '').match(/rising|falling|steady/g) || []).join(','); };
+  ck('direction words follow the trailing change: rising / steady / falling for a +5 / 0 / -10 degC move over 10 s',
+     dirs(gd.up) === 'rising,rising' && dirs(gd.flat) === 'steady,steady' && dirs(gd.down) === 'falling,falling', JSON.stringify([gd.up, gd.flat, gd.down]));
+  ck('the pair clears on a step change (new key: no direction on a lone sample) and on a rewind (clock goes back)',
+     dirs(gd.fresh) === '' && dirs(gd.rew) === '', JSON.stringify([gd.fresh, gd.rew]));
+  ck('pair: true is unchanged byte for byte (PRESSURIZER LEVEL | RCS INVENTORY), with or without the spec argument',
+     gd.t1 === 'PRESSURIZER LEVEL 50 %  |  RCS INVENTORY 80 %' && gd.t2 === gd.t1, JSON.stringify([gd.t1, gd.t2]));
+  await jump(G.page, 0);
+  await G.page.waitForTimeout(900);
+  var gc = await G.page.evaluate(function () { return !!document.querySelector('#cklRun [data-ckl-pair]'); });
+  ck('the side-panel line is gone when the active step authors no pair (step change)', !gc, String(gc));
+  await G.ctx.close();
+
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail) + ' passed');
   process.exit(fail ? 1 : 0);
