@@ -3458,10 +3458,11 @@
       btns[j].setAttribute('data-win', wins[j]);
       btns[j].textContent = chartWinLabel(wins[j]);
     }
-    CHART_RECORD_SEC = wins[wins.length - 1];
+    var pin = (cklChart && cklChart.pin && ui.window === cklChart.pin) ? cklChart.pin : 0;   // a walkthrough's pinned window (#670)
+    CHART_RECORD_SEC = Math.max(wins[wins.length - 1], pin);
     if (lastWinSpeed !== spd) {
       lastWinSpeed = spd;
-      ui.window = wins[rung];
+      ui.window = pin || wins[rung];
       chartRange = {};
       drawChart();
     }
@@ -3824,6 +3825,7 @@
     renderHighlight(s);
     renderScope(s);
     applyInstrTrend(s);   // after the highlight: it adds its own glow, which that pass would clear
+    applyCklChart(s);     // a walkthrough step's chart preset (#670)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -4546,6 +4548,38 @@
     var a = latest && cklActiveStep(latest);
     return !!(a && cklState.view === 'run' && cklCalloutOn(a.pr));
   }
+  /* THE LIVE PAIR on the TMI-2 deception beats (#670 redesign, OWNER RULING 2026-10-14). A step that
+   * authors `pair: true` draws PRESSURIZER LEVEL (the board's gauge) beside RCS INVENTORY (the
+   * plant's true coolant mass) with the direction each is moving, so the deciding card shows the
+   * two disagreeing. HARD RULE 1, instruments vs truth: RCS INVENTORY has no instrument on this
+   * board, so it is the explicit diagnostic overlay and is drawn only where the strip chart draws
+   * truth (`chartTruth()`, Learning mode). In Realistic mode the row keeps the gauge alone and
+   * says where the other number lives. Direction is read over the last 30 plant-seconds; while a
+   * pause holds the clock, the last direction stands. */
+  var cklPairHist = { gk: null, rows: [], dir: {} };
+  function cklPairRow(s, gk) {
+    var ins = s && s.instruments, tru = s && s.true_state;
+    if (!ins || ins.pzr_level == null) return null;
+    var t = (s.metadata && s.metadata.sim_time) || 0, lvl = +ins.pzr_level;
+    var inv = (tru && tru.core_inventory_pct != null) ? +tru.core_inventory_pct : null;
+    if (cklPairHist.gk !== gk) cklPairHist = { gk: gk, rows: [], dir: {} };
+    var H = cklPairHist.rows;
+    if (!H.length || t > H[H.length - 1].t) H.push({ t: t, l: lvl, i: inv });
+    while (H.length > 2 && t - H[1].t >= 30) H.shift();
+    function dir(key, now) {
+      var o = H[0];
+      if (o && t - o.t >= 5 && now != null && o[key] != null) {
+        var d = now - o[key];
+        cklPairHist.dir[key] = d > 0.3 ? 'rising' : d < -0.3 ? 'falling' : 'steady';
+      }
+      return cklPairHist.dir[key] || '';
+    }
+    var dl = dir('l', lvl), di = dir('i', inv);
+    var showInv = chartTruth() && inv != null;
+    return 'PRESSURIZER LEVEL ' + Math.round(lvl) + ' %' + (dl ? ' ' + dl : '') + '  |  ' +
+      (showInv ? 'RCS INVENTORY ' + Math.round(inv) + ' %' + (di ? ' ' + di : '') : 'RCS INVENTORY: Learning mode only');
+  }
+  RD.CklPairRow = cklPairRow;
   function cklCalloutFill(el) {
     var s = latest, a = cklActiveStep(s);
     if (!a) { el.hidden = true; return; }
@@ -4570,22 +4604,31 @@
     }
     var gk = pr.id + '#' + idx;
     if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
-    var key = JSON.stringify(['ckl', gk, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
+    var pairTxt = st.pair ? cklPairRow(s, gk) : null;
+    var key = JSON.stringify(['ckl', gk, pairTxt, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
       !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen]);
     if (key === callout.key) return;
     callout.key = key;
     var sy = st.story || {};
     el.querySelector('.ico-who').textContent = 'Step ' + (idx + 1) + ' of ' + pr.steps.length + (sy.clock ? ' · ' + sy.clock : '');
     var b = '';
-    if (sy.line) b += '<div class="ico-story">' + mesc(sy.line) + '</div>';
+    /* ACTION FIRST (#670 redesign; OWNER 2026-10-10: players read only the action line). The
+     * event's one line follows it; a pair step draws its two numbers there instead, which keeps the
+     * card small enough to clear the control it asks for at 1366x768 (verify_tmi_callout). */
     if (act) {
       b += '<div class="ico-act">' + mesc(st.text) + '</div>';
-      if (st.why) {
+      if (sy.line && !pairTxt) b += '<div class="ico-story">' + mesc(sy.line) + '</div>';   // a pair step trades it for the two numbers (it stays in History)
+      if (pairTxt) b += '<div class="ico-pair">' + mesc(pairTxt) + '</div>';
+      // the deciding beat's reason is drawn, not hidden behind "why?" (plan §1 item 3)
+      if (st.why && pairTxt) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+      else if (st.why) {
         b += '<button type="button" class="ico-more" data-ico-why="1">' + (callout.whyOpen ? 'hide' : 'why?') + '</button>';
         if (callout.whyOpen) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
       }
     } else {
       b += '<div class="ico-say">' + mesc(st.text) + '</div>';
+      if (sy.line && !pairTxt) b += '<div class="ico-story">' + mesc(sy.line) + '</div>';   // a pair step trades it for the two numbers (it stays in History)
+      if (pairTxt) b += '<div class="ico-pair">' + mesc(pairTxt) + '</div>';
       if (st.why) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
     }
     if (st.crew) b += '<div class="ico-crew">The crew\'s action, as taken — not a recommendation.</div>';
@@ -4612,11 +4655,13 @@
     if (callout.histOpen) {
       var hh = '';
       for (var k = 0; k <= idx && k < pr.steps.length; k++) {
-        var y = pr.steps[k].story;
-        if (!y) continue;
+        // a step that folds several sourced beats lists them all (`history`, #670 redesign)
+        var ys = pr.steps[k].history || (pr.steps[k].story ? [pr.steps[k].story] : []);
+        for (var yi = 0; yi < ys.length; yi++) { var y = ys[yi];
         hh += '<div class="ico-h"><b>' + mesc(y.clock || '') + '</b> ' + mesc(y.saw || y.line || '') +
           (y.knew ? '<div><i>They knew:</i> ' + mesc(y.knew) + '</div>' : '') +
           (y.did ? '<div><i>They did:</i> ' + mesc(y.did) + '</div>' : '') + '</div>';
+        }
       }
       hist.innerHTML = hh;
       hist.scrollTop = hist.scrollHeight;
@@ -7050,6 +7095,47 @@
     ui.seriesSide = {};
     instrTrendRedraw();
     var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.add('instr-glow');   // cleared with the beat's highlight
+  }
+
+  /* ---- WALKTHROUGH CHART PRESET (#670 redesign, OWNER RULING 2026-10-14). A walkthrough step may
+   * author `trend: [series ids]` and/or `window: <seconds>`; from that step on (the latest step at
+   * or before the current one wins) the strip chart shows those series and that window, pinned
+   * against the speed ladder until the player picks a rung themselves. Borrowed like
+   * applyInstrTrend: saved on the first preset, put back when the walkthrough ends. A procedure
+   * that authors neither field is untouched. */
+  var cklChart = { saved: null, key: null, pin: 0 };
+  function restoreCklChart() {
+    var sv = cklChart.saved;
+    cklChart = { saved: null, key: null, pin: 0 };
+    if (!sv) return;
+    ui.series = sv.series; ui.seriesSide = sv.side; ui.window = sv.window; ui.windowAuto = sv.windowAuto;
+    lastWinSpeed = null;
+    syncChartWindows((latest && latest.metadata && latest.metadata.time_acceleration) || 1);
+    instrTrendRedraw();
+  }
+  function applyCklChart(s) {
+    var ck = s && s.instructor && s.instructor.checklist;
+    var pr = ck && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
+    var tr = null, win = 0;
+    if (pr && pr.steps) {
+      var last = ck.complete ? pr.steps.length - 1 : Math.min(ck.step_index, pr.steps.length - 1);
+      for (var k = 0; k <= last; k++) { if (pr.steps[k].trend) tr = pr.steps[k].trend; if (pr.steps[k].window) win = pr.steps[k].window; }
+    }
+    if (!tr && !win) { if (cklChart.saved) restoreCklChart(); return; }
+    var key = pr.id + '|' + (tr || []).join(',') + '|' + win;
+    if (key === cklChart.key) return;
+    if (!cklChart.saved) cklChart.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide), window: ui.window, windowAuto: ui.windowAuto };
+    cklChart.key = key;
+    if (tr) {
+      var next = {};
+      tr.forEach(function (id) { if (seriesById(id)) next[id] = true; });
+      ui.series = next; ui.seriesSide = {};
+    }
+    if (win) {
+      cklChart.pin = win; ui.window = win; ui.windowAuto = false;
+      CHART_RECORD_SEC = Math.max(CHART_RECORD_SEC, win);
+    }
+    instrTrendRedraw();
   }
 
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
@@ -13127,6 +13213,10 @@
         buildCsv: buildCsv,
         cmd: cmd,   /* #818 — a PLAYER command (service.handleCommand directly would skip the untouched-boot clear) */
         readAutosave: readAutosave,
+        /* #670 redesign — the walkthrough chart preset as the chart holds it, and the synoptic mode the
+         * live pair keys its Hard Rule 1 gate on; verify_tmi_callout reads and drives them. */
+        chart: function () { return { series: Object.keys(ui.series).filter(function (k) { return ui.series[k]; }).sort(), window: ui.window, windowAuto: ui.windowAuto, record: CHART_RECORD_SEC }; },
+        setDiagMode: function (m) { ui.diagMode = m; callout.key = null; },
       };
     }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside

@@ -1402,13 +1402,12 @@ function runSuite(quietRec) {
     function polActive(s) { return s.active_failures.some(function (f) { return f.id === 'condensate_polisher_trip'; }); }
     /* tick, keeping the last snapshot — a paused service's tick() returns null */
     function run(P, n, last) { for (var i = 0; i < n; i++) { var s = P.svc.tick(); if (s) last = s; } return last; }
-    /* walk the leg to step 2's fire: step 1 auto-meets (power > 90 %), Continue, then tick */
+    /* walk the leg to the polisher's fire: since the #670 redesign it is STEP 1 (old steps 1-3 merged),
+     * so start, take the entry tick, then tick */
     function toPolisher() {
       var P = mkWorld(); bindWorld(P);
       var pre = lamp(P.snap()), s = P.snap(), i, c;
       P.cmd({ action: 'start_checklist', procedure_id: 'pwr_tmi2_incident' });
-      for (i = 0; i < 60; i++) { s = run(P, 1, s); c = s.instructor && s.instructor.checklist; if (c && c.acc_met) break; }
-      P.cmd({ action: 'checklist_check', index: 0 });
       s = run(P, 1, s);
       var t0 = P.svc.simTime;
       s = run(P, 5, s);
@@ -1419,10 +1418,10 @@ function runSuite(quietRec) {
     var A = toPolisher();
     q('polisher: before the walkthrough fires it the lamp reads IN SERVICE in green (the control)',
       A.pre === 'IN SERVICE/' + BD_OK, A.pre);
-    q('polisher: TMI-2 step 2 lights POLISHER STATUS FAILED in amber and pauses the clock',
-      A.step === 1 && lamp(A.s) === 'FAILED/' + BD_WARN && A.paused && A.running === false,
+    q('polisher: TMI-2 step 1 lights POLISHER STATUS FAILED in amber and pauses the clock',
+      A.step === 0 && lamp(A.s) === 'FAILED/' + BD_WARN && A.paused && A.running === false,
       'step ' + A.step + ', lamp ' + lamp(A.s) + ', paused ' + A.paused + ', running ' + A.running);
-    q('polisher: indicator only — the paused step spends no plant time (step 3 stuck-valve window untouched)',
+    q('polisher: indicator only — the paused step spends no plant time (the stuck-valve arm on the same step lands inside its 21 s window)',
       A.dt < 0.25, 'sim time across 5 ticks after the fire: ' + A.dt.toFixed(3) + ' s');
     var cat = A.P.svc.layer.getFailureCatalog().map(function (f) { return f.id; });
     q('polisher: it is NOT a Failures-tab row (a lamp with no consequence in free play)',
@@ -1494,8 +1493,8 @@ var MUTS = [
    "    this._clearScriptedFailures();\n    this.checklist = null;", "    this.checklist = null;"],
   ['a restore keeps a walkthrough-only failure with no walkthrough to own it (orphan FAILED lamp)', SVCPATH, SVCSRC,
    "    if (this.instructor.releaseOrphanScriptedFailures) this.instructor.releaseOrphanScriptedFailures();\n", ""],
-  ['TMI-2 step 2 stops injecting the polisher failure (narrated only again)', MPPATH, MPSRC,
-   "          inject: [{ failure: 'condensate_polisher_trip' }],\n", ""],
+  ['TMI-2 step 1 stops injecting the polisher failure (narrated only again)', MPPATH, MPSRC,
+   "{ failure: 'anticipatory_trip_failure' }, { failure: 'condensate_polisher_trip' },", "{ failure: 'anticipatory_trip_failure' },"],
   /* THE WORLD SEAM (#738 quality pass). Without the reset at onMount the message state from the
    * previous plant is compared against the new one, which raised two false "RELEASED BY THE PLANT"
    * messages and a flashing button on a brand-new plant. Reachable from the RESET button. */

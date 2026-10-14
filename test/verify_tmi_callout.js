@@ -14,6 +14,10 @@
  *      step's prose card is not drawn.
  *   4. BUTTONS WORK FROM THE CARD — Continue on a pause step advances the leg; "why?" opens the
  *      explanation on an action step; History lists the morning so far; the card never fades on hover (OWNER 2026-10-13).
+ *   7. THE #670 REDESIGN (OWNER RULING 2026-10-14): the strip chart is preset from step 1 (pressure,
+ *      pressurizer level, RCS inventory, PORV; 30 min pinned) and widens to 3 h on the pumps step;
+ *      the deciding beats draw the live PRESSURIZER LEVEL | RCS INVENTORY pair with the reason inline;
+ *      Realistic mode drops the true-state half (Hard Rule 1); End puts the chart back.
  *   5. DEFAULT ELSEWHERE IS UNCHANGED — another walkthrough draws no card and its step card shows;
  *      `?callout=0` (the player's Off) on TMI draws no card and the step card shows.
  *
@@ -26,7 +30,7 @@ var ROOT = path.join(__dirname, '..');
 var BASE = 'file:///' + path.join(ROOT, 'ui', 'shell.html').replace(/\\/g, '/') + '?engine=pwr2&init=hot_full_power&dev=1';
 var SHOTDIR = process.env.SHOTDIR || null;
 var PROC = 'pwr_tmi2_incident';
-var SHOTS = { 2: 1, 6: 1, 8: 1, 10: 1, 14: 1, 18: 1 };   // 1-based step numbers
+var SHOTS = { 1: 1, 3: 1, 6: 1, 7: 1, 9: 1, 10: 1 };   // 1-based step numbers (#670 redesign: 12 steps)
 
 var pass = 0, fail = 0;
 function ck(name, ok, detail) {
@@ -184,10 +188,10 @@ var BUB = '#instrCallout';
       if (why.length) bad.push('step ' + (i + 1) + ': ' + why.join('; ') + ' ' + JSON.stringify(g.box || null));
     }
     ck(tag + ': every one of the ' + N + ' TMI steps draws the card — right kind, the step line, on-screen, clear of the six top tiles and every lit item, 10 px clear of the control it asks for, leader to the anchor, Continue in it; the column is a progress list',
-       N >= 15 && bad.length === 0 && skipped.length <= 2, bad.length ? bad.join(' | ') : N + ' steps' + (skipped.length ? ', overtaken on the jump: ' + skipped : '') + ', compact fallback on: ' + (compact.join(',') || 'none'));
+       N >= 10 && bad.length === 0 && skipped.length <= 2, bad.length ? bad.join(' | ') : N + ' steps' + (skipped.length ? ', overtaken on the jump: ' + skipped : '') + ', compact fallback on: ' + (compact.join(',') || 'none'));
 
     // "why?" on an ACTION step
-    var actIdx = await page.evaluate(function () { var s = RD.__dev.service().instructor.checklist.proc.steps; for (var k = 0; k < s.length; k++) if (s[k].hl && s[k].hl.length && s[k].why && !s[k].overtaken) return k; return -1; });
+    var actIdx = await page.evaluate(function () { var s = RD.__dev.service().instructor.checklist.proc.steps; for (var k = 0; k < s.length; k++) if (s[k].hl && s[k].hl.length && s[k].why && !s[k].overtaken && !s[k].pair) return k;   /* a pair step draws its why inline (#670 redesign) */ return -1; });
     await jump(page, actIdx);
     actIdx = await page.evaluate(function () { return RD.__dev.service().instructor.checklist.idx; });
     var w0 = await page.evaluate(function () { var b = document.querySelector('#instrCallout'); return { why: !!b.querySelector('.ico-why'), btn: !!b.querySelector('[data-ico-why]') }; });
@@ -200,8 +204,50 @@ var BUB = '#instrCallout';
     await page.click(BUB + ' [data-ico-hist]').catch(function () {});
     await page.waitForTimeout(400);
     var hist = await page.evaluate(function () { var h = document.querySelector('#instrCallout .ico-hist'); return h && !h.hidden ? h.querySelectorAll('.ico-h').length : -1; });
-    ck(tag + ': History lists the morning so far (one entry per step reached)', hist === actIdx + 1, 'entries ' + hist + ' for step ' + (actIdx + 1));
+    var histWant = await page.evaluate(function (k) { var st = RD.__dev.service().instructor.checklist.proc.steps, n = 0; for (var j = 0; j <= k; j++) n += st[j].history ? st[j].history.length : (st[j].story ? 1 : 0); return n; }, actIdx);
+    ck(tag + ': History lists the morning so far (every sourced beat of every step reached, folded steps included)', hist === histWant && histWant > actIdx + 1, 'entries ' + hist + ' of ' + histWant + ' for step ' + (actIdx + 1));
     await page.click(BUB + ' [data-ico-hist]').catch(function () {});
+
+    // 7. THE REDESIGN: chart preset, window pin, live pair, Hard Rule 1, restore on End
+    if (v === 0) {
+      var PRESET = ['inventory', 'porv', 'pressure', 'pzr_level'];
+      var steps = await page.evaluate(function () { return RD.__dev.service().instructor.checklist.proc.steps.map(function (x) { return { pair: !!x.pair, window: x.window || 0 }; }); });
+      var pairIdx = steps.map(function (x, k) { return x.pair ? k : -1; }).filter(function (k) { return k >= 0; });
+      var wideIdx = steps.map(function (x, k) { return x.window === 10800 ? k : -1; }).filter(function (k) { return k >= 0; })[0];
+      await jump(page, 1);
+      var c1 = await page.evaluate(function () { return RD.__dev.chart(); });
+      ck(tag + ': step 2 charts the preset (pressure, pressurizer level, RCS inventory, PORV) on a pinned 30 min window',
+         JSON.stringify(c1.series) === JSON.stringify(PRESET) && c1.window === 1800 && c1.windowAuto === false, JSON.stringify(c1));
+      await jump(page, wideIdx);
+      var c9 = await page.evaluate(function () { return RD.__dev.chart(); });
+      ck(tag + ': the pumps step (step ' + (wideIdx + 1) + ') widens the pinned window to 3 h and keeps 3 h of trend',
+         wideIdx >= 0 && c9.window === 10800 && c9.record >= 10800 && JSON.stringify(c9.series) === JSON.stringify(PRESET), JSON.stringify(c9));
+      var PAIR_RE = /^PRESSURIZER LEVEL \d+ %( rising| falling| steady)?  \|  RCS INVENTORY \d+ %( rising| falling| steady)?$/;
+      var pairBad = [];
+      for (var pk = 0; pk < pairIdx.length; pk++) {
+        await jump(page, pairIdx[pk]);
+        var pr = await page.evaluate(function () { var b = document.querySelector('#instrCallout'); var p = b.querySelector('.ico-pair'); var w = b.querySelector('.ico-why');
+          return { idx: RD.__dev.service().instructor.checklist.idx, pair: p ? p.textContent : null, compact: b.classList.contains('ico-compact'), why: !!(w && (w.getClientRects().length || b.classList.contains('ico-compact'))) }; });   // compact (the no-room fallback) hides every why by design
+        if (pr.idx !== pairIdx[pk] || !PAIR_RE.test(pr.pair || '') || !pr.why) pairBad.push(JSON.stringify(pr));
+      }
+      await jump(page, 1);
+      var np = await page.evaluate(function () { return !!document.querySelector('#instrCallout .ico-pair'); });
+      ck(tag + ': the deciding beats (steps ' + pairIdx.map(function (k) { return k + 1; }).join(', ') + ') draw PRESSURIZER LEVEL | RCS INVENTORY with the reason inline; step 2 draws no pair',
+         pairIdx.length >= 2 && pairBad.length === 0 && !np, pairBad.join(' | ') || (pairIdx.length + ' pair steps'));
+      await jump(page, pairIdx[0]);
+      await page.evaluate(function () { RD.__dev.setDiagMode('realistic'); });
+      await page.waitForTimeout(900);
+      var pReal = await page.evaluate(function () { var p = document.querySelector('#instrCallout .ico-pair'); return p ? p.textContent : null; });
+      await page.evaluate(function () { RD.__dev.setDiagMode('learning'); });
+      ck(tag + ': Hard Rule 1 - in Realistic mode the pair keeps the gauge and drops the true RCS INVENTORY number',
+         /^PRESSURIZER LEVEL \d+ %/.test(pReal || '') && /Learning mode only/.test(pReal) && !/RCS INVENTORY \d/.test(pReal), pReal);
+      await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });
+      await page.waitForTimeout(900);
+      var cEnd = await page.evaluate(function () { return RD.__dev.chart(); });
+      ck(tag + ': ending the walkthrough puts the chart back (not the preset, window back on the speed ladder)',
+         JSON.stringify(cEnd.series) !== JSON.stringify(PRESET) && cEnd.windowAuto === true, JSON.stringify(cEnd));
+      await start(page, PROC);
+    }
 
     // Continue from the card, on a PAUSE step (no acceptance: the button is the only way on)
     if (v === 0) {
@@ -250,8 +296,11 @@ var BUB = '#instrCallout';
   var other = await D.page.evaluate(function () {
     return (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return !p.callout && p.from === 'hot_full_power'; }).map(function (p) { return p.id; })[0];
   });
+  var dc0 = await D.page.evaluate(function () { return RD.__dev.chart(); });
   await start(D.page, other);
   var od = await geom(D.page);
+  var dc1 = await D.page.evaluate(function () { return RD.__dev.chart(); });
+  ck('another walkthrough (' + other + ') leaves the strip chart alone (no preset, no pin)', JSON.stringify(dc0) === JSON.stringify(dc1), JSON.stringify([dc0, dc1]));
   ck('another walkthrough (' + other + ') with nothing set: no card, its step card shows, no progress list', !od.shown && od.colStepShown && od.prog === 0, JSON.stringify(od));
   await D.ctx.close();
   var O = await session({ width: 1366, height: 768 }, '&callout=0');

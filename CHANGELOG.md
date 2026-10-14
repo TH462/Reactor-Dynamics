@@ -30,6 +30,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — TMI-2 walkthrough redesigned: twelve steps, chart-led (#670, flag-gated `preview`)
+
+OWNER RULING 2026-10-14: "Redesign TMI – two as you recommend" (option 1). Not on the public channel, so no `changelog.html` entry.
+- **Twenty steps → twelve.** Old 1-3 → 1, 4 and 7 cut (their history kept in the History panel), 6+8 → 3, 12+13 → 7, 15+16+17 → 9. Every cut step's `hold` was added to the step it folds into, so the replay is byte-identical (end state 15960.5 s, inventory 82.3 %, 922 psia on both trees). A step can now carry `history: [...]` — the History panel lists each folded beat verbatim, so all twenty sourced entries survive.
+- **Chart preset.** New step fields `trend` / `window`: from step 1 the strip chart shows pressure, pressurizer level, RCS inventory and the relief valve on a pinned 30 min window, 3 h from the pumps step; retention follows the pin; the chart is restored when the walkthrough ends. Other walkthroughs are untouched.
+- **Live pair.** `pair: true` (steps 6, 7, 9) draws `PRESSURIZER LEVEL nn % rising | RCS INVENTORY nn % falling` on the card, with the reason inline. RCS inventory is true state (no instrument): drawn only where the chart draws truth (Learning mode); Realistic mode prints the gauge alone (Hard Rule 1).
+- **Card order:** the action line comes first, the event line under it.
+- **Recap:** `outcome` is the six cause-and-effect links with numbers measured on three routes, ending on more than half the core uncovered for about 2 h 15 min with decay heat still coming, the 1979 consequence (NUREG/CR-1250 Vol. I p. 18), and the declared gap (Manuals/08 §6).
+- Step 4 now grades the reactor trip too: it is how `legScriptsScram` knows the leg expects its trip (without it the leg drew the #709 unexpected-trip notice).
+
 ### Changed — instructor callout no longer fades on hover
 
 The floating walkthrough/opener card stays fully opaque under the pointer (OWNER 2026-10-13: "they also shouldnt go clear when moused over"). The 25 % hover fade and its `ico-held` resting-pointer guard are removed; `verify_opener_callout` and `verify_tmi_callout` assert opacity 1.

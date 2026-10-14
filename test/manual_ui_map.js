@@ -259,15 +259,18 @@ var STEP_UI = {
    * its TWENTY steps carry a `control`; the rest are narration and verification and own no row.
    * ROWS MOVED +4 (#693, 2026-09-11): step 2 -- the lump that injected four failures in one
    * broadcast -- became FIVE narrated steps, so every index from 1 upward shifted by four. The
-   * rows were MOVED, not re-derived, and none of the five new steps carries a `control`. */
+   * rows were MOVED, not re-derived, and none of the five new steps carries a `control`.
+   * ROWS MOVED AGAIN (#670 redesign, OWNER RULING 2026-10-14): twenty steps became TWELVE (old
+   * 1-3 -> 1, 4/7/8/16/17 folded or cut, 12+13 -> 7), so the seven control rows moved to 4,5,7-11.
+   * Moved, not re-derived: the same seven controls in the same order. */
   'pwr2:pwr_tmi2_incident': [
-    { i: 9, view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
-    { i: 10, view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
-    { i: 13, view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
-    { i: 14, view: 'board', control: 'RCP ON/OFF' },        // 05:13:37 — secure the pumps
-    { i: 17, view: 'board', control: 'PORV Block Valve' },  // 06:18:37 — the first correct move
-    { i: 18, view: 'board', control: 'ECCS' },              // 07:20:37 — injection restored
-    { i: 19, view: 'board', control: 'RCP ON/OFF' },        // 19:50:37 — the epilogue restart
+    { i: 4,  view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
+    { i: 5,  view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
+    { i: 7,  view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
+    { i: 8,  view: 'board', control: 'RCP ON/OFF' },         // 05:13:37 — secure the pumps
+    { i: 9,  view: 'board', control: 'PORV Block Valve' },   // 06:18:37 — the first correct move
+    { i: 10, view: 'board', control: 'ECCS' },               // 07:20:37 — injection restored
+    { i: 11, view: 'board', control: 'RCP ON/OFF' },         // 19:50:37 — the epilogue restart
   ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },

@@ -4072,7 +4072,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 85 && predRows === 179 && rows.length === 103 && soleInst === 23,   /* MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 78 && predRows === 174 && rows.length === 99 && soleInst === 18,   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4219,17 +4219,17 @@ if (!only && RUN_B) {
       'pwr_cooldown:1:boron_ppm': 'boron_analyzer',          // > 880 [SOLE]  dead 0.000 vs true 718.9 ppm
       'pwr_cooldown:6:spray_flow_pct': 'pzr_spray_flow',     // ~ 50          dead 0.000 %
       /* pwr_tmi2_incident [hot_full_power] */
-      'pwr_tmi2_incident:1:power_pct': 'power_range',        // > 90 [SOLE]   dead 0.000 vs true 99.56 %
-      'pwr_tmi2_incident:8:porv_tailpipe_temp_c': 'porv_tailpipe_temp', // > 115.56 [SOLE]  dead 0.000 degC
-      'pwr_tmi2_incident:12:pzr_level_pct': 'pzr_level',     // >= 99 [SOLE]  dead 0.000 vs true 63.66 %
-      'pwr_tmi2_incident:14:sg_level_pct': 'sg_level',       // > 5 [SOLE]    dead 0.000 vs true 98.08 %
-      'pwr_tmi2_incident:18:pressure_mpa': 'primary_pressure', // > 5.17      dead 0.000 vs true 14.59 MPa
-      'pwr_tmi2_incident:20:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
-      'pwr_tmi2_incident:19:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
+      /*#670 cut: 'pwr_tmi2_incident:1:power_pct': 'power_range',*/        // > 90 [SOLE]   dead 0.000 vs true 99.56 %
+      /*#670 cut: 'pwr_tmi2_incident:8:porv_tailpipe_temp_c': 'porv_tailpipe_temp',*/ // > 115.56 [SOLE]  dead 0.000 degC
+      'pwr_tmi2_incident:7:pzr_level_pct': 'pzr_level',     // >= 99 [SOLE]  dead 0.000 vs true 63.66 %
+      'pwr_tmi2_incident:8:sg_level_pct': 'sg_level',       // > 5 [SOLE]    dead 0.000 vs true 98.08 %
+      'pwr_tmi2_incident:10:pressure_mpa': 'primary_pressure', // > 5.17      dead 0.000 vs true 14.59 MPa
+      'pwr_tmi2_incident:12:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
+      'pwr_tmi2_incident:11:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
       /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
       'pwr_heatup:11:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
       /* 'pwr_startup:11:saw:startup_rate_dpm' LEFT with old step 11 (2026-09-27-develop-a, OWNER RULING 2026-09-26 "B") */
-      'pwr_tmi2_incident:3:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
+      'pwr_tmi2_incident:1:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
     };
     /* THE OTHER HALF: a row that reads DOWNWARD is not stranded by a dead gauge, it is TICKED by
      * one — the floor satisfies it. Pinned for the same reason, and it is the larger set. */
@@ -4261,8 +4261,8 @@ if (!only && RUN_B) {
        * clicked — see the step's own note for the measurement and for why no `implied_by` could
        * reach it (the board carries no second measurement of pressurizer level). It now grades
        * SUBCOOLING MARGIN — see the three rows below, moved here from `skipped` by #789. */
-      'pwr_tmi2_incident:5:sg_level_pct': 1,
-      'pwr_tmi2_incident:16:pzr_level_pct': 1, 'pwr_tmi2_incident:18:porv_tailpipe_temp_c': 1,
+      'pwr_tmi2_incident:2:sg_level_pct': 1,
+      /*#670 cut: 'pwr_tmi2_incident:16:pzr_level_pct': 1,*/ 'pwr_tmi2_incident:10:porv_tailpipe_temp_c': 1,
       'pwr_cooldown:4:saw:tavg_c': 1,   // `saw tavg_c < 250` — a dead tavg reads 30.00 and is "seen"
       /* #789 (2026-09-20) — `subcooling_margin` went from UNBREAKABLE (silent no-op, skipped)
        * to directly failable, so these three `<=` rows now measure like every other channel: a
@@ -4271,8 +4271,8 @@ if (!only && RUN_B) {
        * is really at a healthy +23.4 degC (+42.1 degF) of margin. FALSE-TICKS, not strands —
        * step 19's `> 5.56` is the one direction a pinned-low floor can never clear, so it
        * strands instead (STRAND_EXPECTED above). */
-      'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
-      'pwr_tmi2_incident:17:subcooling_c': 1,
+      'pwr_tmi2_incident:7:subcooling_c': 1, 'pwr_tmi2_incident:9:subcooling_c': 1,
+      /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c': 1,*/
       /* cooldown 11b (2026-09-26, #807 review item 4): "watch SUBCOOLING MARGIN fall to 32 degF", a `<`
        * row on the same derived channel -- a dead margin pins at -28 degC and false-ticks it, as the TMI rows */
       'pwr_cooldown:11:subcooling_c': 1,
@@ -4410,14 +4410,13 @@ if (!only && RUN_B) {
       'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
       'pwr_cooldown:8': 'pressure_mpa',
       'pwr_cooldown:13': 'tavg_c',              // 13a/13b replace plant_mode (2026-09-25); 13b is the OFF lamp since workbench-f
-      'pwr_tmi2_incident:1': 'power_pct',
-      'pwr_tmi2_incident:3': 'pressure_mpa',                  // a `saw` row, not an `acc`
-      'pwr_tmi2_incident:5': 'sg_level_pct',
-      'pwr_tmi2_incident:8': 'porv_tailpipe_temp_c',
-      'pwr_tmi2_incident:12': 'pzr_level_pct',
-      'pwr_tmi2_incident:13': 'subcooling_c',
-      'pwr_tmi2_incident:16': 'pzr_level_pct',
-      'pwr_tmi2_incident:17': 'subcooling_c',
+      /*#670 cut: 'pwr_tmi2_incident:1': 'power_pct',*/
+      'pwr_tmi2_incident:1': 'pressure_mpa',                  // a `saw` row, not an `acc`
+      'pwr_tmi2_incident:2': 'sg_level_pct',
+      /*#670 cut: 'pwr_tmi2_incident:8': 'porv_tailpipe_temp_c',*/
+      'pwr_tmi2_incident:7': 'pzr_level_pct,subcooling_c',   // old 12 + 13, merged in the #670 redesign
+      /*#670 cut: 'pwr_tmi2_incident:16': 'pzr_level_pct',*/
+      /*#670 cut: 'pwr_tmi2_incident:17': 'subcooling_c',*/
     };
     var TRUE_STATE_EXPECTED = {
       /* pwr_heatup:1 and :15 left 2026-09-25: their `plant_mode` rows were retired for tile checks */
@@ -4426,8 +4425,8 @@ if (!only && RUN_B) {
       'pwr_raise_power:1': 'plant_mode',
       'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',
-      'pwr_tmi2_incident:4': 'turbine_tripped', 'pwr_tmi2_incident:7': 'scrammed',
-      'pwr_tmi2_incident:9': 'hpi_active', 'pwr_tmi2_incident:13': 'rcp_cavitating',
+      /*#670 cut: 'pwr_tmi2_incident:4': 'turbine_tripped',*/ /*#670 cut: 'pwr_tmi2_incident:7': 'scrammed',*/
+      'pwr_tmi2_incident:4': 'hpi_active,scrammed', 'pwr_tmi2_incident:7': 'rcp_cavitating',   // 4 carries old 7's trip row (#670 redesign)
     };
 
     var live = {}, ts = {}, lineup = {}, nObs = 0, noWhy = [];
@@ -4890,34 +4889,33 @@ if (!only && RUN_B) {
     /* --- 2ag.4 pzr_level_sensor_low: frozen at 20.0 % whatever the plant is doing, so this
      * verdict does not depend on when the player clicked. */
     (function () {
-      var LOW_STRAND = { 'pwr_tmi2_incident:12:pzr_level_pct': 1 };
+      var LOW_STRAND = { 'pwr_tmi2_incident:7:pzr_level_pct': 1 };
       /* STEP 15 LEFT THIS SET on 2026-09-19 — its `pzr_level_pct < 80` entry is gone, replaced by
        * SUBCOOLING MARGIN at the bottom of its scale (2ag.8 is the measurement). Steps 12 and 16
        * stay: both are SOLE rows on the gauge whose reading is the step's whole subject, and the
        * pool has nothing to relieve them with — see the header's adjudication. */
-      var LOW_TICK = { 'pwr_tmi2_incident:16:pzr_level_pct': 1 };
+      var LOW_TICK = { /*#670 cut: 'pwr_tmi2_incident:16:pzr_level_pct': 1*/ };
       var base = tmiSweep(null, 0), low = tmiSweep('pzr_level_sensor_low', 0);
       var dS = diffSet(low.strand, LOW_STRAND), dT = diffSet(low.tick, LOW_TICK);
       /* THE CONTROL: on the same rig with nothing injected NO row strands and step 12's
        * criterion is genuinely reached, so the strand above is the casualty and not the rig
        * failing to drive the plant into the deception. */
-      var k12 = 'pwr_tmi2_incident:12:pzr_level_pct';
+      var k12 = 'pwr_tmi2_incident:7:pzr_level_pct';
       var worst = Math.max.apply(null, Object.keys(base.acc).map(function (k) {
         return Math.max(base.acc[k].s, base.acc[k].t); }));
       var control = base.strand.length === 0 && base.tick.length === 0 &&
                     base.endMet[k12] === true && worst <= 5;
-      ck('2ag.4 pzr_level_sensor_low strands the TMI-2 deception step and false-ticks its reversal (#788)',
+      ck('2ag.4 pzr_level_sensor_low strands the TMI-2 deception step (#788; its reversal step left in the #670 redesign)',
          dS.ok && dT.ok && control,
          dS.note + dT.note +
          (control ? 'control: the un-injected rig reaches step 12 and its worst gauge/truth ' +
             'disagreement is ' + worst + ' broadcast(s), the lag. '
                    : 'CONTROL FAILED: un-injected rig strands [' + base.strand.join(', ') +
-            '], false-ticks [' + base.tick.join(', ') + '], step 12 met ' + base.endMet[k12] +
+            '], false-ticks [' + base.tick.join(', ') + '], step 7 met ' + base.endMet[k12] +
             ', worst disagreement ' + worst + ' broadcast(s). ') +
          'gauge frozen at ' + Number(low.gauge).toFixed(2) + ' % against a true ' +
          Number(low.truth).toFixed(2) + ' %; step 12 refused on ' + low.acc[k12].s + '/' + low.N +
-         ' broadcasts its own criterion was met, step 16 ticked on ' +
-         low.acc['pwr_tmi2_incident:16:pzr_level_pct'].t + '/' + low.N + ' it was not');
+         ' broadcasts its own criterion was met');
     })();
 
     /* --- 2ag.5 pzr_level_sensor_stuck: the SAME casualty, and WHICH rows it breaks is decided
@@ -4930,22 +4928,20 @@ if (!only && RUN_B) {
     (function () {
       var early = tmiSweep('pzr_level_sensor_stuck', 0);
       var late = tmiSweep('pzr_level_sensor_stuck', 150);
-      var K12 = 'pwr_tmi2_incident:12:pzr_level_pct',
-          K16 = 'pwr_tmi2_incident:16:pzr_level_pct';
+      var K12 = 'pwr_tmi2_incident:7:pzr_level_pct';   // old step 16 (the reversal) left in the #670 redesign
       /* STEP 15 IS NO LONGER IN THIS MEASUREMENT (2026-09-19): it authors no pzr_level row, so
        * `tmiSweep` cannot see it and neither casualty can reach it. 2ag.8 is the check that says
        * so, and it asserts the OLD entry would still have broken on this same rig — otherwise
        * "the casualty no longer breaks step 15" would be true of a rig that had stopped driving. */
-      var earlyOk = early.froze < 80 && early.endMet[K12] === false && early.endMet[K16] === false;
-      var lateOk = late.froze >= 99 && late.endMet[K12] === true && late.endMet[K16] === false;
+      var earlyOk = early.froze < 80 && early.endMet[K12] === false;
+      var lateOk = late.froze >= 99 && late.endMet[K12] === true;
       ck('2ag.5 ...and a STUCK gauge breaks a DIFFERENT set depending on when it was clicked (#788)',
          earlyOk && lateOk,
-         'clicked at ' + Number(early.froze).toFixed(2) + ' % -> step 12 ' + early.endMet[K12] +
-         ', 16 ' + early.endMet[K16] +
-         '  |  clicked at ' + Number(late.froze).toFixed(2) + ' % -> step 12 ' + late.endMet[K12] +
-         ', 16 ' + late.endMet[K16] +
-         ' - step 16 is permanently unmet on a gauge stuck high, and 2ae pins it in ' +
-         'TICK_EXPECTED because a DEAD gauge reads 0.0 % and satisfies it');
+         'clicked at ' + Number(early.froze).toFixed(2) + ' % -> step 7 ' + early.endMet[K12] +
+         '' +
+         '  |  clicked at ' + Number(late.froze).toFixed(2) + ' % -> step 7 ' + late.endMet[K12] +
+         '' +
+         ' (old step 16, the reversal, left in the #670 redesign)');
     })();
 
     /* --- 2ag.6 THE FAILURE MODEL'S OWN DEFECT, WAS pinned as a canary (see the header) —
@@ -5038,7 +5034,7 @@ if (!only && RUN_B) {
     (function () {
       var st = null;
       POOL.forEach(function (p) {
-        if (p.id === 'pwr_tmi2_incident') st = (p.steps || [])[14];
+        if (p.id === 'pwr_tmi2_incident') st = (p.steps || [])[8];   // the pumps step (old 15; #670 redesign)
       });
       var accs = (st && st.accs) || [];
       var onLevel = accs.filter(function (e) { return e && e.p && MAP[e.p] === 'pzr_level'; });
@@ -5109,10 +5105,10 @@ if (!only && RUN_B) {
      * NOT SEEN". Grading `subcooling_c` on true_state instead of the instrument would clear the
      * whole set, which is why the control below asserts the un-injected rig stays quiet. */
     (function () {
-      var SUB_TICK = { 'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
-                       'pwr_tmi2_incident:17:subcooling_c': 1,
+      var SUB_TICK = { 'pwr_tmi2_incident:7:subcooling_c': 1, 'pwr_tmi2_incident:9:subcooling_c': 1,
+                       /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c': 1,*/
                        'pwr_cooldown:11:subcooling_c': 1 };   // 11b, `< 17.78` (#807 review item 4, 2026-09-26)
-      var SUB_STRAND = { 'pwr_tmi2_incident:19:subcooling_c': 1 };
+      var SUB_STRAND = { 'pwr_tmi2_incident:11:subcooling_c': 1 };
       var mine = rows.filter(function (r) { return r.chan === 'subcooling_margin'; });
       function sweep(fid) {
         var w = boot('hot_full_power', 60), s = w.snap, i;
@@ -5144,7 +5140,7 @@ if (!only && RUN_B) {
       var dS = diffSet(dr.strand, SUB_STRAND), dT = diffSet(dr.tick, SUB_TICK);
       var control = base.strand.length === 0 && base.tick.length === 0;
       ck('2ag.9 a DRIFTING T-avg breaks every SUBCOOLING MARGIN row, which 2ag.3’s channel filter cannot see (#788)',
-         mine.length === 5 && dS.ok && dT.ok && control,   // 4 -> 5: cooldown 11b (#807 review item 4, 2026-09-26)
+         mine.length === 4 && dS.ok && dT.ok && control,   // 5 -> 4: TMI-2 old step 17's row left in the #670 redesign (2026-10-14). 4 -> 5: cooldown 11b (#807 review item 4, 2026-09-26)
          dS.note + dT.note + mine.length + ' pool row(s) grade the derived channel, ' +
          dr.tick.length + ' false-tick and ' + dr.strand.length + ' strand under the drift; ' +
          (control ? 'control: the un-injected rig does neither on any of them. '
@@ -5403,20 +5399,20 @@ if (!only && RUN_B) {
         'pwr_raise_power:7:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:8:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:9:tavg_c':           ['Tavg Sensor Drifting', false],
-        'pwr_tmi2_incident:13:subcooling_c':  ['Tavg Sensor Drifting', false],
-        'pwr_tmi2_incident:15:subcooling_c':  ['Tavg Sensor Drifting', true],
-        'pwr_tmi2_incident:17:subcooling_c':  ['Tavg Sensor Drifting', true],
-        'pwr_tmi2_incident:19:subcooling_c':  ['Tavg Sensor Drifting', true],
-        'pwr_tmi2_incident:12:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
-        'pwr_tmi2_incident:16:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
+        'pwr_tmi2_incident:7:subcooling_c':  ['Tavg Sensor Drifting', false],
+        'pwr_tmi2_incident:9:subcooling_c':  ['Tavg Sensor Drifting', true],
+        /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c':  ['Tavg Sensor Drifting', true],*/
+        'pwr_tmi2_incident:11:subcooling_c':  ['Tavg Sensor Drifting', true],
+        'pwr_tmi2_incident:7:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
+        /*#670 cut: 'pwr_tmi2_incident:16:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],*/
       };
       var LEGS = [
         ['pwr_startup', 'tavg_sensor_failure', [[1, 'tavg_c', 0]]],
         ['pwr_heatup', 'tavg_sensor_failure', [[11, 'tavg_c', 0], [11, 'tavg_c', 1]]],
         ['pwr_lower_power', 'tavg_sensor_failure', [[3, 'tavg_c', 0], [4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0]]],
         ['pwr_raise_power', 'tavg_sensor_failure', [[4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0], [7, 'tavg_c', 0], [8, 'tavg_c', 0], [9, 'tavg_c', 0]]],
-        ['pwr_tmi2_incident', 'tavg_sensor_failure', [[13, 'subcooling_c', 0], [15, 'subcooling_c', 0], [17, 'subcooling_c', 0], [19, 'subcooling_c', 0]]],
-        ['pwr_tmi2_incident', 'pzr_level_sensor_low', [[12, 'pzr_level_pct', 0], [16, 'pzr_level_pct', 0]]],
+        ['pwr_tmi2_incident', 'tavg_sensor_failure', [[7, 'subcooling_c', 0], [9, 'subcooling_c', 0], [11, 'subcooling_c', 0]]],
+        ['pwr_tmi2_incident', 'pzr_level_sensor_low', [[7, 'pzr_level_pct', 0]]],
       ];
       var noVoid = [], stillBlocks = [], neverDone = [], wrongName = [], unexpectedDone = [], seen = 0;
       LEGS.forEach(function (L) {
@@ -5468,8 +5464,8 @@ if (!only && RUN_B) {
         });
       });
       var done = Object.keys(ROW_EXPECTED).filter(function (k) { return ROW_EXPECTED[k][1]; }).length;
-      ck('2ah.4 every one of the 19 pinned rows is voided by its casualty, none still blocks its step, and the ' + done + ' sole-row steps COMPLETE (#773/#788)',
-         seen === 19 && noVoid.length === 0 && wrongName.length === 0 && stillBlocks.length === 0 &&
+      ck('2ah.4 every one of the 17 pinned rows is voided by its casualty, none still blocks its step, and the ' + done + ' sole-row steps COMPLETE (#773/#788)',
+         seen === 17 &&   /* 19 -> 17: TMI-2 old 16/17 rows left (#670 redesign) */ noVoid.length === 0 && wrongName.length === 0 && stillBlocks.length === 0 &&
          neverDone.length === 0 && unexpectedDone.length === 0,
          (noVoid.length ? 'NOT VOIDED: ' + noVoid.join(', ') + '. ' : '') +
          (wrongName.length ? 'WRONG CASUALTY NAMED: ' + wrongName.join(', ') + '. ' : '') +
@@ -5806,6 +5802,10 @@ if (!only && RUN_B) {
       var svc = mkSvcT(p.from);
       svc.handleCommand({ action: 'start_checklist', procedure_id: p.id });
       tickN(svc, 40);
+      /* A PAUSE STEP STOPS THE CLOCK (#694): since the #670 redesign the TMI-2 leg's STEP 1 is one, so
+       * the plant is frozen here and a scram would never take (tickN returned null and this threw).
+       * Resume it, as Continue does — the check is about a trip mid-leg, not the pause. */
+      svc.running = true;
       svc.handleCommand({ action: 'scram' });
       var s = tickN(svc, 60);
       var c = s.instructor.checklist;
