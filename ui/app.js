@@ -3460,6 +3460,7 @@
     }
     var pin = (cklChart && cklChart.pin && ui.window === cklChart.pin) ? cklChart.pin : 0;   // a walkthrough's pinned window (#670)
     CHART_RECORD_SEC = Math.max(wins[wins.length - 1], pin);
+    if (pin) cklLightRung(pin);   // the relabelled ladder lights the pinned width, or nothing (quality pass 2026-10-14)
     if (lastWinSpeed !== spd) {
       lastWinSpeed = spd;
       ui.window = pin || wins[rung];
@@ -4554,7 +4555,9 @@
    * two disagreeing. HARD RULE 1, instruments vs truth: RCS INVENTORY has no instrument on this
    * board, so it is the explicit diagnostic overlay and is drawn only where the strip chart draws
    * truth (`chartTruth()`, Learning mode). In Realistic mode the row keeps the gauge alone and
-   * says where the other number lives. Direction is read over the last 30 plant-seconds; while a
+   * says where the other number lives: the strip chart, which traces RCS INVENTORY (a series with
+   * no instrument) as truth in both modes — so the card must not call it Learning-only while the
+   * chart below it draws it (quality pass 2026-10-14). Direction is read over the last 30 plant-seconds; while a
    * pause holds the clock, the last direction stands. */
   var cklPairHist = { gk: null, rows: [], dir: {} };
   function cklPairRow(s, gk) {
@@ -4564,6 +4567,7 @@
     var inv = (tru && tru.core_inventory_pct != null) ? +tru.core_inventory_pct : null;
     if (cklPairHist.gk !== gk) cklPairHist = { gk: gk, rows: [], dir: {} };
     var H = cklPairHist.rows;
+    if (H.length && t < H[H.length - 1].t) { H.length = 0; cklPairHist.dir = {}; }   // a rewind inside the step: the clock went back, the old direction is stale
     if (!H.length || t > H[H.length - 1].t) H.push({ t: t, l: lvl, i: inv });
     while (H.length > 2 && t - H[1].t >= 30) H.shift();
     function dir(key, now) {
@@ -4577,7 +4581,10 @@
     var dl = dir('l', lvl), di = dir('i', inv);
     var showInv = chartTruth() && inv != null;
     return 'PRESSURIZER LEVEL ' + Math.round(lvl) + ' %' + (dl ? ' ' + dl : '') + '  |  ' +
-      (showInv ? 'RCS INVENTORY ' + Math.round(inv) + ' %' + (di ? ' ' + di : '') : 'RCS INVENTORY: Learning mode only');
+      (showInv ? 'RCS INVENTORY ' + Math.round(inv) + ' %' + (di ? ' ' + di : '')
+        // the strip chart traces a no-instrument series as truth in BOTH modes (sideOf), and this
+        // walkthrough plots RCS INVENTORY there, so point at it rather than call it unavailable
+        : ui.series.inventory ? 'RCS INVENTORY: on the strip chart' : 'RCS INVENTORY: Learning mode only');
   }
   RD.CklPairRow = cklPairRow;
   function cklCalloutFill(el) {
@@ -6380,7 +6387,7 @@
       var outcomeOk = ck.outcome_verified !== false;
       h += '<div class="ckl-complete"><b>Walkthrough complete</b>' +
         (pr.outcome
-          ? (outcomeOk ? '<div class="m-note">' + mesc(pr.outcome) + '</div>'
+          ? (outcomeOk ? '<div class="m-note' + (pr.outcome.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(pr.outcome) + '</div>'   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
                        : '<div class="m-note">Steps checked off, but the board does not match ' +
                          'this leg\'s expected finish. Read the board, not this note.</div>')
           : '') + '</div>';
@@ -7104,11 +7111,26 @@
    * applyInstrTrend: saved on the first preset, put back when the walkthrough ends. A procedure
    * that authors neither field is untouched. */
   var cklChart = { saved: null, key: null, pin: 0 };
+  /* THE LIT RUNG FOLLOWS THE PIN (quality pass 2026-10-14). The ladder's `on` button is what the
+   * player reads as the chart's width, and syncChartWindows takes the rung from it. Pinning 30 min
+   * at 10x/60x (no 30 min rung there) left 5m or 15m lit over a 30-minute axis, and restore then
+   * picked whichever rung that was. Light the rung equal to `win` (none when there is none), and
+   * return the index lit before, so restore can put the player's rung back. */
+  function cklLightRung(win, idx) {
+    var btns = document.querySelectorAll('#graphWindow [data-win], #chartOptsWin [data-win]'), was = -1, seg = $('graphWindow');
+    if (seg) [].forEach.call(seg.querySelectorAll('[data-win]'), function (b, i) { if (b.classList.contains('on')) was = i; });
+    [].forEach.call(btns, function (b) {
+      var i = [].indexOf.call(b.parentNode.querySelectorAll('[data-win]'), b);
+      b.classList.toggle('on', idx != null ? i === idx : +b.getAttribute('data-win') === win);
+    });
+    return was;
+  }
   function restoreCklChart() {
     var sv = cklChart.saved;
     cklChart = { saved: null, key: null, pin: 0 };
     if (!sv) return;
     ui.series = sv.series; ui.seriesSide = sv.side; ui.window = sv.window; ui.windowAuto = sv.windowAuto;
+    if (sv.rung != null && sv.rung >= 0) cklLightRung(0, sv.rung);   // the player's rung, before the pin moved the light
     lastWinSpeed = null;
     syncChartWindows((latest && latest.metadata && latest.metadata.time_acceleration) || 1);
     instrTrendRedraw();
@@ -7124,7 +7146,7 @@
     if (!tr && !win) { if (cklChart.saved) restoreCklChart(); return; }
     var key = pr.id + '|' + (tr || []).join(',') + '|' + win;
     if (key === cklChart.key) return;
-    if (!cklChart.saved) cklChart.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide), window: ui.window, windowAuto: ui.windowAuto };
+    if (!cklChart.saved) cklChart.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide), window: ui.window, windowAuto: ui.windowAuto, rung: null };
     cklChart.key = key;
     if (tr) {
       var next = {};
@@ -7133,6 +7155,8 @@
     }
     if (win) {
       cklChart.pin = win; ui.window = win; ui.windowAuto = false;
+      var was = cklLightRung(win);
+      if (cklChart.saved.rung == null) cklChart.saved.rung = was;
       CHART_RECORD_SEC = Math.max(CHART_RECORD_SEC, win);
     }
     instrTrendRedraw();
@@ -13215,7 +13239,8 @@
         readAutosave: readAutosave,
         /* #670 redesign — the walkthrough chart preset as the chart holds it, and the synoptic mode the
          * live pair keys its Hard Rule 1 gate on; verify_tmi_callout reads and drives them. */
-        chart: function () { return { series: Object.keys(ui.series).filter(function (k) { return ui.series[k]; }).sort(), window: ui.window, windowAuto: ui.windowAuto, record: CHART_RECORD_SEC }; },
+        chart: function () { return { series: Object.keys(ui.series).filter(function (k) { return ui.series[k]; }).sort(), window: ui.window, windowAuto: ui.windowAuto, record: CHART_RECORD_SEC,
+          lit: (function () { var b = document.querySelector('#graphWindow [data-win].on'); return b ? +b.getAttribute('data-win') : null; })() }; },   // the ladder rung the player reads as the width
         setDiagMode: function (m) { ui.diagMode = m; callout.key = null; },
       };
     }

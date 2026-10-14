@@ -156,6 +156,7 @@ var BUB = '#instrCallout';
   for (var v = 0; v < VPS.length; v++) {
     var vp = VPS[v], tag = vp.width + 'x' + vp.height;
     var S = await session(vp), page = S.page;
+    var cPre = await page.evaluate(function () { return RD.__dev.chart(); });   // the chart before the walkthrough borrows it
     await start(page, PROC);
     var N = await page.evaluate(function () { return RD.__dev.service().instructor.checklist.proc.steps.length; });
     var bad = [], skipped = [], compact = [];
@@ -216,12 +217,13 @@ var BUB = '#instrCallout';
       var wideIdx = steps.map(function (x, k) { return x.window === 10800 ? k : -1; }).filter(function (k) { return k >= 0; })[0];
       await jump(page, 1);
       var c1 = await page.evaluate(function () { return RD.__dev.chart(); });
-      ck(tag + ': step 2 charts the preset (pressure, pressurizer level, RCS inventory, PORV) on a pinned 30 min window',
-         JSON.stringify(c1.series) === JSON.stringify(PRESET) && c1.window === 1800 && c1.windowAuto === false, JSON.stringify(c1));
+      // the lit ladder rung is the pinned width or none: a 5m/15m rung lit over a 30 min axis misreads the chart (quality pass 2026-10-14)
+      ck(tag + ': step 2 charts the preset (pressure, pressurizer level, RCS inventory, PORV) on a pinned 30 min window, and no other width is lit on the ladder',
+         JSON.stringify(c1.series) === JSON.stringify(PRESET) && c1.window === 1800 && c1.windowAuto === false && (c1.lit === null || c1.lit === 1800), JSON.stringify(c1));
       await jump(page, wideIdx);
       var c9 = await page.evaluate(function () { return RD.__dev.chart(); });
       ck(tag + ': the pumps step (step ' + (wideIdx + 1) + ') widens the pinned window to 3 h and keeps 3 h of trend',
-         wideIdx >= 0 && c9.window === 10800 && c9.record >= 10800 && JSON.stringify(c9.series) === JSON.stringify(PRESET), JSON.stringify(c9));
+         wideIdx >= 0 && c9.window === 10800 && c9.record >= 10800 && JSON.stringify(c9.series) === JSON.stringify(PRESET) && (c9.lit === null || c9.lit === 10800), JSON.stringify(c9));
       var PAIR_RE = /^PRESSURIZER LEVEL \d+ %( rising| falling| steady)?  \|  RCS INVENTORY \d+ %( rising| falling| steady)?$/;
       var pairBad = [];
       for (var pk = 0; pk < pairIdx.length; pk++) {
@@ -239,13 +241,15 @@ var BUB = '#instrCallout';
       await page.waitForTimeout(900);
       var pReal = await page.evaluate(function () { var p = document.querySelector('#instrCallout .ico-pair'); return p ? p.textContent : null; });
       await page.evaluate(function () { RD.__dev.setDiagMode('learning'); });
-      ck(tag + ': Hard Rule 1 - in Realistic mode the pair keeps the gauge and drops the true RCS INVENTORY number',
-         /^PRESSURIZER LEVEL \d+ %/.test(pReal || '') && /Learning mode only/.test(pReal) && !/RCS INVENTORY \d/.test(pReal), pReal);
+      // ...and points at the strip chart, which the preset makes trace RCS INVENTORY in both modes
+      // (a no-instrument series draws truth there), rather than calling it Learning-only (quality pass 2026-10-14)
+      ck(tag + ': Hard Rule 1 - in Realistic mode the pair keeps the gauge, drops the true RCS INVENTORY number, and points at the strip chart that still traces it',
+         /^PRESSURIZER LEVEL \d+ %/.test(pReal || '') && /RCS INVENTORY: on the strip chart$/.test(pReal) && !/RCS INVENTORY \d/.test(pReal), pReal);
       await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });
       await page.waitForTimeout(900);
       var cEnd = await page.evaluate(function () { return RD.__dev.chart(); });
-      ck(tag + ': ending the walkthrough puts the chart back (not the preset, window back on the speed ladder)',
-         JSON.stringify(cEnd.series) !== JSON.stringify(PRESET) && cEnd.windowAuto === true, JSON.stringify(cEnd));
+      ck(tag + ': ending the walkthrough puts the chart back (not the preset, window back on the speed ladder, on the rung lit before it started)',
+         JSON.stringify(cEnd.series) !== JSON.stringify(PRESET) && cEnd.windowAuto === true && cEnd.lit === cEnd.window && cEnd.lit === cPre.lit, JSON.stringify([cPre, cEnd]));   // the player's own rung comes back, not whichever rung the pin left lit (quality pass 2026-10-14)
       await start(page, PROC);
     }
 
