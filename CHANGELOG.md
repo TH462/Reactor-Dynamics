@@ -34,6 +34,16 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 After an SI reset, automatic SI now stays disabled until the reactor trip is reset (P-4 clears), per WTSM 12.3.2.3 (ML11223A310): "all automatic SI actuation signals are disabled until the control room operator manually initiates an SI actuation or until ... (permissive P-4) is cleared by closing the reactor trip breakers." It used to re-arm when the delayed signal dropped, so one noise sample under the 3.5 psig containment setpoint (instrument sigma 0.145 psi) re-armed it, and the signal, still standing, re-latched SI 2.0 s later. Measured in a fixture, 5 seeds: true containment pressure was 3.83–3.99 psig and falling. In the live TMI-2 walkthrough this showed up as injection restarting at 144.5–156.8 plant-min. `run_pwr2_protection` 160 → 163, with two new mutations, both caught. AFW, feedwater isolation and containment spray keep the old live-signal re-arm.
 
+### Fixed — TMI-2 walkthrough text made true on every gated route (#670, flag-gated `preview`)
+
+Measured 2026-10-14, routes gate seed 42 (typical, keep_injection, pumps_off_late, block_valve_late) and headless Edge.
+- Keep-injection route: step 7's note, steps 10–11's hints and the recap now say injection stayed on (`route_alt`, keyed on step 6 overtaken). That route never uncovers the core (inventory minimum 78.3 %) and ends solid near 2,500 psi.
+- The STOP recap's closing line was false: injection left on keeps the core covered for nearly three hours even with the relief valve open (first uncovery at 168 plant-min, maximum 74 %). Ranges re-worded to hold on all three STOP routes: below 50 % "about half an hour in" (31.5 min), "about 20 %" at the pump press (18.0–22.5 %), level "above 70 %" (74.5 % pumps-late), clad "near 600 °F" (584–610 °F).
+- Steps 7 and 10 name the overtaken step on the card (it reached only the column's bottom line).
+- `#warpInfo`: from the second rate drop on a step it says "WARP keeps dropping to 60× … (N times on this step)" instead of "it has passed" (53 of 59 browser samples were the false one).
+- The pair's RCS INVENTORY direction is judged on rate (0.1 %/plant-min): it read "steady" while falling 0.6 %/min.
+- `run_style` scans `route_alt` text; `verify_flags_ui` 100, `verify_tmi_callout` 21.
+
 ### Fixed — TMI-2 walkthrough after the Fable adversarial pass (#670, flag-gated `preview`)
 
 Step 10 no longer strands: it waited for PRIMARY PRESSURE above 750 psi, which plateaus at about 741 psia once SI stops restarting by itself. It is now graded on the click and the tailpipe below 400 °F (204.4 °C). Steps 9–12 grade the player's press beside its effect. Two wrong routes now get an answer from the plant. With STOP never pressed, step 6 is overtaken at RCS inventory below 80 % and step 9 is overtaken while injection runs. With the block valve never closed, the card says nothing recovers until it closes. The recap's numbers are now ranges measured on the typical route and on the late route. Manuals/08 §6.0 declares that keeping injection on does not keep this core covered: 72 % uncovered, against 93–96 % with injection stopped. Instructor fix: ON/OFF evidence for `set_rcp` / `set_charging_pump` now reads `running`. Before, OFF and ON each counted as the other. `run_walkthrough_routes` now plays the TMI leg.

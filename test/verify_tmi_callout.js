@@ -316,6 +316,42 @@ var BUB = '#instrCallout';
     await S.ctx.close();
   }
 
+  // ---------------------------------------------------------------- 9. ROUTE-TRUE TEXT (#670, 2026-10-14)
+  /* The keep-injection route (step 6 overtaken, injection on for the whole leg — routes gate
+   * keep_injection) drew step 7's "Injection stays off" and the recap's "Injection was stopped". Here
+   * step 6 is marked overtaken in the live checklist and the card and recap are read back.
+   * INJECTIONS (2026-10-14): delete step 7's `route_alt` -> the first check red ("Injection stays
+   * off"); drop the `ico-over` line in cklCalloutFill -> the first check red; delete the leg's
+   * `route_alt` -> the second check red ("Injection was stopped" on the keep route). */
+  var K = await session({ width: 1366, height: 768 });
+  await start(K.page, PROC);
+  await K.page.evaluate(function () {
+    RD.__dev.service().instructor.checklist.doneBy[5] = 'overtaken';
+  });
+  await jump(K.page, 6);
+  await K.page.evaluate(function () {   // the instructor's line the overtake raised (set after the jump: a step change may retire it)
+    var t = RD.__dev.service().instructor.checklist.proc.steps[5].overtaken.text;
+    RD.__dev.service().instructor.pendingMessage = { learning: t, industry: t };
+  });
+  await K.page.waitForTimeout(900);
+  var kc = await K.page.evaluate(function () {
+    var tips = [].map.call(document.querySelectorAll('#instrCallout .ico-tip'), function (x) { return x.textContent; });
+    return { idx: RD.__dev.service().instructor.checklist.idx, tips: tips };
+  });
+  ck('keep-injection route: step 7\'s card says why step 6 was overtaken and that injection is still on (not "Injection stays off")',
+     kc.idx === 6 && kc.tips.some(function (t) { return /^Skipped step 6 \(injection left on: RCS INVENTORY below 80 % anyway\)$/.test(t); }) &&
+     kc.tips.some(function (t) { return /Injection is still on\.$/.test(t); }) && !kc.tips.some(function (t) { return /Injection stays off/.test(t); }), JSON.stringify(kc));
+  async function recap(by) {
+    await K.page.evaluate(function (b) { var c = RD.__dev.service().instructor.checklist; c.doneBy[5] = b; c.complete = true; }, by);
+    await K.page.waitForTimeout(900);
+    return K.page.evaluate(function () { var e = document.querySelector('#cklRun .ckl-complete'); return e ? e.textContent : null; });
+  }
+  var rKeep = await recap('overtaken'), rStop = await recap('auto');
+  ck('the recap follows the route: keep-injection says injection stayed on; the STOP route says it was stopped',
+     /You kept injection on/.test(rKeep || '') && !/Injection was stopped/.test(rKeep || '') && /Injection was stopped/.test(rStop || '') && !/You kept injection on/.test(rStop || ''),
+     JSON.stringify([(rKeep || '').slice(340, 520), (rStop || '').slice(340, 520)]));
+  await K.ctx.close();
+
   // ---------------------------------------------------------------- 6. Settings shows the EFFECTIVE state
   var T = await session({ width: 1366, height: 768 });
   await start(T.page, PROC);

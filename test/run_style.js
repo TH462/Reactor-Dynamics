@@ -88,6 +88,13 @@ function loadChecklist() {
   Object.keys(pool).forEach(function (key) {
     (pool[key].steps || []).forEach(function (st, i) {
       steps.push({ proc: pool[key].id || key, n: i + 1, step: st });
+      /* A `route_alt` (#670) is the same step's text on another route: scanned as its own step, the
+       * alternate's fields laid over the authored ones, so a new authoring key does not ship ungated. */
+      (st.route_alt || []).forEach(function (a, k) {
+        var o = {}; Object.keys(st).forEach(function (x) { if (x !== 'route_alt') o[x] = st[x]; });
+        Object.keys(a).forEach(function (x) { if (x !== 'overtaken') o[x] = a[x]; });
+        steps.push({ proc: pool[key].id || key, n: (i + 1) + ' (route_alt ' + k + ')', step: o });
+      });
     });
   });
   return steps;
@@ -345,6 +352,7 @@ var CHECKS = [
       var pool = (globalThis.RD.MANUAL_PROCEDURES || {}).pwr2 || [];
       pool.forEach(function (p) {
         ['title', 'purpose', 'outcome'].forEach(function (k) { chk(p.id + '.' + k, p[k]); });
+        (p.route_alt || []).forEach(function (a, i) { chk(p.id + '.route_alt' + i + '.outcome', a.outcome); });
         (p.prereq || []).forEach(function (s, i) { chk(p.id + '.prereq' + i, s); });
         (p.cautions || []).forEach(function (s, i) { chk(p.id + '.caution' + i, s); });
         (p.precond || []).forEach(function (c, i) { chk(p.id + '.precond' + i, c.text); });

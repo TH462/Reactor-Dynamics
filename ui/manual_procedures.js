@@ -6023,7 +6023,7 @@
            * unchanged for six plant-hours. 80 % is under every pressing route and reached about 20
            * plant-min in on the refusing one. The plant answers, then the leg follows the crew. */
           overtaken: { p: 'core_inventory_pct', op: '<', v: 80,
-            label: 'injection left on: RCS INVENTORY below 80 % anyway',
+            label: 'injection left on: RCS INVENTORY below 80 % anyway', on_card: true,   // the next card names it (#670): the route the rest of the leg reads
             text: 'Overtaken: injection is still on, and RCS INVENTORY fell below 80 % anyway. Here the open relief valve drains faster than injection refills. The next steps follow the crew.' },
           hl: ['ECCS — Stop'], hl_watch: ['HPI/LPI'] },
         /* 7 — 04:06:28. Old steps 12 and 13. App. II.1 E42 (saturation), E43 (level offscale high),
@@ -6035,6 +6035,9 @@
         { text: 'Watch PRESSURIZER LEVEL peg at the top of its scale and SUBCOOLING MARGIN reach zero.',
           why: 'It reads full while the plant empties: level is not inventory. The coolant is boiling.',
           note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered. Injection stays off: after a reset it restarts only when you press START.',   // layman pass 2026-10-14 S-4; re-measured after a06c449c (SI held off until P-4 clears): no automatic restart on any route through 7 plant-h (typical, late, never-close-block-valve)
+          /* THE KEEP-INJECTION ROUTE (step 6 overtaken). MEASURED 2026-10-14, routes gate keep_injection, seed 42:
+           * injection on for the whole leg, core uncovered 0 % throughout (inventory minimum 78.3 %). */
+          route_alt: [{ overtaken: [6], note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered. Injection is still on.' }],
           pair: true,
           story: { clock: '04:06:28', line: 'The pressurizer level goes off the top of its scale as the coolant reaches saturation.',
             saw: 'The level indicator went off the top of its scale, past 400 inches.',
@@ -6115,7 +6118,7 @@
            * holds the loop at saturation (pressure 337-510 psia), SUBCOOLING MARGIN reads 0 and never pegs, and
            * the step stranded for 195 plant-min. Injection is off on this step on every route that pressed STOP. */
           overtaken: { p: 'hpi_active', op: '>', v: 0,
-            label: 'injection still on: SUBCOOLING MARGIN cannot reach -50 °F',
+            label: 'injection still on: SUBCOOLING MARGIN cannot reach -50 °F', on_card: true,
             text: 'Overtaken: with injection on, SUBCOOLING MARGIN never reaches -50 °F here, so the pumps stay on. Go on to the next step.' },
           hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF', 'Subcooling Margin'] },
         /* 10 — 06:18:37. Old step 18. App. II.1 E122/E124 and Vol I p. 31. ONE CLICK, and the symbol
@@ -6134,6 +6137,12 @@
            * (fixed in a06c449c) or because a route reached the click above 750 psi, which made the row hollow.
            * The tailpipe falls 472 -> 381 °F in the first 3 plant-min. The press is graded too: the valve
            * symbol toggles, so a second click reopens it and the tailpipe row would not notice at once. */
+          /* KEEP-INJECTION ROUTE. MEASURED 2026-10-14, seed 42: at entry (45 plant-min) RCS INVENTORY 116 %; the
+           * click at 46.3, PRIMARY PRESSURE 377 -> 2004 psia by 54.3. With the valve never closed (WR_OVERRIDE
+           * '#10' observe) the core first uncovers at 168 plant-min, 122 min after entry; maximum 74 %. */
+          route_alt: [{ overtaken: [6],
+            note: 'Injection is keeping up for now. Left open, the relief line drains the plant: the core starts to uncover about two plant-hours on.',
+            wait_hint: 'The tailpipe reads below 400 °F within about ten plant-minutes of the click. With injection on, PRIMARY PRESSURE climbs to near 2,000 psi in about eight.' }],
           story: { clock: '06:18:37', line: 'A fresh shift supervisor reads the hot relief line and orders it blocked.',
             saw: 'The relief line discharge running about 30 degrees hotter than the safety valve discharge lines.',
             knew: 'A relieving shift supervisor set the pressurizer level aside and read the temperatures instead. His conclusion was that the relief valve was leaking.',
@@ -6149,6 +6158,8 @@
           control: 'ECCS', target: 'SUBCOOLING MARGIN back above 10 °F',
           why: 'Injection puts the water back. With it off, RCS INVENTORY stays near 20 %.',   // MEASURED 2026-10-14 (a06c449c): 21.6 -> 20.5 % over 80 plant-min with the block valve shut and injection off; nothing restarts it by itself
           wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It takes about an hour and three-quarters of plant time to reach +10 °F.',   // RE-MEASURED 2026-10-14 after a06c449c (no self-restart): 103.5 / 105.1 plant-min (typical / 120 s late)
+          // KEEP-INJECTION ROUTE. MEASURED 2026-10-14, seed 42: injection already on, the step done 2.5 plant-min after the press
+          route_alt: [{ overtaken: [6], wait_hint: 'Injection is already on here and SUBCOOLING MARGIN is high, so the step ticks once START is pressed.' }],
           story: { clock: '07:20:37', line: 'They start a makeup pump by hand.',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
@@ -6190,7 +6201,17 @@
        * 43.7-176.7 min (138 / 132 / 133 min); clad 587-592 degF at 93 % uncovered; inventory 105.9 /
        * 106.1 / 106.4 % at 250-254 min. 1979: NUREG/CR-1250 Vol. I p. 18, 'serious core damage
        * begins ... until the 12-foot fuel bundles are more than half uncovered.' */
-      outcome: 'What happened, link by link, as measured on this plant:\n1. Feed lost: the heat had nowhere to go. Pressure jumped past 2300 psi and the relief valve lifted, as designed.\n2. The valve stuck open. Its lamp read CLOSED, because the lamp shows the solenoid, while the pipe under it ran hot.\n3. Pressure fell and injection started by itself, within two minutes.\n4. Steam in the loop pushed water up into the pressurizer, so the level rose while the plant emptied. Injection was stopped with RCS inventory still above 90 %, and the level pegged at 100 % within two minutes.\n5. With the valve open and injection off, inventory fell below 50 % by 32 to 38 plant-minutes and to about 22 % by the time the pumps came off, while PRESSURIZER LEVEL still read above 80 %. More than 90 % of the core was uncovered.\n6. Closing the block valve stopped the leak, and injection put the water back: inventory was above 100 % about an hour and a half after injection restarted.\nMore than half the core sat uncovered for 45 minutes or more, with decay heat still coming. In 1979 that is what wrecked the core: the fuel bundles boiled more than half dry and serious core damage began. This sim does not model that damage (manual chapter 08, section 6.0): here the cladding stayed below 600 °F, and nothing on this board will show a melt.\nOne difference to keep: on this plant, leaving injection on would not have kept the core covered. The open relief valve drains faster than this injection refills, and about 70 % of the core still uncovered (chapter 08, section 6.0).',
+      outcome: 'What happened, link by link, as measured on this plant:\n1. Feed lost: the heat had nowhere to go. Pressure jumped past 2300 psi and the relief valve lifted, as designed.\n2. The valve stuck open. Its lamp read CLOSED, because the lamp shows the solenoid, while the pipe under it ran hot.\n3. Pressure fell and injection started by itself, within two minutes.\n4. Steam in the loop pushed water up into the pressurizer, so the level rose while the plant emptied. Injection was stopped with RCS inventory still above 90 %, and the level pegged at 100 % within two minutes.\n5. With the valve open and injection off, inventory fell below 50 % about half an hour in and to about 20 % by the time the pumps came off, while PRESSURIZER LEVEL still read above 70 %. More than 90 % of the core was uncovered.\n6. Closing the block valve stopped the leak, and injection put the water back: inventory was above 100 % about an hour and a half after injection restarted.\nMore than half the core sat uncovered for 45 minutes or more, with decay heat still coming. In 1979 that is what wrecked the core: the fuel bundles boiled more than half dry and serious core damage began. This sim does not model that damage (manual chapter 08, section 6.0): here the cladding peaked near 600 °F, and nothing on this board will show a melt.\nOne difference to keep: on this plant, injection left on would have kept the core covered for nearly three hours, even with the relief valve open. Only after that does about 70 % of the core uncover (chapter 08, section 6.0).',
+      /* THE KEEP-INJECTION RECAP (step 6 overtaken). MEASURED 2026-10-14, routes gate keep_injection, seed 42: RCS
+       * INVENTORY 79.9 % at the overtake (23.4 plant-min), aux feed restored at 24.5, pressure 1029 -> 378 psia and
+       * inventory 78.4 -> 116.2 % by 44 plant-min, core uncovered 0 % throughout; block valve at 46.3, solid at 2486-2499
+       * psia from 58.8. Block valve never closed instead (WR_OVERRIDE '#10' observe): first uncovery at 168 plant-min,
+       * maximum 74 %, minimum inventory 31.2 % (the chapter 08 section 6.0 figures). The STOP recap above, re-measured
+       * the same day on typical / pumps_off_late / block_valve_late: inventory below 50 % at 31.5 plant-min on all
+       * three; at the pump press 22.5 / 18.0 / 22.5 %, PRESSURIZER LEVEL 90.5 / 74.5 / 90.5 %, uncovered 91.9 / 93.4 /
+       * 91.9 %; at least half uncovered 57 / 69 / 78 min; clad peak after 10 plant-min 584 / 610 / 604 degF;
+       * inventory above 100 % 91 / 91 / 92 min after START. */
+      route_alt: [{ overtaken: [6], outcome: 'What happened, link by link, as measured on this plant:\n1. Feed lost: the heat had nowhere to go. Pressure jumped past 2300 psi and the relief valve lifted, as designed.\n2. The valve stuck open. Its lamp read CLOSED, because the lamp shows the solenoid, while the pipe under it ran hot.\n3. Pressure fell and injection started by itself, within two minutes.\n4. Steam in the loop pushed water up into the pressurizer, so the level pegged at 100 % while the plant emptied. You kept injection on, and RCS INVENTORY still fell below 80 %: the open relief valve drained faster than injection refilled.\n5. Once aux feed was back, the loop cooled and its pressure fell, injection delivered more, and inventory climbed past 100 % with the core still covered.\n6. Closing the block valve stopped the leak. With injection still on, the plant filled solid and pressure climbed to about 2,500 psi.\nIn 1979 the crew cut injection here, the fuel bundles boiled more than half dry, and serious core damage began. This sim does not model that damage (manual chapter 08, section 6.0).\nOne difference to keep: on this plant, injection left on keeps the core covered only for a time. With the relief valve left open, about 70 % of the core uncovers after nearly three hours (chapter 08, section 6.0).' }],
     },
   ];
 

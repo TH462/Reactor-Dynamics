@@ -855,6 +855,16 @@ function pinChannel(ch) {
   ck('dev (pwr2): a WARP drop on a pressure rate stops quoting the rate once WARP is available again',
     pa4av === true && pa4.accel === 60 && /brief pressure swing — it has passed/.test(pa4.info) && !/43 psi\/s/.test(pa4.info),
     'warp_available ' + pa4av + ', clock ' + pa4.accel + '× · line: "' + pa4.info + '"');
+  /* …AND "IT HAS PASSED" IS NOT SAID OF A SWING THAT KEEPS COMING BACK (#670, 2026-10-14: 53 of 59
+   * browser samples on the never-close-block-valve route read "it has passed" while the drop recurred).
+   * A second rate drop on the same step. INJECTION-PROVEN: with `nDrops` pinned to 1 in `syncWarpInfo`
+   * the line stays "it has passed" and this goes red. */
+  await injectSnap({ reason: 'transient', detail: 'pressure moving 39 psi/s right now (the gauge is damped and shows the trend)' });
+  await b.page.waitForTimeout(1500);
+  var pa5 = await paceRead();
+  ck('dev (pwr2): a second WARP rate drop on the same step says the swings keep coming, not "it has passed"',
+    /keeps dropping to 60× on brief pressure swings \(2 times on this step\)/.test(pa5.info) && !/it has passed/.test(pa5.info),
+    'line: "' + pa5.info + '"');
   await b.ctx.close();
   b = await build('dev', WT2 + '&run=1&dev=1');
   await b.page.evaluate(function () {

@@ -3236,6 +3236,12 @@
     var ck = s && s.instructor && s.instructor.checklist;
     return ck && !ck.complete ? ck.procedure_id + '#' + ck.step_index : '';
   }
+  /* A RATE drop: the in-loop WARP watch's half-second pressure/power reading (or a loop transient),
+   * not an alarm, trip or failure event. One test for syncWarpInfo, the drop counter and cklAuto. */
+  function isRateSnap(sn) {
+    return !!sn && sn.reason === 'transient' && (/^(pressure|power) moving /.test(sn.detail || '') || sn.detail === 'loop transient');
+  }
+  var rateDrops = { step: null, n: 0 };   // rate drops on one walkthrough step (#670 item 1, below)
   function retireWarpNote() {
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
@@ -3309,9 +3315,18 @@
        * instead of quoting it. Alarm, trip and failure reasons are events, not rates: unchanged. */
       var noteText = warpNote.text;
       var pcg = s.metadata && s.metadata.pacing;
+      /* "IT HAS PASSED" IS ONE SWING'S CLAIM (#670, 2026-10-14). MEASURED in the browser on the
+       * never-close-block-valve route (step 10, the player re-pressing 600×): the line read "it has
+       * passed" on 53 of 59 samples while the clock sat at 60× on the next drop. From the second rate
+       * drop on the same step the line says the swings keep coming and how many, which is true
+       * whether or not another follows. */
       var rateM = /^(pressure|power) moving /.exec(warpNote.detail || '');
-      if (warpNote.reason === 'transient' && pcg && pcg.warp_available === true && (rateM || warpNote.detail === 'loop transient')) {
-        noteText = 'WARP dropped to 60× on a brief ' + (rateM ? rateM[1] : 'coolant-loop') + ' swing — it has passed';
+      if (isRateSnap(warpNote) && pcg && pcg.warp_available === true) {
+        var swing = rateM ? rateM[1] : 'coolant-loop';
+        var nDrops = rateDrops.step === warpNote.step ? rateDrops.n : 1;
+        noteText = nDrops > 1
+          ? 'WARP keeps dropping to 60× on brief ' + swing + ' swings (' + nDrops + ' times on this step)'
+          : 'WARP dropped to 60× on a brief ' + swing + ' swing — it has passed';
       }
       text = noteText + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
     } else {
@@ -3392,6 +3407,10 @@
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
       warpNote = { text: speedSnapText(snap), reason: snap.reason, detail: snap.detail || '', step: cklNoteStepKey(s) };
+      if (isRateSnap(snap)) {   // counted for #warpInfo's recurrence wording (syncWarpInfo)
+        if (rateDrops.step !== warpNote.step) rateDrops = { step: warpNote.step, n: 0 };
+        rateDrops.n++;
+      }
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -4574,7 +4593,15 @@
       var o = H[0];
       if (o && t - o.t >= 5 && now != null && o[key] != null) {
         var d = now - o[key];
-        cklPairHist.dir[key] = d > 0.3 ? 'rising' : d < -0.3 ? 'falling' : 'steady';
+        /* RCS INVENTORY is the true-state mass, so it carries no gauge noise and is judged on its
+         * RATE (#670, 2026-10-14). MEASURED, routes gate typical route, step 9: inventory falls
+         * 0.6 %/plant-min (25.8 -> 22.7 % over 51-56 plant-min), i.e. 0.3 % per 30 s, the old fixed
+         * band's edge, so the card read "21 % steady" while it fell. 0.1 %/min still calls the
+         * 20.5-21.6 % plateau after the block valve (0.014 %/min) steady. The gauge keeps the band. */
+        var rate = d / (t - o.t) * 60;
+        cklPairHist.dir[key] = key === 'i'
+          ?(t - o.t >= 10 ? (rate > 0.1 ? 'rising' : rate < -0.1 ? 'falling' : 'steady') : (cklPairHist.dir[key] || ''))
+          : (d > 0.3 ? 'rising' : d < -0.3 ? 'falling' : 'steady');
       }
       return cklPairHist.dir[key] || '';
     }
@@ -4612,8 +4639,18 @@
     var gk = pr.id + '#' + idx;
     if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
     var pairTxt = st.pair ? cklPairRow(s, gk) : null;
+    /* THE PLANT MOVED THE LEG ON, SO SAY WHY ON THE CARD (#670, 2026-10-14). MEASURED in the browser on
+     * the never-STOP route: step 6's and step 9's overtaken text reached only the column's bottom line,
+     * under the card's own step 7 / step 10 text. The overtaken `label`, on a step that authors
+     * `on_card` (6 and 9: a branch the rest of the leg reads), while the instructor still holds the full
+     * line. Not every overtake: step 5's put step 6's card 6 px from its control at 1366x768 (needs 10).
+     * Only this text joins the key (any other message repainting the card moved it off its placement). */
+    var prevSt = idx > 0 ? pr.steps[idx - 1] : null;
+    var overTxt = (prevSt && prevSt.overtaken && prevSt.overtaken.on_card && ck.done_by && ck.done_by[idx - 1] === 'overtaken' &&
+        s.instructor && s.instructor.message === prevSt.overtaken.text) ? 'Skipped step ' + idx + ' (' + (prevSt.overtaken.label || 'the plant moved past it') + ')' : '';
     var key = JSON.stringify(['ckl', gk, pairTxt, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
-      !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen]);
+      !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen,
+      overTxt]);
     if (key === callout.key) return;
     callout.key = key;
     var sy = st.story || {};
@@ -4639,7 +4676,9 @@
       if (st.why) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
     }
     if (st.crew) b += '<div class="ico-crew">The crew\'s action, as taken — not a recommendation.</div>';
-    if (st.note) b += '<div class="ico-tip">' + mesc(st.note) + '</div>';
+    if (overTxt) b += '<div class="ico-tip ico-over">' + mesc(overTxt) + '</div>';
+    var stNote = cklRouteField(st, ck, 'note');
+    if (stNote) b += '<div class="ico-tip">' + mesc(stNote) + '</div>';
     var rows = (st.accs || []).map(function (en, k) { return { en: en, met: !!((ck.accs && ck.accs[k]) || {}).met }; })
       .filter(function (r) { return !r.en.hidden && !r.en.cont; });
     if (rows.length > 1) {
@@ -4920,6 +4959,22 @@
     var st = pr ? pr.steps[ck.step_index] : null;
     return st ? { ck: ck, pr: pr, st: st } : null;
   }
+  /* ROUTE-TRUE TEXT (#670, 2026-10-14). A step or leg may author `route_alt: [{ overtaken: [n, …],
+   * <field>: '…' }]`: when every named step (1-based) was checked off 'overtaken' on THIS run
+   * (`done_by`), the alternate's field replaces the authored one. MEASURED (routes gate, seed 42):
+   * on the keep-injection route the static step 7 note ("Injection stays off") and the recap
+   * ("Injection was stopped") were false — injection ran the whole leg and the plant ended solid
+   * near 2,500 psi. Read at the draw sites (note, wait_hint, outcome), never folded into the step. */
+  function cklRouteField(obj, ck, f) {
+    var alts = obj && obj.route_alt, by = ck && ck.done_by;
+    if (alts && by) for (var i = 0; i < alts.length; i++) {
+      var a = alts[i];
+      if (a[f] !== undefined && a.overtaken && a.overtaken.length &&
+          a.overtaken.every(function (n) { return by[n - 1] === 'overtaken'; })) return a[f];
+    }
+    return obj ? obj[f] : undefined;
+  }
+  RD.CklRouteField = cklRouteField;
   // Does the card PRINT a fast-forward line for this step? The #628/#686/#743 condition, once.
   function cklIsWaitStep(st) {
     return !!st && (+st.hold || 0) >= 180 && st.wait_hint !== false;
@@ -5158,7 +5213,7 @@
       /* RATE reasons only — the test `syncWarpInfo` uses for "it has passed". The in-loop watch also
        * reports a reactor trip, a new failure or a new alarm as `transient`: those are events, and
        * the clock stays where the plant put it. */
-      if (sn) { cklAuto.drop = (sn.reason === 'transient' && (/^(pressure|power) moving /.test(sn.detail || '') || sn.detail === 'loop transient')) ? key : null; return; }
+      if (sn) { cklAuto.drop = isRateSnap(sn) ? key : null; return; }
       if (cklAuto.drop === key && cklAuto.set === want && cur < want && pcg && pcg.warp_available === true &&
           !(s.true_state && s.true_state.speed_hold) && (cklAuto.rearms || 0) < 3) {
         cklAuto.drop = null; cklAuto.rearms = (cklAuto.rearms || 0) + 1;
@@ -5698,6 +5753,8 @@
      * one bit that still changes the output: whether the checklist is underway. */
     var pcKey = (ck.step_index > 0 || (ck.steps_done || []).some(Boolean)) ? 'go' : 'entry';
     var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
+      (ck.done_by || []).join(','),   // route-true text (#670) reads how each step was done
+
       ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
       // units all change what the card shows, so they join the render key.
@@ -6286,7 +6343,7 @@
           var rungTxt = (cklRungFor(st, ck) || RD.CklSpeedHint(holdS)).speed + '×';
           h += '<div class="ckl-sub ckl-wait">⏩ ' +
             mesc(cklWaitAdvice(s, { ck: ck, pr: pr, st: st }, false)).replace(rungTxt, '<b>' + rungTxt + '</b>') +
-            (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
+            (typeof cklRouteField(st, ck, 'wait_hint') === 'string' ? ' ' + mesc(cklRouteField(st, ck, 'wait_hint')) : '') + '</div>';
           waitLineShown = true;
         }
         /* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "add an acknowledge button to the step.,
@@ -6336,11 +6393,12 @@
         h += '</div>';
       }
       var det = '';
-      if (st.note) det += '<div class="ckl-sub muted ckl-step-note">' + mesc(st.note) + '</div>';
-      if (st.wait_hint && !waitLineShown) {
-        det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
+      var stNoteR = cklRouteField(st, ck, 'note'), stHintR = cklRouteField(st, ck, 'wait_hint');   // route-true (#670)
+      if (stNoteR) det += '<div class="ckl-sub muted ckl-step-note">' + mesc(stNoteR) + '</div>';
+      if (stHintR && !waitLineShown) {
+        det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(stHintR === true
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
-          : st.wait_hint) + '</div>';
+          : stHintR) + '</div>';
       }
       /* #819 (2026-10-03): restored after 8052485b removed it — OWNER: "Where did the background boxes go? I didn't want to lose those." */
       /* THE DETAILS PARAGRAPH IS LABELLED, SO IT READS AS EXTRA (#692 item 3, from the owner's
@@ -6410,9 +6468,10 @@
        * `false` only when a guard is authored AND fails; `null`/`true` draw the claim as
        * before, so every leg without one is unaffected. */
       var outcomeOk = ck.outcome_verified !== false;
+      var outTxt = cklRouteField(pr, ck, 'outcome');   // the recap of the route this run took (#670)
       h += '<div class="ckl-complete"><b>Walkthrough complete</b>' +
-        (pr.outcome
-          ? (outcomeOk ? '<div class="m-note' + (pr.outcome.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(pr.outcome) + '</div>'   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
+        (outTxt
+          ? (outcomeOk ? '<div class="m-note' + (outTxt.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(outTxt) + '</div>'   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
                        : '<div class="m-note">Steps checked off, but the board does not match ' +
                          'this leg\'s expected finish. Read the board, not this note.</div>')
           : '') + '</div>';
