@@ -813,14 +813,14 @@ baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally
 >   threshold: size is not the axis.
 > - **SONNET BY DEFAULT; OPUS WHERE JUDGEMENT IS THE WORK** *(OWNER DIRECTIVE, 2026-09-18: "change
 >   our standard practice to use sonnet agents for well scoped work and only use opus agents for
->   Work that needs more intelligence")*. **Narrows** the 2026-09-08 "have opus agents do it" — the
->   coordinator half stands, the model does not. **Well-scoped = the brief already names the files,
->   the interface and the checks.** Opus buys an open diagnosis or per-probe adjudication. Guessing
->   low is cheap — re-dispatch on Opus.
+>   Work that needs more intelligence")*. **Well-scoped = the brief already names the files,
+>   the interface and the checks.** Opus buys an open diagnosis or per-probe adjudication.
 >   **OPUS WRITES PROSE** *(OWNER DIRECTIVE, 2026-09-24: "I'm thinking of changing the policy to
->   have you use opus to write prose." — then "Record it")*: anything a player or the owner reads
+>   have you use opus to write prose.")*: anything a player or the owner reads
 >   that is being DRAFTED — step and card text, notes, changelog entries, write-ups. Applying
 >   wording he already ruled on is transcription, and stays Sonnet.
+>   **FABLE JUDGES TASTE** *(OWNER DIRECTIVE, 2026-10-13: "When a decision requires taste, I want you
+>   to use a fable agent.")*: design critique, headlines, copy voice.
 > - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
 > - **"Gate X forces Y" is a claim — grep for a RULING on Y first** *(OWNER, 2026-09-25: "Do
 >   it")*: a bring-down overrode his "use the board's" MW on a misread N6. **Kill processes by

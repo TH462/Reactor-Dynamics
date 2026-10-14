@@ -18,6 +18,7 @@ when they disagree, his quote wins.
 
 | Date | Reacting to | His words (verbatim) | Taste it implies |
 |---|---|---|---|
+| 2026-10-13 | Agent's replacement headline "Reactor power follows turbine load without a rod moving" | "When a decision requires taste, I want you to use a fable agent. Remember this. … Your headline isn't good enough." | Accurate-but-flat is not a headline. Taste calls go to a Fable agent, not the coordinator. |
 | 2026-10-13 | Chart heading "Two load changes and two rod moves" | "The headline \"two rod moves…\" should be a headline with a selling point, not just a description of the plot." | A heading sells; the caption describes. Headline = the measured thing worth trying the sim for. |
 | 2026-10-13 | Landing mockups v3 (board hero, chart under it) vs chart-first | "Let's go with V3. We should change the block at the bottom that says read the manual to perform a startup and shutdown." | The board stays the first thing seen. Point visitors at doing (a startup and shutdown), not at reading. |
 | 2026-10-13 | Strip-chart options (A load follow, C SGTR, D RCP trip, F TMI-2) | "Let's put a few maneuvers in the main page strip chart image." | One event is not enough: the chart should show the plant answering a sequence of operator actions. |
