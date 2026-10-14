@@ -18,6 +18,7 @@ when they disagree, his quote wins.
 
 | Date | Reacting to | His words (verbatim) | Taste it implies |
 |---|---|---|---|
+| 2026-10-13 | Atom emoji replaced by an amber slash (favicon + wordmark) | "put the emoji atom back. that was my idea not the ai" | The ⚛️ in the wordmark and tab is HIS brand mark: exempt from tell #3. Never remove an element he authored on the grounds that it looks AI-made; ask whose it is first. |
 | 2026-10-13 | Agent's replacement headline "Reactor power follows turbine load without a rod moving" | "When a decision requires taste, I want you to use a fable agent. Remember this. … Your headline isn't good enough." | Accurate-but-flat is not a headline. Taste calls go to a Fable agent, not the coordinator. |
 | 2026-10-13 | Chart heading "Two load changes and two rod moves" | "The headline \"two rod moves…\" should be a headline with a selling point, not just a description of the plot." | A heading sells; the caption describes. Headline = the measured thing worth trying the sim for. |
 | 2026-10-13 | Landing mockups v3 (board hero, chart under it) vs chart-first | "Let's go with V3. We should change the block at the bottom that says read the manual to perform a startup and shutdown." | The board stays the first thing seen. Point visitors at doing (a startup and shutdown), not at reading. |
@@ -47,7 +48,7 @@ item it keeps.
 |---|---|---|
 | 1 | **Purple→blue / indigo gradients**, gradient text | Default palette of every generator. *(owner ban)* |
 | 2 | **Big rounded cards with soft shadows**, glassmorphism | Template component library look. *(owner ban)* |
-| 3 | **Emoji or stock icon-set icons** (Lucide, Heroicons) as feature icons | Decoration standing in for content. *(owner ban)* |
+| 3 | **Emoji or stock icon-set icons** (Lucide, Heroicons) as feature icons | Decoration standing in for content. *(owner ban)* **Exception: the ⚛️ in the wordmark and favicon is the owner's own mark (2026-10-13).** |
 | 4 | **Centered hero → subtitle → button → three feature boxes** | The single most common generated layout. *(owner ban)* |
 | 5 | **Eyebrow label + H2 + paragraph** repeated as every section's opener | One section template stamped N times. |
 | 6 | **Slogan cadence**: "Fast. Simple. Powerful.", "X, not Y", "X. Reimagined." | LLM copy rhythm; says nothing specific. |
