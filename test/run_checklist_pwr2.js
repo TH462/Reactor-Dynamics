@@ -2365,6 +2365,7 @@ if (!only && RUN_B) {
             nBagged++; byOp[en.op] = (byOp[en.op] || 0) + 1;
             if (!en.p || !(en.v > 0)) malformed.push(w + ' (' + en.op + ')');
             if (en.op === 'steady' && !(en.window > 0)) malformed.push(w + ' (steady, no window)');
+            if (en.op === 'moves' && RD.InstructorLayer.movesLegal(en)) malformed.push(w + ' (moves: ' + RD.InstructorLayer.movesLegal(en) + ')');
             /* `stopped` compares readings for EQUALITY, so it is honest only on a channel that
              * is exact and quantized — the operator's own control state. On a noisy instrument
              * it would read false for ever: a check that can only fail is as hollow as one that
@@ -5971,6 +5972,187 @@ if (!only && RUN_B) {
        'quiet ' + quiet + ' | step1 ' + onStep1 + ' | retired at check-off ' + retired +
        ' | step2 ' + onStep2 + ' | step3 ' + onStep3 + ' | complete ' + done +
        ' | off the completion card ' + offCard);
+  })();
+}
+
+/* 2aq. `op: 'moves'` — A RELATIONSHIP, GRADED (OWNER RULING, 2026-10-14; plan
+ * inbox/670_redesign/relations_plan.md items a and b), and `tavg_tref_dev_c` on the board's own
+ * instrument. No walkthrough step authors `moves` yet, so like `steady` and `stopped` this is the
+ * only thing keeping it honest: every claim is proven on a SYNTHETIC series through the real
+ * dispatcher (`gradeBagged`), the real `_gradeAccs` (the accs path) and the real `_gradeOne` (the
+ * single-`acc` path), because the live runtime and the replay harness share that one dispatcher.
+ *
+ * INJECTION-PROVEN 2026-10-14 (each edit to `gradeMoves`, then restored; reds listed below the
+ * run in the commit message / TUNING_LOG): forced always-true, forced never-true, and `with`
+ * ignored each redden checks here. */
+if (RUN_B) {
+  console.log(B + '\n2aq. `moves` — a relationship, graded, and `tavg_tref_dev_c`' + X);
+  (function () {
+    var IL = RD.InstructorLayer;
+    function snap(t, p, q) {
+      return { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { power_pct: p, tavg_c: q }, instruments: {} };
+    }
+    /* THE FIXTURE: `power_pct` down 3 over 60 s, `tavg_c` up 0.5 (both absolute, channel units). */
+    var PRED = { p: 'power_pct', op: 'moves', dir: 'down', v: 3, window: 60,
+                 with: { p: 'tavg_c', dir: 'up', v: 0.5 } };
+
+    /* --- legality: what `movesLegal` accepts and refuses ------------------------------ */
+    function variant(patch) { var o = JSON.parse(JSON.stringify(PRED)); patch(o); return o; }
+    var bad = {
+      'unknown dir': variant(function (o) { o.dir = 'sideways'; }),
+      'no dir': variant(function (o) { delete o.dir; }),
+      'no window': variant(function (o) { delete o.window; }),
+      'window 0': variant(function (o) { o.window = 0; }),
+      'v 0': variant(function (o) { o.v = 0; }),
+      'no with': variant(function (o) { delete o.with; }),
+      'with has neither dir nor op': variant(function (o) { o.with = { p: 'tavg_c', v: 1 }; }),
+      'with.dir unknown': variant(function (o) { o.with.dir = 'left'; }),
+      'with.op unknown': variant(function (o) { o.with = { p: 'tavg_c', op: '~', v: 1 }; }),
+    };
+    var accepted = Object.keys(bad).filter(function (k) { return IL.movesLegal(bad[k]) === null; });
+    var okOp = { p: 'power_pct', op: 'moves', dir: 'up', v: 1, window: 30, with: { p: 'tavg_c', op: '>=', v: 300 } };
+    ck('2aq.1 `moves` legality: the four fields are required and a bad dir / window / with is refused',
+       IL.movesLegal(PRED) === null && IL.movesLegal(okOp) === null && accepted.length === 0 && IL.isBagOp('moves'),
+       accepted.length ? 'ACCEPTED: ' + accepted.join(', ') : '9 malformed variants refused, both with-forms accepted');
+
+    /* --- the series driver: 1 s of plant per broadcast ---------------------------------- */
+    function drive(fn, secs, cb) {                 // fn(t) -> [p, q]; cb(t, graded)
+      for (var t = 0; t <= secs; t++) { var pq = fn(t); cb(t, snap(t, pq[0], pq[1])); }
+    }
+    function firstMetBag(pred, fn, secs, step) {
+      var bag = { s: [] }, first = null, every = step || 1;
+      for (var t = 0; t <= secs; t += every) {
+        var pq = fn(t), g = IL.gradeBagged(bag, snap(t, pq[0], pq[1]), pred);
+        if (g.met && first === null) first = t;
+      }
+      return first;
+    }
+    var BOTH = function (t) { return [100 - 0.1 * t, 300 + 0.01 * t]; };            // power -0.1/s, tavg +0.01/s, from t=0
+    var FLATQ = function (t) { return [100 - 0.1 * t, 300]; };                      // power falls, tavg does not move
+    var FLATP = function (t) { return [100, 300 + 0.01 * t]; };                     // tavg rises, power does not move
+    var UPP = function (t) { return [100 + 0.1 * t, 300 + 0.01 * t]; };             // power moves the WRONG way
+
+    /* --- 2. it cannot tick on entry: the window must fill ----------------------------- */
+    var tBoth = firstMetBag(PRED, BOTH, 300);
+    ck('2aq.2 `moves` cannot tick on entry: a plant already moving owes the whole window (60 s) before it can be met',
+       tBoth !== null && tBoth >= 60 && tBoth <= 66,
+       'first met at +' + tBoth + ' s of plant (window 60 s, debounce 5 instants)');
+
+    /* --- 3. both halves: the moved channel AND the `with` channel -------------------- */
+    var tFlatQ = firstMetBag(PRED, FLATQ, 600), tFlatP = firstMetBag(PRED, FLATP, 600), tUp = firstMetBag(PRED, UPP, 600);
+    ck('2aq.3 `moves` needs BOTH channels: power falling with tavg flat, tavg rising with power flat, or power moving the wrong way never meets',
+       tFlatQ === null && tFlatP === null && tUp === null,
+       'power-only ' + tFlatQ + ' | tavg-only ' + tFlatP + ' | wrong-way ' + tUp + ' (null = never, 600 s each)');
+    /* the threshold form of `with`: tavg's CURRENT reading, not its motion */
+    var TH = JSON.parse(JSON.stringify(PRED)); TH.with = { p: 'tavg_c', op: '>=', v: 300.3 };
+    var tTh = firstMetBag(TH, FLATQ, 300), tThYes = firstMetBag(TH, function (t) { return [100 - 0.1 * t, 300.5]; }, 300);
+    ck('2aq.4 the `with:{p,op,v}` form grades the other channel\'s reading against its threshold (below never, above meets)',
+       tTh === null && tThYes !== null && tThYes >= 60 && tThYes <= 66,
+       'below ' + tTh + ' | above first met +' + tThYes + ' s');
+    /* the size of the move is graded, not just its sign: -2.9 over 60 s does not meet v 3 */
+    var tSmall = firstMetBag(PRED, function (t) { return [100 - (2.9 / 60) * t, 300 + 0.01 * t]; }, 600);
+    ck('2aq.5 `moves` grades the SIZE of the move: -2.9 over the 60 s window never meets v 3',
+       tSmall === null, 'first met ' + tSmall);
+
+    /* --- 4. it LATCHES: the single-acc path, the accs path, and the dispatcher ------- */
+    var il = Object.create(IL.prototype);
+    var holderAcc = {}, holderAccs = {}, stAcc = { acc: PRED }, stAccs = { accs: [PRED] };
+    var metAt = null, accLatchedAfter = false, accsLatchedAfter = false, accDropped = false, accsDropped = false;
+    var REVERSE = function (t) { return t <= 120 ? BOTH(t) : [BOTH(120)[0] + 0.5 * (t - 120), BOTH(120)[1] - 0.05 * (t - 120)]; };
+    for (var t = 0; t <= 400; t++) {
+      var pq = REVERSE(t), sn = snap(t, pq[0], pq[1]);
+      var ga = il._gradeOne(holderAcc, sn, PRED, 'acc');
+      var gs = il._gradeAccs(holderAccs, stAccs, sn);
+      var accsMet = !!gs;
+      if (ga.met && metAt === null) metAt = t;
+      if (metAt !== null && t > 130) {                     // the plant has long since reversed
+        if (ga.met) accLatchedAfter = true; else accDropped = true;
+        if (accsMet) accsLatchedAfter = true; else accsDropped = true;
+      }
+    }
+    ck('2aq.6 `moves` LATCHES, unlike steady/stopped: once met it stays met after the plant reverses (acc path and accs path)',
+       metAt !== null && accLatchedAfter && !accDropped && accsLatchedAfter && !accsDropped,
+       'met at +' + metAt + ' s; acc path dropped=' + accDropped + ', accs path dropped=' + accsDropped);
+    /* ...and the accs row is not re-graded as a hold: its own `holds` exemption */
+    ck('2aq.7 `moves` is a BAG op (per-step bag) but NOT a re-grading hold in `_gradeAccs`',
+       holderAccs.accsState && holderAccs.accsState[0].met === true,
+       'row latched on ax.met = ' + (holderAccs.accsState && holderAccs.accsState[0].met));
+
+    /* --- 5. resets: the clock going back clears the ring AND the latch ---------------- */
+    var bag = { s: [] }, gm = null;
+    for (t = 0; t <= 100; t++) { var q2 = BOTH(t); gm = IL.gradeBagged(bag, snap(t, q2[0], q2[1]), PRED); }
+    var metBeforeRewind = gm.met;
+    var gBack = IL.gradeBagged(bag, snap(40, BOTH(40)[0], BOTH(40)[1]), PRED);       // Rewind to t = 40
+    var tAfter = null;
+    for (t = 41; t <= 200; t++) { var q3 = BOTH(t - 40); var g3 = IL.gradeBagged(bag, snap(t, q3[0], q3[1]), PRED); if (g3.met && tAfter === null) tAfter = t; }
+    ck('2aq.8 the clock going BACK clears the ring and the latch: a rewound plant owes its window again',
+       metBeforeRewind === true && gBack.met === false && gBack.covered === false && tAfter !== null && tAfter >= 40 + 60,
+       'met before ' + metBeforeRewind + ' | at the rewound instant met=' + gBack.met + ' | re-met at +' + tAfter + ' s (rewound to 40, window 60)');
+    /* a NEW step is a new bag (the caller's rule): holder.predBags cleared by the step change */
+    var ilS = Object.create(IL.prototype), hS = {};
+    for (t = 0; t <= 100; t++) { var q4 = BOTH(t); ilS._gradeOne(hS, snap(t, q4[0], q4[1]), PRED, 'acc'); }
+    var latchedBefore = hS.predBags && hS.predBags.acc && hS.predBags.acc.latched === true;
+    hS.predBags = null;                                           // what _advance* does on a step change
+    var q5 = BOTH(101), gNew = ilS._gradeOne(hS, snap(101, q5[0], q5[1]), PRED, 'acc');
+    ck('2aq.9 a step change (predBags cleared) un-latches it: the next step owes the window afresh',
+       latchedBefore === true && gNew.met === false, 'latched ' + latchedBefore + ' -> met after the step change: ' + gNew.met);
+
+    /* --- 6. one noisy instant, and a paused clock, cannot latch it -------------------- */
+    var bagP = { s: [] }, gP = null, spike = false;
+    for (t = 0; t <= 59; t++) { var q6 = FLATQ(t); IL.gradeBagged(bagP, snap(t, 100, 300), PRED); }      // flat, window filling
+    // one wild sample at t=60 that satisfies both halves, then the plant is flat again
+    var gSpike = IL.gradeBagged(bagP, snap(60, 90, 301), PRED);
+    for (t = 61; t <= 120; t++) { gP = IL.gradeBagged(bagP, snap(t, 100, 300), PRED); if (gP.met) spike = true; }
+    ck('2aq.10 a single satisfying sample (one noisy instant) cannot latch it: ' + 'needs ACC_STABLE_N distinct instants',
+       gSpike.met === false && spike === false, 'spike met=' + gSpike.met + ', ever met afterwards=' + spike);
+    var bagD = { s: [] }, dMet = false;
+    for (t = 0; t <= 59; t++) { var q7 = BOTH(t); IL.gradeBagged(bagD, snap(t, q7[0], q7[1]), PRED); }
+    for (var k = 0; k < 40; k++) { var gD = IL.gradeBagged(bagD, snap(60, BOTH(60)[0], BOTH(60)[1]), PRED); if (gD.met) dMet = true; }   // paused: the same instant, 40 broadcasts
+    ck('2aq.11 a PAUSED clock (the same sim time, 40 broadcasts) counts as ONE instant and cannot latch it',
+       dMet === false, dMet ? 'latched on repeats of one instant' : '40 repeats of t=60, not met');
+
+    /* --- 7. WARP spacing: 60 s of plant per broadcast, window 600 s ------------------- */
+    var WP = { p: 'power_pct', op: 'moves', dir: 'down', v: 5, window: 600, with: { p: 'tavg_c', dir: 'up', v: 2 } };
+    var WARP = function (t) { return [100 - 0.01 * t, 300 + 0.005 * t]; };    // -6 over 600 s, +3
+    var tW = firstMetBag(WP, WARP, 3000, 60);
+    var tWsmall = firstMetBag(WP, function (t) { return [100 - 0.008 * t, 300 + 0.005 * t]; }, 3000, 60);   // -4.8 over 600 s
+    ck('2aq.12 at WARP spacing (60 s per broadcast) it meets once the 600 s window is covered, and still refuses a -4.8 move against v 5',
+       tW !== null && tW >= 600 && tW <= 900 && tWsmall === null,
+       'met at +' + tW + ' s; -4.8 case first met ' + tWsmall);
+
+    /* --- 8. a channel that is absent, or not a number, never moves -------------------- */
+    var bagN = { s: [] }, nMet = false;
+    for (t = 0; t <= 300; t++) {
+      var sn2 = { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { power_pct: 100 - 0.1 * t }, instruments: {} };   // tavg_c absent
+      if (IL.gradeBagged(bagN, sn2, PRED).met) nMet = true;
+    }
+    ck('2aq.13 an ABSENT `with` channel never meets (a dead wire cannot read as motion)', nMet === false, '300 s with tavg_c unpublished: ' + (nMet ? 'MET' : 'never met'));
+
+    /* --- 9. the grading map: `tavg_tref_dev_c` reads the board's instrument (Hard Rule 1) --- */
+    var svc = new RD.SimulationService({ seed: 7 });
+    svc.selectPlant('pwr2', 'hot_full_power', null, undefined);
+    svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
+    var s = null; for (var i = 0; i < 6; i++) s = svc.tick();
+    var ilG = Object.create(IL.prototype);
+    var gd = ilG._grade(s, { p: 'tavg_tref_dev_c', op: '>=', v: -60 });
+    var inst = s.instruments && s.instruments.tavg_tref_dev;
+    ck('2aq.14 `tavg_tref_dev_c` grades off the board\'s `tavg_tref_dev` instrument, not true_state (#670 relations plan, item a)',
+       gd.graded_by === 'instrument' && gd.value === inst && typeof inst === 'number',
+       'graded_by ' + gd.graded_by + ', value ' + gd.value + ' vs instrument ' + inst);
+    /* a threshold on it grades the SIGN: Tavg below its program reads negative */
+    var ilT = Object.create(IL.prototype);
+    var below = ilT._grade({ metadata: { sim_time: 1, plant_id: 'pwr2' }, true_state: {}, instruments: { tavg_tref_dev: -2.5 } },
+                           { p: 'tavg_tref_dev_c', op: '<=', v: -2.22 });
+    var above = ilT._grade({ metadata: { sim_time: 1, plant_id: 'pwr2' }, true_state: {}, instruments: { tavg_tref_dev: -1.0 } },
+                           { p: 'tavg_tref_dev_c', op: '<=', v: -2.22 });
+    ck('2aq.15 ...and a threshold on it separates 4 degF (2.22 degC) below program from 1.8 degF (1.0 degC) below',
+       below.met === true && above.met === false, '-2.5 degC met=' + below.met + ', -1.0 degC met=' + above.met);
+
+    /* --- 10. the replay harness grades `moves` through the SAME dispatcher ------------- */
+    var hsrc = fs.readFileSync(path.join(ROOT, 'test', 'procedures_harness.js'), 'utf8');
+    ck('2aq.16 the replay harness grades bagged ops (so `moves`) through `gradeBagged`, the live runtimes\' own dispatcher',
+       /InstructorLayer\.gradeBagged\(h\.bag, s, e\.p\)/.test(hsrc) && /c\.op === 'moves'/.test(hsrc),
+       'gradeBagged call + a moves verdict branch present in procedures_harness.js');
   })();
 }
 

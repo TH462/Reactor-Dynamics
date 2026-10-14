@@ -66,6 +66,10 @@
       pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
       startup_rate_dpm: 'startup_rate', pump_flow_pct: 'rcs_flow',
+      /* TAVG MINUS ITS PROGRAM (relations plan 2026-10-14, item a) — the board's own deviation
+       * instrument, so a threshold on it grades Tavg against Tref off what the operator reads
+       * (Hard Rule 1), not off true_state. */
+      tavg_tref_dev_c: 'tavg_tref_dev',
       mwe_output: 'mwe_output', fw_flow_normalized: 'fw_flow',
       /* PRESSURIZER SPRAY FLOW (#729, added 2026-09-13). `pwr_cooldown` grades the spray on
        * DELIVERED flow, not on the AUTO lamp — the leg puts the spray in MANUAL at 50 %, so no
@@ -231,11 +235,12 @@
 
   /* The two ops that need per-step state, and the ONE dispatcher both runtimes and the replay
    * harness route through. Adding a third bagged op means adding it here and nowhere else. */
-  var BAG_OPS = { steady: 1, stopped: 1 };
+  var BAG_OPS = { steady: 1, stopped: 1, moves: 1 };
   InstructorLayer.isBagOp = function (op) { return !!BAG_OPS[op]; };
   InstructorLayer.gradeBagged = function (bag, snapshot, pred) {
-    return (pred && pred.op === 'stopped') ? InstructorLayer.gradeStopped(bag, snapshot, pred)
-                                           : InstructorLayer.gradeSteady(bag, snapshot, pred);
+    if (pred && pred.op === 'stopped') return InstructorLayer.gradeStopped(bag, snapshot, pred);
+    if (pred && pred.op === 'moves') return InstructorLayer.gradeMoves(bag, snapshot, pred);
+    return InstructorLayer.gradeSteady(bag, snapshot, pred);
   };
 
   // #715 — a completion banner's `outcome` text is an AUTHORED plant-state claim
@@ -658,6 +663,8 @@
     } else if (en.op === 'steady' && ax.bag && (s = ax.bag.s) && s.length && t != null) {
       var W = (en.window > 0) ? en.window : STEADY_WINDOW_S;
       p = { k: 'steady', el: Math.min(W, t - s[0].t), need: W };
+    } else if (en.op === 'moves' && ax.bag && (s = ax.bag.s) && s.length && t != null) {
+      p = { k: 'moves', el: Math.min(en.window, t - s[0].t), need: en.window };
     } else if (en.mean_s > 0 && ax.bag && (s = ax.bag.s) && s.length && t != null) {
       p = { k: 'mean', el: Math.min(en.mean_s, t - s[0].t), need: en.mean_s };
       if (p.el >= en.mean_s && g && typeof g.value === 'number') p.mean = g.value;
@@ -2259,6 +2266,98 @@
     return out;
   };
 
+  /* A RELATIONSHIP, GRADED — `op: 'moves'` (OWNER RULING, 2026-10-14: walkthroughs grade one plant
+   * RELATIONSHIP each; plan inbox/670_redesign/relations_plan.md).
+   *
+   * `{ p, op:'moves', dir:'up'|'down', v, window (plant seconds), with:{p, dir, v} | {p, op, v} }` —
+   * over the trailing `window` plant-seconds `p` moved at least `v` in `dir`, AND the `with`
+   * channel moved its way by `with.v` (`with.dir`), or its CURRENT reading meets `with.op`/`with.v`
+   * (`> < >= <=`). `v` is an absolute change in the channel's own unit (instrument unit where
+   * PARAM_INSTRUMENT maps it, so the number is what the board draws).
+   *
+   * THE WINDOW MUST FILL (like `steady`): the ring is cleared when the step changes (caller) and
+   * when the clock goes back, and nothing can be met until a sample at or before the trailing
+   * edge exists, so it cannot tick on entry. The change is current reading minus the value AT
+   * the trailing edge (linear interpolation between the two bracketing samples, so a WARP
+   * broadcast that spans minutes is not over-read).
+   *
+   * IT LATCHES, unlike `steady`/`stopped`: "p moved with q" is a "you saw it happen" claim, true
+   * afterwards. THE SUBTLETY: `_gradeAccs` treats every BAG_OPS member as a re-grading hold unless
+   * it opts out, and `_gradeOne` (the single-`acc` path) never latches. So the latch lives HERE, in
+   * the bag: once met on ACC_STABLE_N distinct plant instants (one noisy sample cannot latch it),
+   * `met` stays true until the bag is cleared; `_gradeAccs` also exempts `moves` from `holds`.
+   * Distinct instants: a paused broadcast repeats the same sim time and counts once. */
+  InstructorLayer.movesLegal = function (pred) {
+    if (!pred || pred.op !== 'moves') return 'not a moves predicate';
+    if (!pred.p) return 'no p';
+    if (pred.dir !== 'up' && pred.dir !== 'down') return 'dir must be up or down';
+    if (!(pred.v > 0)) return 'v must be > 0';
+    if (!(pred.window > 0)) return 'window (plant s) is required';
+    var w = pred.with;
+    if (!w || !w.p) return 'with.p is required';
+    if (w.dir !== undefined) {
+      if (w.dir !== 'up' && w.dir !== 'down') return 'with.dir must be up or down';
+      if (!(w.v > 0)) return 'with.v must be > 0';
+    } else {
+      if (['>', '<', '>=', '<='].indexOf(w.op) < 0) return 'with needs dir, or op in > < >= <=';
+      if (typeof w.v !== 'number' || !isFinite(w.v)) return 'with.v must be a number';
+    }
+    return null;
+  };
+  InstructorLayer.gradeMoves = function (bag, snapshot, pred) {
+    var r = readParam(snapshot, pred.p);
+    var w = pred.with, rw = w ? readParam(snapshot, w.p) : null;
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var W = pred.window;
+    var out = { met: false, value: r.value, graded_by: r.graded_by, covered: false, n: 0,
+                delta: null, with_delta: null, with_value: rw ? rw.value : null };
+    if (!bag.s) bag.s = [];
+    var s = bag.s;
+    if (!(W > 0) || (pred.dir !== 'up' && pred.dir !== 'down')) return out;
+    if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) return out;
+    if (rw && (typeof rw.value !== 'number' || !isFinite(rw.value))) return out;
+    if (s.length && t < s[s.length - 1].t) { s.length = 0; bag.latched = false; bag.run = 0; bag.runT = null; }
+    if (bag.latched) { out.met = true; out.latched = true; return out; }
+    var gap = Math.max(0.05, W / 120);
+    if (!s.length || t - s[s.length - 1].t >= gap) s.push({ t: t, v: r.value, w: rw ? rw.value : 0 });
+    while (s.length > 1 && t - s[1].t > W) s.shift();
+    out.n = s.length;
+    out.covered = s.length > 1 && (t - s[0].t) >= W;
+    if (!out.covered) { bag.run = 0; return out; }
+    /* the value AT the trailing edge: interpolate between the last sample at/before it and the next */
+    var te = t - W, i0 = 0;
+    for (var i = 0; i < s.length; i++) if (s[i].t <= te) i0 = i;
+    var a = s[i0], b = s[Math.min(i0 + 1, s.length - 1)];
+    var f = (b.t > a.t) ? Math.min(1, Math.max(0, (te - a.t) / (b.t - a.t))) : 0;
+    var v0 = a.v + (b.v - a.v) * f, w0 = a.w + (b.w - a.w) * f;
+    var sgn = pred.dir === 'up' ? 1 : -1;
+    out.delta = sgn * (r.value - v0);
+    var main = out.delta >= pred.v;
+    var other = true;
+    if (w) {
+      if (w.dir !== undefined) {
+        out.with_delta = (w.dir === 'up' ? 1 : -1) * (rw.value - w0);
+        other = out.with_delta >= w.v;
+      } else {
+        switch (w.op) {
+          case '>': other = rw.value > w.v; break;
+          case '<': other = rw.value < w.v; break;
+          case '>=': other = rw.value >= w.v; break;
+          case '<=': other = rw.value <= w.v; break;
+          default: other = false;
+        }
+      }
+    }
+    var ok = main && other;
+    if (ok) {
+      if (bag.runT !== t) { bag.run = (bag.run || 0) + 1; bag.runT = t; }
+    } else { bag.run = 0; bag.runT = null; }
+    if ((bag.run || 0) >= ACC_STABLE_N) bag.latched = true;
+    out.met = !!bag.latched;
+    out.latched = !!bag.latched;
+    return out;
+  };
+
   /* Is this param read off the OPERATOR'S OWN CONTROL STATE (exact, quantized, no instrument in
    * the path) rather than off a gauge? Derived from the same three maps `readParam` dispatches
    * on — never a hand-kept second list, which is the shape that certifies a map instead of a
@@ -2480,7 +2579,7 @@
       /* ...UNLESS THE ROW AUTHORS `latch: true` (2026-09-23 layman playtest S-1): then it is a
        * "you got here" claim like `>`, and the HOLD it would have re-asserted must live in a
        * later row of the same ordered step (`run_checklist_pwr2` §2ak gates that pairing). */
-      var holds = !!(en && !en.latch && (en.op === '~' || BAG_OPS[en.op]));
+      var holds = !!(en && !en.latch && (en.op === '~' || (BAG_OPS[en.op] && en.op !== 'moves')));   /* `moves` LATCHES (gradeMoves) */
       /* THE PLAYER'S OWN CASUALTY (#773/#788) — recomputed here every tick for EVERY row,
        * met or not, so that clearing the failure takes the relief away again. It is kept
        * OUT of `ax.met` on purpose: `met` is a latch, and a latched void would survive the

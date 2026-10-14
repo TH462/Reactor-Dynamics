@@ -381,6 +381,13 @@
                         ' @ ' + reading + (c.latch ? (h.ever ? ', latched' : ', never met') : '') +
                         ((c.below_1m != null || c.reach_1m != null) ? (last.no_1m ? ', no 1/M prediction' : ', 1/M prediction ' + last.pred_1m) : '') };
         }
+        if (c.op === 'moves') {
+          /* LATCHES inside gradeMoves (the bag holds it), so the standing verdict is the answer */
+          return { pass: !!last.met,
+                   obs: (last.delta == null ? 'window not covered' : (last.delta >= 0 ? '+' : '') + last.delta.toFixed(2) + ' ' + c.dir) +
+                        (last.with_delta != null ? ', with ' + last.with_delta.toFixed(2) : '') +
+                        ' @ ' + reading + (last.latched ? ', latched' : ', never met') };
+        }
         return { pass: !!last.met,
                  obs: (last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
                       + ' @ ' + reading };

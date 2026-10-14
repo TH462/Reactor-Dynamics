@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — checklist acceptance `moves` and `tavg_tref_dev_c` (engine-side grading only; no walkthrough uses them yet)
+
+- `{p, op:'moves', dir, v, window, with}` grades one plant relationship: `p` moved at least `v` in `dir` over the trailing `window` plant-seconds AND the `with` channel moved its way (or met its threshold). Window must fill, resets on step change and rewind, latches once met (5 distinct instants). Shared dispatcher, so the live card and the replay agree. `tavg_tref_dev_c` grades Tavg minus its program off the board instrument. `run_checklist_pwr2_b` 208 -> 224.
+
 ## [Alpha 1.8.4-rc2] — 2026-10-14
 
 ### Fixed — safety injection no longer restarts by itself after the operator resets it
