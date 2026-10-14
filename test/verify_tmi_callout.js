@@ -66,6 +66,11 @@ var BUB = '#instrCallout';
   async function jump(page, i) {
     await page.evaluate(function (k) {
       var sv = RD.__dev.service(), c = sv.instructor.checklist;
+      /* A JUMPED plant never ran step 6, so injection may be running when it lands on step 9, whose
+       * `overtaken` (hpi_active) is the keep-injection branch's -- played for real by
+       * run_walkthrough_routes `keep_injection`. Here it would skip the step this test measures. */
+      var tgt = c.proc.steps[k];
+      if (tgt && tgt.overtaken && tgt.overtaken.p === 'hpi_active') delete tgt.overtaken;
       c.idx = k;
       if (!sv.running) sv.start();   // a pause step stopped the clock: no broadcast would carry the jump
       for (var j = 0; j < c.done.length; j++) c.done[j] = j < k;

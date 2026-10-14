@@ -374,6 +374,32 @@ var ROUTES = {
              { p: 'spray_flow_pct', op: '<', v: 1, after_s: 120, if_text: /If OFF is already lit under SPRAY/, cmd: { action: 'set_spray', open: true, pct: 50 } }] } },
     ],
   },
+  /* THE TMI-2 INCIDENT LEG (#670 Fable adversarial pass, 2026-10-14). Before this the gate did not play
+   * the leg at all, and the pass found three hollow ticks, two silent strands and a typical-route
+   * strand (step 10, PRIMARY PRESSURE plateaus at ~741 psia under a 750 psi row) that no gate saw.
+   * Steps 1 and 3 PAUSE the clock (#694): the harness resumes it on Continue, as ui/app.js does. */
+  pwr_tmi2_incident: {
+    steps: {
+      '#6': { policy: 'default', retry_s: 15 },   // the note: "The plant refuses STOP for about a minute" -- the player presses again
+      /* "Once SUBCOOLING MARGIN pegs at -50 °F, press OFF": the tile's own channel, read as it goes */
+      '#9': { policy: 'when', base_spec: { policy: 'observe' }, on: [
+        { ins: true, p: 'subcooling_margin', op: '<', v: -27.7, cmd: { action: 'set_rcp', running: false } }] },
+    },
+    mistakes: [
+      /* the crew's mistake refused: STOP never pressed. The plant answers through step 6's `overtaken`
+       * (RCS INVENTORY below 80 % with injection on), then the leg follows the crew. */
+      /* ...and on that branch the pumps are never stopped (step 9 is overtaken), so RCP FLOW already reads
+       * high at step 12: the ON-press row is the only thing holding 12. The player presses ON 10 plant-min in. */
+      { id: 'keep_injection', kind: 'skip', at: '#6', set: { policy: 'observe' }, override: { '#12': { policy: 'default', delay_s: 600 } },
+        min_dur: { step: 12, s: 600 } },
+      /* the pumps left running an hour past the peg (Fable's never-press-OFF route): step 9 must not
+       * tick before the press -- the cavitation alarm clearing on its own was a second cause */
+      { id: 'pumps_off_late', kind: 'press late', at: '#9', min_dur: { step: 9, s: 3600 },
+        set: { on: [{ ins: true, p: 'subcooling_margin', op: '<', v: -27.7, after_s: 3600, cmd: { action: 'set_rcp', running: false } }] } },
+      /* the block valve left open half an hour: step 10 must wait for the click */
+      { id: 'block_valve_late', kind: 'press late', at: '#10', min_dur: { step: 10, s: 1800 }, set: { delay_s: 1800 } },
+    ],
+  },
 };
 
 /* ================================ THE CHAIN ============================================== */
@@ -408,6 +434,25 @@ function runChain(mutId) {
  * RED on that run. Without these, a harness that could never fail would read the same as one
  * that found nothing. `route` is the route the defect showed on. */
 var MUTATIONS = [
+  /* TMI-2 (#670 Fable pass, 2026-10-14): each new check, made to go red on the defect it was written for */
+  /* NOT an injection for step 9's OFF row: MEASURED on a06c449c, removing it leaves pumps_off_late green
+   * (60.6 plant-min) -- with SI no longer restarting by itself the cavitation alarm has no second cause on
+   * any route played here. The row stays as the guard; step 12's twin below has a live second cause. */
+  { id: 'tmi_no_press_12', leg: 'pwr_tmi2_incident', route: 'keep_injection', expect: 'min_dur',
+    why: 'step 12 without its ON-press row (pumps never stopped: RCP FLOW already high, the 0.0 plant-min tick)',
+    mutate: function (P) { P.steps[11].accs = P.steps[11].accs.filter(function (e) { return !e.cmd; }); } },
+  { id: 'tmi_no_press_10', leg: 'pwr_tmi2_incident', route: 'block_valve_late', expect: 'min_dur',
+    why: 'step 10 graded on the effect alone, with the pre-fix pressure row (above 750 psi; the click unasked)',
+    mutate: function (P) { P.steps[9].accs = [{ p: 'pressure_mpa', op: '<', v: 99, label: 'mutant: any pressure' }]; } },
+  { id: 'tmi_no_overtaken_6', leg: 'pwr_tmi2_incident', route: 'keep_injection', expect: 'invariant',
+    why: 'step 6 without its `overtaken` (Fable: six plant-hours on an unchanged card)',
+    mutate: function (P) { delete P.steps[5].overtaken; } },
+  { id: 'tmi_no_overtaken_9', leg: 'pwr_tmi2_incident', route: 'keep_injection', expect: 'invariant',
+    why: 'step 9 without its `overtaken` (injection on: SUBCOOLING MARGIN never pegs, 195 plant-min strand)',
+    mutate: function (P) { delete P.steps[8].overtaken; } },
+  { id: 'tmi_old_step10', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'complete',
+    why: 'step 10 back on PRIMARY PRESSURE above 750 psi (the plateau is ~741 psia: the typical route strands)',
+    mutate: function (P) { P.steps[9].accs.splice(0, 1, { p: 'pressure_mpa', op: '>', v: 5.17, label: 'PRIMARY PRESSURE above 750 psi' }); } },
   { id: 'no_overtaken_10', route: 'overshoot_235', expect: 'invariant',
     why: 'step 10 (the approach) and 11 (the level-off) without their `overtaken` (the pull to bank 235 stranded the 2026-09-23 layman)',
     /* #808: on the aux-feed Mode 3 lineup a plant stranded at 7 % TRIPS on SG lo-lo at ~28 plant-min
@@ -803,7 +848,7 @@ function runJob(legId, routeId, mutId, ctx) {
     var el = t() - S.t0, rows = c.accs || [];
     /* --- flags: hollow / flash / row un-tick ---------------------------------------- */
     if (c.awaiting_ack) {
-      if (S.ack0 == null) S.ack0 = t();
+      if (S.ack0 == null) { S.ack0 = t(); S.pauseN = 0; }
       if (el <= ENTRY_S && S.acts === 0 && !entryMet[k] && typicalKind && !S.hollow) {
         S.hollow = true; flags.push({ kind: 'hollow', step: k + 1, at_s: el });
       }
@@ -912,7 +957,11 @@ function runJob(legId, routeId, mutId, ctx) {
       break;
     }
     /* --- Continue -------------------------------------------------------------------- */
-    if (c.awaiting_ack && t() - S.ack0 >= ACK_S) { S.ack0 = null; send({ action: 'checklist_check', index: k }); continue; }
+    if (c.awaiting_ack && (t() - S.ack0 >= ACK_S || (c.paused && ++S.pauseN > 20))) {
+      S.ack0 = null; send({ action: 'checklist_check', index: k });
+      if (!svc.running) svc.running = true;   // a `pause` step stopped the clock (#694); ui/app.js releases it on Continue
+      continue;
+    }
     /* --- speed: the card's own rung for the first unmet drawn row ---------------------- */
     var rung = null;
     for (var ri = 0; ri < rows.length; ri++) { var ee = (st.accs || [])[ri] || {}; if (!rows[ri].met && !ee.hidden && ee.wait_speed) { rung = ee.wait_speed; break; } }
@@ -977,7 +1026,11 @@ function runJob(legId, routeId, mutId, ctx) {
       }
       return;
     }
-    if (st2.cmd && !S.memo.cmd) { S.memo.cmd = true; S.acts++; for (var q = 0; q < (S.spec.repeat || 1); q++) press(st2.cmd); }
+    /* `retry_s`: a REFUSED press is pressed again this many plant-seconds later (TMI 6: STOP is refused
+     * for about a minute after injection starts, and the card says so) */
+    if (st2.cmd && S.memo.cmd && S.spec.retry_s && t() - S.memo.cmdT >= S.spec.retry_s && S.memo.cmdErr) S.memo.cmd = false;
+    if (st2.cmd && !S.memo.cmd) { S.memo.cmd = true; S.memo.cmdT = t(); S.acts++; S.memo.cmdErr = false;
+      for (var q = 0; q < (S.spec.repeat || 1); q++) { var rr0 = cmdAction(st2.cmd) === 'plot_1m_point' ? (press(st2.cmd), null) : send(typeof st2.cmd === 'string' ? { action: st2.cmd } : st2.cmd); if (rr0 && rr0.type === 'error') S.memo.cmdErr = true; } }
   }
   function policy(spec, st2, c2, rows2, el2) {
     var P = spec.policy || 'default';
@@ -1479,6 +1532,15 @@ function verdicts(r) {
       name: '[' + r.kind + ']: ends in completion, overtaken, or a named trip — never a silent strand',
       note: res.kind + (res.step ? ' at step ' + res.step : '') + (res.why ? ': ' + res.why : '') +
         (ov.length ? ' | overtaken ' + ov.join(',') : '') + ' | ' + f(res.t_min) + ' plant-min | ' + rd(res.end) };
+    /* `min_dur` (TMI, #670 Fable pass): the step the mistake delays must NOT check off before the
+     * delayed press -- an effect with a second cause ticks it early and the press goes ungraded */
+    var MD = ((ROUTES[r.leg] || {}).mistakes || []).filter(function (m) { return m.id === r.route; })[0];
+    if (MD && MD.min_dur) {
+      var sd = (r.steps || []).filter(function (st) { return st.n === MD.min_dur.step; })[0];
+      v.min_dur = { ok: !!sd && sd.dur_min != null && sd.dur_min * 60 >= MD.min_dur.s,
+        name: '[' + r.kind + ']: step ' + MD.min_dur.step + ' waits for the delayed press (' + MD.min_dur.s + ' plant-s) before it checks off',
+        note: sd ? 'step ' + sd.n + ' ' + f(sd.dur_min) + ' plant-min, by ' + (sd.by || '-') : 'step never reached' };
+    }
     var ru = fl('rewind_unavailable');   // the button was dark: the mistake never happened, so say so
     if (ru.length) { v.invariant.ok = false; v.invariant.note = 'VACUOUS: Rewind dark on step ' + ru[0].step + ', move the mistake | ' + v.invariant.note; }
   }

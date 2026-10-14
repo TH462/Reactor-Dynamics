@@ -1132,6 +1132,17 @@ if (!only && RUN_B) {
         preSatisfied.push(r.proc + ' step ' + r.step);
       }
     });
+    /* THE PRESS IS THE CLAIM (#670 Fable pass, 2026-10-14). TMI 10/11/12 grade the player's press AND its
+     * effect on purpose: on this leg each effect has a SECOND cause (pumps never stopped -> RCP FLOW already
+     * 100 %; the effect row alone ticked step 12 in 0.0 plant-min, and step 11 in 0.1, on Fable's route), so
+     * the boot-IC proxy (`hot_full_power`, before the accident) reads them pre-satisfied and that is the
+     * point. Not a soft lock: the cmd row latches on any press while the step is up. Pinned both ways --
+     * a key here that the sweep no longer reports goes red too. */
+    var PRESS_REQUIRED = { 'pwr_tmi2_incident step 10': 1, 'pwr_tmi2_incident step 11': 1, 'pwr_tmi2_incident step 12': 1 };
+    var staleReq = Object.keys(PRESS_REQUIRED).filter(function (k) { return preSatisfied.indexOf(k) < 0; });
+    preSatisfied = preSatisfied.filter(function (k) { return !PRESS_REQUIRED[k]; });
+    ck('the press-required TMI steps are exactly the pinned ones (#670 Fable pass)', staleReq.length === 0,
+       staleReq.length ? 'PINNED BUT NOT PRE-SATISFIED: ' + staleReq.join(', ') : Object.keys(PRESS_REQUIRED).join(', '));
     ck('no command-kind acceptance with an observable state is pre-satisfied at its own leg\'s boot IC (#697)',
        preSatisfied.length === 0,
        (preSatisfied.length ? 'PRE-SATISFIED: ' + preSatisfied.join(', ') + '; ' : '') +
@@ -2240,7 +2251,7 @@ if (!only && RUN_B) {
         (proc.steps || []).forEach(function (st, i) {
           (st.accs || []).forEach(function (en) {
             if (!en || !en.cmd || typeof en.cmd === 'string') return;
-            if (en.cmd.active === undefined) return;          // no sense to reverse
+            if (en.cmd.active === undefined && en.cmd.running === undefined) return;   // no sense to reverse (`running`: set_rcp / set_charging_pump, #670 Fable pass 2026-10-14 -- skipped before, so the OFF/ON pair was never driven)
             cases.push({ where: key + ':' + proc.id + ' step ' + (i + 1), cmd: en.cmd });
             seen[en.cmd.action] = 1;
           });
@@ -2250,7 +2261,8 @@ if (!only && RUN_B) {
     var wrongLatched = [], rightRefused = [];
     cases.forEach(function (c) {
       var opposite = {}; for (var k in c.cmd) opposite[k] = c.cmd[k];
-      opposite.active = !(c.cmd.active !== false);
+      var sk = c.cmd.running !== undefined ? 'running' : 'active';
+      opposite[sk] = !(c.cmd[sk] !== false);
       if (il._cmdEvidence(c.cmd, opposite)) wrongLatched.push(c.where + ' (' + c.cmd.action + ')');
       if (!il._cmdEvidence(c.cmd, c.cmd)) rightRefused.push(c.where + ' (' + c.cmd.action + ')');
     });
@@ -4072,7 +4084,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 78 && predRows === 174 && rows.length === 99 && soleInst === 18,   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 78 && predRows === 173 && rows.length === 98 && soleInst === 19,   /* #670 Fable pass 2026-10-14, MEASURED: TMI 10's PRIMARY PRESSURE row removed (-1 predicate, -1 instrument-graded), which leaves its tailpipe row the step's only one (+1 sole) */   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4223,7 +4235,7 @@ if (!only && RUN_B) {
       /*#670 cut: 'pwr_tmi2_incident:8:porv_tailpipe_temp_c': 'porv_tailpipe_temp',*/ // > 115.56 [SOLE]  dead 0.000 degC
       'pwr_tmi2_incident:7:pzr_level_pct': 'pzr_level',     // >= 99 [SOLE]  dead 0.000 vs true 63.66 %
       'pwr_tmi2_incident:8:sg_level_pct': 'sg_level',       // > 5 [SOLE]    dead 0.000 vs true 98.08 %
-      'pwr_tmi2_incident:10:pressure_mpa': 'primary_pressure', // > 5.17      dead 0.000 vs true 14.59 MPa
+      /*#670 Fable pass: 'pwr_tmi2_incident:10:pressure_mpa' LEFT with the row (it stranded the typical route at ~741 psia)*/
       'pwr_tmi2_incident:12:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
       'pwr_tmi2_incident:11:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
       /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
@@ -4271,7 +4283,7 @@ if (!only && RUN_B) {
        * is really at a healthy +23.4 degC (+42.1 degF) of margin. FALSE-TICKS, not strands —
        * step 19's `> 5.56` is the one direction a pinned-low floor can never clear, so it
        * strands instead (STRAND_EXPECTED above). */
-      'pwr_tmi2_incident:7:subcooling_c': 1, 'pwr_tmi2_incident:9:subcooling_c': 1,
+      'pwr_tmi2_incident:7:subcooling_c': 1, /*#670 Fable pass: 9:subcooling_c moved to the relieved set -- step 9 authors `overtaken` (hpi_active) now*/
       /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c': 1,*/
       /* cooldown 11b (2026-09-26, #807 review item 4): "watch SUBCOOLING MARGIN fall to 32 degF", a `<`
        * row on the same derived channel -- a dead margin pins at -28 degC and false-ticks it, as the TMI rows */
@@ -4292,6 +4304,7 @@ if (!only && RUN_B) {
       'pwr_startup:10:startup_rate_dpm': 1,   // 10b, relieved by step 10's `overtaken` (power_range), §2aj
       'pwr_startup:11:ir_amps': 1,            // 11a, step 11's `overtaken`
       'pwr_startup:11:startup_rate_dpm': 1,   // 11b
+      'pwr_tmi2_incident:9:subcooling_c': 1,  // relieved by step 9's `overtaken` on hpi_active (#670 Fable pass, 2026-10-14: the keep-injection branch)
       /* 'pwr_startup:11:boron_ppm' LEFT with 11c's BORON CHEM row (#809 item 10, 2026-09-27) */
     };
 
@@ -5400,7 +5413,7 @@ if (!only && RUN_B) {
         'pwr_raise_power:8:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:9:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_tmi2_incident:7:subcooling_c':  ['Tavg Sensor Drifting', false],
-        'pwr_tmi2_incident:9:subcooling_c':  ['Tavg Sensor Drifting', true],
+        'pwr_tmi2_incident:9:subcooling_c':  ['Tavg Sensor Drifting', false],   // #670 Fable pass: voided, but the step now also waits for the OFF press, which this sweep never makes
         /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c':  ['Tavg Sensor Drifting', true],*/
         'pwr_tmi2_incident:11:subcooling_c':  ['Tavg Sensor Drifting', true],
         'pwr_tmi2_incident:7:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],

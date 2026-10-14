@@ -720,7 +720,9 @@ injection has latched, **Off is refused** until *both*: the reset time-delay rel
 message names whichever one you are waiting on and counts the seconds down. After both are
 satisfied, one click resets the function and secures the pumps, **signal present or not** — so
 securing injection on a live low-pressure signal is something the board will let you do, and
-owning that decision is the point of the delay. Aux feed cannot be secured underneath a standing
+owning that decision is the point of the delay. **After that reset, no automatic signal can start
+injection again until the reactor trip is reset** (P-4 clears): not low pressure, not high
+containment pressure. Until then only **On** restarts it. Aux feed cannot be secured underneath a standing
 injection at all (§10), because the SI signal is itself an aux feed start.
 
 ### 11.1 Accumulators (passive)
@@ -1106,8 +1108,10 @@ lose to the plant a second later — it is **refused up front**, with the reason
 
 Once satisfied, **one click both resets the function and secures the pumps** — you do not reset
 and then stop as two actions. And it works **with the actuating signal still present**: the
-circuit blocks automatic *re*-actuation on that same standing signal, so securing injection while
-pressure is still low is a thing the board will let you do. That is the decision the delay exists
+circuit blocks automatic *re*-actuation, so securing injection while pressure is still low is a
+thing the board will let you do. For safety injection the block holds **until the reactor trip is
+reset** (P-4 clears), whatever the signals do in the meantime; for aux feed it clears when the
+start signal itself clears. That is the decision the delay exists
 to make you own.
 
 **The trap.** The refusal counts down in seconds and reads like a malfunction the first time. It

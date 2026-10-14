@@ -2703,7 +2703,11 @@
      * actions whose ONLY payload is the sense — adding one whose payload matters would make the
      * check narrower than the step and reintroduce the soft-lock #697 is about. */
     if (SENSE_ACTIONS[stepCmd.action]) {
-      return (stepCmd.active !== false) === (command.active !== false);
+      /* `set_rcp` and `set_charging_pump` carry the sense as `running`, not `active` (pwr2_shell.js
+       * set_rcp: `c.running === false` secures). Reading `active` alone made OFF and ON both "on",
+       * so either button ticked a row that asked for the other (#670 Fable pass, 2026-10-14). */
+      var on = function (c) { return c.running !== undefined ? c.running !== false : c.active !== false; };
+      return on(stepCmd) === on(command);
     }
     return true;
   };
