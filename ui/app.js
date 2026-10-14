@@ -4581,7 +4581,8 @@
    * chart below it draws it (quality pass 2026-10-14). Direction is read over the last 30 plant-seconds; while a
    * pause holds the clock, the last direction stands. */
   var cklPairHist = { gk: null, rows: [], dir: {} };
-  function cklPairRow(s, gk) {
+  function cklPairRow(s, gk, spec) {
+    if (Array.isArray(spec)) return cklPairSeries(s, gk, spec);   // `pair: [seriesA, seriesB]` (2026-10-14) -- `pair: true` below is untouched
     var ins = s && s.instruments, tru = s && s.true_state;
     if (!ins || ins.pzr_level == null) return null;
     var t = (s.metadata && s.metadata.sim_time) || 0, lvl = +ins.pzr_level;
@@ -4615,6 +4616,59 @@
         // walkthrough plots RCS INVENTORY there, so point at it rather than call it unavailable
         : ui.series.inventory ? 'RCS INVENTORY: on the strip chart' : 'RCS INVENTORY: Learning mode only');
   }
+  /* THE GENERAL PAIR (2026-10-14, OWNER RULING: a walkthrough leg grades ONE plant relationship, chart-led).
+   * `pair: [idA, idB]` names two strip-chart series; the row reads `LABEL A nn unit direction  |  LABEL B ...`
+   * off the SAME series definitions the chart draws: their label, their fmt (US units first, as the board
+   * shows) and their side -- the instrument where one exists, truth where the chart traces truth
+   * (sideOf), so Hard Rule 1 is the chart's own and not re-decided here. Direction is the change over a
+   * trailing 30 plant-seconds against 0.25 % of the series' own range (instrument noise sits below that on
+   * the PWR2 channels); under 5 s of history the last direction stands. History is keyed to the step
+   * (`gk`) and dropped on a step change or when the clock goes back (Rewind). An id that is not a
+   * series on this plant, or has no reading yet, draws no row at all rather than half of one. */
+  var cklSerHist = { gk: null, rows: [], dir: {} };
+  function cklPairSeries(s, gk, ids) {
+    if (!s || ids.length < 2) return null;
+    var sers = [seriesById(ids[0]), seriesById(ids[1])];
+    if (!sers[0] || !sers[1]) return null;
+    function read(ser) {
+      var side = sideSolid(sideOf(ser, true)), v = null;
+      try {
+        if (side === 'phys' && ser.tru && s.true_state) v = ser.tru(s.true_state);
+        else if (ser.get && s.instruments) v = ser.get(s.instruments);
+        else if (ser.ctl) v = ser.ctl(s.control_state || {});
+      } catch (e) { v = null; }
+      return (v == null || !isFinite(v)) ? null : +v;
+    }
+    var vals = [read(sers[0]), read(sers[1])];
+    if (vals[0] == null || vals[1] == null) return null;
+    var t = (s.metadata && s.metadata.sim_time) || 0;
+    if (cklSerHist.gk !== gk) cklSerHist = { gk: gk, rows: [], dir: {} };
+    var H = cklSerHist.rows;
+    if (H.length && t < H[H.length - 1].t) { H.length = 0; cklSerHist.dir = {}; }
+    if (!H.length || t > H[H.length - 1].t) H.push({ t: t, v: vals });
+    while (H.length > 2 && t - H[1].t >= 30) H.shift();
+    return [0, 1].map(function (k) {
+      var ser = sers[k], o = H[0];
+      if (o && t - o.t >= 5) {
+        var r = serRange(ser), band = Math.abs(r[1] - r[0]) * 0.0025, d = vals[k] - o.v[k];
+        cklSerHist.dir[k] = d > band ? 'rising' : d < -band ? 'falling' : 'steady';
+      }
+      var txt;
+      try { txt = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); } catch (e) { txt = vals[k].toFixed(1); }
+      return String(ser.label).toUpperCase() + ' ' + txt + (cklSerHist.dir[k] ? ' ' + cklSerHist.dir[k] : '');
+    }).join('  |  ');
+  }
+  /* The side-panel half: one line under the ACTIVE step, filled IN PLACE every broadcast (its text moves
+   * with the plant, so it stays out of the render key -- the whole column rebuilding per broadcast would
+   * reset scroll). The history is fed every call, drawn or not, so a step's first paint already has a
+   * direction. Callout legs draw the row on the card instead (cklCalloutFill). */
+  function cklPairPanel(s, ck, pr) {
+    var cur = $('cklRun'), el = cur && cur.querySelector('[data-ckl-pair]');
+    var st = pr && !ck.complete ? pr.steps[ck.step_index] : null;
+    if (!st || !Array.isArray(st.pair) || cklCalloutOn(pr)) { if (el) el.hidden = true; return; }
+    var txt = cklPairRow(s, pr.id + '#' + ck.step_index, st.pair);
+    if (el) { el.textContent = txt || ''; el.hidden = !txt; }
+  }
   RD.CklPairRow = cklPairRow;
   function cklCalloutFill(el) {
     var s = latest, a = cklActiveStep(s);
@@ -4640,7 +4694,7 @@
     }
     var gk = pr.id + '#' + idx;
     if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
-    var pairTxt = st.pair ? cklPairRow(s, gk) : null;
+    var pairTxt = st.pair ? cklPairRow(s, gk, st.pair) : null;
     /* THE PLANT MOVED THE LEG ON, SO SAY WHY ON THE CARD (#670, 2026-10-14). MEASURED in the browser on
      * the never-STOP route: step 6's and step 9's overtaken text reached only the column's bottom line,
      * under the card's own step 7 / step 10 text. The overtaken `label`, on a step that authors
@@ -5824,7 +5878,7 @@
       (s && s.metadata && s.metadata.time_acceleration) || 1,
       cklCalloutOn(pr) ? 'co' : '',
       cklState.view].join('|');
-    if (key === cklState.key) return;
+    if (key === cklState.key) { cklPairPanel(s, ck, pr); return; }
     var firstBuild = !cklState.key;
     cklState.key = key;
     /* ONE STEP AT A TIME *(OWNER, 2026-09-08, #660 items 15-16)*: the card is the current step
@@ -6447,6 +6501,7 @@
         det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
           mesc(st.why) + '</div>';
       }
+      if (active && Array.isArray(st.pair) && !coOn) h += '<div class="ckl-pair" data-ckl-pair="1" hidden></div>';   // filled in place by cklPairPanel
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
          * should have the why section automatically open.")*. The "other steps keep the toggle"
@@ -6517,6 +6572,7 @@
     var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
     cur.classList.toggle('ckl-co', coOn);
+    cklPairPanel(s, ck, pr);
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;

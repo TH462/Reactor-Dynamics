@@ -2749,6 +2749,8 @@ select.num-input { width: auto; }
    is where the real cautions are; the rung line keeps its own colour, a step up from .ckl-sub
    so it still reads as advice rather than prose, and the ⏩ glyph carries the meaning. */
 .ckl-wait { color: #8fa3b4; }
+.ckl-pair { font-size: 12px; line-height: 1.35; font-weight: 600; font-variant-numeric: tabular-nums; margin: 4px 0 2px; white-space: pre-wrap; }
+.ckl-pair[hidden] { display: none; }
 .ckl-next { border-color: var(--running); font-weight: 700; }
 .ckl-done { opacity: 0.62; border-left: 3px solid var(--running); }
 .ckl-done .ckl-ico { color: var(--running); }
