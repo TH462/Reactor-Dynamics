@@ -1488,7 +1488,11 @@
      * leaves; and never on a step already met, since `met` below returns first only when
      * both are true on the same tick, which is the tie the acceptance should win. */
     if (st.overtaken && st.overtaken.p) {
-      c.overtakenStreak = this._grade(snapshot, st.overtaken).met ? (c.overtakenStreak || 0) + 1 : 0;
+      /* `or: [{p, op, v}, …]` — a second CAUSE of the same overtake (TMI step 9: SUBCOOLING MARGIN
+       * cannot peg with injection on OR with the relief line already closed; quality pass 2026-10-14) */
+      var self0 = this, otMet = this._grade(snapshot, st.overtaken).met ||
+        (st.overtaken.or || []).some(function (q) { return self0._grade(snapshot, q).met; });
+      c.overtakenStreak = otMet ? (c.overtakenStreak || 0) + 1 : 0;
       if (c.overtakenStreak >= ACC_STABLE_N) {
         var otText = st.overtaken.text || 'The plant has moved past this step.';
         /* ⚠ CHECK OFF FIRST, THEN SPEAK (#749 item 4, 2026-09-18). `_checklistCheckOff` now

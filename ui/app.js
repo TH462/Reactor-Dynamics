@@ -3241,7 +3241,7 @@
   function isRateSnap(sn) {
     return !!sn && sn.reason === 'transient' && (/^(pressure|power) moving /.test(sn.detail || '') || sn.detail === 'loop transient');
   }
-  var rateDrops = { step: null, n: 0 };   // rate drops on one walkthrough step (#670 item 1, below)
+  var rateDrops = { step: null, n: 0, t: 0 };   // rate drops on one walkthrough step (#670 item 1, below)
   function retireWarpNote() {
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
@@ -3408,8 +3408,10 @@
        * one case without re-deriving it from the text. */
       warpNote = { text: speedSnapText(snap), reason: snap.reason, detail: snap.detail || '', step: cklNoteStepKey(s) };
       if (isRateSnap(snap)) {   // counted for #warpInfo's recurrence wording (syncWarpInfo)
-        if (rateDrops.step !== warpNote.step) rateDrops = { step: warpNote.step, n: 0 };
-        rateDrops.n++;
+        /* a new step, or the clock went BACK on the same one (a Rewind, a restarted leg): count afresh */
+        var tDrop = +s.metadata.sim_time || 0;
+        if (rateDrops.step !== warpNote.step || tDrop < (rateDrops.t || 0)) rateDrops = { step: warpNote.step, n: 0 };
+        rateDrops.n++; rateDrops.t = tDrop;
       }
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
@@ -5472,6 +5474,7 @@
      * names; with `op:'<'` it renders "the pump cavitation alarm is not standing". */
     porv_tailpipe_temp_c:   { label: 'PORV tailpipe temperature', dim: 'temp' },
     rcp_cavitating:         { bool: 'the pump cavitation alarm is standing' },
+    block_valve_open:       { bool: 'the PORV block valve is open' },   // TMI 9 overtake / TMI 10 position row (quality pass 2026-10-14)
   };
   var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
                      4: 'Mode 4, Hot Shutdown', 5: 'Mode 5, Cold Shutdown' };

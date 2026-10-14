@@ -5989,7 +5989,7 @@
         { text: 'Press TRIP BLOCKS on ROD CONTROL, then BLOCK on SI REACTOR TRIP.',
           crew: true,
           control: 'Trip Blocks', target: 'SI REACTOR TRIP blocked — its button now reads RELEASE?',
-          why: 'Low pressure can no longer restart injection by itself. High containment pressure still can.',
+          why: 'Low pressure can no longer start injection by itself.',   // quality pass 2026-10-14: 'High containment pressure still can' went false at a06c449c -- after the STOP reset no automatic signal restarts injection until P-4 clears (Manuals/03 §11)
           story: { clock: '04:03:50', line: 'Before touching a valve, they block automatic injection.',
             saw: 'Pressurizer level climbing hard while pressure fell.',
             knew: 'Level and pressure were saying opposite things, and level was the gauge they trusted.',
@@ -6117,9 +6117,12 @@
           /* THE BRANCH WHERE INJECTION WAS KEPT ON (step 6 overtaken). MEASURED, routes gate, seed 42: injection
            * holds the loop at saturation (pressure 337-510 psia), SUBCOOLING MARGIN reads 0 and never pegs, and
            * the step stranded for 195 plant-min. Injection is off on this step on every route that pressed STOP. */
-          overtaken: { p: 'hpi_active', op: '>', v: 0,
-            label: 'injection still on: SUBCOOLING MARGIN cannot reach -50 °F', on_card: true,
-            text: 'Overtaken: with injection on, SUBCOOLING MARGIN never reaches -50 °F here, so the pumps stay on. Go on to the next step.' },
+          /* ...AND THE BRANCH WHERE THE BLOCK VALVE WAS CLOSED EARLY (`or`, quality pass 2026-10-14). MEASURED, routes gate
+           * block_valve_early, seed 42: closed at step 9 entry (17 plant-min), pressure holds near 1,026 psia, SUBCOOLING
+           * MARGIN sits at 0 and never pegs: a 195 plant-min silent strand before this. */
+          overtaken: { p: 'hpi_active', op: '>', v: 0, or: [{ p: 'block_valve_open', op: '<', v: 1 }],
+            label: 'SUBCOOLING MARGIN cannot reach -50 °F with injection on or the relief line closed', on_card: true,
+            text: 'Overtaken: with injection on or the relief line already closed, SUBCOOLING MARGIN never reaches -50 °F here, so the pumps stay on. Go on to the next step.' },
           hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF', 'Subcooling Margin'] },
         /* 10 — 06:18:37. Old step 18. App. II.1 E122/E124 and Vol I p. 31. ONE CLICK, and the symbol
          * is LEFT of the PORV (#670 Phase 3, layman S-1: there is no confirm; a second click reopens
@@ -6142,13 +6145,22 @@
            * '#10' observe) the core first uncovers at 168 plant-min, 122 min after entry; maximum 74 %. */
           route_alt: [{ overtaken: [6],
             note: 'Injection is keeping up for now. Left open, the relief line drains the plant: the core starts to uncover about two plant-hours on.',
-            wait_hint: 'The tailpipe reads below 400 °F within about ten plant-minutes of the click. With injection on, PRIMARY PRESSURE climbs to near 2,000 psi in about eight.' }],
+            wait_hint: 'The tailpipe reads below 400 °F within about ten plant-minutes of the click. With injection on, PRIMARY PRESSURE climbs to near 2,000 psi in about eight.' },
+            /* THE EARLY-CLOSE ROUTE (step 9 overtaken on the closed relief line; keep-injection matches the entry above first).
+             * MEASURED 2026-10-14, routes gate block_valve_early, seed 42: closed at 17.2 plant-min, step 10 done 10.0 plant-min
+             * after entry, on the position row and the tailpipe. */
+            { overtaken: [9],
+              note: 'If it is already closed, do not click it again: a second click reopens it.',
+              wait_hint: 'The tailpipe reads below 400 °F about ten plant-minutes after the valve closes.' }],
           story: { clock: '06:18:37', line: 'A fresh shift supervisor reads the hot relief line and orders it blocked.',
             saw: 'The relief line discharge running about 30 degrees hotter than the safety valve discharge lines.',
             knew: 'A relieving shift supervisor set the pressurizer level aside and read the temperatures instead. His conclusion was that the relief valve was leaking.',
             did: 'He ordered the block valve shut, and pressure began to rise within minutes.' },
           cmd: { action: 'close_block_valve' }, hold: 3720,
-          accs: [{ cmd: { action: 'close_block_valve' }, label: 'PORV block valve closed' },
+          /* PRESS OR POSITION (quality pass 2026-10-14): the symbol TOGGLES (pwr_board_wiring imrppb3kuav), so a player who
+           * closed the valve before this step would REOPEN it with the card's one click and the press-only row never ticked.
+           * The position latches the row for them; a reopen after it still leaves the tailpipe row unmet. */
+          accs: [{ cmd: { action: 'close_block_valve' }, p: 'block_valve_open', op: '<', v: 1, label: 'PORV block valve closed' },
                  { p: 'porv_tailpipe_temp_c', op: '<', v: 204.44, label: 'PORV tailpipe temperature below 400 °F' }],
           hl: ['PORV Block Valve'], hl_watch: ['Primary Pressure'] },
         /* 11 — 07:20:37. Old step 19. App. II.1 E167; not sustained historically. PRESS START
@@ -6156,10 +6168,12 @@
          * command is seen, and with WARP on step 10 injection is often not yet running here. */
         { text: 'Press START on the ECCS card for high-pressure injection.',
           control: 'ECCS', target: 'SUBCOOLING MARGIN back above 10 °F',
-          why: 'Injection puts the water back. With it off, RCS INVENTORY stays near 20 %.',   // MEASURED 2026-10-14 (a06c449c): 21.6 -> 20.5 % over 80 plant-min with the block valve shut and injection off; nothing restarts it by itself
+          why: 'Injection puts the water back. With it off, RCS INVENTORY barely moves.',   // MEASURED 2026-10-14 (a06c449c): 21.6 -> 20.5 % over 80 plant-min with the block valve shut and injection off; nothing restarts it by itself. Early-close route (block_valve_early): 73.5 -> 75.7 % over 10 plant-min. Was 'stays near 20 %', false on that route (quality pass)
           wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It takes about an hour and three-quarters of plant time to reach +10 °F.',   // RE-MEASURED 2026-10-14 after a06c449c (no self-restart): 103.5 / 105.1 plant-min (typical / 120 s late)
           // KEEP-INJECTION ROUTE. MEASURED 2026-10-14, seed 42: injection already on, the step done 2.5 plant-min after the press
-          route_alt: [{ overtaken: [6], wait_hint: 'Injection is already on here and SUBCOOLING MARGIN is high, so the step ticks once START is pressed.' }],
+          route_alt: [{ overtaken: [6], wait_hint: 'Injection is already on here and SUBCOOLING MARGIN is high, so the step ticks once START is pressed.' },
+            // EARLY-CLOSE ROUTE. MEASURED 2026-10-14, block_valve_early, seed 42: step 11 done 45.0 plant-min after entry
+            { overtaken: [9], wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. Here it takes about three-quarters of an hour of plant time to reach +10 °F.' }],
           story: { clock: '07:20:37', line: 'They start a makeup pump by hand.',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
@@ -6211,7 +6225,11 @@
        * three; at the pump press 22.5 / 18.0 / 22.5 %, PRESSURIZER LEVEL 90.5 / 74.5 / 90.5 %, uncovered 91.9 / 93.4 /
        * 91.9 %; at least half uncovered 57 / 69 / 78 min; clad peak after 10 plant-min 584 / 610 / 604 degF;
        * inventory above 100 % 91 / 91 / 92 min after START. */
-      route_alt: [{ overtaken: [6], outcome: 'What happened, link by link, as measured on this plant:\n1. Feed lost: the heat had nowhere to go. Pressure jumped past 2300 psi and the relief valve lifted, as designed.\n2. The valve stuck open. Its lamp read CLOSED, because the lamp shows the solenoid, while the pipe under it ran hot.\n3. Pressure fell and injection started by itself, within two minutes.\n4. Steam in the loop pushed water up into the pressurizer, so the level pegged at 100 % while the plant emptied. You kept injection on, and RCS INVENTORY still fell below 80 %: the open relief valve drained faster than injection refilled.\n5. Once aux feed was back, the loop cooled and its pressure fell, injection delivered more, and inventory climbed past 100 % with the core still covered.\n6. Closing the block valve stopped the leak. With injection still on, the plant filled solid and pressure climbed to about 2,500 psi.\nIn 1979 the crew cut injection here, the fuel bundles boiled more than half dry, and serious core damage began. This sim does not model that damage (manual chapter 08, section 6.0).\nOne difference to keep: on this plant, injection left on keeps the core covered only for a time. With the relief valve left open, about 70 % of the core uncovers after nearly three hours (chapter 08, section 6.0).' }],
+      route_alt: [{ overtaken: [6], outcome: 'What happened, link by link, as measured on this plant:\n1. Feed lost: the heat had nowhere to go. Pressure jumped past 2300 psi and the relief valve lifted, as designed.\n2. The valve stuck open. Its lamp read CLOSED, because the lamp shows the solenoid, while the pipe under it ran hot.\n3. Pressure fell and injection started by itself, within two minutes.\n4. Steam in the loop pushed water up into the pressurizer, so the level pegged at 100 % while the plant emptied. You kept injection on, and RCS INVENTORY still fell below 80 %: the open relief valve drained faster than injection refilled.\n5. Once aux feed was back, the loop cooled and its pressure fell, injection delivered more, and inventory climbed past 100 % with the core still covered.\n6. Closing the block valve stopped the leak. With injection still on, the plant filled solid and pressure climbed to about 2,500 psi.\nIn 1979 the crew cut injection here, the fuel bundles boiled more than half dry, and serious core damage began. This sim does not model that damage (manual chapter 08, section 6.0).\nOne difference to keep: on this plant, injection left on kept the core covered because the block valve was closed in time. Had it stayed open, the core would have started to uncover after nearly three hours, and about 70 % of it would have uncovered (chapter 08, section 6.0).' },
+        /* THE EARLY-CLOSE RECAP (step 9 overtaken on the closed relief line). MEASURED 2026-10-14, routes gate block_valve_early,
+         * seed 42: block valve closed at 17.2 plant-min (RCS INVENTORY about 73 %), minimum inventory 73.2 %, core uncovered 0 %
+         * throughout; START at 27.5, inventory above 100 % by about 62 (about 35 plant-min after START). */
+        { overtaken: [9], outcome: 'What happened, link by link, as measured on this plant:\n1. Feed lost: the heat had nowhere to go. Pressure jumped past 2300 psi and the relief valve lifted, as designed.\n2. The valve stuck open. Its lamp read CLOSED, because the lamp shows the solenoid, while the pipe under it ran hot.\n3. Pressure fell and injection started by itself, within two minutes.\n4. Steam in the loop pushed water up into the pressurizer, so the level rose while the plant emptied. Injection was stopped with RCS inventory still above 90 %, and the level pegged at 100 % within two minutes.\n5. You closed the block valve early, with RCS INVENTORY still above 70 %. The leak stopped and the core never uncovered.\n6. Injection put the water back: inventory was above 100 % about 35 plant-minutes after START.\nIn 1979 the block valve stayed open for more than two hours, the fuel bundles boiled more than half dry, and serious core damage began. This sim does not model that damage (manual chapter 08, section 6.0).' }],
     },
   ];
 

@@ -398,6 +398,11 @@ var ROUTES = {
         set: { on: [{ ins: true, p: 'subcooling_margin', op: '<', v: -27.7, after_s: 3600, cmd: { action: 'set_rcp', running: false } }] } },
       /* the block valve left open half an hour: step 10 must wait for the click */
       { id: 'block_valve_late', kind: 'press late', at: '#10', min_dur: { step: 10, s: 1800 }, set: { delay_s: 1800 } },
+      /* the block valve closed EARLY, on step 9 (quality pass 2026-10-14): the board symbol TOGGLES, so this player's one
+       * click on step 10 would reopen it; they leave it shut and wait. Step 10 must still finish (position, not only press). */
+      { id: 'block_valve_early', kind: 'press early', at: '#9', override: { '#10': { policy: 'observe' } },
+        set: { on: [{ ins: true, p: 'subcooling_margin', op: '<', v: -27.7, cmd: { action: 'set_rcp', running: false } },
+                    { p: 'pressure_mpa', op: '>', v: 0, cmd: { action: 'close_block_valve' } }] } },
     ],
   },
 };
@@ -450,6 +455,12 @@ var MUTATIONS = [
   { id: 'tmi_no_overtaken_9', leg: 'pwr_tmi2_incident', route: 'keep_injection', expect: 'invariant',
     why: 'step 9 without its `overtaken` (injection on: SUBCOOLING MARGIN never pegs, 195 plant-min strand)',
     mutate: function (P) { delete P.steps[8].overtaken; } },
+  { id: 'tmi_no_or_9', leg: 'pwr_tmi2_incident', route: 'block_valve_early', expect: 'invariant',
+    why: 'step 9 without the closed-relief-line cause of its overtake (pressure holds ~1,026 psia, no peg: 195 plant-min strand)',
+    mutate: function (P) { delete P.steps[8].overtaken.or; } },
+  { id: 'tmi_press_only_10', leg: 'pwr_tmi2_incident', route: 'block_valve_early', expect: 'invariant',
+    why: 'step 10 graded on the press alone (the toggle: a player who closed it early never re-presses, silent strand)',
+    mutate: function (P) { delete P.steps[9].accs[0].p; delete P.steps[9].accs[0].op; delete P.steps[9].accs[0].v; } },
   { id: 'tmi_old_step10', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'complete',
     why: 'step 10 back on PRIMARY PRESSURE above 750 psi (the plateau is ~741 psia: the typical route strands)',
     mutate: function (P) { P.steps[9].accs.splice(0, 1, { p: 'pressure_mpa', op: '>', v: 5.17, label: 'PRIMARY PRESSURE above 750 psi' }); } },
