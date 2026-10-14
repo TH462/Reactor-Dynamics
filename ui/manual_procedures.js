@@ -5902,7 +5902,7 @@
          * one tick after entry and stops the clock, so the window cannot be spent reading.
          * `condensate_polisher_trip` is INDICATOR-ONLY (OWNER RULING 2026-10-10: a scripted event,
          * shown on POLISHER STATUS and narrated). `saw`, not `acc`: peak 2356 psia at t+7.4 s. */
-        { text: 'No action. The CONDENSATE POLISHER reads FAILED and the main feed pumps trip. Press Continue, then watch FEED FLOW fall.',
+        { text: 'No action. CONDENSATE POLISHER FAILED, main feed pumps tripping. Press Continue to start the clock, then watch FEED FLOW fall.',   // layman pass 2026-10-14 S-5: the clock is stopped here by design (pause), and a player who pressed play instead started the accident before reading step 2
           why: 'With feedwater gone, the only way out for the heat is the pressurizer relief valve.',
           note: 'One trip channel is out of service, so this reactor trips later, on overtemperature, not with the turbine.',
           story: { clock: '04:00:37', line: 'Water in the polisher air line shuts its valves, and both main feedwater pumps trip.',
@@ -6026,7 +6026,7 @@
          * uncovery, which is 0 at this step (#670 Phase 3, layman S-8). */
         { text: 'Watch PRESSURIZER LEVEL peg at the top of its scale and SUBCOOLING MARGIN reach zero.',
           why: 'It reads full while the plant empties: level is not inventory. The coolant is boiling.',
-          note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered.',
+          note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered. Injection stays off: the Containment Pressure High alarm cannot restart it yet.',   // layman pass 2026-10-14 S-4. MEASURED (live runtime, seed 42): after STOP the reset's re-arm block holds the standing containment signal off; injection next starts by itself at 144.5-156.8 plant-min, on steps 10-11, as containment pressure falls back through ~3.8 psig (step 11's why covers that)
           pair: true,
           story: { clock: '04:06:28', line: 'The pressurizer level goes off the top of its scale as the coolant reaches saturation.',
             saw: 'The level indicator went off the top of its scale, past 400 inches.',
@@ -6062,13 +6062,23 @@
          * The wait is graded on SUBCOOLING MARGIN, not pressurizer level (#788: two of the four
          * named casualties freeze that channel; `tavg_sensor_failure` false-ticks this row, the
          * recorded trade). The chart widens to 3 h here so the whole accident fits. */
-        { text: 'Once SUBCOOLING MARGIN pegs low, press OFF on the reactor coolant pumps.',
+        { text: 'Once SUBCOOLING MARGIN pegs at -50 °F, press OFF on the reactor coolant pumps.',
           crew: true,
           control: 'RCP ON/OFF', target: 'after OFF, the pump cavitation alarm clears',
           why: 'They are cavitating. Stopping them also removes the only thing stirring the core.',
           wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale about an hour in. That is the reading to wait for before securing the pumps.',   // MEASURED 2026-10-14, live runtime: 61.0 / 63.8 / 67.7 plant-min (typical / slow / warp)
           wait_first: true,   // the wait comes BEFORE the press — see cklActionPending (ui/app.js)
+          /* THE CORE UNCOVERS ON THIS STEP, SO IT IS WATCHED AT 60x (layman pass 2026-10-14, S-1). At the
+           * 600x rung `CklSpeedHint(3900)` gave it, the boil-down ran in about 5 s of wall time and a player
+           * learned "93 % uncovered" only from the recap. MEASURED, live runtime, seed 42, attention stops
+           * on: at 60x the step lasts 437 broadcasts (about 44 s of wall) from 13.5 plant-min, core
+           * uncovered 0.00 -> 0.92 and RCS INVENTORY 80 -> 22 % inside it; entered 120 plant-s late per
+           * step, 31 s of wall from 0.20 to 0.92. At 600x it was 53 broadcasts. The chart adds Core
+           * Uncovered from here, and the note points at the two places it shows. */
+          wait_speed: 60,
+          note: 'Watch RCS INVENTORY and the vessel drawing: the water drops down the core while PRESSURIZER LEVEL still reads high.',
           pair: true,
+          trend: ['pressure', 'pzr_level', 'inventory', 'uncovered', 'porv'],
           window: 10800,
           story: { clock: '05:13:37', line: 'The pumps shake badly; they stop loop B, then loop A.',
             saw: 'Rising vibration on the loop B pumps, with flow and amperage falling away.',
@@ -6126,7 +6136,7 @@
         { text: 'Press ON for the reactor coolant pumps to restore forced circulation.',
           control: 'RCP ON/OFF', target: 'RCP FLOW back above 80 %',
           why: 'Core damage, radiation and the hydrogen burn are not modelled; everything before this was.',
-          story: { clock: '19:50:37', line: 'Twelve hours on, sixteen hours in: a pump runs and core cooling returns.',
+          story: { clock: '19:50:37', line: 'In 1979 this came sixteen hours in; this plant gets here sooner. A pump runs and core cooling returns.',   // layman pass 2026-10-14 S-6: the old line read as the sim's own clock, beside a board reading about T+04:25
             saw: 'Nearly sixteen hours in, a pump started and ran satisfactorily. Core cooling was established.',
             knew: 'Almost nothing about the state of the core. The instrument that would have told them did not exist.',
             did: 'They kept the pump running. "All will grope in bewilderment for another whole day before the truth strikes."' },

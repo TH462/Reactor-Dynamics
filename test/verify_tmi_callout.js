@@ -212,6 +212,7 @@ var BUB = '#instrCallout';
     // 7. THE REDESIGN: chart preset, window pin, live pair, Hard Rule 1, restore on End
     if (v === 0) {
       var PRESET = ['inventory', 'porv', 'pressure', 'pzr_level'];
+      var PRESET9 = ['inventory', 'porv', 'pressure', 'pzr_level', 'uncovered'];   // the pumps step adds Core Uncovered (layman pass 2026-10-14, S-1)
       var steps = await page.evaluate(function () { return RD.__dev.service().instructor.checklist.proc.steps.map(function (x) { return { pair: !!x.pair, window: x.window || 0 }; }); });
       var pairIdx = steps.map(function (x, k) { return x.pair ? k : -1; }).filter(function (k) { return k >= 0; });
       var wideIdx = steps.map(function (x, k) { return x.window === 10800 ? k : -1; }).filter(function (k) { return k >= 0; })[0];
@@ -222,8 +223,8 @@ var BUB = '#instrCallout';
          JSON.stringify(c1.series) === JSON.stringify(PRESET) && c1.window === 1800 && c1.windowAuto === false && (c1.lit === null || c1.lit === 1800), JSON.stringify(c1));
       await jump(page, wideIdx);
       var c9 = await page.evaluate(function () { return RD.__dev.chart(); });
-      ck(tag + ': the pumps step (step ' + (wideIdx + 1) + ') widens the pinned window to 3 h and keeps 3 h of trend',
-         wideIdx >= 0 && c9.window === 10800 && c9.record >= 10800 && JSON.stringify(c9.series) === JSON.stringify(PRESET) && (c9.lit === null || c9.lit === 10800), JSON.stringify(c9));
+      ck(tag + ': the pumps step (step ' + (wideIdx + 1) + ') widens the pinned window to 3 h, keeps 3 h of trend and adds Core Uncovered to the chart',
+         wideIdx >= 0 && c9.window === 10800 && c9.record >= 10800 && JSON.stringify(c9.series) === JSON.stringify(PRESET9) && (c9.lit === null || c9.lit === 10800), JSON.stringify(c9));
       var PAIR_RE = /^PRESSURIZER LEVEL \d+ %( rising| falling| steady)?  \|  RCS INVENTORY \d+ %( rising| falling| steady)?$/;
       var pairBad = [];
       for (var pk = 0; pk < pairIdx.length; pk++) {
@@ -250,6 +251,36 @@ var BUB = '#instrCallout';
       var cEnd = await page.evaluate(function () { return RD.__dev.chart(); });
       ck(tag + ': ending the walkthrough puts the chart back (not the preset, window back on the speed ladder, on the rung lit before it started)',
          JSON.stringify(cEnd.series) !== JSON.stringify(PRESET) && cEnd.windowAuto === true && cEnd.lit === cEnd.window && cEnd.lit === cPre.lit, JSON.stringify([cPre, cEnd]));   // the player's own rung comes back, not whichever rung the pin left lit (quality pass 2026-10-14)
+      await start(page, PROC);
+      /* 8. THE BOIL-DOWN IS WATCHED, AND A BRIEF-SWING WARP DROP IS PUT BACK (layman pass 2026-10-14,
+       * S-1 and S-2). The pumps step is where the core uncovers: auto pacing runs it at 60x (it ran
+       * at 600x, ~5 s of wall for the whole boil-down). Then, with that step's rung forced to 600x in
+       * page memory so the WARP path is live, the service's in-loop watch is made to report ONE
+       * half-second pressure rate: auto must put 600x back. The same drop reported as a reactor trip
+       * is an event, and must stay at 60x. INJECTIONS: drop `wait_speed: 60` from step 9 -> the first
+       * check red (600x); delete the re-request in syncCklAutoSpeed -> the second red (stays 60x). */
+      async function oneDrop(det) {
+        await page.evaluate(function (d) { var sv = RD.__dev.service(), orig = sv._warpWatch, once = true;
+          sv._warpWatch = function (sp) { var w = orig.call(this, sp); if (once) { once = false; this._warpWatch = orig; return d; } return w; }; }, det);
+        await page.waitForTimeout(1500);
+        return page.evaluate(function () { return RD.__dev.service().timeAcceleration; });
+      }
+      await page.click(BUB + ' .ico-cont').catch(function () {});   // step 1's Continue: releases the walkthrough's own hold, as a player does
+      await page.waitForTimeout(600);
+      await jump(page, wideIdx);
+      await page.waitForTimeout(1500);
+      var x9 = await page.evaluate(function () { return RD.__dev.service().timeAcceleration; });
+      ck(tag + ': the pumps step (step ' + (wideIdx + 1) + '), where the core uncovers, is paced at 60x, not 600x', x9 === 60, 'x' + x9);
+      await page.evaluate(function (k) { RD.__dev.service().instructor.checklist.proc.steps[k].wait_speed = 600; }, wideIdx);
+      await page.waitForFunction(function () { return RD.__dev.service().timeAcceleration === 600; }, null, { timeout: 8000 }).catch(function () {});
+      var xPre = await page.evaluate(function () { return RD.__dev.service().timeAcceleration; });
+      var xRate = await oneDrop('pressure moving 99 psi/s right now (the gauge is damped and shows the trend)');
+      var xTrip = await oneDrop('reactor trip');
+      await page.evaluate(function (k) { RD.__dev.service().instructor.checklist.proc.steps[k].wait_speed = 60; }, wideIdx);
+      ck(tag + ': a WARP drop on a brief pressure rate is put back to the step\'s 600x; a drop on a reactor trip stays at 60x',
+         xPre === 600 && xRate === 600 && xTrip === 60, 'before x' + xPre + ', after rate drop x' + xRate + ', after trip drop x' + xTrip);
+      await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });   // leave a fresh leg for what follows
+      await page.waitForTimeout(900);
       await start(page, PROC);
     }
 

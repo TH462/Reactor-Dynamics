@@ -5142,9 +5142,34 @@
      * rather than by this latch. */
     if (idle) { cklAuto.key = null; return; }
     if (cklAuto.over === key) return;        // the player took this step's clock; it is theirs
-    if (key === cklAuto.key) return;
+    /* ---- A BRIEF-SWING DROP IS PUT BACK (TMI-2 layman pass 2026-10-14, S-2) ----
+     * The service's in-loop WARP watch drops the clock to 60x on a half-second pressure or power
+     * rate and reports it as a `transient` speed_snap. When that rate is gone by the next
+     * broadcast, `warp_available` is true again, so `want` never left the rung and the KEY never
+     * changed — auto believed it had already acted, and #warpInfo said "it has passed" over a
+     * clock left at 60x. MEASURED (live runtime, seed 42): pwr_tmi2_incident steps 10-11, three
+     * such drops with warp_available true on the broadcast after; one re-request at 600x landed
+     * with no second drop on the route that took it. So: once, on the broadcast after a transient
+     * drop on this key, ask for the rung again — capped at three per key so a plant that keeps
+     * swinging cannot make the clock chatter. Alarm, trip and failure drops (to 1x) are the plant
+     * calling the player and are never put back. */
+    if (key === cklAuto.key) {
+      var sn = s.metadata && s.metadata.speed_snap, pcg = s.metadata && s.metadata.pacing;
+      /* RATE reasons only — the test `syncWarpInfo` uses for "it has passed". The in-loop watch also
+       * reports a reactor trip, a new failure or a new alarm as `transient`: those are events, and
+       * the clock stays where the plant put it. */
+      if (sn) { cklAuto.drop = (sn.reason === 'transient' && (/^(pressure|power) moving /.test(sn.detail || '') || sn.detail === 'loop transient')) ? key : null; return; }
+      if (cklAuto.drop === key && cklAuto.set === want && cur < want && pcg && pcg.warp_available === true &&
+          !(s.true_state && s.true_state.speed_hold) && (cklAuto.rearms || 0) < 3) {
+        cklAuto.drop = null; cklAuto.rearms = (cklAuto.rearms || 0) + 1;
+        try { service.handleCommand({ action: 'set_speed', value: want }); } catch (e) { return; }
+        if (s.metadata) s.metadata.time_acceleration = service.timeAcceleration;
+      }
+      return;
+    }
     cklAuto.key = key;
     cklAuto.set = want;
+    cklAuto.drop = null; cklAuto.rearms = 0;
     if ((s.true_state && s.true_state.speed_hold) && want > 1) return;  // refused; retries when it lifts
     if (cur === want) return;
     try { service.handleCommand({ action: 'set_speed', value: want }); }
@@ -9744,6 +9769,20 @@
   function blockedText(m) {
     if (/ROD DRIVE BLOCKED/.test(m) && /LATCHED/.test(m))
       return "Rods can't move: the reactor trip is latched. Reset it first — press the SCRAM button on the ROD CONTROL card once it reads PRESS TO RESET.";
+    /* THE RESET-RELAY REFUSALS, IN THE PLAYER'S WORDS (TMI-2 layman pass 2026-10-14, S-3). The
+     * engine's text names the relay class, the source section and the actuating bistable's id
+     * ("Actuated on si_lo_pzr_press") — right for the Industry register and the gates, a riddle
+     * in Learning. What the player needs is how long, and to press it again. */
+    if (ui.register !== 'industry') {
+      var rly = /^(ECCS STOP|AFW STOP|MFW RESTORE) BLOCKED\b[\s\S]*?time-delay relay has (\d+) s to run/.exec(m);
+      if (rly) {
+        var btn = rly[1] === 'MFW RESTORE' ? 'RESTORE' : 'STOP';
+        var sig = rly[1] === 'ECCS STOP' ? 'Safety injection' : rly[1] === 'AFW STOP' ? 'The automatic aux feed start' : 'The feedwater isolation';
+        return 'Not yet: ' + btn + ' works in ' + rly[2] + ' s. ' + sig + ' cannot be reset in its first minute. Press ' + btn + ' again then.';
+      }
+      if (/^ECCS STOP BLOCKED\b[\s\S]*P-4/.test(m))
+        return 'Not yet: STOP works only once the reactor has tripped. Safety injection cannot be reset before that.';
+    }
     m = m.replace(/\s*\[sourced[^\]]*\]/g, '').replace(/\s{2,}/g, ' ').trim();
     return ui.register === 'industry' ? m : spellCodes(m);
   }

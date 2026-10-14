@@ -1322,7 +1322,16 @@
        * recovers, which is what `precondMsg` is for; a latch that never clears is the same
        * defect facing the other way. */
       var cklMoving = c.idx > 0;
-      if (anyUnmet && !c.precondMsg && !c.precondSaid && !cklMoving) {
+      /* SETTLED AT THE FIRST EVALUATION (TMI-2 layman pass 2026-10-14, S-5). A run whose plant met
+       * every row when it opened has answered the entry question, and the panel's banner is
+       * captured at that same moment (ui/app.js, #614) — so a row breaking LATER, still on step 1,
+       * raised "the walkthrough panel lists each one" over a panel listing none. MEASURED on
+       * pwr_tmi2_incident: REACTOR POWER above 90 % holds at open, then the leg's own step-1
+       * injections trip the reactor while step 1 is still active, and the comment fired on the
+       * script's own casualty. #732's flicker probe and the heal case both open UNMET, so both
+       * still raise once. */
+      if (c.precondEntryMet === undefined) c.precondEntryMet = !anyUnmet;
+      if (anyUnmet && !c.precondMsg && !c.precondSaid && !cklMoving && !c.precondEntryMet) {
         // One register-aware comment per unmet episode — the checklist banner
         // carries the row-by-row detail, this just points the operator at it.
         c.precondMsg = true;
