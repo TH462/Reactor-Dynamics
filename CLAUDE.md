@@ -673,8 +673,8 @@ node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
 node test/run_pwr2_engine.js --no-mutations   # skip the replay while fixing a check (34 pwr2
                                 # runners; --mut=/--grp= too). FILTERED = FORCED NON-ZERO, never
                                 # a baseline. 115 s -> 2.9 s (#602)
-                                # THREE PARTS (#637): bare = A, _b.js, _c.js (group I, 835 s,
-                                # the tail); --all = unsplit
+                                # FOUR PARTS (#637): bare = A, _b, _c, _d.js (group J, the
+                                # tail); --all = unsplit
 node test/run_all.js --shard=2/3 --list # what CI shard 2 runs (derived, never a hand list)
 node test/run_warp_tier.js             # the two pacing tiers (#625): WARP's fidelity band, the
                                 # cliff at 1.0 s, the in-loop lockout, the step budget
