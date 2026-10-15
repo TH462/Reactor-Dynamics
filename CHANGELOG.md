@@ -34,7 +34,9 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 - `{p, op:'moves', dir, v, window, with}` grades one plant relationship: `p` moved at least `v` in `dir` over the trailing `window` plant-seconds AND the `with` channel moved its way (or met its threshold). Window must fill, resets on step change and rewind, latches once met (5 distinct instants). Shared dispatcher, so the live card and the replay agree. `tavg_tref_dev_c` grades Tavg minus its program off the board instrument. `run_checklist_pwr2_b` 208 -> 224.
 
-## [Alpha 1.8.4-rc2] — 2026-10-14
+## [Alpha 1.8.4-rc3] — 2026-10-14
+
+- CI shard balance (rc3, CI run 38670341210): `secs` hints for all runners >= ~60 s reset to CI contention wall; shards now 4010 s each (was shard 1 timed out, 4 at 30.5 min). Longest single runner `run_checklist_pwr2_b` (1789 s) still bounds the wall.
 
 ### Fixed — walkthrough card on a wider font; CI shard 3 timeout (CI run 38652572708)
 
