@@ -3586,6 +3586,8 @@ select.num-input { width: auto; }
 .ico-tip { color: #6a4a00; }
 .ico-crit { font-size: 12px; line-height: 1.3; margin-top: 2px; color: var(--ico-ink); }
 .ico-crit.met { color: #2f6f3a; }
+.ico-crit.implied { color: var(--ico-sub); }   /* ticked by its `implied_by` sibling, not its own reading (#670 review) */
+.ico-impl { font-size: 11px; color: var(--ico-sub); }
 .ico-btns .ico-cont.ready { border-color: #2f6f3a; border-width: 2px; font-weight: 700; }
 .ico-btns .ico-rw { color: var(--ico-sub); }
 .ico-btns .btn[disabled] { opacity: .5; }

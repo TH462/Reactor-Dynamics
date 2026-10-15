@@ -4715,7 +4715,7 @@
     var prevSt = idx > 0 ? pr.steps[idx - 1] : null;
     var overTxt = (prevSt && prevSt.overtaken && prevSt.overtaken.on_card && ck.done_by && ck.done_by[idx - 1] === 'overtaken' &&
         s.instructor && s.instructor.message === prevSt.overtaken.text) ? 'Skipped step ' + idx + ' (' + (prevSt.overtaken.label || 'the plant moved past it') + ')' : '';
-    var key = JSON.stringify(['ckl', gk, pairTxt, (ck.accs || []).map(function (x) { return x && x.met ? 1 : 0; }), !!ck.acc_met,
+    var key = JSON.stringify(['ckl', gk, pairTxt, (ck.accs || []).map(function (x) { return x && x.met ? (x.implied ? 2 : 1) : 0; }), !!ck.acc_met,
       !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen,
       overTxt]);
     if (key === callout.key) return;
@@ -4746,10 +4746,16 @@
     if (overTxt) b += '<div class="ico-tip ico-over">' + mesc(overTxt) + '</div>';
     var stNote = cklRouteField(st, ck, 'note');
     if (stNote) b += '<div class="ico-tip">' + mesc(stNote) + '</div>';
-    var rows = (st.accs || []).map(function (en, k) { return { en: en, met: !!((ck.accs && ck.accs[k]) || {}).met }; })
+    var rows = (st.accs || []).map(function (en, k) { var v = (ck.accs && ck.accs[k]) || {}; return { en: en, met: !!v.met, implied: !!(v.met && v.implied) }; })
       .filter(function (r) { return !r.en.hidden && !r.en.cont; });
     if (rows.length > 1) {
       b += rows.map(function (r) {
+        /* A ROW TICKED BY ITS `implied_by` SIBLING IS NOT A PLAIN ✓ (#670 review, 2026-10-14). MEASURED, routes
+         * afw_late seed 42: TMI-2 step 9's relation row latched by the -50 °F peg at 17.75 plant-min with PRESSURIZER
+         * LEVEL reading 74 %, so a ✓ beside "...while PRESSURIZER LEVEL still reads 90 % or more" stood for a reading
+         * the board was not showing. Same `implied` verdict and wording as the side card's row. */
+        if (r.implied) return '<div class="ico-crit met implied">↳ ' + mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) +
+          '<div class="ico-impl">Covered by ' + mesc(impliedSay(st, r.en, idx + 1, true)) + ' — not checked on its own.</div></div>';
         return '<div class="ico-crit' + (r.met ? ' met' : '') + '">' + (r.met ? '✓ ' : '○ ') +
           mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
       }).join('');
@@ -5704,7 +5710,7 @@
   /* The sibling an `implied_by` row was covered by, as the player sees it: its own letter when
    * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
    * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
-  function impliedSay(st, en, stepNo) {
+  function impliedSay(st, en, stepNo, bare) {   // bare: no letter (the callout card draws none)
     // `cont` rows are skipped from the letter count here too (walkthrough-step-format project) —
     // the same non-letter, non-group-starting entries the render loop above excludes, so this
     // function's `j`-th letter cannot drift from the one actually printed on the card.
@@ -5715,7 +5721,7 @@
     }
     if (j === -1) return 'another line on this step';
     var lbl = accs[j].label || (accs[j].p ? fmtPredicate(accs[j]) : String(accs[j].cmd || ''));
-    if (visN > 1 && !accs[j].hidden && !accs[j].cont) {
+    if (!bare && visN > 1 && !accs[j].hidden && !accs[j].cont) {
       var seen = 0;
       for (i = 0; i < j; i++) if (!accs[i].hidden && !accs[i].cont) seen++;
       return String(stepNo) + String.fromCharCode(97 + seen) + ': ' + lbl;
@@ -6243,7 +6249,7 @@
                * the runtime actually latched it that way: `implied` is a snapshot verdict, not
                * a re-derivation here. */
               (av.implied ? '<div class="ckl-crit-when">Covered by ' +
-                 mesc(impliedSay(st, en, i + 1)) + ' — this gauge did not get there.</div>' : '') +
+                 mesc(impliedSay(st, en, i + 1)) + ' — not checked on its own.</div>' : '') +
               /* A ROW STOOD DOWN BY THE PLAYER'S OWN CASUALTY SAYS SO, AND SAYING SO IS THE
                * CONDITION THE RULING ATTACHED TO IT (#773/#788, OWNER RULING 2026-09-19:
                * "A"). The step advances with this row unverified, which is only acceptable

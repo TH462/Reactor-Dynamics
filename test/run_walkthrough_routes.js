@@ -386,7 +386,15 @@ var ROUTES = {
       '#9': { policy: 'when', base_spec: { policy: 'observe' }, on: [
         { ins: true, p: 'subcooling_margin', op: '<', v: -27.7, cmd: { action: 'set_rcp', running: false } }] },
     },
+    /* step 9's relation row (relations plan change 1, 2026-10-14) must tick ON ITS OWN on the typical route, not
+     * by its `implied_by` relief: the relief is for the late player, and a row that only ever ticks implied is
+     * a threshold on SUBCOOLING MARGIN wearing the relation's label */
+    own_row: { step: 9, row: 1 },
     mistakes: [
+      /* the AFW valve left shut an hour (real time: step 8 holds 1x until the click). The whole drain happens on
+       * step 8, so step 9's relation row cannot latch and its `implied_by` (the -50 °F peg) is what lets the step
+       * finish. MEASURED without the relief: a 195 plant-min strand at step 9. */
+      { id: 'afw_late', kind: 'press late', at: '#8', set: { delay_s: 3600 } },
       /* the crew's mistake refused: STOP never pressed. The plant answers through step 6's `overtaken`
        * (RCS INVENTORY below 80 % with injection on), then the leg follows the crew. */
       /* ...and on that branch the pumps are never stopped (step 9 is overtaken), so RCP FLOW already reads
@@ -462,6 +470,16 @@ var MUTATIONS = [
   { id: 'tmi_press_only_10', leg: 'pwr_tmi2_incident', route: 'block_valve_early', expect: 'invariant',
     why: 'step 10 graded on the press alone (the toggle: a player who closed it early never re-presses, silent strand)',
     mutate: function (P) { delete P.steps[9].accs[0].p; delete P.steps[9].accs[0].op; delete P.steps[9].accs[0].v; } },
+  /* step 9's relation row (relations plan change 1, 2026-10-14) set past what the plant does: MEASURED largest
+   * 600 s fall 16.6-17.0 points on the played routes, so a 20-point row never latches on its own and `own_row`
+   * must see it ticked only by implication. Level-only grading is NOT injectable on this gate (the level reads full from entry on every
+   * route, so it ticks at the same instant) -- run_checklist_pwr2 2aq.17 carries that half. */
+  { id: 'tmi_relation_unreachable_9', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'own_row',
+    why: 'step 9 relation row asking a 20-point fall in 600 s (the plant gives 17.0 at most): it only ever ticks by its relief',
+    mutate: function (P) { P.steps[8].accs.filter(function (e) { return e.op === 'moves'; })[0].v = 20; } },
+  { id: 'tmi_no_implied_9', leg: 'pwr_tmi2_incident', route: 'afw_late', expect: 'invariant',
+    why: 'step 9 relation row without its implied_by (the drain already happened on step 8): 195 plant-min strand',
+    mutate: function (P) { delete P.steps[8].accs.filter(function (e) { return e.op === 'moves'; })[0].implied_by; } },
   { id: 'tmi_old_step10', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'complete',
     why: 'step 10 back on PRIMARY PRESSURE above 750 psi (the plateau is ~741 psia: the typical route strands)',
     mutate: function (P) { P.steps[9].accs.splice(0, 1, { p: 'pressure_mpa', op: '>', v: 5.17, label: 'PRIMARY PRESSURE above 750 psi' }); } },
@@ -874,6 +892,7 @@ function runJob(legId, routeId, mutId, ctx) {
         S.rowsMetAt[i] = t();
         /* the reading the row ticked on, once per row (#807 review item 5: what the tile shows at the tick) */
         if (r.obs != null && isFinite(r.obs)) { out[k].ticks = out[k].ticks || {}; if (out[k].ticks[i] == null) out[k].ticks[i] = [+((t() - S.t0) / 60).toFixed(2), +(+r.obs).toFixed(3)]; }
+        if (r.implied) (out[k].implied = out[k].implied || {})[i] = true;   /* `own_row` reads it: a row stood down by its sibling */
       }
       var band = e.op === '~' && !e.latch, heldS = t() - (S.rowsMetAt[i] == null ? t() : S.rowsMetAt[i]);
       if (S.rowsMet[i] && !r.met && !e.cont && !e.hidden && !(band && heldS >= PASS_S))
@@ -1538,6 +1557,13 @@ function verdicts(r) {
      * COOLDOWN RATE tile channel runs past the margin anywhere in the leg. */
     var lim = ROUTES[r.leg] && ROUTES[r.leg].rate_max_F_hr;
     if (lim) rateVerdict();
+    var OR = ROUTES[r.leg] && ROUTES[r.leg].own_row;
+    if (OR) {
+      var so = (r.steps || []).filter(function (st) { return st.n === OR.step; })[0];
+      var tk = so && so.ticks && so.ticks[OR.row - 1], imp = !!(so && so.implied && so.implied[OR.row - 1]);
+      v.own_row = { ok: !!tk && !imp, name: 'step ' + OR.step + ' row ' + OR.row + ' ticks on its own grading, not by its implied_by relief',
+        note: !so ? 'step never reached' : !tk ? 'row never ticked' : (imp ? 'IMPLIED at ' : 'own tick at ') + tk[0] + ' plant-min into the step (reading ' + tk[1] + ')' };
+    }
     var h = fl('hollow');
     v.hollow = { ok: h.length === 0, name: 'no step checks off on entry before the player acts (hollow)',
       note: h.length ? h.map(function (x) { return 'step ' + x.step + ' lit at +' + f(x.at_s) + ' s'; }).join('; ') : 'none' };

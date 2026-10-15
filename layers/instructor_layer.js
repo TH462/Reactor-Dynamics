@@ -2679,9 +2679,11 @@
      * single-row step it would tick the step off a broken instrument, which is "you are done
      * because your meter died". The honest condition is REDUNDANCY, and that is what this
      * names: the row stands down only when a NAMED sibling, itself graded on an instrument,
-     * has already answered the same question. Hard Rule 1 is untouched — no true_state is
-     * read on either side — and the relief works for any cause, a stuck channel or a lost
-     * failure list included, because it is a plant-and-board condition, not a failure flag.
+     * has already answered the same question. On the startup row both sides were instruments;
+     * the shipped carrier (TMI-2 step 9) is not: its relation row reads `core_inventory_pct`,
+     * true state the Learning-mode RCS INVENTORY tile draws (Hard Rule 1, instruments vs
+     * truth: Realistic mode is not built). The relief works for any cause, a stuck channel or
+     * a lost failure list included, because it is a plant-and-board condition, not a failure flag.
      *
      * IT IS SAFE ONLY WHERE THE IMPLICATION IS REAL, AND THAT IS THE AUTHOR'S CLAIM TO MAKE.
      * For step 9 it is arithmetic, not a fit: `pwr2_true_state` computes `ir_amps = 8.333e-3 ×
@@ -2694,7 +2696,9 @@
      * §2ad reddens if one is ever authored.
      *
      * WHAT THIS PASS DOES NOT DO, and why it is the AUTHOR's constraint rather than a check
-     * (quality pass, 2026-09-18; neither is reachable from the one shipped instance). It does
+     * (quality pass, 2026-09-18; neither is reachable from the one shipped instance — TMI-2 step 9
+     * since the startup INTER RANGE row was deleted 2026-09-27; its sibling, the SUBCOOLING MARGIN
+     * peg, latches). It does
      * not give the latch back: once implied-met the row is skipped by both loops for ever, so a
      * `~` band or a `steady`/`stopped` sibling that later un-ticks leaves the implied row
      * standing -- name a LATCHING sibling. And it resolves in ONE forward pass, so a row implied
