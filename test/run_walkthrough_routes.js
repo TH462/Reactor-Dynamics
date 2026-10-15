@@ -480,6 +480,14 @@ var MUTATIONS = [
   { id: 'tmi_no_implied_9', leg: 'pwr_tmi2_incident', route: 'afw_late', expect: 'invariant',
     why: 'step 9 relation row without its implied_by (the drain already happened on step 8): 195 plant-min strand',
     mutate: function (P) { delete P.steps[8].accs.filter(function (e) { return e.op === 'moves'; })[0].implied_by; } },
+  /* V-1 (layman pass 3, 2026-10-15): the estimate check reads the step's authored number, not the hold */
+  { id: 'tmi_est_is_hold_7', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'est',
+    why: 'step 7 wait estimate set back to its replay hold (192 s against a measured 1.1 plant-min)',
+    mutate: function (P) { P.steps[6].wait_est_s = P.steps[6].hold; } },
+  /* ...and the 'cmd' anchor is load-bearing: step 8 counted from entry instead of from the click */
+  { id: 'tmi_est_from_entry_8', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'est',
+    why: 'step 8 wait estimate counted from step entry, not from the click (`wait_est_from` dropped)',
+    mutate: function (P) { delete P.steps[7].wait_est_from; } },
   { id: 'tmi_old_step10', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'complete',
     why: 'step 10 back on PRIMARY PRESSURE above 750 psi (the plateau is ~741 psia: the typical route strands)',
     mutate: function (P) { P.steps[9].accs.splice(0, 1, { p: 'pressure_mpa', op: '>', v: 5.17, label: 'PRIMARY PRESSURE above 750 psi' }); } },
@@ -839,7 +847,10 @@ function runJob(legId, routeId, mutId, ctx) {
       var spec = specFor(k);
       S = { t0: t(), spec: spec, memo: {}, rowsMet: [], rowsMetAt: [], ack0: null, acts: 0, pressedAck: false,
             bound: spec.bound_s || Math.max(3 * (st.hold || 0), BOUND_FLOOR_S) };
-      out[k] = { n: k + 1, policy: spec.policy || 'default', stated_max_min: spec.stated_max_min };
+      var estR = routeField(st, c.done_by, 'wait_est_s'), estF = routeField(st, c.done_by, 'wait_est_from');
+      out[k] = { n: k + 1, policy: spec.policy || 'default', stated_max_min: spec.stated_max_min,
+                 est_s: typeof estR === 'number' ? estR : null, est_from: estF || null, t0_min: (t() - T0) / 60,
+                 est_alt: routeField(st, c.done_by, '__alt_wait_est') === true };
       /* pass 6: "settle(s) on N degF" (settle_check) and the alarms a step must not raise (forbid_raise) */
       var stx = [st.text].concat((st.accs || []).map(function (e) { return e.ask || ''; })).join(' '), sm = /settles? (?:the temperature )?on (\d{3}) °F/.exec(stx);
       if (table.settle_check && sm) out[k].settle = +sm[1];
@@ -1010,6 +1021,7 @@ function runJob(legId, routeId, mutId, ctx) {
       cur = -2;                                         // force re-entry bookkeeping
       continue;
     }
+    if (out[cur] && c.cmd_seen && out[cur].t_cmd_min == null) out[cur].t_cmd_min = (t() - T0) / 60;   // the wait estimate's 'cmd' anchor (V-1)
     policy(S.spec, st, c, rows, el);
   }
   if (!result) result = { kind: 'strand', why: 'guard' };
@@ -1509,6 +1521,21 @@ function ck(name, cond, note, key) {
   if (ok) nPass++; else { nFail++; if (key && TRACKED[key]) nTracked++; }
   console.log((ok ? G + '  PASS' : R + '  FAIL') + X + '  ' + name + (!ok && key && TRACKED[key] ? Y + ' [TRACKED: ' + TRACKED[key] + ']' + X : '') + (note ? D + '  — ' + note + X : ''));
 }
+/* ui/app.js `cklRouteField`, the same rule: a `route_alt` entry whose every named step was checked off
+ * 'overtaken' on THIS run replaces the authored field (#670). The `est` check reads the wait estimate
+ * through it, so a route-true estimate is graded on the route it is written for (review of 8db64bb4). */
+function routeField(obj, by, f) {
+  var alts = obj && obj.route_alt;
+  if (alts && by) for (var i = 0; i < alts.length; i++) {
+    var a = alts[i];
+    if (a[f] !== undefined && a.overtaken && a.overtaken.length &&
+        a.overtaken.every(function (n) { return by[n - 1] === 'overtaken'; })) return a[f];
+    /* '__alt_wait_est': true when a route_alt carrying `wait_est_s` applies (the value may equal the base) */
+    if (f === '__alt_wait_est' && a.wait_est_s !== undefined && a.overtaken && a.overtaken.length &&
+        a.overtaken.every(function (n) { return by[n - 1] === 'overtaken'; })) return true;
+  }
+  return obj && f !== '__alt_wait_est' ? obj[f] : undefined;
+}
 function f(x, d) { return x == null || !isFinite(x) ? '-' : (+x).toFixed(d == null ? 1 : d); }
 function rd(r) {
   if (!r) return '';
@@ -1546,6 +1573,21 @@ launch();
 function verdicts(r) {
   var res = r.result, fl = function (kind) { return (r.flags || []).filter(function (x) { return x.kind === kind; }); };
   var v = {};
+    /* THE WAIT LINE'S NUMBER IS A MEASUREMENT (TMI-2 layman pass 3, V-1, 2026-10-15): it printed the replay's
+     * `hold` (step 8: 65 against 9.0). A step's authored `wait_est_s` must land within 30 % of itself (60 s floor;
+     * 50 % let step 8 pass counted from entry, 13.5 against 9.0) of the route's own time, from step entry or, with `wait_est_from: 'cmd'`, from its command. Typical route: every
+     * estimate; any other route: the estimates a `route_alt` resolved for it (review of 8db64bb4). */
+    var estSteps = (r.steps || []).filter(function (st) { return st.est_s != null && (r.typical || st.est_alt); });
+    var estOff = estSteps.filter(function (st) {
+      if (st.est_s == null || st.t_done_min == null) return false;
+      var from = st.est_from === 'cmd' ? st.t_cmd_min : st.t0_min;
+      if (from == null) return true;
+      st.est_act_s = (st.t_done_min - from) * 60;
+      return Math.abs(st.est_act_s - st.est_s) > Math.max(0.3 * st.est_s, 60);
+    });
+    if (r.typical || estSteps.length) v.est = { ok: estOff.length === 0, name: 'every authored wait estimate (wait_est_s) matches the route it is written for',
+      note: estOff.length ? estOff.map(function (st) { return 'step ' + st.n + ' took ' + (st.est_act_s == null ? 'no command' : f(st.est_act_s / 60) + ' plant-min') + ' against an estimate of ' + f(st.est_s / 60); }).join('; ')
+        : estSteps.filter(function (st) { return st.est_act_s != null; }).map(function (st) { return 'step ' + st.n + ' ' + f(st.est_act_s / 60) + '/' + f(st.est_s / 60); }).join(', ') || 'no estimates on this leg' };
   if (r.typical) {
     v.complete = { ok: res.kind === 'complete', name: 'the typical route completes (no strand, no trip)',
       note: res.kind + (res.step ? ' at step ' + res.step : '') + (res.why ? ': ' + res.why : '') + ' | ' + f(res.t_min) + ' plant-min | ' + rd(res.end) };
