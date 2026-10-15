@@ -748,6 +748,16 @@ function runSuite(quietRec) {
     'returned the same number for a covered core and a dry one',
     vHalf > vDry && vDry < 1 && Math.abs(vHalf - 25) < 0.01,
     'half-uncovered ' + vHalf + ', fully uncovered ' + vDry + ', both at mass fraction 0.5');
+  /* AN UNCOVERING CORE UNDER A PLENUM THAT IS NOT YET VOID (layman pass 2026-10-15, TMI-2 step 9).
+   * The probes above all set the hot-leg void to 1 whenever the core uncovers, which is the one regime
+   * where summing the two halves is harmless. MEASURED in the browser on TMI-2 step 9: core 37 %
+   * uncovered with the hot leg 70 % voided drew the core 93 % covered. The water in an uncovered
+   * core is below its top, so the drawn level is the core half alone. */
+  var vMid = vesselInv(0.37, 0.70, 50), vWet = vesselInv(0.3, 0, 50);
+  q('...and a core that is uncovering draws its water BELOW the core top whatever the plenum void ' +
+    '(37 % uncovered draws 63 % of the core pool, not 93 %)',
+    Math.abs(vMid - 31.5) < 0.01 && Math.abs(vWet - 35) < 0.01,
+    '37 % uncovered / 70 % void ' + vMid + ', 30 % uncovered / no void ' + vWet);
 
   /* ---- 2e. THE PIPES SAY WHAT IS IN THEM (#516 item 7) --------------------------------------
    * The primary runs declared `contents: 'water'` unconditionally, so the board drew liquid
