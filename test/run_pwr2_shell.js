@@ -45,6 +45,48 @@ function loadAll(shellSource) {
 
 var DT = 0.02;
 
+/* ---- THE PARTITION (2026-10-15) -----------------------------------------------------------
+ * One part ran 205 checks + 75 replays = 1085-1739 s on CI (runs 38700124714, 38670341210,
+ * 38685630351) and set the shard wall, so it is TWO parts on the run_pwr2_engine precedent
+ * (#637): PART_B names the groups part B OWNS, part A is everything else, so a NEW grp()
+ * block lands in part A and moves its tally rather than vanishing. GROUPS is derived from
+ * this file's own source (the `if (` is load-bearing: prose also says grp('X')); 'CR' is
+ * the clean-run-only block, which has no grp() call. The lists are CHECKED below: a letter
+ * that names no block throws, a letter in both parts is impossible by construction.
+ * Re-measure with --groups=X before moving one. `--all` is the unsplit whole. */
+var PART_B = ['E', 'L', 'T'];
+var PART_NAMES = ['A', 'B'];
+var PART = globalThis.__PWR2_SHELL_PART || 0;
+var GROUPS_ALL = (function () {
+  var seen = {}, re = /if \(grp\('([A-Z][A-Z0-9]*)'\)/g, m, src = fs.readFileSync(__filename, 'utf8');
+  while ((m = re.exec(src)) !== null) seen[m[1]] = true;
+  seen.CR = true;
+  return Object.keys(seen).sort();
+})();
+PART_B.forEach(function (g) {
+  if (GROUPS_ALL.indexOf(g) < 0)
+    throw new Error('run_pwr2_shell: PART_B names group ' + g + ', which no `if (grp(...))` block ' +
+      'in this file defines (groups: ' + GROUPS_ALL.join(' ') + ')');
+});
+var ALL = process.argv.indexOf('--all') >= 0 || (!!MUT.mutTag() && !MUT.grpTag());
+var GROUPS_FLAG = process.argv.filter(function (s) { return s.indexOf('--groups=') === 0; });
+var GROUP_OVERRIDE = GROUPS_FLAG.length
+  ? GROUPS_FLAG[0].slice(9).split(',').map(function (s) { return s.trim(); })
+  : (MUT.grpTag() ? [MUT.grpTag()] : null);
+var MY = {};
+GROUPS_ALL.forEach(function (g) {
+  if (GROUP_OVERRIDE) { if (GROUP_OVERRIDE.indexOf(g) >= 0) MY[g] = true; }
+  else if (ALL || (PART_B.indexOf(g) >= 0 ? 1 : 0) === PART) MY[g] = true;
+});
+if (GROUPS_FLAG.length) {   /* --grp= arms mut_flags' own guard already */
+  var _realExit = process.exit.bind(process);
+  process.exit = function (c) { _realExit(c ? c : 1); };
+}
+var MY_GROUPS = GROUPS_ALL.filter(function (g) { return MY[g]; });
+var RUNNER_NAME = 'run_pwr2_shell' + (PART && !ALL && !GROUP_OVERRIDE ? '_' + PART_NAMES[PART].toLowerCase() : '');
+var PART_LABEL = GROUP_OVERRIDE ? '--groups=' + MY_GROUPS.join(',')
+               : ALL ? 'the UNSPLIT whole (--all)' : 'part ' + PART_NAMES[PART] + ' of 2';
+
 /* runSuite(SH, rec, quiet, only) — `only` scopes a MUTATION REPLAY to the section group that
  * can see that mutation (#513, the run_pwr2_engine idiom): 'A' the surface + the command
  * partition + commands-land (three sections sharing one engine), 'B' the two banks, 'D' the
@@ -64,7 +106,7 @@ function runSuite(SH, rec, quiet, only) {
    * literal here is now a claim that the number does NOT scale, which is true of none of them. */
   var bank = function () { return globalThis.RD.pwr2.kinetics.RODS.max_steps; };
   var frac = function (f) { return Math.round(f * bank()); };
-  function grp(g) { return only === undefined || only === g; }
+  function grp(g) { return only === undefined ? MY[g] === true : only === g; }
   function ck(name, cond, note) {
     rec.push({ name: name, ok: !!cond });
     if (!quiet) console.log((cond ? '  PASS  ' : '  FAIL  ') + name + (note ? '  -- ' + note : ''));
@@ -2987,7 +3029,7 @@ function runSuite(SH, rec, quiet, only) {
    * Pre-ruling plant (limiter deleted): the same entry cools at hundreds of degF/hr in the
    * first minutes. The clean run only — shell-source mutations cannot move a dumpctl claim, and
    * a 30-plant-minute ride per untagged replay is ~15 s x the untagged count. */
-  if (only === 'CR' || (only === undefined && !quiet)) {
+  if (only === 'CR' || (only === undefined && !quiet && MY.CR === true)) {
   head('THE COOLDOWN RATE LIMIT ON THE PLANT  [a typed DUMP SETPOINT is a target, walked at the limit]');
   (function () {
     var eR = new SH.PWR2Engine({ initial_state: 'hot_zero_power' });
@@ -3023,6 +3065,7 @@ function runSuite(SH, rec, quiet, only) {
 }
 
 console.log('\nPWR2 -- THE SHELL CLASS (Option B stage B2): the surface the stack holds');
+console.log('  ' + PART_LABEL + ' -- groups ' + MY_GROUPS.join(' ') + ' of ' + GROUPS_ALL.join(' '));
 var rec = [];
 runSuite(loadAll(), rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
@@ -3034,7 +3077,7 @@ var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length -
  * scope preflight as well: that preflight re-rides every group, and on a red clean build every
  * group reports RED for a reason that has nothing to do with scope. Rationale, the measured case
  * and the refuse-vs-subtract ruling: mut_flags.requireCleanRun's header. */
-MUT.requireCleanRun(rec, '  run_pwr2_shell: ' + pass + ' passed, ' + fail +
+MUT.requireCleanRun(rec, '  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail +
   ' failed  (' + rec.length + ' checks)',
   { hint: 'To measure one group while another is red, scope both passes: --grp=<tag>. ' +
           'Forced non-zero, never a baseline.' });
@@ -3455,7 +3498,8 @@ var MUTATIONS = [
  * self-test OF the instrument, not a unit of coverage. */
 var GROUPS = MUTATIONS.map(function (mt) { return mt[3] && mt[3].grp; })
   .filter(function (g, i, a) { return g && a.indexOf(g) === i; });
-var NULLS = MUT.nullSelfTest({ groups: GROUPS, anchor: "'use strict';" });
+var MUT_GROUPS = GROUPS.filter(function (g) { return MY[g] === true; });
+var NULLS = MUT.nullSelfTest({ groups: GROUPS, expect: MUT_GROUPS, anchor: "'use strict';" });
 var MUT_TOTAL = MUTATIONS.length;
 MUTATIONS = MUTATIONS.concat(NULLS.entries);
 
@@ -3465,7 +3509,7 @@ MUTATIONS = MUTATIONS.concat(NULLS.entries);
  * crash there and silently stand in for coverage; here, on the clean module, it fails loudly. */
 var scopeBad = 0;
 var SH0 = loadAll();
-GROUPS.forEach(function (g) {
+MUT_GROUPS.forEach(function (g) {
     var rg = [], threw = false;
     try { runSuite(SH0, rg, true, g); } catch (e) { threw = true; }
     var fg = rg.filter(function (r) { return !r.ok; }).length;
@@ -3478,10 +3522,23 @@ GROUPS.forEach(function (g) {
     }
   });
 
-console.log('\ninjection self-test (' + MUT_TOTAL + ' mutations + ' + NULLS.entries.length +
-  ' null self-tests):');
+/* THE OWNERSHIP AUDIT (the run_pwr2_engine form): a mutation whose grp no part owns would
+ * never replay in any process, and every part would still print "no blind spots". Every part
+ * evaluates it over the FULL list. */
+var unowned = [];
+MUTATIONS.forEach(function (m) {
+  var t = (m[3] && m[3].grp) || null;
+  if (!t) unowned.push('NO grp TAG: ' + m[0]);
+  else if (GROUPS_ALL.indexOf(t) < 0) unowned.push('grp ' + t + ' IS NOT A GROUP IN THIS FILE: ' + m[0]);
+});
+unowned.forEach(function (u) { console.log('  UNOWNED MUTATION (' + u + ')'); });
+var mine = MUT.select(MUTATIONS).filter(function (m) { return m[3] && MY[m[3].grp] === true; });
+var mineReal = mine.filter(function (m) { return !NULLS.is(m[0]); });
+console.log('\ninjection self-test (' + mineReal.length + ' of ' + MUT_TOTAL + ' mutations + ' +
+  (mine.length - mineReal.length) + ' null self-tests -- this part owns groups ' +
+  MY_GROUPS.join(' ') + '):');
 var blind = 0;
-MUT.select(MUTATIONS).forEach(function (mt) {
+mine.forEach(function (mt) {
   var grpTag = (mt[3] && mt[3].grp) || undefined;
   var mutated = SHSRC.replace(mt[1], mt[2]);
   if (NULLS.is(mt[0])) {
@@ -3508,11 +3565,11 @@ MUT.select(MUTATIONS).forEach(function (mt) {
 loadAll();
 
 console.log('\n' + '='.repeat(70));
-console.log('  injection self-test: ' + (MUT_TOTAL - blind) + '/' + MUT_TOTAL +
+console.log('  injection self-test: ' + (mineReal.length - blind) + '/' + mineReal.length +
   ' mutations caught' + (blind ? '  ** ' + blind + ' BLIND SPOTS -- GATE FAILS **' : ', no blind spots') +
   (scopeBad ? '  ** ' + scopeBad + ' GROUP(S) NOT SELF-STANDING **' : ''));
 /* printed BEFORE the tally line, never after: run_all scrapes the LAST token-bearing line. */
 var nullFail = NULLS.report();
-console.log('  run_pwr2_shell: ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
+console.log('  ' + RUNNER_NAME + ': ' + pass + ' passed, ' + fail + ' failed  (' + rec.length + ' checks)');
 console.log('='.repeat(70) + '\n');
-process.exit(fail > 0 || blind > 0 || scopeBad > 0 || nullFail > 0 ? 1 : 0);
+process.exit(fail > 0 || blind > 0 || scopeBad > 0 || nullFail > 0 || unowned.length > 0 ? 1 : 0);
