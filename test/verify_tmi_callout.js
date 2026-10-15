@@ -411,7 +411,7 @@ var BUB = '#instrCallout';
     return { txt: e ? e.textContent : null, shown: !!(e && e.getClientRects().length), card: !!document.querySelector('#instrCallout:not([hidden])') };
   });
   ck('side panel: a step with pair [tavg, tavg_tref_dev] draws ONE line under the active step, two chart-series labels, each with a direction',
-     gp.shown && !gp.card && /^TAVG .+ {2}\| {2}TAVG . TREF .+$/i.test(gp.txt || '') && ((gp.txt || '').match(/rising|falling|steady/g) || []).length === 2, JSON.stringify(gp));
+     gp.shown && !gp.card && /^AVG COOLANT TEMPERATURE .+ {2}\| {2}TAVG . TREF .+$/i.test(gp.txt || '') && ((gp.txt || '').match(/rising|falling|steady/g) || []).length === 2, JSON.stringify(gp));
   var gd = await G.page.evaluate(function () {
     function snap(t, tv, dv) { return { metadata: { sim_time: t }, instruments: { tavg: tv, tavg_tref_dev: dv }, true_state: { tavg_c: tv, tref_c: tv - dv, plant_mode: 1 }, control_state: {} }; }
     var P = ['tavg', 'tavg_tref_dev'], out = {};
@@ -432,6 +432,20 @@ var BUB = '#instrCallout';
      dirs(gd.fresh) === '' && dirs(gd.rew) === '', JSON.stringify([gd.fresh, gd.rew]));
   ck('pair: true is unchanged byte for byte (PRESSURIZER LEVEL | RCS INVENTORY), with or without the spec argument',
      gd.t1 === 'PRESSURIZER LEVEL 50 %  |  RCS INVENTORY 80 %' && gd.t2 === gd.t1, JSON.stringify([gd.t1, gd.t2]));
+  /* THE GRADED SIDE (heatup step 11 review, 2026-10-15, browser-measured): in Learning mode the pair row read the
+   * TRUE margin (297 degF "falling" at step entry) beside the SUBCOOLING MARGIN tile pegged at 149 degF, which is the
+   * channel the step's `moves` row grades. The SHIPPED step 11, a snapshot shaped like its entry (instrument pegged
+   * at 83 degC / 149.4 degF, true 165 degC / 297 degF): the row must print the instrument. CONTROL: the same snapshot
+   * without the step (no graded side) prints the truth, so this page IS tracing truth and the check can fail.
+   * INJECTION (2026-10-15): `if (ser.instr && gIns[ser.instr] && ser.get) side = 'ind';` deleted -> this check red. */
+  var gh = await G.page.evaluate(function () {
+    var st = RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === 'pwr_heatup'; })[0].steps[10];
+    var sn = { metadata: { sim_time: 5, plant_id: 'pwr2' }, instruments: { tavg: 98.9, subcooling_margin: 83 },
+               true_state: { tavg_c: 98.9, subcooling_c: 165 }, control_state: {} };
+    return { pair: st.pair, row: RD.CklPairRow(sn, 'g-h11', st.pair, st), ctl: RD.CklPairRow(sn, 'g-h11c', st.pair) };
+  });
+  ck('heatup step 11: the pair row reads the SUBCOOLING MARGIN instrument its moves row grades (149 °F pegged), not the true 297 °F; board names on both halves',
+     /^AVG COOLANT TEMPERATURE 210°F {2}\| {2}SUBCOOLING MARGIN 149°F$/.test(gh.row || '') && /SUBCOOLING MARGIN 297°F/.test(gh.ctl || ''), JSON.stringify(gh));
   await jump(G.page, 0);
   await G.page.waitForTimeout(900);
   var gc = await G.page.evaluate(function () { return !!document.querySelector('#cklRun [data-ckl-pair]'); });

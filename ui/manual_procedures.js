@@ -2123,7 +2123,7 @@
            *     Seed 7 217.0. Continue 120 s late 203.0 (step 283.0). double_rcp, pressure_sp_high, rewind_mid_heaters:
            *     identical to typical; dump_auto_early 217.0 (step 295.0). */
           accs: [{ p: 'tavg_c', op: 'moves', dir: 'up', v: 2.778, window: 600, with: { p: 'subcooling_c', dir: 'down', v: 2.778 },
-                   ask: 'Watch the chart: late in the heatup, SUBCOOLING MARGIN starts to fall.',
+                   ask: 'Watch SUBCOOLING MARGIN come off its 149 °F top and start to fall.',   /* review 2026-10-15: the tile pegs at 149 °F (83 degC, its scale top) until 205.5 plant-min in, every heatup route measured */
                    label: 'On the chart, AVG COOLANT TEMPERATURE climbs 5 °F within 10 plant-minutes while SUBCOOLING MARGIN falls 5 °F' },
                  { p: 'tavg_c', op: '>', v: 283,
                    ask: 'Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.',

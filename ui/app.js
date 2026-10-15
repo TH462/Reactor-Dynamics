@@ -4630,8 +4630,8 @@
    * chart below it draws it (quality pass 2026-10-14). Direction is read over the last 30 plant-seconds; while a
    * pause holds the clock, the last direction stands. */
   var cklPairHist = { gk: null, rows: [], dir: {} };
-  function cklPairRow(s, gk, spec) {
-    if (Array.isArray(spec)) return cklPairSeries(s, gk, spec);   // `pair: [seriesA, seriesB]` (2026-10-14) -- `pair: true` below is untouched
+  function cklPairRow(s, gk, spec, st) {
+    if (Array.isArray(spec)) return cklPairSeries(s, gk, spec, st);   // `pair: [seriesA, seriesB]` (2026-10-14) -- `pair: true` below is untouched
     var ins = s && s.instruments, tru = s && s.true_state;
     if (!ins || ins.pzr_level == null) return null;
     var t = (s.metadata && s.metadata.sim_time) || 0, lvl = +ins.pzr_level;
@@ -4674,13 +4674,36 @@
    * the PWR2 channels); under 5 s of history the last direction stands. History is keyed to the step
    * (`gk`) and dropped on a step change or when the clock goes back (Rewind). An id that is not a
    * series on this plant, or has no reading yet, draws no row at all rather than half of one. */
+  /* THE GRADED SIDE WINS (heatup step 11 review, 2026-10-15, browser-measured): in Learning mode sideOf() traces
+   * TRUTH, so the row read the TRUE margin (297 degF "falling" at step entry) beside a SUBCOOLING MARGIN tile pegged
+   * at 149 degF -- and the step's `moves` row grades that pegged instrument. A series whose instrument channel a
+   * `moves` row on this step grades (its `p` or `with.p`) is read off that instrument, so the card's two numbers are
+   * the ones the row ticks on. Rows graded on true state (TMI-2 step 9's RCS INVENTORY, `pair: true` above) and
+   * every other series keep sideOf; the chart's own Learning-mode truth is not touched. Pure, so the browser gate
+   * calls it directly. */
+  function cklGradedIns(s, st) {
+    var IL = RD.InstructorLayer, out = {};
+    if (!st || !s || !IL || !IL.gradedInstrument) return out;
+    (st.accs || []).forEach(function (e) {
+      if (!e || e.op !== 'moves') return;
+      [e.p, e.with && e.with.p].forEach(function (p) { var iid = p ? IL.gradedInstrument(s, p) : null; if (iid) out[iid] = true; });
+    });
+    return out;
+  }
+  /* The BOARD's name for a pair series (review item 3): the tile engraving the step text uses, not the strip-chart
+   * lane label ("TAVG", "SUBCOOL"). Ids not listed fall back to the lane label. */
+  var CKL_PAIR_NAMES = { tavg: 'AVG COOLANT TEMPERATURE', subcool: 'SUBCOOLING MARGIN', pressure: 'PRIMARY PRESSURE',
+    steam_p: 'STEAM PRESS', power: 'REACTOR POWER', sur: 'STARTUP RATE', pzr_level: 'PRESSURIZER LEVEL',
+    inventory: 'RCS INVENTORY', dump_valve: 'STEAM DUMP' };
   var cklSerHist = { gk: null, rows: [], dir: {} };
-  function cklPairSeries(s, gk, ids) {
+  function cklPairSeries(s, gk, ids, st) {
     if (!s || ids.length < 2) return null;
     var sers = [seriesById(ids[0]), seriesById(ids[1])];
     if (!sers[0] || !sers[1]) return null;
+    var gIns = cklGradedIns(s, st);
     function read(ser) {
       var side = sideSolid(sideOf(ser, true)), v = null;
+      if (ser.instr && gIns[ser.instr] && ser.get) side = 'ind';
       try {
         if (side === 'phys' && ser.tru && s.true_state) v = ser.tru(s.true_state);
         else if (ser.get && s.instruments) v = ser.get(s.instruments);
@@ -4704,7 +4727,7 @@
       }
       var txt;
       try { txt = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); } catch (e) { txt = vals[k].toFixed(1); }
-      return String(ser.label).toUpperCase() + ' ' + txt + (cklSerHist.dir[k] ? ' ' + cklSerHist.dir[k] : '');
+      return (CKL_PAIR_NAMES[ser.id] || String(ser.label).toUpperCase()) + ' ' + txt + (cklSerHist.dir[k] ? ' ' + cklSerHist.dir[k] : '');
     }).join('  |  ');
   }
   /* The side-panel half: one line under the ACTIVE step, filled IN PLACE every broadcast (its text moves
@@ -4715,7 +4738,7 @@
     var cur = $('cklRun'), el = cur && cur.querySelector('[data-ckl-pair]');
     var st = pr && !ck.complete ? pr.steps[ck.step_index] : null;
     if (!st || !Array.isArray(st.pair) || cklCalloutOn(pr)) { if (el) el.hidden = true; return; }
-    var txt = cklPairRow(s, pr.id + '#' + ck.step_index, st.pair);
+    var txt = cklPairRow(s, pr.id + '#' + ck.step_index, st.pair, st);
     if (el) { el.textContent = txt || ''; el.hidden = !txt; }
   }
   RD.CklPairRow = cklPairRow;
@@ -4743,7 +4766,7 @@
     }
     var gk = pr.id + '#' + idx;
     if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
-    var pairTxt = st.pair ? cklPairRow(s, gk, st.pair) : null;
+    var pairTxt = st.pair ? cklPairRow(s, gk, st.pair, st) : null;
     /* THE PLANT MOVED THE LEG ON, SO SAY WHY ON THE CARD (#670, 2026-10-14). MEASURED in the browser on
      * the never-STOP route: step 6's and step 9's overtaken text reached only the column's bottom line,
      * under the card's own step 7 / step 10 text. The overtaken `label`, on a step that authors

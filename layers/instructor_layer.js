@@ -2287,6 +2287,15 @@
    * the bag: once met on ACC_STABLE_N distinct plant instants (one noisy sample cannot latch it),
    * `met` stays true until the bag is cleared; `_gradeAccs` also exempts `moves` from `holds`.
    * Distinct instants: a paused broadcast repeats the same sim time and counts once. */
+  /* The instrument channel `readParam` grades `p` on for this snapshot, or null when it grades true state / the
+   * control state. The walkthrough card's pair row (ui/app.js cklPairSeries) reads a graded `moves` channel on this
+   * same side, so the two numbers on the card are the ones the row ticks on (heatup step 11 review, 2026-10-15). */
+  InstructorLayer.gradedInstrument = function (snapshot, p) {
+    var r = readParam(snapshot, p);
+    if (!r || r.graded_by !== 'instrument') return null;
+    var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null, map = plant ? PARAM_INSTRUMENT[plant] : null;
+    return map && map[p] ? map[p] : null;
+  };
   InstructorLayer.movesLegal = function (pred) {
     if (!pred || pred.op !== 'moves') return 'not a moves predicate';
     if (!pred.p) return 'no p';
