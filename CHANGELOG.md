@@ -36,6 +36,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.8.4-rc3] — 2026-10-14
 
+- CI shard balance (rc3, CI run 38685630351): shard 1 timed out when two walkthrough-routes parts (8 child processes each, 4-core runner) co-located (warp_tier 402 -> 1201 s). New optional `lanes` BASELINES field multiplies a runner's planner cost; routes A-D carry `lanes: 2`, so each lands in its own shard (predicted CI wall 21.6 / 21.7 / 21.8 / 23.9 min). `run_ci_shards` asserts no two share a shard (injection-proven). `run_all` also prints a drifting runner's failure detail inline as it finishes.
 - CI shard balance (rc3, CI run 38670341210): `secs` hints for all runners >= ~60 s reset to CI contention wall; shards now 4010 s each (was shard 1 timed out, 4 at 30.5 min). Longest single runner `run_checklist_pwr2_b` (1789 s) still bounds the wall.
 - CI shard balance (rc3, CI run 38670341210): `run_checklist_pwr2_b` (1789 s CI, over the 30-min shard step) split three ways; new `run_checklist_pwr2_c.js` owns section-2 groups 2j/2t/2al/2ae/2ag/2ah. Measured solo: B 757 s, C 795 s (CI estimate 860 / 903 s); 189 + 35 = the 224 checks B had. Startup scan throws on a group claimed by no part, both, or gated twice.
 
