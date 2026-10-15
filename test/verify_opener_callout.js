@@ -154,7 +154,11 @@ var BUB = '#instrCallout';
     await shot(page, tag, 'o0_hello');
     ck(tag + ' o0: bubble shown, on-screen, an OBSERVATION (not an ask) with Ready in it', g0.shown && g0.onScreen && g0.kind === 'observe' && !g0.act && g0.btns.join() === 'ack', JSON.stringify(g0));
     await page.click(BUB + ' [data-chatbtn="ack"]').catch(function () {});
-    ck(tag + ': Ready clicked in the bubble starts the load ask', await fired(page, 'o1_load', 40000));
+    // The condition is a SIM-time one: o0's reading hold (`pace: 'reading'`) decays per simulated
+    // second, and a loaded machine runs the sim slower than wall (MEASURED under 6 busy node
+    // processes: 17.6 s wall at 1366x768, 43.5-44.9 s at 1920x1080, vs the old 40 s cap). The click
+    // is kept through the hold, so wait on the beat firing, with a cap far past any loaded run.
+    ck(tag + ': Ready clicked in the bubble starts the load ask', await fired(page, 'o1_load', 180000));
     await settle(page);
     var g1 = await geom(page);
     await shot(page, tag, 'o1_load');
