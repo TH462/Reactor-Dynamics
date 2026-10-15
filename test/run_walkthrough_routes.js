@@ -1047,7 +1047,11 @@ function runJob(legId, routeId, mutId, ctx) {
     for (var ri = 0; ri < rows.length; ri++) { var ee = (st.accs || [])[ri] || {}; if (!rows[ri].met && !ee.hidden && ee.wait_speed) { rung = ee.wait_speed; break; } }
     /* no authored rung (an unported leg): a step whose settle is 30+ plant-minutes is one the
      * player rides at WARP, as the ported legs' rungs say; everything else at 10x. */
-    setSpeed(S.spec.at_speed || rung || st.wait_speed || (st.acc && st.acc.wait_speed) || ((st.hold || 0) >= 1800 ? 600 : 10));
+    var spd = S.spec.at_speed || rung || st.wait_speed || (st.acc && st.acc.wait_speed) || ((st.hold || 0) >= 1800 ? 600 : 10);
+    /* `moving_speed` (startup 8): the app's auto rung while the control bank moves (ui/app.js cklStepSpeed,
+     * OWNER RULING 2026-09-28 option D "In step 8 5x while the rods move") -- the player's clock during the hold */
+    if (!S.spec.at_speed && +st.moving_speed > 0 && spd > +st.moving_speed && grp().moving) spd = +st.moving_speed;
+    setSpeed(spd);
     if (el < Math.max(ENTRY_S, S.spec.delay_s || 0)) continue;   // the player reads (or dawdles) before acting
     /* --- Rewind mid-step (once per run) ---------------------------------------------- */
     if (S.spec.rewind_after != null && !rewound && el >= S.spec.rewind_after) {
@@ -1190,7 +1194,11 @@ function runJob(legId, routeId, mutId, ctx) {
       var hsp = spec.speed || (/\bPress SLOW\b/.test(hr0.ask || '') ? 'slow' : 'normal');
       if (!S.memo.go) { S.memo.go = true; S.acts++; out[cur].hold_speed = hsp; out[cur].start_bank = bank();
         send({ action: 'rod_start', group_id: 'control', direction: 1, speed: hsp }); }
-      if (!S.memo.rel && (htile >= hr0.v || hm0)) { S.memo.rel = true; send({ action: 'rod_stop', group_id: 'control' });
+      /* THE PLAYER'S REACTION (quality pass 2026-10-15): the release lands `react_s` WALL seconds (default 0.5) after
+       * the tile first reads the target, i.e. react_s x the clock rate in plant-seconds -- at the step's 5x moving
+       * rung 2.5 plant-s. MEASURED by the reviewer at 60x: 0.5 s -> releases 207-209, 1 of 5 tripped; 1 s -> 5 of 5. */
+      if (S.memo.seen == null && (htile >= hr0.v || hm0)) { S.memo.seen = t(); out[cur].seen_bank = bank(); out[cur].react_speed = speedNow; }
+      if (!S.memo.rel && S.memo.seen != null && t() - S.memo.seen >= (spec.react_s != null ? spec.react_s : 0.5) * speedNow) { S.memo.rel = true; send({ action: 'rod_stop', group_id: 'control' });
         out[cur].rel_bank = bank(); out[cur].rel_sr = Math.round(htile); S.memo.still = t(); }
       if (S.memo.rel) {
         if (S.memo.lb2 !== bank() || moving()) { S.memo.lb2 = bank(); S.memo.still = t(); }

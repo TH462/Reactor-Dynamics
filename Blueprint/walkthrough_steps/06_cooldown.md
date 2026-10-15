@@ -324,7 +324,7 @@ If RHR's suction valve shut, the decay heat would have nowhere to go.
 
 *A dump left at 120 psi cools the plant again when the next heatup starts.*
 
-()16a. If SCRAM on the ROD CONTROL card reads SCRAMMED / PRESS TO RESET, press it once: no rod moves while the trip is latched.
+()16a. If SCRAM reads SCRAMMED / PRESS TO RESET, press it once: no rod moves while the trip is latched.
 
 ()16b. If SHUTDOWN ROD POSITION already reads 0 of 627, the bank is in. Otherwise press FAST on the ROD CONTROL card, click INSERT under SHUTDOWN once, and wait for 0 of 627.
 

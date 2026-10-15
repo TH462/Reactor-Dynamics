@@ -92,10 +92,11 @@ function ck(name, ok, detail) {
   ck('QW1 a dragged (pinned) strip height is never collapsed', !pin.quiet && pin.rowH === 230, JSON.stringify(pin));
   await p.ctx.close();
 
-  /* QW1b NOT UNDER THE POINTER (cycle layman pass S-2, 2026-10-15): the fold reflows and rescales the board
-   * (MEASURED 27-45 px vertical, up to 87 px horizontal), so it waits while the pointer rests on the board and
-   * lands when the pointer leaves -- through a real quiet -> alarm -> quiet cycle (PZR LEVEL stuck at 80 %, over
-   * the 75 % High alarm, then cleared). */
+  /* QW1b THE FOLD IS NOT UNDER THE POINTER (cycle layman pass S-2, 2026-10-15): a flip reflows and rescales the
+   * board (MEASURED 27-45 px vertical, up to 87 px horizontal), so the FOLD waits while the pointer rests on the
+   * board and lands when it leaves. The EXPAND never waits (quality pass: a deferred expand kept a CRITICAL
+   * folded 30 s under a parked pointer) -- it moves the board once per new alarm, accepted. A real quiet ->
+   * alarm -> quiet cycle: PZR LEVEL stuck at 80 %, over the 75 % High alarm, then cleared. */
   var u = await session({ width: 1366, height: 768 });
   if (await u.page.evaluate(function () { return document.getElementById('playBtn').classList.contains('paused'); })) await u.page.click('#playBtn');
   function target(page) {
@@ -113,14 +114,9 @@ function ck(name, ok, detail) {
   await u.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length > 0; }, null, { timeout: 20000 }).catch(function () {});
   await u.page.waitForTimeout(1500);
   var u1 = await target(u.page), uq1 = await quietNow(u.page), ut1 = await tilesNow(u.page);
-  ck('QW1b an alarm with the pointer resting on the board: the strip waits, the board does not move',
-     uq0 && ut1 > 0 && uq1 && moved(u0, u1) < 1, 'quiet ' + uq0 + '->' + uq1 + ', tiles ' + ut1 + ', moved ' + moved(u0, u1).toFixed(1) + ' px');
-  await u.page.mouse.move(3, 3);
-  await u.page.waitForTimeout(500);
-  var uq2 = await quietNow(u.page);
-  ck('QW1b ...and expands once the pointer leaves the board', !uq2, 'quiet ' + uq2);
+  ck('QW1b an alarm with the pointer parked on the board expands the strip AT ONCE (the board moves once)',
+     uq0 && ut1 > 0 && !uq1, 'quiet ' + uq0 + '->' + uq1 + ', tiles ' + ut1 + ', board moved ' + moved(u0, u1).toFixed(1) + ' px');
   var u2 = await target(u.page);
-  await u.page.mouse.move(u2.cx, u2.cy);
   await u.page.evaluate(function () { RD.__dev.cmd({ action: 'clear_instrument_failure', instrument_id: 'pzr_level' }); });
   await u.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length === 0; }, null, { timeout: 30000 }).catch(function () {});
   await u.page.waitForTimeout(9500);   // past the 8 s quiet hold

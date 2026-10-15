@@ -3139,7 +3139,7 @@
            * rung, drawn once, with the Note after it; neither head carries a speed or a note. */
           wait_speed: 10, moving_speed: 5,   // OWNER RULING 2026-09-28 (option D): "In step 8 5x while the rods move."
           speed_text: '5× while the rods move, then 10×, set by itself.',
-          note: 'The wait for +0.03 is 3 to 4 plant-minutes.',   // MEASURED 2026-10-15, SLOW hold released at 202-203: plotted 199-235 s after release (seeds 7/42/1)
+          note: 'The wait for +0.03 is about 3 to 4 plant-minutes.',   // MEASURED 2026-10-15, SLOW hold at the 5x moving rung, 0.5 s reaction: released 201-203, plotted 189-235 s after release (seeds 1/42/7); reviewer 165-256 s
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           /* THE SETTLE IS 600 s, NOT 150 *(OWNER RULING, 2026-09-14/15, on options put as
            * "rewrite step 8's settle / rewrite step 9 / both": selected "Rewrite both")*.
@@ -3224,7 +3224,7 @@
           accs_ordered: true,
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
-                   hl: ['Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
+                   hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
                    note: 'Expect it near CONTROL ROD POSITION 202.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
@@ -3232,7 +3232,7 @@
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.',
                    label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
-          hl: ['Withdraw', 'Plot point'],
+          hl: ['Rod Speed — Slow', 'Withdraw', 'Plot point'],
           hl_watch: ['Source Range', 'Startup Rate', 'Control Rod Position'] },
         /* STEP 9 — BLOCK THE SOURCE RANGE TRIP AT P-6 *(OWNER RULING, 2026-09-26, he replied "B" to "B: A,
          * plus a manual source-range block at P-6")*. Sourced: NRC HRTD Westinghouse Technology Manual §9.1
@@ -3243,7 +3243,7 @@
          *
          * ⚠ DECLARED ORDERING DIFFERENCE: every source orders criticality, then P-6, then the block. On
          * this plant P-6 is met SUBCRITICAL (MEASURED: INTER RANGE 1.0e-10 A at control rod ~197.6,
-         * ~3,100 counts a second; critical ~207 at ~22,600), and step 8 ends at bank ~205 with the count
+         * ~3,100 counts a second; critical ~207 at ~22,600), and step 8 ended at bank ~205 (~202 since the 2026-10-15 SLOW hold) with the count
          * near 21,000 and INTER RANGE 6.5e-10 A. Unblocked, a just-critical core reaches the 1.0e5 trip
          * in minutes (MEASURED, the pre-change typical route: SR trip at bank 208, 0.044 DPM, 19.5
          * plant-minutes into the approach). So the block comes here, after the last 1/M point (the plot
@@ -4477,7 +4477,7 @@
                  { p: 'mwe_output', op: '>=', v: 49.5,
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 50 MW.',
-                   note: 'If AVG COOLANT TEMPERATURE sags well below its band, Pressurizer Pressure Low can come in and drop the clock to 1×. Start the pulls on the next line then, without waiting for OUTPUT.',
+                   note: 'If AVG COOLANT TEMPERATURE sags, Pressurizer Pressure Low can drop the clock to 1×: start the pulls on the next line.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 50 MW' },
                  { p: 'tavg_c', op: '~', v: 298.972, tol: 7.028, latch: true,   /* 557.5-582.8 degF, green-segment floor (rc8f pass 10 S-2) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
@@ -5915,7 +5915,7 @@
                  { cmd: { action: 'reset_rps' },
                    p: 'scrammed', op: '<', v: 1,
                    hl: ['SCRAM'],
-                   ask: 'If SCRAM on the ROD CONTROL card reads SCRAMMED / PRESS TO RESET, press it once: no rod moves while the trip is latched.',
+                   ask: 'If SCRAM reads SCRAMMED / PRESS TO RESET, press it once: no rod moves while the trip is latched.',
                    label: 'SCRAM no longer reads SCRAMMED / PRESS TO RESET' },
                  { p: 'shutdown_bank_steps', op: '<', v: 0.5,
                    hl: ['Rod Speed — Fast', 'Shutdown Bank — Insert'], hl_watch: ['Shutdown Rod Position'],

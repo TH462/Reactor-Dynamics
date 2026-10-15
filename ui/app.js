@@ -3090,9 +3090,12 @@
     /* NOT UNDER THE POINTER (cycle layman pass S-2, 2026-10-15): each flip reflows and rescales the
      * board -- MEASURED 27 px at 1600x1000, up to 45 px vertical / 87 px horizontal at 1366x768 and
      * 1920x1080 -- so a control the player is about to click moved. While the pointer is over the
-     * board (.plant-area) or a button is held, the flip waits; it lands on the pointer leaving the
-     * board or the button coming up (alarmQuietPointer below). The first state is applied at once. */
-    if (want !== alarmQuietOn && alarmQuietOn !== null && (alarmQuietPtr.over || alarmQuietPtr.down)) return;
+     * board (.plant-area) or a button is held, the FOLD waits; it lands on the pointer leaving the
+     * board or the button coming up (alarmQuietPointer below). THE EXPAND NEVER WAITS (quality pass,
+     * 2026-10-15): deferring it kept a CRITICAL (pressurizer pressure very low, trip + SI) folded for
+     * 30 s under a parked pointer, so a new alarm moves the board once, at once -- accepted. The first
+     * state is applied at once. */
+    if (want && !alarmQuietOn && alarmQuietOn !== null && (alarmQuietPtr.over || alarmQuietPtr.down)) return;
     if (want !== alarmQuietOn) { alarmQuietOn = want; app.classList.toggle('alarms-quiet', want); }
   }
   var alarmQuietPtr = { over: false, down: false };

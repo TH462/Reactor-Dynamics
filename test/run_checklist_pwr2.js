@@ -2843,6 +2843,33 @@ if (!only && RUN_LIVE) {
          strBad.length === 0, strBad.join('; ') || 'all four: text, target and label carry the band name only');
     })();
 
+    /* --- 3b. THE SAME RULE ON OUTPUT (cycle layman pass, 2026-10-15). The Generator Output tile is
+     * `r0(IN(s).mwe_output)` (Math.round, READ out of the wiring), so it draws "N" from N - 0.5 up: an
+     * `mwe_output` row whose ask or label says "N MW or more" must be `>=` at exactly N - 0.5. Startup
+     * 15b's `> 8` ticked under a tile reading 8 against an ask of "above 8". */
+    (function () {
+      var wsrc = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
+      var isR0 = /imrppeh5hkb: function \(s\) \{ return r0\(IN\(s\)\.mwe_output\); \}/.test(wsrc) &&
+                 /function r0\(v\) \{ return Math\.round\(v\); \}/.test(wsrc);
+      var bad = [], seen = [];
+      (RD.MANUAL_PROCEDURES.pwr2 || []).forEach(function (pr) {
+        (pr.steps || []).forEach(function (st, i) {
+          (st.accs || []).forEach(function (e, j) {
+            if (e.p !== 'mwe_output') return;
+            var m = /(\d+) MW or more/.exec(String(e.ask || '') + ' ' + String(e.label || ''));
+            if (!m) return;
+            var N = +m[1], id = pr.id + ' ' + (i + 1) + String.fromCharCode(97 + j);
+            seen.push(id + ' >= ' + e.v);
+            if (e.op !== '>=' || e.v !== N - 0.5) bad.push(id + ': ' + e.op + ' ' + e.v + ' (want >= ' + (N - 0.5) + ')');
+            else if (Math.round(e.v) !== N || Math.round(e.v - 1e-9) === N) bad.push(id + ': ' + e.v + ' is not the floor of the drawn ' + N);
+          });
+        });
+      });
+      ck('2ab.3b every "N MW or more" OUTPUT row is graded >= N - 0.5, the floor of the r0 tile',
+         isR0 && seen.length >= 2 && bad.length === 0,
+         !isR0 ? 'the Generator Output tile is no longer r0(mwe_output) -- re-derive the floor' : (bad.join('; ') || seen.join(', ')));
+    })();
+
     /* --- 4. THE SAME RULE ON REACTOR POWER (#749 item 2). The tile is `digits: 1` in
      * pwr_board_data.js and is rendered `toFixed(digits)`, so it prints "0.1" from 0.05 up. The
      * digit count is READ OUT OF THE BOARD DOCUMENT, not asserted here, for the same reason

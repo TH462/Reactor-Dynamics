@@ -528,6 +528,29 @@ var INOPERABLE_PHRASES = [
     '   phrases watched: ' + INOPERABLE_PHRASES.length);
 })();
 
+/* A SPEED PRESS GLOWS ITS BUTTON (#735, OWNER playtest #724 item 1: "it should glow the FAST button on the rod
+ * control panel since it has the user click it"; quality pass 2026-10-15 found startup 8a's new "Press SLOW"
+ * glowing WITHDRAW alone). One check per pwr2 row (or step line) that tells the player to press SLOW / MED / FAST:
+ * its effective `hl` (the row's, else the step's) names that Rod Speed button. "at MED" (continuing at a speed
+ * already selected) is deliberately not a press -- see the #735 block in ui/manual_procedures.js. */
+(function () {
+  var BTN = { SLOW: 'Rod Speed — Slow', MED: 'Rod Speed — Normal', FAST: 'Rod Speed — Fast' }, n = 0;
+  (RD.MANUAL_PROCEDURES.pwr2 || []).forEach(function (proc) {
+    (proc.steps || []).forEach(function (st, i) {
+      [{ t: st.text, hl: st.hl, w: 'step' }].concat((st.accs || []).map(function (a, j) { return { t: a.ask, hl: a.hl || st.hl, w: String.fromCharCode(97 + j) }; }))
+        .forEach(function (it) {
+          var re = /\bPress (SLOW|MED|FAST)\b/g, m;
+          while ((m = re.exec(it.t || ''))) {
+            n++;
+            ck('speed press glows its button: ' + proc.id + ' ' + (i + 1) + it.w + ' "' + m[0] + '"', (it.hl || []).indexOf(BTN[m[1]]) >= 0,
+               'hl ' + JSON.stringify(it.hl || []) + ' lacks ' + BTN[m[1]]);
+          }
+        });
+    });
+  });
+  console.log('\n' + B + 'Speed-press glow' + X + D + '  (#735 -- a "Press SLOW / MED / FAST" names its Rod Speed button in hl)' + X + '  ' + n + ' presses');
+})();
+
 fs.mkdirSync(SCRATCH, { recursive: true });
 fs.writeFileSync(path.join(SCRATCH, 'manual-audit.txt'),
   (mismatches.length ? mismatches.join('\n') : 'PASS — every controlled procedure step is mapped and reachable.') + '\n');
