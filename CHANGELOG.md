@@ -30,7 +30,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.8.4-rc3] — 2026-10-14
+## [Alpha 1.8.4-rc4] — 2026-10-15
 
 - CI shard balance (rc3, CI run 38700124714): `run_pwr2_engine_c` (1754 s CI, the tail) split; group J (IR rod stop, 5 checks, 3 mutations) is new part `run_pwr2_engine_d.js`, group I stays in C (11 checks, 6 mutations); 16 checks / 9 mutations unchanged, injection-proven (3 rod-stop mutations retagged I -> J, each caught in D). Solo 839 -> C 69 s + D 360 s (each mutation re-rode the whole group). Predicted CI wall 23.8 min per shard (sum/3 + 2 min).
 - CI 4 -> 5 shards (rc3, CI run 38700124714: shard walls 30.4 / 16.3 / 24.4 / 25.3 min vs 30 budget; runner times vary ~2x run to run). Hints refreshed for 15 moved runners; planner never co-locates two `lanes > 1` runners. Predicted 19-26 min per shard.
