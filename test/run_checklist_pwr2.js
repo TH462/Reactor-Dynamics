@@ -6299,6 +6299,54 @@ if (RUN_B) {
     ck('2ar.7 the replay mirrors it: rods 60 steps ahead of the load, the relation row passes OVERTAKEN; the same replay without the overtaken fails it',
        withOt.row === true && /overtaken: the rods led the load/.test(withOt.obs) && noOt.row === false,
        'with: ' + withOt.row + ' (' + withOt.obs + ', ' + withOt.ord + ') | without: ' + noOt.row + ' (' + noOt.obs + ')');
+
+    /* --- HOW a row latched survives a SAVE/LOAD (`accs_relief`, reviewer finding 2026-10-15: measured met:true,
+     * overtaken:false after a load, so the card drew a plain tick); an OLDER save without the field still loads. ---
+     * INJECTION (2026-10-15): `accs_relief` dropped from saveState -> 2ar.8 red. */
+    var RPROBE = { id: '__relief_probe__', category: 'control', title: 'relief probe', from: 'hot_full_power', steps: [
+      { text: 'relief rows', accs: [
+        { p: 'power_pct', op: '>', v: 5, label: 'a' },
+        { p: 'power_pct', op: '<', v: -1, overtaken: { p: 'power_pct', op: '>', v: 5, label: 'x' }, label: 'b' },
+        { p: 'tavg_c', op: '<', v: -100, implied_by: 'power_pct', label: 'd' },
+        { cmd: 'acknowledge_all_alarms', label: 'c' }] },
+      { text: 'done', acc: { p: 'power_pct', op: '>', v: 5 } }] };
+    RD.MANUAL_PROCEDURES.pwr2.push(RPROBE);
+
+    var ra = new RD.SimulationService({ seed: 42 }); ra.selectPlant('pwr2', 'hot_full_power', null, undefined); ra.running = true; ra.timeAcceleration = 10; ra.attentionStops = false;
+    ra.handleCommand({ action: 'start_checklist', procedure_id: '__relief_probe__' });
+    var sx = null; for (var ri = 0; ri < 30; ri++) sx = ra.tick();
+    var before = sx.instructor.checklist.accs;
+    var blob = JSON.parse(JSON.stringify(ra.saveState()));
+    var old = JSON.parse(JSON.stringify(blob)); delete old.instructor.checklist.accs_relief;
+    function after(b) {
+      var v = new RD.SimulationService({ seed: 42 }); v.loadState(b); v.running = true; v.timeAcceleration = 10; v.attentionStops = false;
+      var y = null; for (var k = 0; k < 5; k++) y = v.tick(); return y.instructor.checklist.accs;
+    }
+    var aN = after(blob), aO = after(old);
+    RD.MANUAL_PROCEDURES.pwr2.pop();
+    ck('2ar.8 a save/load keeps HOW a row latched: the overtaken row and the implied row restore flagged (card keeps the ↳), an older save without `accs_relief` loads with both latched and unflagged',
+       before[1].overtaken && before[2].implied && aN[1].met && aN[1].overtaken && aN[2].met && aN[2].implied &&
+       aO[1].met && !aO[1].overtaken && aO[2].met && !aO[2].implied && aN[3].met === false,
+       'before ' + JSON.stringify(before.map(function (a) { return [a.met, a.implied, a.overtaken]; })) +
+       ' | after ' + JSON.stringify(aN.map(function (a) { return [a.met, a.implied, a.overtaken]; })) +
+       ' | old save ' + JSON.stringify(aO.map(function (a) { return [a.met, a.implied, a.overtaken]; })));
+
+    /* --- the graded channel's `noisy` failure is not a silent no-op (reviewer finding 2026-10-15: noise 0 and no
+     * noise_failure). INJECTION: `noise_failure` removed from the spec -> 2ar.9 red (spread 0). */
+    var nv = new RD.SimulationService({ seed: 42 }); nv.selectPlant('pwr2', 'hot_full_power', null, undefined);
+    nv.running = true; nv.timeAcceleration = 10; nv.attentionStops = false;
+    function sdOf(a) { var m = a.reduce(function (x, y) { return x + y; }, 0) / a.length; return Math.sqrt(a.reduce(function (x, y) { return x + (y - m) * (y - m); }, 0) / a.length); }
+    for (var nz = 0; nz < 10; nz++) nv.tick();
+    var hv = []; for (nz = 0; nz < 20; nz++) hv.push(nv.tick().instruments.tavg_tref_dev);
+    var hsd = sdOf(hv);
+    nv.handleCommand({ action: 'set_instrument_failure', instrument_id: 'tavg_tref_dev', mode: 'noisy' });
+    var nvals = []; for (nz = 0; nz < 20; nz++) nvals.push(nv.tick().instruments.tavg_tref_dev);
+    var nsd = sdOf(nvals);
+    nv.handleCommand({ action: 'clear_instrument_failure', instrument_id: 'tavg_tref_dev' });
+    var nq = []; for (nz = 0; nz < 20; nz++) nq.push(nv.tick().instruments.tavg_tref_dev);
+    var qsd = sdOf(nq);
+    ck('2ar.9 a `noisy` failure on the Tavg-minus-Tref channel scatters the reading, and clearing it gives the derived reading back',
+       nsd > 3 * hsd && qsd < 2 * hsd, 'sd over 20 broadcasts: healthy ' + hsd.toFixed(3) + ', noisy ' + nsd.toFixed(3) + ', cleared ' + qsd.toFixed(3) + ' degC');
   })();
 }
 

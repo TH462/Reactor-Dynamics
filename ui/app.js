@@ -5772,15 +5772,15 @@
   }
 
 
-  /* The sibling an `implied_by` row was covered by, as the player sees it: its own letter when
-   * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
-   * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
   /* A row the runtime stood down by its own `overtaken` (2026-10-15): the authored condition, said as the
    * reason, never as a tick. `label` is the condition in the player's words (e.g. rods led the load). */
   function cklOvertakenSay(en) {
     var o = en && en.overtaken;
     return 'Overtaken: ' + ((o && o.label) || 'the plant moved past this line') + ' — not checked on its own.';
   }
+  /* The sibling an `implied_by` row was covered by, as the player sees it: its own letter when
+   * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
+   * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
   function impliedSay(st, en, stepNo, bare) {   // bare: no letter (the callout card draws none)
     // `cont` rows are skipped from the letter count here too (walkthrough-step-format project) —
     // the same non-letter, non-group-starting entries the render loop above excludes, so this

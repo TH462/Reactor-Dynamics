@@ -85,7 +85,11 @@
   var IL_READ = null;
   function pv(snap, p) {
     var v = RD.InstructorLayer.paramValue(snap, p);
-    if (v === undefined) { IL_READ = IL_READ || Object.create(RD.InstructorLayer.prototype); v = IL_READ._grade(snap, { p: p, op: '>', v: 0 }).value; }
+    if (v === undefined) {   /* only an INSTRUMENT read: a control or status param that is null mid-run stays undefined (reviewer, 2026-10-15) */
+      IL_READ = IL_READ || Object.create(RD.InstructorLayer.prototype);
+      var g = IL_READ._grade(snap, { p: p, op: '>', v: 0 });
+      if (g.graded_by === 'instrument') v = g.value;
+    }
     return v;
   }
   function pred(snap, c) { return cmp(pv(snap, c.p), c.op, c.v, c.tol); }

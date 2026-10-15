@@ -289,7 +289,9 @@
    * so carries a Failures-tab entry, and until a walkthrough row graded on it (raise power 4) nothing noticed
    * that a stuck/drift/noisy/dead injection was a silent no-op (run_checklist_pwr2 2ae.3, MEASURED: stuck at
    * 0.159 read 0.134). Healthy, the reading is unchanged byte for byte: `_applyFailure` is consulted only while
-   * a failure is active, and only then is the `noisy` mean seeded. */
+   * a failure is active. `noisy` scatters about the live deviation with the `noise_failure` sigma the spec
+   * declares (Tavg's own 0.17 degC: the channel is Tavg minus a computed program), seeded only while it is
+   * active and dropped when it clears, so no stale mean rides in a save. */
   PWRInstruments.prototype._trefDev = function (extras, trueState, dt) {
     var tr = (extras || {}).tref_c;
     if (typeof tr !== 'number' || !isFinite(tr)) return;
@@ -301,6 +303,8 @@
       if (this.failed.tavg_tref_dev.mode === 'noisy') this.lagged.tavg_tref_dev = d;
       d = this._applyFailure('tavg_tref_dev', d, tt, spec, dt);
     }
+    if (this.lagged.tavg_tref_dev !== undefined && !(this.failed.tavg_tref_dev && this.failed.tavg_tref_dev.mode === 'noisy'))
+      delete this.lagged.tavg_tref_dev;
     this.reading.tavg_tref_dev = d;
   };
 

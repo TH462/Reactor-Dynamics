@@ -237,7 +237,18 @@
    * harness route through. Adding a third bagged op means adding it here and nowhere else. */
   var BAG_OPS = { steady: 1, stopped: 1, moves: 1 };
   InstructorLayer.isBagOp = function (op) { return !!BAG_OPS[op]; };
-  InstructorLayer.ACC_STABLE_N = ACC_STABLE_N;   /* the row-level `overtaken` debounce, read by test/procedures_harness.js */
+  InstructorLayer.ACC_STABLE_N = ACC_STABLE_N;
+  /* SAVE FORMAT, `accs_relief` (2026-10-15): per entry 0 = latched on its own grading (or unmet), 1 = by
+   * `implied_by`, 2 = by its row-level `overtaken`; optional, absent on older saves (restores 0). An
+   * overtaken row restores ARMED, so a re-grade after the load keeps it standing down. */
+  function accsRelief(st) {
+    return st ? st.map(function (a) { return a.overtaken ? 2 : a.implied ? 1 : 0; }) : null;
+  }
+  function reliefState(m, rel, i) {
+    var r = (rel && rel[i]) | 0;
+    return { streak: 0, met: !!m, obs: null, graded_by: null, implied: !!m && r === 1,
+             overtaken: !!m && r === 2, otArmed: !!m && r === 2, otStreak: 0 };
+  }   /* the row-level `overtaken` debounce, read by test/procedures_harness.js */
   InstructorLayer.gradeBagged = function (bag, snapshot, pred) {
     if (pred && pred.op === 'stopped') return InstructorLayer.gradeStopped(bag, snapshot, pred);
     if (pred && pred.op === 'moves') return InstructorLayer.gradeMoves(bag, snapshot, pred);
@@ -3481,6 +3492,7 @@
         // cmd-kind latch (a plotted point) cannot re-earn itself after a load.
         accs_met: this.follow.accsState
           ? this.follow.accsState.map(function (a) { return !!a.met; }) : null,
+        accs_relief: accsRelief(this.follow.accsState),
       } : null,
       checklist: this.checklist ? {
         procedure_id: this.checklist.procedure_id,
@@ -3493,6 +3505,7 @@
         complete: this.checklist.complete,
         accs_met: this.checklist.accsState
           ? this.checklist.accsState.map(function (a) { return !!a.met; }) : null,
+        accs_relief: accsRelief(this.checklist.accsState),
         /* #670 — the per-step-entry fired-set RIDES IN THE CHECKPOINT. A `scope:'full'` rewind
          * is a loadState of a saved checkpoint, so this is what makes "Rewind un-does the
          * injection and the step fires it again" true rather than an assumption. */
@@ -3533,13 +3546,14 @@
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
           accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
           gradedBy: null, complete: !!cs.complete,
-          /* restore the per-entry latches; streaks/obs regrade live (#244 item 8). `implied`
-           * is NOT saved and restores false: the save format carries one boolean per entry,
-           * and a latch taken by `implied_by` restores as the latch it is — the card loses
-           * only the "covered by" note under that row until the run ends. Widening
-           * `accs_met` to carry it is a save-format change for a note. */
-          accsState: cs.accs_met ? cs.accs_met.map(function (m) {
-            return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
+          /* restore the per-entry latches; streaks/obs regrade live (#244 item 8). HOW a row
+           * latched rides beside them in `accs_relief` (2026-10-15): before it, a row latched by
+           * `implied_by` or by its row-level `overtaken` restored as a plain latch and the card drew
+           * a plain tick for it (measured in Node after a save/load and a ring rewind: met:true,
+           * overtaken:false). A save without the field (older) restores both as false — the old
+           * behaviour, a missing note, never a wrong latch. */
+          accsState: cs.accs_met ? cs.accs_met.map(function (m, i) {
+            return reliefState(m, cs.accs_relief, i);
           }) : null,
           // Precondition VERDICTS are DERIVED state — never saved; the first step() tick
           // after a restore regrades them against the live plant.
@@ -3623,10 +3637,10 @@
         idx: fs.idx, cmdSeen: fs.cmdSeen, sawSeen: fs.sawSeen,
         accStreak: fStreak, accMetNow: fStreak >= ACC_STABLE_N,
         gradedBy: null, done: fs.done,
-        // restore the per-entry latches; streaks/obs regrade live (#244 item 8); `implied`
-        // is not saved — see the checklist half above.
-        accsState: fs.accs_met ? fs.accs_met.map(function (m) {
-          return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
+        // restore the per-entry latches; streaks/obs regrade live (#244 item 8); `accs_relief`
+        // as in the checklist half above.
+        accsState: fs.accs_met ? fs.accs_met.map(function (m, i) {
+          return reliefState(m, fs.accs_relief, i);
         }) : null,
       };
       this.scenarioStartTime = state.scenario_start_time;

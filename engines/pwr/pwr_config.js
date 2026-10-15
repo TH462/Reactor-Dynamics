@@ -2735,7 +2735,7 @@
       // unchanged (the appended-instrument rule).
       pzr_level_dev:     { lag: 0,   noise: 0,     range: [-40, 40], derived: true },
       // Tavg - Tref (#818): indicated Tavg against the host plant's Tavg program (extras.tref_c).
-      tavg_tref_dev:     { lag: 0,   noise: 0,     range: [-60, 60], derived: true },
+      tavg_tref_dev:     { lag: 0,   noise: 0,     noise_failure: 0.17, range: [-60, 60], derived: true },   // noise_failure = tavg's own sigma: a `noisy` injection is otherwise a silent no-op on a noise:0 channel (2026-10-15)
       // Tref itself (#818): the Tavg program off turbine load, published beside the deviation so
       // it can be trended. Not a sensor and not in SOURCE: no PRNG draw (appended-instrument rule).
       tref:              { lag: 0,   noise: 0,     range: [250, 350], derived: true },
