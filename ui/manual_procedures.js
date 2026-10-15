@@ -3226,7 +3226,7 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
                    hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
-                   note: 'Expect it near CONTROL ROD POSITION 202.',
+                   note: 'Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.',
