@@ -236,6 +236,9 @@ var ROUTES = {
       'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
       'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
       'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 } },
+    /* step 4's relation row (relations plan, 2026-10-15) must tick ON ITS OWN on the typical route, never by its
+     * row-level `overtaken` (that relief is for the player who pulled rods ahead of the load) */
+    own_row: { step: 4, row: 3 },
     settle_check: true,   // pass 6 S-7: a step that says "settle(s) on N degF" completes within 5.4 degF of N
     mistakes: [
       { id: 'double_boron', kind: 'double press', at: 'cmd:set_auto_setpoint', set: { repeat: 2 } },
@@ -633,6 +636,14 @@ var MUTATIONS = [
    * still dips to 556.9 as LOAD comes on). The pass-7 premise is a player whose stage 5 never READS below its band:
    * here the whole-degree reader (withdraws only when the tile, rounded, reads under 557 -- dead 5.5) on the same
    * 32-step hot stage 4, as a route override on typical (a mistake's own `set` would win over it). */
+  /* RELATIONS PLAN, raise power 4 (2026-10-15): the row-level `overtaken` is what lets a player who pulled rods
+   * ahead of the load finish the stage; and the typical route must tick the relation on its own, not by the relief. */
+  { id: 'raise_no_row_overtaken_4', leg: 'pwr_raise_power', route: 'overpull_60', expect: 'invariant',
+    why: 'raise-power 4 relation row without its row-level overtaken (rods led the load, the lag never shows): strand',
+    mutate: function (P) { delete P.steps[3].accs.filter(function (e) { return e.p === 'tavg_tref_dev_c'; })[0].overtaken; } },
+  { id: 'raise_row_always_overtaken_4', leg: 'pwr_raise_power', route: 'typical', expect: 'own_row',
+    why: 'raise-power 4 relation row overtaken on any reading: the typical route ticks it by the relief, not by the relation',
+    mutate: function (P) { var e = P.steps[3].accs.filter(function (x) { return x.p === 'tavg_tref_dev_c'; })[0]; e.overtaken.op = '>='; e.overtaken.v = -99; e.v = -99; } },
   { id: 'rods_row_5b', leg: 'pwr_raise_power', route: 'typical', expect: 'flash',
     override: { 'cmd:set_load_target:1': { policy: 'seq', cmds: [{ action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 60, speed: 'normal' }] },
                 'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 5, dead_hi: 7, pull: 5, dwell: 60 } },
@@ -904,6 +915,7 @@ function runJob(legId, routeId, mutId, ctx) {
         /* the reading the row ticked on, once per row (#807 review item 5: what the tile shows at the tick) */
         if (r.obs != null && isFinite(r.obs)) { out[k].ticks = out[k].ticks || {}; if (out[k].ticks[i] == null) out[k].ticks[i] = [+((t() - S.t0) / 60).toFixed(2), +(+r.obs).toFixed(3)]; }
         if (r.implied) (out[k].implied = out[k].implied || {})[i] = true;   /* `own_row` reads it: a row stood down by its sibling */
+        if (r.overtaken) (out[k].overtaken = out[k].overtaken || {})[i] = true;   /* ...or by its own row-level `overtaken` (2026-10-15) */
       }
       var band = e.op === '~' && !e.latch, heldS = t() - (S.rowsMetAt[i] == null ? t() : S.rowsMetAt[i]);
       if (S.rowsMet[i] && !r.met && !e.cont && !e.hidden && !(band && heldS >= PASS_S))
@@ -1602,9 +1614,9 @@ function verdicts(r) {
     var OR = ROUTES[r.leg] && ROUTES[r.leg].own_row;
     if (OR) {
       var so = (r.steps || []).filter(function (st) { return st.n === OR.step; })[0];
-      var tk = so && so.ticks && so.ticks[OR.row - 1], imp = !!(so && so.implied && so.implied[OR.row - 1]);
-      v.own_row = { ok: !!tk && !imp, name: 'step ' + OR.step + ' row ' + OR.row + ' ticks on its own grading, not by its implied_by relief',
-        note: !so ? 'step never reached' : !tk ? 'row never ticked' : (imp ? 'IMPLIED at ' : 'own tick at ') + tk[0] + ' plant-min into the step (reading ' + tk[1] + ')' };
+      var tk = so && so.ticks && so.ticks[OR.row - 1], imp = !!(so && ((so.implied && so.implied[OR.row - 1]) || (so.overtaken && so.overtaken[OR.row - 1])));
+      v.own_row = { ok: !!tk && !imp, name: 'step ' + OR.step + ' row ' + OR.row + ' ticks on its own grading, not by its implied_by or overtaken relief',
+        note: !so ? 'step never reached' : !tk ? 'row never ticked' : (imp ? 'RELIEVED (implied/overtaken) at ' : 'own tick at ') + tk[0] + ' plant-min into the step (reading ' + tk[1] + ')' };
     }
     var h = fl('hollow');
     v.hollow = { ok: h.length === 0, name: 'no step checks off on entry before the player acts (hollow)',

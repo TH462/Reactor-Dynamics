@@ -4130,7 +4130,7 @@ if (!only && RUN_LIVE) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 78 && predRows === 175 && rows.length === 98 && soleInst === 18,   /* relations plan change 1, 2026-10-14, MEASURED: TMI 9's `moves` row on RCS INVENTORY (true_state, +1 predicate; instrument-graded and sole unchanged) */   /* quality pass 2026-10-14, MEASURED: TMI 10's press row also grades block_valve_open (true_state, +1 predicate), so its tailpipe row is no longer the step's only one (-1 sole) */   /* #670 Fable pass 2026-10-14, MEASURED: TMI 10's PRIMARY PRESSURE row removed (-1 predicate, -1 instrument-graded), which leaves its tailpipe row the step's only one (+1 sole) */   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 78 && predRows === 176 && rows.length === 99 && soleInst === 18,   /* relations plan raise power 4, 2026-10-15, MEASURED 78/176/99/18: +1 predicate, +1 instrument-graded (the tavg_tref_dev lag row), not sole */   /* relations plan change 1, 2026-10-14, MEASURED: TMI 9's `moves` row on RCS INVENTORY (true_state, +1 predicate; instrument-graded and sole unchanged) */   /* quality pass 2026-10-14, MEASURED: TMI 10's press row also grades block_valve_open (true_state, +1 predicate), so its tailpipe row is no longer the step's only one (-1 sole) */   /* #670 Fable pass 2026-10-14, MEASURED: TMI 10's PRIMARY PRESSURE row removed (-1 predicate, -1 instrument-graded), which leaves its tailpipe row the step's only one (+1 sole) */   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4301,6 +4301,7 @@ if (!only && RUN_LIVE) {
        * (zero) rate tile ticks; the old `power < 5` row is gone and the new power row is `>=`, which strands */
       'pwr_startup:12:startup_rate_dpm': 1,
       'pwr_raise_power:9:boron_ppm': 1,   /* 11's boron row left 2026-09-25: the dose is conditional */
+      'pwr_raise_power:4:tavg_tref_dev_c': 1,   /* relations plan 2026-10-15: a DEAD Tavg-minus-Tref gauge bottoms at -60 degC (-108 degF), which reads as Tavg far below its program -- the lag row ticks on it, as the board's ΔREF shows */
       'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
       'pwr_lower_power:3:power_pct': 1, 'pwr_lower_power:4:power_pct': 1,
       'pwr_lower_power:4:tavg_c': 1, 'pwr_lower_power:5:power_pct': 1,
@@ -6223,6 +6224,81 @@ if (RUN_B) {
        !!R9 && S9.pair === true && typeof fDrain === 'number' && fDrain >= 600 && fDrain <= 660 && fInj === null && fLow === null && fSlow === null,
        'drain+full first met +' + fDrain + ' s | injection kept (flat 116 %, level 99.9 %) ' + fInj +
        ' | drain, level 74.2 % ' + fLow + ' | 9 points/600 s ' + fSlow + ' (null = never in 1800 s)');
+  })();
+}
+
+/* 2ar. ROW-LEVEL `overtaken` (relations plan, raise power 4, 2026-10-15): `{p, op, v, or?, label}` on an
+ * `accs` entry stands THAT ROW down when the plant has moved past it, while the step's other rows still
+ * grade. Proven on synthetic snapshots through the real `_gradeAccs`. INJECTION-PROVEN 2026-10-15 (each
+ * edit to `_gradeAccs`, then restored): the latch line removed, the arm made a per-tick re-check, the
+ * debounce dropped, the overtaken check run before the row's own grading -- reds in the commit message. */
+if (RUN_B) {
+  console.log(B + '\n2ar. row-level `overtaken` — a row the plant has moved past' + X);
+  (function () {
+    var IL = RD.InstructorLayer;
+    var ST = { text: 'fixture', accs_ordered: true, accs: [
+      { p: 'mwe_output', op: '>=', v: 29.5, label: 'OUTPUT' },
+      { cont: true, p: 'tavg_tref_dev_c', op: '<=', v: -2.222,
+        overtaken: { p: 'tavg_tref_dev_c', op: '>=', v: 1.111, label: 'rods led the load' }, label: 'lag' },
+      { p: 'power_pct', op: '>', v: 28, label: 'power' }] };
+    function sn(t, mwe, dev) {
+      return { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { mwe_output: mwe, power_pct: 30 },
+               instruments: { tavg_tref_dev: dev }, control_state: {} };
+    }
+    /* seq: [[n, mwe, dev], ...] -> the row's state after each segment */
+    function run(seq) {
+      var il = Object.create(IL.prototype), h = {}, t = 0, outs = [];
+      seq.forEach(function (sg) {
+        for (var i = 0; i < sg[0]; i++) il._gradeAccs(h, ST, sn(t++, sg[1], sg[2]));
+        var a = h.accsState[1]; outs.push({ met: !!a.met, ot: !!a.overtaken, next: !!h.accsState[2].met });
+      });
+      return outs;
+    }
+    var lag = run([[10, 20, -4], [10, 30, -4]]);
+    ck('2ar.1 the lag route: the row latches on its OWN grading once OUTPUT is met, not before, and is not flagged overtaken',
+       !lag[0].met && lag[1].met && !lag[1].ot && lag[1].next, JSON.stringify(lag));
+    var ahead = run([[10, 20, 6], [10, 20, 0.5], [10, 30, 0.5]]);   // degC: +10.8 degF, then +0.9 degF (under the +2 degF arm)
+    ck('2ar.2 rods ahead of the load: armed while blocked, latched OVERTAKEN when OUTPUT unblocks it, even after the reading falls back under the arm; the next row is released',
+       !ahead[0].met && !ahead[1].met && ahead[2].met && ahead[2].ot && ahead[2].next, JSON.stringify(ahead));
+    var blip = run([[4, 20, 6], [10, 20, 0], [10, 30, 0]]);
+    ck('2ar.3 debounced: 4 gradings over the arm (ACC_STABLE_N ' + IL.ACC_STABLE_N + ') never arm it, and the step waits',
+       !blip[2].met && !blip[2].next && IL.ACC_STABLE_N === 5, JSON.stringify(blip));
+    var both = run([[10, 20, 6], [10, 20, -4], [10, 30, -4]]);
+    ck('2ar.4 armed earlier but lagging now: the row\'s own grading wins, so it ticks as itself',
+       both[2].met && !both[2].ot, JSON.stringify(both));
+    var isrc = fs.readFileSync(path.join(ROOT, 'layers', 'instructor_layer.js'), 'utf8');
+    var hsrc = fs.readFileSync(path.join(ROOT, 'test', 'procedures_harness.js'), 'utf8');
+    var nMap = (isrc.match(/overtaken: !!a\.overtaken/g) || []).length;
+    ck('2ar.5 the verdict reaches the card (both snapshot maps carry `overtaken`) and the replay mirrors the arm-then-latch rule',
+       nMap === 2 && /otArmed\[j\] && unblocked/.test(hsrc) && /otTick\(s\)/.test(hsrc),
+       'snapshot maps ' + nMap + ' of 2; harness otTick ' + /otTick\(s\)/.test(hsrc));
+    var rp = (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return p.id === 'pwr_raise_power'; })[0];
+    var s4 = rp && rp.steps[3], row = s4 && (s4.accs || []).filter(function (e) { return e.p === 'tavg_tref_dev_c'; })[0];
+    var bad = [];
+    (RD.MANUAL_PROCEDURES.pwr2 || []).forEach(function (p) { (p.steps || []).forEach(function (st, si) { (st.accs || []).forEach(function (e, j) {
+      var o = e && e.overtaken; if (!o) return;
+      if (!o.p || ['>', '<', '>=', '<='].indexOf(o.op) < 0 || typeof o.v !== 'number' || !o.label) bad.push(p.id + ' ' + (si + 1) + ' accs[' + j + ']');
+      if (!e.p) bad.push(p.id + ' ' + (si + 1) + ' accs[' + j + '] (overtaken on a cmd row)');
+    }); }); });
+    ck('2ar.6 every row-level overtaken is a legal threshold with a label the card can say; raise power 4 carries one on its relation row, after the OUTPUT row, with the chart pair TAVG / TREF',
+       bad.length === 0 && !!row && s4.accs.indexOf(row) === 2 && row.cont === true && row.overtaken.op === '>=' && row.op === '<=' &&
+       JSON.stringify(s4.pair) === '["tavg","tref"]',
+       bad.length ? 'ILLEGAL: ' + bad.join('; ') : 'legal; raise power 4 row at accs[' + (s4 && row ? s4.accs.indexOf(row) : '-') + ']');
+    /* --- the REPLAY grades it the same way: raise power 1-4 with the stage-4 pull made 60 steps at once (the
+     * routes gate's overpull_60), with and without the row's `overtaken` (the control leg) --- */
+    function rep(keepOt) {
+      var pr = JSON.parse(JSON.stringify(rp)); pr.steps = pr.steps.slice(0, 4); delete pr.next;
+      pr.steps[3].replay_then.cmd.steps = 60;
+      if (!keepOt) delete pr.steps[3].accs[2].overtaken;
+      var r = RD.ProceduresHarness.runProcedure('pwr2', pr, { seed: 42 });
+      var c = (r.checks || []).filter(function (x) { return /^step 4 accs\[2\] tavg_tref_dev_c/.test(x.d); })[0];
+      var o = (r.checks || []).filter(function (x) { return /^step 4 ordered accs/.test(x.d); })[0];
+      return { row: c ? c.pass : null, obs: c ? String(c.obs) : 'no row check', ord: o ? o.obs : '-' };
+    }
+    var withOt = rep(true), noOt = rep(false);
+    ck('2ar.7 the replay mirrors it: rods 60 steps ahead of the load, the relation row passes OVERTAKEN; the same replay without the overtaken fails it',
+       withOt.row === true && /overtaken: the rods led the load/.test(withOt.obs) && noOt.row === false,
+       'with: ' + withOt.row + ' (' + withOt.obs + ', ' + withOt.ord + ') | without: ' + noOt.row + ' (' + noOt.obs + ')');
   })();
 }
 

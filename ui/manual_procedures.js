@@ -4368,6 +4368,8 @@
         why: 'Raising LOAD draws steam and cools the water; colder water adds reactivity, so power follows the turbine up while the temperature sags. Pulling rods then warms the water back into its band. PERIOD on the NIS card is the time power takes to change by a factor of about 2.7; thousands of seconds means power is nearly steady.\n\nReal plants switch rod control to automatic near 15 %; this simulator keeps rods manual by design.',
           aim: 'The turbine asks for power first; rods then restore the temperature for that load.',
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
+          /* the chart for this leg's relation (relations plan, raise power 4): LOAD and power, the water and its program */
+          trend: ['mwe', 'power', 'tavg', 'tref'], window: 900, pair: ['tavg', 'tref'],
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
           /* LAYMAN PASS 9 (2026-09-26, #653 S-2): THE OUTPUT ROW NOW COMES BEFORE THE CONDITIONAL, on all
@@ -4390,6 +4392,23 @@
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 30 MW.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 30 MW' },
+                 /* THE RELATIONSHIP THIS LEG TEACHES (OWNER RULING, 2026-10-14: "Change as you recommend" -- chart-led, one
+                  * graded relation per leg; inbox/670_redesign/relations_plan.md): the program leads, the plant lags. LOAD
+                  * raises TREF (the Tavg program, off turbine load) at once; the water only follows when rods add heat.
+                  * Graded on the board's own instrument, `tavg_tref_dev` (AVG COOLANT TEMPERATURE minus TREF; Hard Rule 1).
+                  * A `cont` of the OUTPUT row on this ORDERED step, so it is graded from entry but latches no earlier than
+                  * OUTPUT reaching 30 MW: it cannot tick on entry (entry reads -1.13 degF), and the 10x rung and letters stay.
+                  * MEASURED 2026-10-15, routes harness, live runtime, seeds 42 / 7: TREF 550.3 -> 556.9 degF as OUTPUT goes
+                  * 10 -> 30 MW (29.5 MW at 239 plant-s on every route); deviation at that instant -7.05 / -7.03 degF typical,
+                  * -5.88 / -5.85 rods_before_load, -5.55 late (Continue noticed 120 s late, seed 42); stage minimum -7.95 /
+                  * -7.63. THE ROW-LEVEL `overtaken`: a player who pulls rods AHEAD of the load holds the water 8.0-12.7 degF
+                  * ABOVE its program all stage (overpull_60 +12.6 / +12.7, hot_stage4 +8.15 / +8.03; deviation never below
+                  * -1.5 degF), so the lag never shows and the ordered step stranded on this row. Typical routes never exceed
+                  * -0.11 / -0.32 degF, 2.1 degF clear of the +2 degF arm. */
+                 { cont: true, p: 'tavg_tref_dev_c', op: '<=', v: -2.222,
+                   overtaken: { p: 'tavg_tref_dev_c', op: '>=', v: 1.111,
+                     label: 'the rods led the load, so AVG COOLANT TEMPERATURE ran above TREF instead of lagging it' },
+                   label: 'AVG COOLANT TEMPERATURE 4 °F or more below TREF, the program, as OUTPUT reaches 30 MW' },
                  { p: 'tavg_c', op: '~', v: 295.306, tol: 6.694, latch: true,   /* 551.5-575.6 degF: the floor is the tile's green-segment floor, rendered (rc8f layman pass 10 S-2) */
                    hl: ['Rod Speed — Normal', 'Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 552 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 552 °F or more, 20 to 25 steps. Otherwise leave the rods.',

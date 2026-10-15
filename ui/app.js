@@ -4753,7 +4753,7 @@
     var prevSt = idx > 0 ? pr.steps[idx - 1] : null;
     var overTxt = (prevSt && prevSt.overtaken && prevSt.overtaken.on_card && ck.done_by && ck.done_by[idx - 1] === 'overtaken' &&
         s.instructor && s.instructor.message === prevSt.overtaken.text) ? 'Skipped step ' + idx + ' (' + (prevSt.overtaken.label || 'the plant moved past it') + ')' : '';
-    var key = JSON.stringify(['ckl', gk, pairTxt, (ck.accs || []).map(function (x) { return x && x.met ? (x.implied ? 2 : 1) : 0; }), !!ck.acc_met,
+    var key = JSON.stringify(['ckl', gk, pairTxt, (ck.accs || []).map(function (x) { return x && x.met ? (x.overtaken ? 4 : x.implied ? 2 : 1) : 0; }), !!ck.acc_met,
       !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen,
       overTxt]);
     if (key === callout.key) return;
@@ -4784,7 +4784,7 @@
     if (overTxt) b += '<div class="ico-tip ico-over">' + mesc(overTxt) + '</div>';
     var stNote = cklRouteField(st, ck, 'note');
     if (stNote) b += '<div class="ico-tip">' + mesc(stNote) + '</div>';
-    var rows = (st.accs || []).map(function (en, k) { var v = (ck.accs && ck.accs[k]) || {}; return { en: en, met: !!v.met, implied: !!(v.met && v.implied) }; })
+    var rows = (st.accs || []).map(function (en, k) { var v = (ck.accs && ck.accs[k]) || {}; return { en: en, met: !!v.met, implied: !!(v.met && v.implied), overtaken: !!(v.met && v.overtaken) }; })
       .filter(function (r) { return !r.en.hidden && !r.en.cont; });
     if (rows.length > 1) {
       b += rows.map(function (r) {
@@ -4792,6 +4792,9 @@
          * afw_late seed 42: TMI-2 step 9's relation row latched by the -50 °F peg at 17.75 plant-min with PRESSURIZER
          * LEVEL reading 74 %, so a ✓ beside "...while PRESSURIZER LEVEL still reads 90 % or more" stood for a reading
          * the board was not showing. Same `implied` verdict and wording as the side card's row. */
+        /* A ROW STOOD DOWN BY ITS OWN `overtaken` (2026-10-15) IS NOT A PLAIN ✓ EITHER: it names the condition. */
+        if (r.overtaken) return '<div class="ico-crit met implied">↳ ' + mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) +
+          '<div class="ico-impl">' + mesc(cklOvertakenSay(r.en)) + '</div></div>';
         if (r.implied) return '<div class="ico-crit met implied">↳ ' + mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) +
           '<div class="ico-impl">Covered by ' + mesc(impliedSay(st, r.en, idx + 1, true)) + ' — not checked on its own.</div></div>';
         return '<div class="ico-crit' + (r.met ? ' met' : '') + '">' + (r.met ? '✓ ' : '○ ') +
@@ -5498,6 +5501,7 @@
     pressure_mpa:           { label: 'PRIMARY PRESSURE', dim: 'pressure' },
     steam_pressure_mpa:     { label: 'STEAM PRESS', dim: 'pressure' },
     subcooling_c:           { label: 'SUBCOOLING MARGIN', dim: 'tempdiff' },
+    tavg_tref_dev_c:        { label: 'TAVG − TREF', dim: 'tempdiff' },   /* the board's ΔREF, Tavg against its program (raise power 4, 2026-10-15) */
     tavg_rate_c_per_hr:     { label: 'Heatup/cooldown rate', dim: 'tempdiff', suffix: '/hr' },
     /* #735 / #724 item 6 — the count rate renders the way the meter writes it: "7.0e2
      * (700 counts per second)". See `sci` in fmtPredValue. */
@@ -5771,6 +5775,12 @@
   /* The sibling an `implied_by` row was covered by, as the player sees it: its own letter when
    * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
    * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
+  /* A row the runtime stood down by its own `overtaken` (2026-10-15): the authored condition, said as the
+   * reason, never as a tick. `label` is the condition in the player's words (e.g. rods led the load). */
+  function cklOvertakenSay(en) {
+    var o = en && en.overtaken;
+    return 'Overtaken: ' + ((o && o.label) || 'the plant moved past this line') + ' — not checked on its own.';
+  }
   function impliedSay(st, en, stepNo, bare) {   // bare: no letter (the callout card draws none)
     // `cont` rows are skipped from the letter count here too (walkthrough-step-format project) —
     // the same non-letter, non-group-starting entries the render loop above excludes, so this
@@ -5908,7 +5918,7 @@
       /* ...and so does a `below_1m` row's prediction and reading (quality pass, 2026-09-24): the
        * "past the mark" line below appears when the rods step past prediction-minus-N while
        * `met` stays 0. Only a `below_1m` row carries a non-null `pred_1m`. */
-      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
+      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.overtaken ? 4 : a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
         (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : '') + cklProgKey(a); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
@@ -6292,7 +6302,7 @@
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
                * and an unescaped insert would swallow the rest of the line as a tag. */
-              (av.met ? '✓ ' : ordWait ? '· ' : '○ ') + mesc(en.ask || enTxt) +
+              (av.met ? (av.overtaken ? '↳ ' : '✓ ') : ordWait ? '· ' : '○ ') + mesc(en.ask || enTxt) +   /* overtaken: never a plain tick */
               /* BOTH THE ASK AND THE DONE-WHEN, when the entry carries an instruction: the
                * player needs to know what to do AND what the sim is waiting for. Quieter, on
                * its own line, so the imperative is what the eye lands on. Not on a row that is
@@ -6309,6 +6319,7 @@
                * a re-worded or re-ordered step cannot leave a stale one behind. Drawn only when
                * the runtime actually latched it that way: `implied` is a snapshot verdict, not
                * a re-derivation here. */
+              (av.overtaken ? '<div class="ckl-crit-when">' + mesc(cklOvertakenSay(en)) + '</div>' : '') +
               (av.implied ? '<div class="ckl-crit-when">Covered by ' +
                  mesc(impliedSay(st, en, i + 1)) + ' — not checked on its own.</div>' : '') +
               /* A ROW STOOD DOWN BY THE PLAYER'S OWN CASUALTY SAYS SO, AND SAYING SO IS THE

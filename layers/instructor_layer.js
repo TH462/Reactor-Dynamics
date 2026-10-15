@@ -237,6 +237,7 @@
    * harness route through. Adding a third bagged op means adding it here and nowhere else. */
   var BAG_OPS = { steady: 1, stopped: 1, moves: 1 };
   InstructorLayer.isBagOp = function (op) { return !!BAG_OPS[op]; };
+  InstructorLayer.ACC_STABLE_N = ACC_STABLE_N;   /* the row-level `overtaken` debounce, read by test/procedures_harness.js */
   InstructorLayer.gradeBagged = function (bag, snapshot, pred) {
     if (pred && pred.op === 'stopped') return InstructorLayer.gradeStopped(bag, snapshot, pred);
     if (pred && pred.op === 'moves') return InstructorLayer.gradeMoves(bag, snapshot, pred);
@@ -2560,7 +2561,7 @@
         // serialize/restore and the card can read it on the first broadcast.
         // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         // NOT a latch: re-derived every tick, so `clear_failure` gives the row back.
-        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false,
+        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false, overtaken: false, otStreak: 0,
                  voided: null };
       });
     }
@@ -2585,7 +2586,7 @@
        * OUT of `ax.met` on purpose: `met` is a latch, and a latched void would survive the
        * clear. The row still grades underneath, so the card keeps showing its reading. */
       ax.voided = this._predVoided(snapshot, en);
-      if ((!ax.met || holds) && en && en.p) {
+      if ((!ax.met || holds) && !ax.overtaken && en && en.p) {   /* an overtaken row is never re-graded back off */
         var g;
         if (BAG_OPS[en.op]) {
           if (!ax.bag) ax.bag = { s: [] };
@@ -2643,6 +2644,27 @@
                             !(t_ != null && ax.missT != null && t_ - ax.missT >= BAND_RELEASE_S))) {
           ax.met = false; ax.bandHeld = false;  // left the band — the check-off comes back off
         }
+      }
+      /* A ROW-LEVEL `overtaken` (#670 relations plan, raise power 4, 2026-10-15) — `{p, op, v, or?,
+       * label}` on an `accs` entry: the plant condition under which THIS ROW no longer applies while
+       * the step's other rows still do (the step-level `overtaken` would skip the whole stage).
+       * MEASURED, routes harness, `pwr_raise_power` 4, seeds 42/7: a player who pulls rods ahead of
+       * LOAD (overpull_60, hot_stage4) holds AVG COOLANT TEMPERATURE 8.0-12.7 degF ABOVE its program
+       * for the whole stage, so the "4 degF below program" relation never shows and the ordered step
+       * strands on it. Same debounce as the row's own latch: ACC_STABLE_N consecutive gradings ARM
+       * it (counted while blocked; once armed it stays armed for the step, because "the rods led the
+       * load at some point in this stage" is what masks the relation -- MEASURED hot_stage4: +8.15
+       * degF at 60 s falling to +2.95 degF by the 239 s the row unblocks, so a re-checked condition
+       * would race the noise), and it latches only when unblocked, so position keeps its meaning.
+       * The row's own grading runs first, so a row whose own predicate is met latches as itself. It
+       * LATCHES and is flagged `overtaken` so the card never draws a plain tick for it. Not saved:
+       * it restores as the plain latch it is, like `implied`. Mirrored in test/procedures_harness.js. */
+      if (en && en.overtaken && en.overtaken.p && !ax.met) {
+        var selfO = this, otRow = this._grade(snapshot, en.overtaken).met ||
+          (en.overtaken.or || []).some(function (q) { return selfO._grade(snapshot, q).met; });
+        ax.otStreak = otRow ? (ax.otStreak || 0) + 1 : 0;
+        if (ax.otStreak >= ACC_STABLE_N) ax.otArmed = true;
+        if (ax.otArmed && !blocked) { ax.met = true; ax.overtaken = true; }
       }
       // a voided row neither holds the step nor blocks its successors — it is an
       // observation the player deliberately made impossible, not an unmet one.
@@ -3262,7 +3284,7 @@
         // per entry, order-parallel to the step's `accs`), or null on single-acc steps.
         // `implied` — this row latched on a sibling's threshold, not its own (`implied_by`).
         accs: f.accsState ? f.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied, overtaken: !!a.overtaken,
                    voided: a.voided || null, no_1m: !!a.no_1m,
                    pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,
@@ -3337,7 +3359,7 @@
         // steps. `implied` — latched on a sibling's threshold (`implied_by`), not its own.
         // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied, overtaken: !!a.overtaken,
                    voided: a.voided || null, no_1m: !!a.no_1m,
                    pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,

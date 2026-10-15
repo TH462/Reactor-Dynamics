@@ -285,12 +285,23 @@
   // controllers hold to); the deviation is taken against the INDICATED Tavg (HR1), so a
   // failed Tavg transmitter corrupts it exactly as it corrupts the rods. A plant that hands
   // in nothing gets no reading (the retired engine).
-  PWRInstruments.prototype._trefDev = function (extras) {
+  /* ...AND IT TAKES ITS OWN FAILURE, as #789 made SUBCOOLING MARGIN do (2026-10-15): the channel is `derived` and
+   * so carries a Failures-tab entry, and until a walkthrough row graded on it (raise power 4) nothing noticed
+   * that a stuck/drift/noisy/dead injection was a silent no-op (run_checklist_pwr2 2ae.3, MEASURED: stuck at
+   * 0.159 read 0.134). Healthy, the reading is unchanged byte for byte: `_applyFailure` is consulted only while
+   * a failure is active, and only then is the `noisy` mean seeded. */
+  PWRInstruments.prototype._trefDev = function (extras, trueState, dt) {
     var tr = (extras || {}).tref_c;
     if (typeof tr !== 'number' || !isFinite(tr)) return;
     this.reading.tref = tr;
     var spec = this.specs.tavg_tref_dev, dev = this.reading.tavg - tr;
-    this.reading.tavg_tref_dev = spec ? clip(dev, spec.range[0], spec.range[1]) : dev;
+    var d = spec ? clip(dev, spec.range[0], spec.range[1]) : dev;
+    if (spec && this.failed.tavg_tref_dev) {
+      var tt = trueState && trueState.tavg_c != null ? trueState.tavg_c - tr : d;
+      if (this.failed.tavg_tref_dev.mode === 'noisy') this.lagged.tavg_tref_dev = d;
+      d = this._applyFailure('tavg_tref_dev', d, tt, spec, dt);
+    }
+    this.reading.tavg_tref_dev = d;
   };
 
   PWRInstruments.prototype._levelDev = function (extras) {
@@ -476,7 +487,7 @@
 
     // Level deviation from program (#262) — the inventory cue. See _levelDev.
     this.reading.pzr_level_dev = this._levelDev(extras);
-    this._trefDev(extras);
+    this._trefDev(extras, trueState, dt);
     this.reading.rod_limit_margin = this._rodLimitMargin(extras);
     this._deltaTChannels(extras);
 
