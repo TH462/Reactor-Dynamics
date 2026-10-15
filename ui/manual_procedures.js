@@ -4717,6 +4717,9 @@
         why: 'Less steam drawn leaves the heat nowhere to go: the water warms, and warmer water walks power down by itself. Insert first and you starve a reactor still asked for full steam, walking the steam generator down.',
           aim: 'The reactor follows the turbine: load comes off first, rods follow.',
           control: 'Turbine Load', target: 'OUTPUT 75 MWe',
+          /* the chart for this leg's relation (relations plan, lower power 2): LOAD, power, the water, and the dump that
+           * takes over the load once the water runs hot. 15 min holds the whole stair at the 5x rung. */
+          trend: ['mwe', 'power', 'tavg', 'dump_valve'], window: 900, pair: ['power', 'tavg'],
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 300, wait_hint: false,
           /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-5: a LOAD cut lands at once on PWR2 (raises
            * only are rate-limited, pwr2_shell), so "about five plant-minutes" was the card's claim,
@@ -4745,7 +4748,38 @@
                    ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down, below 95 %.',
                    wait_speed: 5,
                    note: 'The inserts hold AVG COOLANT TEMPERATURE under about 587 °F.',
-                   label: 'REACTOR POWER below 95 %' }],
+                   label: 'REACTOR POWER below 95 %' },
+                 /* THE RELATIONSHIP THIS LEG TEACHES (OWNER RULING, 2026-10-14: "Change as you recommend" -- chart-led, one
+                  * graded relation per leg; inbox/670_redesign/relations_plan.md): power follows load (Tier A, A1). The turbine
+                  * leads: less steam drawn, the water warms, and the moderator coefficient walks REACTOR POWER down. Graded on the
+                  * board INSTRUMENTS (Hard Rule 1: `power_range`, `tavg`). A `cont` on an unordered step: `moves` owes its whole
+                  * 60 s window, so it cannot tick on entry, and the dump is SHUT through that first minute on every route below.
+                  * MEASURED 2026-10-15, routes harness, live runtime, per-grading trace, seeds 42 / 7 (gain over the window at the
+                  * tick; the step's own end in brackets):
+                  *   typical (5 MW a plant-minute, 3-step inserts above 577 degF) and double_load75: ticks 64 plant-s in
+                  *     (~13 s wall at 5x), power -5.5 / -5.4 points, Tavg +2.2 / +1.8 degF [step 252 s, the OUTPUT row is last]
+                  *   chain (part C): power -5.0 / -5.3 points, Tavg +1.8 / +1.8 degF, same first-window tick
+                  *   one cut 100 -> 75 MW, seed 42 with / without inserts: ticks 64 s, -7.5 / -6.8 points, +3.5 / +3.7 degF
+                  *     (seed 7 -7.4 / -6.7, +3.1 / +3.4) [68 s: the row is the last to tick, ~50 plant-s after the other two]
+                  *   10 MW stairs: -10.4 points, +5.1 degF; 5 MW every 3 plant-minutes: as typical (one cut is enough)
+                  *   LOAD cut 600 plant-s late (boron alone takes Tavg to 564.6 degF first): ticks 640 / 643 s, 30 s after the
+                  *     cut, at -3.2 / -3.1 points, +0.55 / +1.0 degF, still growing [846 s] -- the thin one, a ramp, not a stall
+                  *   inserts every minute regardless of the tile (3 steps, or 5 steps every 30 s): -5.5 to -6.1 points,
+                  *     +0.66 to +2.2 degF
+                  * THE ROW-LEVEL `overtaken`: a player who drives rods ahead of the load (10 steps every 30 s, or 5 every 20 s)
+                  * takes power down with the water COOLING (best 60 s Tavg gain +0.2 degF on the first; +1.2 degF on the
+                  * second, met on single gradings only, never the three in a row that latch), so the relation never holds; without it the step stranded and those routes drove on to a safety injection on low
+                  * steam pressure. Overtaken at power under 85 %: armed at 2.2 / 2.3 plant-min there (84.0-84.8 %), and never
+                  * before the tick on any route above (lowest power at the tick 89.3 %, one cut). Also recorded, not acted on:
+                  * the steam dump (TAVG mode since Mode 3 to Mode 1 14c) OPENS at the 80 MW cut on the typical
+                  * route (39 % at 200 s, 40 % at 75 MW, shut again by ~500 s) and power comes back UP 83.8 -> 88.6 % while Tavg
+                  * falls -- the dump, not the reactor, takes that load, which is why the relation is graded on the first
+                  * minute after a cut and not on where power settles. CURRICULUM.md's A1 row ("dump shut throughout", 100 ->
+                  * 80 MW) was measured on the free-play lineup, not this one. */
+                 { cont: true, p: 'power_pct', op: 'moves', dir: 'down', v: 3, window: 60, with: { p: 'tavg_c', dir: 'up', v: 0.278 },
+                   overtaken: { p: 'power_pct', op: '<', v: 85,
+                     label: 'the rods took REACTOR POWER down ahead of the load, so AVG COOLANT TEMPERATURE fell instead of rising' },
+                   label: 'On the chart, REACTOR POWER falls 3 points within 1 plant-minute while AVG COOLANT TEMPERATURE rises 0.5 °F' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Bring AVG COOLANT TEMPERATURE back into its band with the rods.',
         why: 'The green band is the temperature the plant should hold at its power: 578 °F at 100 %, 547 °F at no load. After a load drop the reactor sits above it until rods take reactivity out.',

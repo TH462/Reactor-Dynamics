@@ -274,6 +274,9 @@ var ROUTES = {
   },
   pwr_lower_power: {
     forbid_raise: { '#2': LP_FORBID, '#3': LP_FORBID, '#4': LP_FORBID, '#5': LP_FORBID, '#6': LP_FORBID },
+    /* step 2's relation row (relations plan, 2026-10-15) must tick ON ITS OWN on the typical route, never by its
+     * row-level `overtaken` (that relief is for the player who drives rods ahead of the load: rods_lead_2) */
+    own_row: { step: 2, row: 3 },
     peak_check: true,   // 2026-09-26: "under about N °F" in a step's note is graded (verdict `peak`)
     /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
      * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
@@ -297,6 +300,12 @@ var ROUTES = {
       { id: 'insert_x2', kind: 'overshoot', at: 'cmd:rod_nudge', set: { policy: 'seq', cmds: [
         { action: 'rod_nudge', group_id: 'control', steps: -80, speed: 'normal' }] } },
       { id: 'rewind_mid_load50', kind: 'rewind mid-step', at: 'cmd:set_load_target:2', set: { rewind_after: 120 } },
+      /* RELATIONS PLAN, lower power 2 (2026-10-15): rods driven in ahead of the load, 10 steps every 30 plant-s while the
+       * tile reads above 570 degF. MEASURED seeds 42 / 7: power falls with the water COOLING, the relation row never
+       * latches, and its row-level `overtaken` (power under 85 %) relieves it at 2.2 plant-min; the step completes at
+       * 252 s. Without the relief: a silent strand (lower_no_row_overtaken_2). Inserting with no 570 degF stop instead
+       * runs on to a safety injection on low steam pressure, an honest trip the invariant cannot tell apart. */
+      { id: 'rods_lead_2', kind: 'wrong order', at: '#2', set: { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 570, pull: 10, dwell: 30 } },
     ],
   },
   pwr_shutdown: {
@@ -683,6 +692,14 @@ var MUTATIONS = [
    * while the load walks down (the walk does not arm C-7). So the defect is the card WITHOUT its inserts: the same
    * 5 MW walk, rods left alone. MEASURED on the chain: 589.3 / 589.1 / 589.1 degF, seeds 42 / 7 / 123 (walked with
    * the inserts: 584.7), no alarm -> "peak" red. The "forbid" verdict keeps its proof in cooldown11_old_watch. */
+  /* RELATIONS PLAN, lower power 2 (2026-10-15): the row-level `overtaken` is what lets a player who drove rods ahead
+   * of the load finish the step; and the typical route must tick the relation on its own, not by the relief. */
+  { id: 'lower_no_row_overtaken_2', leg: 'pwr_lower_power', route: 'rods_lead_2', expect: 'invariant',
+    why: 'lower-power 2 relation row without its row-level overtaken (rods led the load, the water cooled): strand',
+    mutate: function (P) { delete P.steps[1].accs.filter(function (e) { return e.op === 'moves'; })[0].overtaken; } },
+  { id: 'lower_row_always_overtaken_2', leg: 'pwr_lower_power', route: 'typical', expect: 'own_row',
+    why: 'lower-power 2 relation row overtaken on any reading: the typical route ticks it by the relief, not by the relation',
+    mutate: function (P) { var e = P.steps[1].accs.filter(function (x) { return x.op === 'moves'; })[0]; e.overtaken.op = '<'; e.overtaken.v = 999; e.v = 999; } },
   { id: 'lower_no_inserts_2', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'peak',
     why: 'lower-power 2 walked 5 MW a plant-minute with the 3-step inserts left out (589 degF against "under about 587")',
     override: { '#2': { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 999, pull: 3, dwell: 60 } } },
