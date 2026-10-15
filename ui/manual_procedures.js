@@ -4394,7 +4394,7 @@
           aim: 'The turbine asks for power first; rods then restore the temperature for that load.',
           control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
           /* the chart for this leg's relation (relations plan, raise power 4): LOAD and power, the water and its program */
-          trend: ['mwe', 'power', 'tavg', 'tref'], window: 900, pair: ['tavg', 'tref'],
+          trend: ['tavg', 'tref', 'mwe', 'power'], window: 900, pair: ['tavg', 'tref'],   /* the pair FIRST (lower power 2 review, 2026-10-15): two lanes fit at the default height, so the old order drew Tavg/TREF as numeric rows */
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
           /* LAYMAN PASS 9 (2026-09-26, #653 S-2): THE OUTPUT ROW NOW COMES BEFORE THE CONDITIONAL, on all
@@ -4719,7 +4719,7 @@
           control: 'Turbine Load', target: 'OUTPUT 75 MWe',
           /* the chart for this leg's relation (relations plan, lower power 2): LOAD, power, the water, and the dump that
            * takes over the load once the water runs hot. 15 min holds the whole stair at the 5x rung. */
-          trend: ['mwe', 'power', 'tavg', 'dump_valve'], window: 900, pair: ['power', 'tavg'],
+          trend: ['power', 'tavg', 'mwe', 'dump_valve'], window: 900, pair: ['power', 'tavg'],   /* the pair FIRST: at the default chart height only two lanes fit, later series demote to numeric rows (review 2026-10-15) */
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 300, wait_hint: false,
           /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-5: a LOAD cut lands at once on PWR2 (raises
            * only are rate-limited, pwr2_shell), so "about five plant-minutes" was the card's claim,
@@ -4775,11 +4775,14 @@
                   * route (39 % at 200 s, 40 % at 75 MW, shut again by ~500 s) and power comes back UP 83.8 -> 88.6 % while Tavg
                   * falls -- the dump, not the reactor, takes that load, which is why the relation is graded on the first
                   * minute after a cut and not on where power settles. CURRICULUM.md's A1 row ("dump shut throughout", 100 ->
-                  * 80 MW) was measured on the free-play lineup, not this one. */
+                  * 80 MW) was measured on the free-play lineup, not this one.
+                  * REVIEW MARGINS (2026-10-15, reviewer scripts, 17 late-cut runs): the +0.5 degF floor sits between the rods-lead
+                  * routes' best Tavg gain, +0.485 degF, and the real routes' minimum at latch, +0.574 degF; the 85 % overtaken sits
+                  * under power at latch 87.5-89.5 % (late single 25 MW cut) and 94.2 % (typical). Thresholds kept (coordinator's call). */
                  { cont: true, p: 'power_pct', op: 'moves', dir: 'down', v: 3, window: 60, with: { p: 'tavg_c', dir: 'up', v: 0.278 },
                    overtaken: { p: 'power_pct', op: '<', v: 85,
                      label: 'the rods took REACTOR POWER down ahead of the load, so AVG COOLANT TEMPERATURE fell instead of rising' },
-                   label: 'On the chart, REACTOR POWER falls 3 points within 1 plant-minute while AVG COOLANT TEMPERATURE rises 0.5 °F' }],
+                   label: 'On the chart, REACTOR POWER falls 3 points within 1 plant-minute while AVG COOLANT TEMPERATURE rises' }],   /* graded at +0.5 degF; the label states no decimal the tiles cannot draw (whole degF; review 2026-10-15, guide U3) */
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Bring AVG COOLANT TEMPERATURE back into its band with the rods.',
         why: 'The green band is the temperature the plant should hold at its power: 578 °F at 100 %, 547 °F at no load. After a load drop the reactor sits above it until rods take reactivity out.',

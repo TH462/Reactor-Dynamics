@@ -447,9 +447,53 @@ var BUB = '#instrCallout';
   });
   ck('heatup step 11: the pair row reads the SUBCOOLING MARGIN instrument its moves row grades (149 °F pegged), not the true 297 °F; board names on both halves',
      /^AVG COOLANT TEMPERATURE 210°F {2}\| {2}SUBCOOLING MARGIN 149°F$/.test(gh.row || '') && /SUBCOOLING MARGIN 297°F/.test(gh.ctl || ''), JSON.stringify(gh));
+  /* THE DIRECTION SPAN (lower power 2 / cooldown 4 reviews, 2026-10-15): the word is taken over a fixed plant-time span
+   * -- a `moves`-graded series over that row's own window, any other over 60 plant-s -- not against the previous
+   * broadcast. (a) lower power 2's shape: Tavg +0.9 degC over the 60 s the row grades, -0.3 degC in its last 30 s
+   * (an insert); beside the fresh tick the word must read "rising" (the 30 s form read "falling"). (b) a slow
+   * tail, cooldown 4's shape: STEAM PRESS -15 psi (0.1034 MPa) per 600 s sampled every 50 plant-s (600x): over the
+   * graded 600 s it reads "falling"; CONTROL, the same samples with no graded step, compare 60 s (1.5 psi, inside the
+   * 3.6 psi band) and read "steady", so the span is what decides. INJECTION (2026-10-15): `span` forced to 30 for
+   * every series -> (a) "falling" and (b) "steady", both red. */
+  var gs = await G.page.evaluate(function () {
+    /* the SHIPPED step's rows; its pair re-stated, because the panel check above stamps a synthetic pair on this leg */
+    var lp = { accs: RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === 'pwr_lower_power'; })[0].steps[1].accs, pair: ['power', 'tavg'] };
+    function sn(t, pw, tv, sp) { return { metadata: { sim_time: t, plant_id: 'pwr2' }, instruments: { power_range: pw, tavg: tv, steam_pressure: sp },
+      true_state: { power_pct: pw, tavg_c: tv, steam_pressure_mpa: sp }, control_state: {} }; }
+    RD.CklPairRow(sn(0, 99.6, 304.5, 6.9), 'g-lp2', lp.pair, lp); RD.CklPairRow(sn(30, 97.0, 305.7, 6.9), 'g-lp2', lp.pair, lp);
+    var a = RD.CklPairRow(sn(60, 94.3, 305.4, 6.9), 'g-lp2', lp.pair, lp);
+    var cst = { accs: [{ p: 'steam_pressure_mpa', op: 'moves', dir: 'down', v: 0.1034, window: 600, with: { p: 'tavg_c', dir: 'down', v: 2.778 } }] };
+    var P = ['steam_p', 'tavg'], b = null, c = null;
+    var t;   // one key at a time: the row's history is keyed on the step, so interleaving two keys resets it
+    for (t = 0; t <= 650; t += 50) b = RD.CklPairRow(sn(t, 0, 290 - 2.778 * t / 600, 6.9 - 0.1034 * t / 600), 'g-tail', P, cst);
+    for (t = 0; t <= 650; t += 50) c = RD.CklPairRow(sn(t, 0, 290 - 2.778 * t / 600, 6.9 - 0.1034 * t / 600), 'g-tailc', P);
+    return { pair: lp.pair, a: a, b: b, c: c };
+  });
+  ck('pair direction over the graded window: lower power 2 reads AVG COOLANT TEMPERATURE "rising" beside its tick (not the last-30 s "falling")',
+     /AVG COOLANT TEMPERATURE \S+ rising$/.test(gs.a || '') && /^REACTOR POWER \S+ falling/.test(gs.a || ''), JSON.stringify([gs.pair, gs.a]));
+  ck('pair direction on a slow tail (STEAM PRESS -15 psi / 600 s at 600x): "falling" over the graded 600 s; the ungraded 60 s control reads "steady"',
+     /^STEAM PRESS \S+ \S+ falling/.test(gs.b || '') && /^STEAM PRESS \S+ \S+ steady/.test(gs.c || ''), JSON.stringify([gs.b, gs.c]));
   await jump(G.page, 0);
   await G.page.waitForTimeout(900);
   var gc = await G.page.evaluate(function () { return !!document.querySelector('#cklRun [data-ckl-pair]'); });
+  /* THE PAIR OWNS THE TOP TWO LANES (lower power 2 review, 2026-10-15), whatever order `trend` lists it in. At 1600x1000
+   * the strip fits two lanes (MEASURED, Edge: lower power 2's 4-series trend draws 2 lanes + 2 numeric rows) and
+   * drawChart demoted the NEWEST pins first, so the authored order once decided whether Tavg drew a trace. The leg's
+   * trend is stamped back to its pre-review order (mwe, power, tavg, dump_valve) so this asserts the generic rule, not
+   * the authoring. Anti-vacuity: at least one series is demoted (else every series traces and this proves nothing).
+   * INJECTION (2026-10-15): the `keepPair` spare in drawChart removed -> lanes [power, mwe], red. */
+  var Lp = await session({ width: 1600, height: 1000 });
+  await Lp.page.evaluate(function () { RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === 'pwr_lower_power'; })[0].steps[1].trend = ['mwe', 'power', 'tavg', 'dump_valve']; });
+  await start(Lp.page, 'pwr_lower_power');
+  await jump(Lp.page, 1);
+  await Lp.page.waitForTimeout(2500);
+  var ln = await Lp.page.evaluate(function () {
+    var lanes = Array.prototype.map.call(document.querySelectorAll('.lane-chrome[data-ser]'), function (e) { return e.getAttribute('data-ser'); });
+    return { idx: RD.__dev.service().instructor.checklist.idx, lanes: lanes };
+  });
+  ck('chart: a step\'s pair [power, tavg] draws as the TOP TWO traced lanes even when its trend lists it later (1600x1000, two lanes fit)',
+     ln.idx === 1 && ln.lanes.length >= 2 && ln.lanes.length < 4 && ln.lanes[0] === 'power' && ln.lanes[1] === 'tavg', JSON.stringify(ln));
+  await Lp.ctx.close();
   ck('the side-panel line is gone when the active step authors no pair (step change)', !gc, String(gc));
   await G.ctx.close();
 
