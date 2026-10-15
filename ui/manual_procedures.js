@@ -2094,13 +2094,38 @@
         { text: 'Heat the plant to 542 °F on pump heat alone.',
         why: 'The pumps do the work: AVG COOLANT TEMPERATURE climbs and REACTOR POWER stays at zero. PRESSURIZER LEVEL rises as the water expands, to about 44 % near 280 °F, then level control lets the extra out and it falls back to about 25 % by 435 °F, its program for a plant this cool. STEAM PRESS climbs toward 1020 psi; the next step hands it to the steam dump.',
           predicts_alarms: ['pzr_pressure_lolo', 'pzr_pressure_low', 'turbine_trip'], aim: 'Hot Standby needs near-operating temperature; the pumps get there without the reactor.',
-          wait_speed: 3600, speed_text: true,
+          /* 600x, NOT 3600x (OWNER RULING, 2026-10-14: "Change as you recommend", relations plan: heatup 11 capped at
+           * 600x). 3600x was the rung the 30 s rule gave `hold: 40000`; at it the whole ride is about 5 s of wall and the
+           * relation row below is over before it can be watched. MEASURED, routes harness at 600x, seed 42: the step is
+           * 295.5 plant-min (29.6 s wall) typical, 282.0 (28.2 s) with Continue noticed 120 s late. */
+          wait_speed: 600, speed_text: true,
           control: '(observe)', target: 'AVG COOLANT TEMPERATURE 542 °F or higher, REACTOR POWER still 0 %',
           wait_hint: false,   /* was `true`: the substep-format warp line below is the one speed line (workbench-f) */
           hold: 40000,
           saw: { p: 'tavg_c', op: '>', v: 150 },
-          /* 3600x is the rung the 30 s rule gave `hold: 40000` (carried over). */
-          accs: [{ p: 'tavg_c', op: '>', v: 283,
+          /* THE CHART THIS LEG IS LED BY (relations plan): Tavg and its margin, with PRIMARY PRESSURE and STEAM PRESS for
+           * the reason the margin turns. 6 h is the 600x rung that holds the whole ride. Held from here to the leg's end. */
+          trend: ['tavg', 'subcool', 'pressure', 'steam_p'], window: 21600,
+          pair: ['tavg', 'subcool'],
+          /* THE RELATIONSHIP THIS LEG TEACHES (OWNER RULING, 2026-10-14: "Change as you recommend" -- chart-led, one
+           * graded relation per leg; inbox/670_redesign/relations_plan.md): heatup closes in on saturation (Tier A,
+           * subcooling is the margin). `moves` LATCHES and owes the whole 600 s window, so it cannot tick on entry.
+           * Hard Rule 1: both channels grade the board INSTRUMENTS, and that moves the tick. MEASURED, routes harness,
+           * per-broadcast trace of this step, 600 s windows, seed 42 typical:
+           *   - THE GAUGE IS PEGGED FOR TWO-THIRDS OF THE RIDE. The SUBCOOLING MARGIN instrument tops out at 83 degC
+           *     (149.4 degF) and sits there until 205.5 plant-min in (Tavg 465 degF, true margin 147.5 degF). The plan's
+           *     81.5 plant-min tick was the TRUE margin (true_state), which no tile draws -- INHERITED and refuted here.
+           *   - (Underneath the peg the true margin first RISES 293 -> 299 degF: the heaters carry PRIMARY PRESSURE 701 ->
+           *     1727 psia over the first ~75 plant-min. Invisible on the board.)
+           *   - Off the peg, every degree of heatup is a degree off the margin: Tavg +10.1 / margin -9.8 degF per 10
+           *     plant-min at 220 min, +8.1 / -8.0 at the step's end (545.6 degF). No late entry can strand it.
+           *   - The row ticks 216.5 plant-min in (Tavg 477 degF); the 542 degF row 294.5, 78 plant-min (7.8 s wall) later.
+           *     Seed 7 217.0. Continue 120 s late 203.0 (step 283.0). double_rcp, pressure_sp_high, rewind_mid_heaters:
+           *     identical to typical; dump_auto_early 217.0 (step 295.0). */
+          accs: [{ p: 'tavg_c', op: 'moves', dir: 'up', v: 2.778, window: 600, with: { p: 'subcooling_c', dir: 'down', v: 2.778 },
+                   ask: 'Watch SUBCOOLING MARGIN come off its 149 °F top and start to fall.',   /* review 2026-10-15: the tile pegs at 149 °F (83 degC, its scale top) until 205.5 plant-min in, every heatup route measured */
+                   label: 'On the chart, AVG COOLANT TEMPERATURE climbs 5 °F within 10 plant-minutes while SUBCOOLING MARGIN falls 5 °F' },
+                 { p: 'tavg_c', op: '>', v: 283,
                    ask: 'Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.',
                    /* 2026-09-25, AGENT-DRAFTED (layman pass 5): MEASURED on the route gate's chain, seed
                     * 42, both heatups -- `pzr_pressure_lolo` (1800 psia, critical outside Modes 4-5)
