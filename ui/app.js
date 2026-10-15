@@ -3417,8 +3417,8 @@
   function syncPacingUI(s) {
     var p = s && s.metadata ? s.metadata.pacing : null;
     var el = $('ffRate');
+    syncWarpInfo(s);   // BEFORE the pacing return: a held step's snapshot may carry no pacing, and the line then kept its pre-hold text (review 2026-10-15: "fast-forwarding at 10×" under a stopped clock)
     if (!p || !el) return;
-    syncWarpInfo(s);
     var req = s.metadata.time_acceleration || 1, ach = p.achieved;
     var straining = false;
     if (RD.Perf && req > 1) {
@@ -4677,7 +4677,7 @@
     if (!H.length || t > H[H.length - 1].t) H.push({ t: t, l: lvl, i: inv });
     while (H.length > 2 && t - H[1].t >= 30) H.shift();
     function dir(key, now) {
-      var o = H[0];
+      var o = H[0], pegL = now != null && (now >= 99 || now <= 1);
       if (o && t - o.t >= 5 && now != null && o[key] != null) {
         var d = now - o[key];
         /* RCS INVENTORY is the true-state mass, so it carries no gauge noise and is judged on its
@@ -4688,7 +4688,11 @@
         var rate = d / (t - o.t) * 60;
         cklPairHist.dir[key] = key === 'i'
           ?(t - o.t >= 10 ? (rate > 0.1 ? 'rising' : rate < -0.1 ? 'falling' : 'steady') : (cklPairHist.dir[key] || ''))
-          : (d > 0.3 ? 'rising' : d < -0.3 ? 'falling' : 'steady');
+          : (d > 0.3 && !(pegL && Math.round(now) === Math.round(o[key])) ? 'rising' : d < -0.3 && !(pegL && Math.round(now) === Math.round(o[key])) ? 'falling' : 'steady');
+        /* the GAUGE half says "steady" AT ITS PEG while its drawn (rounded) number has not changed (TMI-2 layman
+         * pass 4): PRESSURIZER LEVEL dipping 100 -> 99.5 at the top of its scale read "100 % falling" in 7
+         * samples. Only at the scale ends (`pegL`): elsewhere a clear move keeps its word even inside one drawn
+         * unit. RCS INVENTORY keeps its rate rule above. */
       }
       return cklPairHist.dir[key] || '';
     }
@@ -4773,7 +4777,15 @@
       var ser = sers[k], o = H[0];
       if (o && t - o.t >= 5) {
         var r = serRange(ser), band = Math.abs(r[1] - r[0]) * 0.0025, d = vals[k] - baseAt(k);
-        cklSerHist.dir[k] = d > band ? 'rising' : d < -band ? 'falling' : 'steady';
+        var dw = d > band ? 'rising' : d < -band ? 'falling' : 'steady';
+        /* "steady" AT A SCALE END while the DRAWN number has not changed over the span (TMI-2 layman pass 4): a
+         * pegged gauge dipping inside one drawn unit read "falling" beside digits that never moved. ONLY within 1 %
+         * of the range's ends (review, 2026-10-15): applied everywhere it turned cooldown 4's TAVG, whole-°F
+         * display, ~1 °F/min fall, "steady" in 8 % of samples with 46 word toggles over the step. */
+        var span0 = Math.abs(r[1] - r[0]), lo = Math.min(r[0], r[1]), hi = Math.max(r[0], r[1]);
+        var pegS = (vals[k] >= hi - 0.01 * span0 && vals[k] <= hi) || (vals[k] <= lo + 0.01 * span0 && vals[k] >= lo);
+        if (dw !== 'steady' && pegS) { try { var f0 = ser.fmt ? ser.fmt(baseAt(k)) : baseAt(k).toFixed(1), f1 = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); if (f0 === f1) dw = 'steady'; } catch (e) {} }
+        cklSerHist.dir[k] = dw;
       }
       var txt;
       try { txt = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); } catch (e) { txt = vals[k].toFixed(1); }
@@ -4874,7 +4886,12 @@
           mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
       }).join('');
     }
-    if (spTxt) b += '<div class="ico-wait">' + mesc(spTxt) + '</div>';
+    /* THE STEP'S OWN `wait_hint` RIDES WITH THE WAIT LINE (TMI-2 layman pass 4, S-2): the card built
+     * `spTxt` itself and never read the field, so step 9's "reaches the bottom of its scale about an hour
+     * in" reached only the Instructor-tab card and the floating card printed "⏩ Waiting at 60×" alone.
+     * Same route-true read and same condition (a wait step still waiting) as the side card's line. */
+    var spHint = spTxt ? cklRouteField(st, ck, 'wait_hint') : null;
+    if (spTxt) b += '<div class="ico-wait">' + mesc(spTxt + (typeof spHint === 'string' ? ' · ' + spHint : '')) + '</div>';
     el.querySelector('.ico-body').innerHTML = b;
     var bEl = el.querySelector('.ico-btns');
     bEl.innerHTML =
@@ -5458,6 +5475,9 @@
     var span = cklWaitSpan(s, a, forBar);
     var rung = cklRungFor(a.st, a.ck) || RD.CklSpeedHint(holdS);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
+    /* a HELD step (#694 `pause`, `pause_on_met`) has stopped the clock: say so, not the rung it is "back at"
+     * (review of the TMI-2 layman pass 4 fix: step 7 held read "Wait complete — back at 10×") */
+    if (a.ck.paused && a.ck.awaiting_ack) return 'Wait complete — the clock is held until you press Continue.';
     if (a.ck.acc_met || a.ck.awaiting_ack) {
       return 'Wait complete — back at ' + cur + '× (this step fast-forwards at ' + rung.speed + '×).';
     }
@@ -11060,7 +11080,17 @@
       var seg = btn.closest('.seg'); seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); btn.classList.add('on');
     });
     $('playBtn').addEventListener('click', function () {
-      if (service.running) pauseSim('user'); else resumeSim();
+      /* PLAY ON A HELD WALKTHROUGH STEP IS CONTINUE (TMI-2 layman pass 4 review, 2026-10-15). The step's
+       * hold (#694 `pause`, `pause_on_met`) exists so the next event does not play out under this card, and
+       * resumeSim() escaped it: it clears every hold, its set_speed render re-took 'walkthrough' while the
+       * clock was still stopped, then start() ran the plant with the hold still named (measured: 9.0
+       * plant-s in 10 s at 1x on step 2, `paused` true throughout). Playing a held step now does what its
+       * lit Continue does, so the card moves on with the clock. */
+      var heldCont = !service.running && pausedFor('walkthrough') && document.querySelector('#cklRun [data-ckl-check]');
+      if (service.running) pauseSim('user');
+      else if (heldCont && !heldCont.disabled) { clearPause('user'); heldCont.click(); }
+      else if (pausedFor('walkthrough')) { /* held, and nothing to continue: stay held */ }
+      else resumeSim();
     });
     $('speed').addEventListener('click', function (e) {
       var b = e.target.closest('[data-speed]'); if (!b) return;

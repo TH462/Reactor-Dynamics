@@ -14,7 +14,7 @@
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, accs_ordered,
  *          wait_hint, wait_speed, overtaken, pair, trend, window, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
  *          inject, clear,
- *          pause, wrong,
+ *          pause, pause_on_met, wrong,
  *          wait_est_s, aim, speed_text }
  *   aim     OPTIONAL string — THE STEP'S ONE-LINE WHY *(OWNER RULING, 2026-09-24: "I like putting
  *           the why where you put it. i choose a.")*: the italic line directly under `text` and
@@ -132,6 +132,12 @@
  *           the owner's own cascade example (polisher / feed pump / turbine as three steps,
  *           not three injects on one). Released by Continue, the checklist's own Rewind, or
  *           Stop — see `ui/app.js` `releaseHold('walkthrough')`.
+ *   pause_on_met  OPTIONAL boolean — the same hold as `pause`, taken when the step's Continue
+ *           LIGHTS rather than when its event fires: the step grades normally (it must run to
+ *           be met), then the clock stops until Continue/Rewind/Stop. For a RAPID watch beat
+ *           whose next event would otherwise play out under the old card ("for non rapid
+ *           events or events where it waits on user action we wont need to pause the sim",
+ *           owner #694 — so rapid ones do). TMI-2 layman pass 4, S-1: steps 2, 4 and 7.
  *   wrong   OPTIONAL {learning, industry} — overrides the generic "wrong action" commentary
  *           (`_wrongActionText`) shown when a follow-mode operator does something the step
  *           didn't ask for. Falls back to a step-generic template when absent.
@@ -6084,6 +6090,7 @@
             knew: 'The heat sink was being restored.',
             did: 'Nobody checked whether the water was getting past the block valves.' },
           inject: [{ failure: 'afw_failure' }],
+          pause_on_met: true,   // S-1 (layman pass 4): held lit 60 wall-s at 1x ran 47 plant-s and step 4's event played out under this card
           hold: 30,
           acc: { p: 'sg_level_pct', op: '<', v: 55 },
           hl_watch: ['AFW', 'SG Level'] },
@@ -6093,8 +6100,9 @@
          * tailpipe never exceeds the hot leg on this plant (header trap 2), so the card names the
          * sourced 240 °F alarm point. One label, one element (#684 §D): the valve's halo already
          * encloses the lamp. */
-        { text: 'No action. The PORV lamp reads CLOSED, but the pipe under it is above 240 °F. Press Continue.',
-          why: 'The lamp shows the solenoid, not the valve. A hot pipe means steam is still passing.',
+        { text: 'No action. The relief valve lamp (PORV) reads CLOSED; the orange temperature beside it is above 240 °F. Press Continue.',   // layman pass 4 S-5/S-6: PORV expanded on first use; the unlabelled tailpipe readout named by what the player sees
+          why: 'The lamp shows the solenoid (the electric opener), not the valve. A hot pipe means steam is still passing.',
+          note: 'The orange temperature is the pipe out of the valve.',
           story: { clock: '04:00:40', line: 'The relief valve lifts, is told to shut, and sticks open.',
             saw: 'Pressure reached 2255 psi and the valve opened as designed. It was told to shut at 13 seconds, and its light went out.',
             knew: '"Light off indicates solenoid deenergized. There is no actual position indicator."',
@@ -6113,13 +6121,14 @@
           hl_watch: ['Relief Valve (PORV)'] },
         /* 4 — 04:02:39. Old step 9. App. II.1 E31. MEASURED: hpi_active at t+63 s; the flow
          * instrument reads exactly 0 until pressure falls below the pump's ~1389 psi head. */
-        { text: 'Watch START light on the ECCS card: safety injection starts by itself.',
+        { text: 'Watch START light on the ECCS (emergency core cooling) card: safety injection starts by itself.',
           why: 'Pressure fell through the injection setpoint: the plant is losing water through the PORV.',
           note: 'INJ FLOW reads 0 GPM until pressure falls below about 1380 psi: the pump cannot push against more.',
           story: { clock: '04:02:39', line: 'Pressure drops and emergency injection starts on its own.',
             saw: 'Pressure dropped through 1600 psi and the emergency injection started on its own.',
             knew: 'Pressurizer level was climbing fast at the same time, which their training said meant the system was filling.',
             did: 'They watched the level climb and prepared to stop the filling.' },
+          pause_on_met: true,   // S-1 (layman pass 4): held lit 15 wall-s at 1x ran 13 plant-s
           hold: 30,
           /* THE TRIP ROW IS LOAD-BEARING (#670 redesign): it is how `InstructorLayer.legScriptsScram` knows
            * this leg expects its reactor trip (it arrives out of the feed loss on overtemperature, about
@@ -6162,6 +6171,7 @@
             knew: '"The condition to avoid at all costs is going solid." A pressurizer full of water leaves nowhere to control pressure from.',
             did: 'They throttled the injection valves, stopped a makeup pump and opened letdown to its high limit.' },
           cmd: { action: 'set_hpi', active: false }, hold: 90,
+          pause_on_met: true,   // review of layman pass 4: Continue left lit 60 plant-s and step 7 opened met (0.05 vs 1.1 plant-min)
           acc: { p: 'hpi_active', op: '<', v: 1 },
           /* THE PLAYER WHO KEEPS INJECTION ON (#670 Fable pass, 2026-10-14). MEASURED, live runtime, seed
            * 42, STOP never pressed: RCS INVENTORY 98 % at entry, 74 % at 30 plant-min, 25 % minimum; with
@@ -6178,8 +6188,8 @@
          * second measurement of the quantity). Subcooling graded at 1 °F, not 0 — a bifurcation,
          * the standing #543 trap. The vessel drawing is full here and correct: it reads core
          * uncovery, which is 0 at this step (#670 Phase 3, layman S-8). */
-        { text: 'Watch PRESSURIZER LEVEL peg at the top of its scale and SUBCOOLING MARGIN reach zero.',
-          why: 'It reads full while the plant empties: level is not inventory. The coolant is boiling.',
+        { text: 'Watch PRESSURIZER LEVEL peg at the top, SUBCOOLING MARGIN reach zero, and the pump cavitation alarm come in.',   // layman pass 4: the third row was not in the line players read
+          why: 'It reads full while the plant empties: level is not inventory. The coolant is boiling, and steam bubbles reach the pumps (cavitation).',
           note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered. Injection stays off: after a reset it restarts only when you press START.',   // layman pass 2026-10-14 S-4; re-measured after a06c449c (SI held off until P-4 clears): no automatic restart on any route through 7 plant-h (typical, late, never-close-block-valve)
           /* THE KEEP-INJECTION ROUTE (step 6 overtaken). MEASURED 2026-10-14, routes gate keep_injection, seed 42:
            * injection on for the whole leg, core uncovered 0 % throughout (inventory minimum 78.3 %). */
@@ -6197,6 +6207,7 @@
               knew: '"Indication of voids in system. Apparently not recognized."', did: 'They left the pumps running.' },
           ],
           hold: 192,
+          pause_on_met: true,   // S-1 (layman pass 4): held lit 15 wall-s at 1x ran 14 plant-s
           wait_est_s: 66,   // MEASURED 2026-10-15, browser typical route: 68 / 72 s (1.1 / 1.2 plant-min) from entry, two runs; routes gate typical 1.1
           accs: [{ p: 'pzr_level_pct', op: '>=', v: 99, label: 'PRESSURIZER LEVEL pegged at the top of its scale' },
                  { p: 'subcooling_c', op: '<=', v: 0.56, label: 'SUBCOOLING MARGIN at or below 1 °F' },
@@ -6204,7 +6215,7 @@
           hl_watch: ['Pressurizer Level', 'Subcooling Margin', 'Reactor Coolant Pumps (RCP)'] },
         /* 8 — 04:08:37. Old step 14. App. II.1 E49/E50. Graded on the LEVEL, not the flow (the
          * level hold throttles auxiliary feed). THE HOLD IS THE 65-MINUTE RIDE to step 9's clock. */
-        { text: 'Open the AFW block valves: click the valve symbol above the AFW card.',
+        { text: 'Open the AFW (auxiliary feedwater) block valves: click the valve symbol above the AFW card.',
           control: 'AFW', target: 'STEAM GENERATOR LEVEL back above 5 %, climbing off zero',
           why: 'The auxiliary pumps ran eight minutes into shut valves. This restores the heat sink.',
           wait_hint: 'The relief valve is still open the whole way. The plant takes 600× here; if it drops back to 60× on a pressure swing, press 600× again.',
@@ -6225,7 +6236,7 @@
           crew: true,
           control: 'RCP ON/OFF', target: 'after OFF, the pump cavitation alarm clears',
           why: 'They are cavitating. Stopping them also removes the only thing stirring the core.',
-          wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale about an hour in. That is the reading to wait for before securing the pumps.',   // MEASURED 2026-10-14, live runtime: 61.0 / 63.8 / 67.7 plant-min (typical / slow / warp)
+          wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale about an hour into the accident. That is the reading to wait for before securing the pumps.',   // MEASURED 2026-10-14, live runtime: 61.0 / 63.8 / 67.7 plant-min (typical / slow / warp)
           wait_first: true,   // the wait comes BEFORE the press — see cklActionPending (ui/app.js)
           /* THE CORE UNCOVERS ON THIS STEP, SO IT IS WATCHED AT 60x (layman pass 2026-10-14, S-1). At the
            * 600x rung `CklSpeedHint(3900)` gave it, the boil-down ran in about 5 s of wall time and a player
@@ -6235,7 +6246,7 @@
            * step, 31 s of wall from 0.20 to 0.92. At 600x it was 53 broadcasts. The chart adds Core
            * Uncovered from here, and the note points at the two places it shows. */
           wait_speed: 60,
-          note: 'Watch RCS INVENTORY on the chart, and the vessel drawing: the water drops down the core while PRESSURIZER LEVEL still reads high.',
+          note: 'SUBCOOLING MARGIN sits at 0 °F for about 35 plant-minutes, then drops to -50 °F in about five. Watch RCS INVENTORY on the chart, and the vessel drawing: the water drops out of the core (the middle), while the outer ring stays full and PRESSURIZER LEVEL still reads high.',   // layman pass 4 S-2 (MEASURED browser typical: 0/-1 °F T+13.2 to about T+50, then -9 -> -50 °F T+51.2 to T+56.3) and S-3 (the green the player read as water is the downcomer)
           pair: true,
           trend: ['pressure', 'pzr_level', 'inventory', 'uncovered', 'porv'],
           window: 10800,
@@ -6254,7 +6265,7 @@
               knew: 'Instruments were reading past their limits and the printer was hours behind.',
               did: 'They went on treating pressurizer level as the measure of how much water was in the plant.' },
           ],
-          wait_est_s: false,
+          wait_est_s: 2500,   // S-2 (layman pass 4): MEASURED typical route, entry to the peg: routes gate 40.1, browser 43.1 plant-min
           cmd: { action: 'set_rcp', running: false }, hold: 3900,
           /* THE PRESS IS GRADED, NOT ONLY ITS EFFECT (#670 Fable pass, 2026-10-14): the cavitation alarm has a
            * second cause (pump flow decaying on its own), so on a route that never pressed OFF this step
@@ -6277,7 +6288,7 @@
            * at -50 °F is the plant's own proof the loop boiled down (inventory 22 % or less at the peg on every route
            * measured); on the routes that reach this step in time the row latches first, 30 plant-min before it. */
           accs: [{ p: 'core_inventory_pct', op: 'moves', dir: 'down', v: 10, window: 600, with: { p: 'pzr_level_pct', op: '>=', v: 90 }, implied_by: 'subcooling_c',
-                   label: 'RCS INVENTORY on the chart drops 10 points within 10 plant-minutes, PRESSURIZER LEVEL at 90 % or more throughout' },   // S-1 residue (layman pass 3): a condition, true before the tick and after it (the level falls later); grading unchanged
+                   label: 'RCS INVENTORY on the chart fell 10 points or more over 10 plant-minutes while PRESSURIZER LEVEL read 90 % or more.' },   // S-4 (layman pass 4): past tense, true after the latch; "over 10 plant-minutes" says why it waits (the window must fill). The with-test is graded at the latch, not throughout. Grading unchanged
                  { p: 'subcooling_c', op: '<=', v: -27.778, label: 'SUBCOOLING MARGIN pegged at -50 °F' },
                  { cmd: { action: 'set_rcp', running: false }, label: 'OFF pressed for the reactor coolant pumps' },
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'after OFF: the pump cavitation alarm clears' }],
@@ -6341,7 +6352,7 @@
           route_alt: [{ overtaken: [6], wait_est_s: 150, wait_est_from: 'cmd',   /* MEASURED 2026-10-15, routes gate keep_injection: 2.5 plant-min from the press */ wait_hint: 'Injection is already on here and SUBCOOLING MARGIN is high, so the step ticks once START is pressed.' },
             // EARLY-CLOSE ROUTE. MEASURED 2026-10-14, block_valve_early, seed 42: step 11 done 45.0 plant-min after entry
             { overtaken: [9], wait_est_s: 2580, wait_est_from: 'cmd',   /* MEASURED 2026-10-15, routes gate block_valve_early: 43.0 plant-min from the press */ wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. Here it takes about three-quarters of an hour of plant time to reach +10 °F.' }],
-          story: { clock: '07:20:37', line: 'They start a makeup pump by hand.',
+          story: { clock: '07:20:37', line: 'They start an injection pump by hand.',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
             did: 'They started a makeup pump, and stopped it again 17 minutes later.' },

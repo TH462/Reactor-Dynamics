@@ -1614,6 +1614,15 @@
      * acknowledgement (#619 item 4). The overtaken path (#641) still advances by itself: it is
      * the plant moving past a step, not the player finishing one. */
     c.awaitingAck = !!met;
+    /* `pause_on_met` (TMI-2 layman pass 4, S-1): the RAPID watch beats hold the clock the tick
+     * their Continue lights, so the next beat's event cannot play out under this card (measured:
+     * TMI step 2 held lit 60 wall-s at 1x ran 47 plant-s, and step 4 opened already met). The same
+     * hold `pause` takes (#694), released the same ways; unlike `pause` the step grades normally,
+     * because it has to RUN to light Continue. Once per step (`c.paused` is cleared with it). */
+    if (met && st.pause_on_met && !c.paused) {
+      this._pauseRequested = true;
+      c.paused = true;
+    }
   };
 
   /* A STEP MAY FIRE FAILURES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs).
