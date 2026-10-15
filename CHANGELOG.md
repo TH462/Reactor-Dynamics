@@ -36,6 +36,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.8.4-rc2] — 2026-10-14
 
+### Changed — TMI-2 step 9 grades the relationship, not a threshold (#670, flag-gated `preview`; relations plan change 1)
+
+- New first row on step 9: RCS INVENTORY down 10 points in 10 plant-minutes while PRESSURIZER LEVEL still reads 90 % or more (`op: 'moves'`, latching, cannot tick on entry). Measured, routes harness, seeds 42 and 7: ticks 9.8 plant-min in (about 10 s of wall at 60x) at 57 % inventory with the level at 100 %; largest 600 s fall 15.2-17.0 points on five routes. The plan's 80 % level floor raised to 90 %: the level's minimum before the tick is 99.6 %. The row is `implied_by` the -50 °F SUBCOOLING MARGIN peg: a player who leaves the AFW valve shut an hour (real time) watches the whole drain on step 8, and without the relief step 9 stranded 195 plant-min (new route `afw_late`). The replay harness now grades `implied_by` as the live runtime does. Guarded by `run_checklist_pwr2` 2aq.17, the routes `own_row` check (the row ticks on its own on the typical route) and mutations `tmi_relation_unreachable_9` / `tmi_no_implied_9`.
+
 ### Fixed — walkthrough card on a wider font; CI shard 3 timeout (CI run 38652572708)
 
 - The board card's compact fallback now engages when the full card is taller than the board (TMI step 9, 444 px on CI fonts, had fallen to the top-left corner over the top tiles and the pressurizer); a second stage drops the step note when compact still collides; the no-margin retry keeps 11 px clear of the control (step 6 sat 8 px off STOP). Reproduced locally by forcing Verdana on the card (identical failure numbers); Windows fonts unchanged.

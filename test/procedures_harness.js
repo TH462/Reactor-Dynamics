@@ -401,9 +401,17 @@
        * this step, so their evidence is the acceptance-free issue itself (the live runtime
        * latches them off the command watch — that half is run_checklist's subject). */
       if (st.accs && st.accs.length) {
+        /* `implied_by` (#749 field; first live carrier TMI-2 step 9, 2026-10-14): the live `_gradeAccs`
+         * latches a row whose NAMED sibling is met, so the replay grades it the same way — a failed row
+         * passes when its sibling's own verdict passes, and says so. Ignored on an ordered step, as live. */
+        var implPass = {};
+        if (!st.accs_ordered) st.accs.forEach(function (o, j) {
+          if (o && o.p && !o.implied_by && st.accs.some(function (x) { return x && x.implied_by === o.p; }) && accVerdict(o, 'accs' + j).pass) implPass[o.p] = true;
+        });
         st.accs.forEach(function (en, k) {
           if (!en || !en.p) return;
           var ev = accVerdict(en, 'accs' + k);
+          if (!ev.pass && en.implied_by && implPass[en.implied_by]) ev = { pass: true, obs: ev.obs + ' (implied by ' + en.implied_by + ')' };
           /* A LATCHING ROW ON AN ORDERED STEP IS A MILESTONE, AS THE LIVE RUNTIME GRADES IT (2026-09-26,
            * #807 review item 4): a `>`/`<` row latches once met (instructor `_gradeAccs`), and the
            * ordered tracker above already holds that verdict in `ordMet`. `pwr_cooldown` 11b ("watch

@@ -6111,7 +6111,26 @@
           /* THE PRESS IS GRADED, NOT ONLY ITS EFFECT (#670 Fable pass, 2026-10-14): the cavitation alarm has a
            * second cause (pump flow decaying on its own), so on a route that never pressed OFF this step
            * ticked and the recap described a press nobody made. The `cmd` row needs the OFF button itself. */
-          accs: [{ p: 'subcooling_c', op: '<=', v: -27.778, label: 'SUBCOOLING MARGIN pegged at -50 °F' },
+          /* THE RELATIONSHIP THIS LEG TEACHES (OWNER RULING, 2026-10-14: "Change as you recommend" — chart-led, one
+           * graded relation per leg; inbox/670_redesign/relations_plan.md): level is not inventory. `moves` LATCHES and
+           * owes the whole 600 s window, so it cannot tick on entry. MEASURED, routes harness, seeds 42 and 7 (identical
+           * to 0.1): RCS INVENTORY 73.9 % at entry, the row ticks 9.8 plant-min in at 57.2-57.7 % with PRESSURIZER LEVEL
+           * 100 % (minimum before the tick 99.6 %), largest 600 s fall 16.6-17.0 points on typical / pumps off at entry /
+           * pumps off an hour late / block valve late, 15.2 on the 120 s-late route (entry 56.9 %). The plan's 80 % was set
+           * off the level's step-long minimum (86.9 % late), which falls only AFTER the latch; 90 % is the honest
+           * "still reads full". Overtaken routes (injection kept on, block valve early) leave in 0.3-0.6 plant-min.
+           * Hard Rule 1: RCS INVENTORY is true state with no plant instrument, as step 6's `overtaken`; Learning mode
+           * draws it on the chart (Realistic mode is not built).
+           * `implied_by` SUBCOOLING MARGIN: A PLAYER WHO REACHES THIS STEP LATE HAS ALREADY WATCHED THE DRAIN ON STEP 8.
+           * MEASURED, routes `afw_late` (the AFW valve clicked an hour late, real time, at 1x): step 8 runs 80.5 plant-min,
+           * inventory 97 -> 15 % with the level at 99.3 % or more until 33 % inventory -- all before this step; here it
+           * rises 14.5 -> 20.9 % and drifts down 2 points per 10 plant-min, the row never latches, and the step stranded
+           * 195 plant-min. The authored replay is that route too (step 8 holds 3900 s; entry at 11 % inventory). The peg
+           * at -50 °F is the plant's own proof the loop boiled down (inventory 22 % or less at the peg on every route
+           * measured); on the routes that reach this step in time the row latches first, 30 plant-min before it. */
+          accs: [{ p: 'core_inventory_pct', op: 'moves', dir: 'down', v: 10, window: 600, with: { p: 'pzr_level_pct', op: '>=', v: 90 }, implied_by: 'subcooling_c',
+                   label: 'RCS INVENTORY down 10 points in 10 plant-minutes while PRESSURIZER LEVEL still reads 90 % or more' },
+                 { p: 'subcooling_c', op: '<=', v: -27.778, label: 'SUBCOOLING MARGIN pegged at -50 °F' },
                  { cmd: { action: 'set_rcp', running: false }, label: 'OFF pressed for the reactor coolant pumps' },
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'after OFF: the pump cavitation alarm clears' }],
           /* THE BRANCH WHERE INJECTION WAS KEPT ON (step 6 overtaken). MEASURED, routes gate, seed 42: injection
