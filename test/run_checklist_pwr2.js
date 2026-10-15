@@ -75,11 +75,55 @@ var only = process.argv[2] || null;
  * boundary would make part B repay the whole replay just to rebuild it; 2ai.1 moved to sit next
  * to REPLAY_TRIP instead (immediately after section 1, still gated on `!only`) rather than the
  * boundary moving. Nothing else depends across the boundary — grepped before the split. */
-var PART = globalThis.__PWR2_CHECKLIST_PART || 0;      // 0 = A (default), 1 = B
+var PART = globalThis.__PWR2_CHECKLIST_PART || 0;      // 0 = A (default), 1 = B, 2 = C
 var ALL = process.argv.indexOf('--all') >= 0;
-var RUN_A = ALL || PART !== 1;
-var RUN_B = ALL || PART === 1;
-var RUNNER_NAME = 'run_checklist_pwr2' + (PART === 1 && !ALL ? '_b' : '');
+var RUN_A = ALL || PART === 0;
+var RUN_B = ALL || PART === 1;          // part B also owns the small trailing sections (2mn, 2mo, 12, 2ai.2-7, 2aq: ~16 s)
+var RUN_LIVE = ALL || PART >= 1;        // the section-2 shell, entered by B and C alike
+var RUNNER_NAME = 'run_checklist_pwr2' + (ALL ? '' : ['', '_b', '_c'][PART]);
+
+/* THE THREE-WAY SPLIT (2026-10-14, CI run 38670341210): part B alone took 1789 s on CI (30-min shard
+ * step budget, 3 lanes) after section 2aq landed. MEASURED solo (one process, nothing else heavy):
+ * 1574.6 s, i.e. a CI/solo ratio of 1.136. Cost by section, from the output timeline mapped to
+ * source: 2t ~345 s, 2ag ~276, 2o ~231, 2i ~172, 2l + 2l2 ~125, 2ah ~40, 2al ~48, 2j ~38, the rest
+ * small. Each section-2 IIFE is now gated by SEL('<id>'), and the two tables below say which part
+ * owns it. Part C takes the 2t/2ag/2ah/2al/2ae/2j group; part B keeps every UNLISTED... no: BOTH
+ * tables are explicit and the source is scanned at startup (below) so a SEL id that is in neither
+ * table, in both, or a table entry no SEL names THROWS, in every mode -- the run_pwr2_engine.js
+ * #637 pattern. It adds no check, so the union stays 224 + A. RD_GTIME=1 prints each selected
+ * group's wall seconds, which is how the table was balanced. */
+var PART_C_GROUPS = ['2t', '2ag', '2ah', '2al', '2ae', '2j'];
+var PART_B_GROUPS = ['2a', '2b', '2c', '2xo', '2d', '2d2', '2e', '2f', '2g', '2i', '2h', '2k', '2l', '2l2',
+  '2m', '2n', '2o', '2p', '2q', '2r', '2s', '2u', '2v', '2w', '2x2', '2y', '2z', '2aa', '2ab', '2ad',
+  '2ac', '2aj', '2ak', '2am', '2af'];
+(function () {
+  var claimed = {};
+  PART_B_GROUPS.forEach(function (g) { claimed[g] = (claimed[g] || 0) + 1; });
+  PART_C_GROUPS.forEach(function (g) { claimed[g] = (claimed[g] || 0) + 1; });
+  var used = {};
+  var m, re = /[S]EL[(]'([^']+)'[)]/g, src = fs.readFileSync(__filename, 'utf8');
+  src = src.slice(src.lastIndexOf('/* END OF THE SPLIT' + ' TABLES */'));   // only the gated sites below the tables
+  while ((m = re.exec(src))) used[m[1]] = (used[m[1]] || 0) + 1;
+  Object.keys(used).forEach(function (g) {
+    if (!claimed[g]) throw new Error('run_checklist_pwr2: group ' + g + ' is claimed by NO part');
+    if (claimed[g] > 1) throw new Error('run_checklist_pwr2: group ' + g + ' is claimed by BOTH part B and part C');
+    if (used[g] > 1) throw new Error('run_checklist_pwr2: group ' + g + ' is gated at ' + used[g] + ' sites');
+  });
+  Object.keys(claimed).forEach(function (g) {
+    if (!used[g]) throw new Error('run_checklist_pwr2: group ' + g + ' is listed but no SEL() names it');
+  });
+})();
+var GT_LAST = null, GT_T0 = 0;
+function GT_FLUSH() {
+  if (GT_LAST && process.env.RD_GTIME) console.log('GTIME ' + GT_LAST + ' ' + ((Date.now() - GT_T0) / 1000).toFixed(1));
+  GT_LAST = null;
+}
+function SEL(id) {
+  var run = ALL || (PART === 2 ? PART_C_GROUPS.indexOf(id) >= 0 : PART === 1 && PART_B_GROUPS.indexOf(id) >= 0);
+  if (run) { GT_FLUSH(); GT_LAST = id; GT_T0 = Date.now(); }
+  return run;
+}
+/* END OF THE SPLIT TABLES */
 
 if (RUN_A) {
 /* ================================ 1. THE REPLAY ======================================== */
@@ -178,7 +222,7 @@ if (!only) {
 }   // end if (RUN_A)
 
 /* ============================ 2. THE LIVE RUNTIME ====================================== */
-if (!only && RUN_B) {
+if (!only && RUN_LIVE) {
   console.log(B + '\nTHE LIVE RUNTIME  [Path 3 on a pwr2 service]' + X);
 
   /* PRESSING AN ORDERED STEP'S BUTTONS THE WAY THE PLAYER HAS TO (#756). A section that walks a
@@ -210,7 +254,7 @@ if (!only && RUN_B) {
   }
 
   /* 2a. the grading map is real: every PARAM_INSTRUMENT.pwr2 id exists in a live broadcast */
-  (function () {
+  if (SEL('2a')) (function () {
     var svc = mkSvc('hot_full_power');
     var s = null; for (var i = 0; i < 5; i++) s = svc.tick();
     var src = fs.readFileSync(path.join(ROOT, 'layers', 'instructor_layer.js'), 'utf8');
@@ -224,7 +268,7 @@ if (!only && RUN_B) {
   })();
 
   /* 2b. start → instrument-first grading → complete, on the shipped plant */
-  (function () {
+  if (SEL('2b')) (function () {
     var svc = mkSvc('hot_full_power');
     var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
     ck('start_checklist resolves in the pwr2 pool (#526 — this returned unknown procedure_id before)',
@@ -300,7 +344,7 @@ if (!only && RUN_B) {
   })();
 
   /* 2c. multi-check-off (#244 item 8): per-entry latching + the blinded-entry injection */
-  (function () {
+  if (SEL('2c')) (function () {
     var svc = mkSvc('hot_full_power');
     /* a synthetic two-entry step: one predicate that is ALREADY true, one cmd that has not
      * been seen — the step must NOT advance until the cmd lands (the blinded entry). */
@@ -351,7 +395,7 @@ if (!only && RUN_B) {
    * feature existed, on the shipped pool's own shape: accs = [false,true] with the cmd entry
    * latched and the predicate entry still false. That is the hole #755 filed and could not
    * close - the plot press was never gated, only the step's completion. */
-  (function () {
+  if (SEL('2xo')) (function () {
     /* THE FIXTURE IS THE 1/M LADDER'S OWN SHAPE, MINIATURISED: a `steady` row gating a cmd row.
      * `power_pct` at full power IS steady, so the row is false only because its 30 s window is
      * not yet covered - which is exactly why it works here, and is the one predicate that goes
@@ -434,7 +478,7 @@ if (!only && RUN_B) {
   /* 2d. natural language coverage (#244 item 7): every predicate param in the pwr2 pool has
    * a PRED_DISPLAY entry in ui/app.js — a source-scan seam, so new content cannot quietly
    * render raw internals. */
-  (function () {
+  if (SEL('2d')) (function () {
     var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
     var mapM = /var PRED_DISPLAY = \{([\s\S]*?)\n  \};/.exec(appSrc);
     var mapKeys = {};
@@ -468,7 +512,7 @@ if (!only && RUN_B) {
    * would take twelve casualties, while the defect is a MAP with a hole in it — exactly the shape
    * the PRED_DISPLAY check above exists for. PROVEN RED BY INJECTION: deleting the 'ot_delta_t'
    * key reports `MISSING: ot_delta_t`. */
-  (function () {
+  if (SEL('2d2')) (function () {
     var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
     var m = /var TRIP_CAUSE = \{([\s\S]*?)\n  \};/.exec(appSrc);
     var keys = {};
@@ -506,7 +550,7 @@ if (!only && RUN_B) {
    * It is written generally: any step whose acceptance is a primary-pressure threshold, and which
    * is IMMEDIATELY followed by a step that opens the accumulators, must accept above the cover
    * gas. That way re-authoring the pool cannot slide the pair apart unnoticed. */
-  (function () {
+  if (SEL('2e')) (function () {
     var ACC = RD.pwr2 && RD.pwr2.eccs && RD.pwr2.eccs.ACC;
     var cover = ACC && ACC.p0_mpa;
     var pairs = 0, bad = [];
@@ -538,7 +582,7 @@ if (!only && RUN_B) {
    * sourced floor is 1700 psig, 85 psi ABOVE the lock. A refusal that sends you to a control that
    * refuses you again is the dead-end shape #509 is the record of. Asserted on the LIVE thrown
    * message, not on the source: the point is what reaches the player. */
-  (function () {
+  if (SEL('2f')) (function () {
     var svc = mkSvc('hot_full_power');
     for (var i = 0; i < 5; i++) svc.tick();
     var msg = '';
@@ -551,7 +595,7 @@ if (!only && RUN_B) {
 
 
   /* 2g. every pwr2 step has expandable details (#607 item 5) */
-  (function () {
+  if (SEL('2g')) (function () {
     var missing = [];
     POOL.forEach(function (p) {
       (p.steps || []).forEach(function (st, i) {
@@ -577,7 +621,7 @@ if (!only && RUN_B) {
    *
    * Three claims, and the middle one is the one that matters: dropping out is not enough on
    * its own, because the player's next act is to press the speed button again. */
-  (function () {
+  if (SEL('2i')) (function () {
     var svc = mkSvc('cold_shutdown');
     var s = null; for (var i = 0; i < 4; i++) s = svc.tick();
     svc.handleCommand({ action: 'set_rcp', running: true });
@@ -630,7 +674,7 @@ if (!only && RUN_B) {
    * Both halves are asserted on the SPAN, not a sample: the hold must stand on every tick of a
    * 60 s 1x ride with the valve shut, and the accumulator step must be the active one within a
    * bounded number of broadcasts of the hold rising. The player here never opens the valve. */
-  (function () {
+  if (SEL('2j')) (function () {
     var svc = mkSvc('cold_shutdown');
     svc.attentionStops = true; svc.timeAcceleration = 1;     // the player's defaults
     svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
@@ -707,7 +751,7 @@ if (!only && RUN_B) {
 
   /* 2h. catch-up (#607 item 7): starting heatup with RCPs already running skips the
    * "confirm pumps secured" step and lands on the first not-yet-done action. */
-  (function () {
+  if (SEL('2h')) (function () {
     var svc = mkSvc('cold_shutdown');
     var s = null; for (var i = 0; i < 8; i++) s = svc.tick();
     svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
@@ -757,7 +801,7 @@ if (!only && RUN_B) {
    * It caught this change: the removal reddened it here with the observation `5 plot steps done_by
    * [overtaken x5], past the last one 24 s later`, i.e. every claim the check makes still held and
    * only the count had moved. */
-  (function () {
+  if (SEL('2k')) (function () {
     var svc = mkSvc('hot_zero_power');
     svc.timeAcceleration = 10;
     var s = null; for (var i = 0; i < 3; i++) s = svc.tick();
@@ -820,7 +864,7 @@ if (!only && RUN_B) {
    * sample re-anchored the target to 788. The plant now publishes its delivered rate and the
    * kernel integrates that. Full stack, the cold plant, the step's own command; INJECTION —
    * the kernel's delivered branch removed — reads ~788 with the target re-anchored there. */
-  (function () {
+  if (SEL('2l')) (function () {
     var svc = mkSvc('cold_shutdown');
     var s = null; for (var i = 0; i < 20; i++) s = svc.tick();
     var b0 = s.true_state.boron_ppm;
@@ -855,7 +899,7 @@ if (!only && RUN_B) {
    * 800.0 / 821.3 and reddens both. The HOLD rows below ride the same run: BORON STATUS must read
    * MIXING, and `boron_status_hold` 0, while the tail arrives, and they must agree sample by
    * sample (the board's `boronMixing` is LIFTED from the wiring, not re-typed). */
-  (function () {
+  if (SEL('2l2')) (function () {
     function bchan(s) { return (s.automation && s.automation.channels || []).filter(function (c) { return c.id === 'boron_conc'; })[0]; }
     function run(svc, s, sec, each) { var end = s.metadata.sim_time + sec; while (s.metadata.sim_time < end) { s = svc.tick(); if (each) each(s); } return s; }
     var wiring = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
@@ -929,7 +973,7 @@ if (!only && RUN_B) {
    *
    * THE STEP IS LOOKED UP BY ITS ACTION, never by index: an index is what the STEP_UI map's
    * three historical off-by-ones were made of. */
-  (function () {
+  if (SEL('2m')) (function () {
     var proc = POOL.filter(function (p) { return p.id === 'pwr_raise_power'; })[0];
     var idx = -1;
     (proc ? proc.steps : []).forEach(function (st, k) {
@@ -1045,7 +1089,7 @@ if (!only && RUN_B) {
    * `spray_auto` are false at `pwr_heatup`'s own `cold_shutdown` IC. One merged entry lets
    * `_gradeAccs` grade the `p` half regardless of any command (a plant already there ticks the
    * box) while `_accsCmdWatch` still latches the SAME entry on the press for a plant that is not. */
-  (function () {
+  if (SEL('2n')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
     var NO_STATE = [], CANDIDATES = [];
     POOL.forEach(function (proc) {
@@ -1170,7 +1214,7 @@ if (!only && RUN_B) {
    *   - cooldown step 4: `hot_zero_power` BOOTS in pressure mode, so the row is met on arrival
    *     and the old completion check stands; the new half is that a dump left in TAVG (selected
    *     at step 3, AUTO never pressed) leaves the row unmet — the lamp would have ticked it. */
-  (function () {
+  if (SEL('2o')) (function () {
     var POOL2 = RD.MANUAL_PROCEDURES.pwr2;
 
     function driveCooldownStep4(maxTicks, tavgAtStep3) {
@@ -1348,7 +1392,7 @@ if (!only && RUN_B) {
    * 20 % ceiling would warn on the leg's own shipped, correct route, which is worse than the gap
    * it replaces. PROVEN RED BY INJECTION: the upper-bound row is removed for one drive, and the
    * 100 % entry must then show NO unmet row at all — the exact silence the owner hit. */
-  (function () {
+  if (SEL('2p')) (function () {
     var proc = POOL.filter(function (p) { return p.id === 'pwr_shutdown'; })[0];
     var lowerPowerProc = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
     var upperIdx = (proc.precond || []).findIndex(function (c) { return c.op === '<='; });
@@ -1403,7 +1447,7 @@ if (!only && RUN_B) {
    * stale phrase is reinstated into the step's `note`, the sweep must catch it, then it is
    * restored. Not a general prose-linter — narrow to the one word this regression turned on,
    * per the "narrow and silent beats broad and noisy" rule this file already states for 2n. */
-  (function () {
+  if (SEL('2q')) (function () {
     var STALE_RE = /sample/i;
     function sweep() {
       var hits = [];
@@ -1448,7 +1492,7 @@ if (!only && RUN_B) {
    * load (#715 cause 1), which a scrammed turbine cannot supply, so the checklist sticks —
    * and even if it did not, `outcome_guard` (#715 cause 2, sub-block below) keeps the banner
    * from repeating the claim. */
-  (function () {
+  if (SEL('2r')) (function () {
     var svc = mkSvc('hot_full_power');
     svc.handleCommand({ action: 'scram' });
     for (var i = 0; i < 20; i++) svc.tick();   // same 20 s settle as the filed repro (10x accel)
@@ -1483,7 +1527,7 @@ if (!only && RUN_B) {
    * keep the completion note from claiming a state the plant does not hold EVEN IF a future
    * edit reopens a hole in cause 1's per-step pairing — proven by injection on the mechanism
    * itself, not inferred from 2r's outcome. */
-  (function () {
+  if (SEL('2s')) (function () {
     var IL = RD.InstructorLayer;
     var il = new IL(null);
     var proc = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
@@ -1537,7 +1581,7 @@ if (!only && RUN_B) {
    * DRIVEN ON THE REAL LEG, not a synthetic probe: the whole point is that a block placed by a
    * PREVIOUS step is seen, which only a run that reaches step 17 through step 16 can show.
    * ~30 s of wall time for the two drives. */
-  (function () {
+  if (SEL('2t')) (function () {
     var proc = POOL.filter(function (p) { return p.id === 'pwr_startup'; })[0];
     var i16 = -1, i17 = -1;
     (proc.steps || []).forEach(function (st, k) {
@@ -1694,7 +1738,7 @@ if (!only && RUN_B) {
    * (`inbox/724/precond_flicker.js`): six crossings raised the comment SIX times there and once
    * here, while the heal case reads 1 raise / 1 clear on BOTH trees — so the latch is not
    * bought by breaking the clear. */
-  (function () {
+  if (SEL('2u')) (function () {
     var PROBE = {
       id: '__precond_flicker__', category: 'control', title: 'flicker probe', from: 'hot_full_power',
       precond: [{ p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' }],
@@ -1814,7 +1858,7 @@ if (!only && RUN_B) {
    * ALL FIVE POOLS, not just pwr2 — the trap is in the shared grader, so a pwr/rbmk/bwr step
    * would be just as dead. PROVEN RED BY INJECTION below: an `acc` is put back on the step it
    * was removed from, the sweep must name it, then it is removed again. */
-  (function () {
+  if (SEL('2v')) (function () {
     var POOLS = RD.MANUAL_PROCEDURES;
     function sweep() {
       var hits = [];
@@ -1878,7 +1922,7 @@ if (!only && RUN_B) {
    *     `cmd` sends (`set_spray {pct}`), or the card grades a number the step never asked for.
    * (c) THE HX SPLIT. Same shape one entry down, and the wire form is a FRACTION against a
    *     command in per cent — exactly the units slip this pins. */
-  (function () {
+  if (SEL('2w')) (function () {
     var CTL = RD.PWR_CONTROL || {};
     var RATED = ((RD.PWR_CONFIG || {}).identity || {}).mwe_rated;
     /* THE BOARD'S OWN MULTIPLE OF THE ROD LOCKUP BAND — `tavgBand` in pwr_board_wiring.js, a
@@ -2001,7 +2045,7 @@ if (!only && RUN_B) {
    * where re-initialising is the CORRECT behaviour and stranding the old 7 % would be the defect.
    * The third check is the plain one the other two assume: the params resolve at all, on every
    * initial condition the pool boots from. */
-  (function () {
+  if (SEL('2x2')) (function () {
     var PV = RD.InstructorLayer.paramValue;
     function tick(s, n) { var x = null; for (var i = 0; i < n; i++) x = s.tick(); return x; }
 
@@ -2067,7 +2111,7 @@ if (!only && RUN_B) {
    * red by injection when the key was added: "Set LOAD to 50 MWe at 11.14 MPa." reddens it and
    * removing the clause goes green. A new authoring key the harvester does not know about ships
    * ungated, which is how the panel came to print "(116 degC)" under a green check at #670. */
-  (function () {
+  if (SEL('2y')) (function () {
     /* ALL FIVE POOLS, not just pwr2 (#741 quality pass). `accs[].ask` is a key on the SHARED step
      * schema and the renderer draws whatever pool is loaded, so an ask authored in the pwr, rbmk
      * or bwr pool would ship unchecked. Zero there today; this is what keeps it so. */
@@ -2244,7 +2288,7 @@ if (!only && RUN_B) {
    * action carries a reversible sense is driven with the OPPOSITE sense and must not latch, and
    * with its OWN sense and must latch. Driving both directions is the point: a `_cmdEvidence`
    * that returned false for everything would satisfy the first half alone. */
-  (function () {
+  if (SEL('2z')) (function () {
     var il = Object.create(RD.InstructorLayer.prototype);
     var cases = [], seen = {};
     Object.keys(RD.MANUAL_PROCEDURES).forEach(function (key) {
@@ -2297,7 +2341,7 @@ if (!only && RUN_B) {
    *
    * THE PROOFS ARE PAIRS, DRIVEN ON THE PLANT. A predicate that never latches satisfies "cannot
    * plot while the rods are moving" all by itself, so every negative below has its positive. */
-  (function () {
+  if (SEL('2aa')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var RUNGS = [4, 5, 6, 7];                 // pwr_startup steps 5-8, zero-based
@@ -2701,7 +2745,7 @@ if (!only && RUN_B) {
    *   · put a `source_range` entry in DISPLAY_DAMP                       -> check 2 red
    *   · put any rung's threshold back on its band centre (1350 -> 1400)  -> check 3 red
    *   · put the criticality step's `power_pct` back to 0.1               -> check 4 red */
-  (function () {
+  if (SEL('2ab')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var RUNGS = [4, 5, 6, 7];
@@ -3069,7 +3113,7 @@ if (!only && RUN_B) {
    *                                                              whose real acceptance is unmet)
    *   · the `ordered` half of 2ad.1 is an AUTHORING gate and cannot be reddened by a code
    *     change: no shipped ordered step carries an `implied_by`, which is the state it pins. */
-  (function () {
+  if (SEL('2ad')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     /* THE STEP IS FOUND BY CONTENT, NOT BY INDEX (2026-09-23): the climb's two rows were `steps[8]`
@@ -3220,7 +3264,7 @@ if (!only && RUN_B) {
    * INJECTION, both directions, proven in place:
    *   · delete `this.pendingMessage = null;` from `_checklistCheckOff` -> 2ac.2 and 2ac.3 red
    *   · swap the overtaken path back to set-then-check-off                -> 2ac.1 red */
-  (function () {
+  if (SEL('2ac')) (function () {
     var svc = mkSvc('hot_zero_power');
     var s = null, i;
     for (i = 0; i < 5; i++) s = svc.tick();
@@ -3361,7 +3405,7 @@ if (!only && RUN_B) {
    *       measured, the creep sat awaiting Continue until +1926 s, REACTOR POWER 0.46 %)
    * INJECTION, proven in place: `delete step9.overtaken` -> .1 red (step 9 still active at the
    * cap); a threshold of 0.0 on the skip -> .2 red (`overtaken`). */
-  (function () {
+  if (SEL('2aj')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var S9 = -1;
@@ -3438,7 +3482,7 @@ if (!only && RUN_B) {
    *      `gradeStopped` -> .5 red (awaiting Continue mid-travel).
    * INJECTIONS, proven in place: `latch` deleted from 9a -> .3 red (met false, head 0); floor
    * 0.035 -> .2 red (completes at bank 207); `latch` moved onto the rate row -> .1 red. */
-  (function () {
+  if (SEL('2ak')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var bad = [], nLatch = 0;
@@ -3598,7 +3642,7 @@ if (!only && RUN_B) {
    * `_oneOverMTick` deleted -> .6 red; a null prediction graded as unmet -> .5 red. RE-PROVEN
    * 2026-09-28 for the new .6: the old clear-everything rewind rule put back -> .6 red (points 0,
    * prediction null) on both seeds; on the fix, points 4 and the 4-point prediction. */
-  (function () {
+  if (SEL('2am')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var S9 = -1;
@@ -3765,7 +3809,7 @@ if (!only && RUN_B) {
    * INJECTIONS (2026-09-23, the identical block run from a scratch copy against a mutated pool):
    * the old rate row back in place of the steady row -> .1 red (ticked at +3 s); step 17's floor
    * back to 10.05 -> .2 red (never completes: power sits at 9.7 %). */
-  (function () {
+  if (SEL('2al')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var S9 = 8, S12 = 11;
@@ -3956,7 +4000,7 @@ if (!only && RUN_B) {
    *   · point 2ae.6's probe at `sr_counts_cps` instead of `sr_energized` -> 2ae.6 red,
    *     "528.87 healthy / 1 with SOURCE RANGE dead, graded_by instrument" — i.e. the check does
    *     discriminate a true_state relief from an instrument one */
-  (function () {
+  if (SEL('2ae')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
 
     /* THE PARAM -> CHANNEL MAP, scanned from the layer the way §2a scans it, because the map is
@@ -4400,7 +4444,7 @@ if (!only && RUN_B) {
    *                                                             pwr_cooldown:8"
    *   · delete `'pwr_tmi2_incident:9'` from TRUE_STATE_EXPECTED -> 2af.3 red, "UNPINNED:
    *                                                             pwr_tmi2_incident:9" */
-  (function () {
+  if (SEL('2af')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
     var snaps = {};
     function snapOf(from) {
@@ -4651,7 +4695,7 @@ if (!only && RUN_B) {
    *     prediction that the thirteen rows are untouched by it.
    *   · send 2ag.7's panel probe through `inject_failure` instead -> 2ag.7 red
    * Baseline before the mutations and after the restore: 0 red both times. */
-  (function () {
+  if (SEL('2ag')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
 
     /* the param -> channel map, scanned the way §2a and §2ae scan it (module-private) */
@@ -5255,7 +5299,7 @@ if (!only && RUN_B) {
    *   match on the first pass and the re-run did not fit the session; 2ah.3 pins the closure
    *   for all four casualties by value, so an empty closure would redden it by inspection of
    *   the pinned sets — but that is an ARGUMENT, not a measurement, and it is owed. */
-  (function () {
+  if (SEL('2ah')) (function () {
     function send(svc, c) { try { svc.handleCommand(c); } catch (e) { /* a door refused it */ } }
     /* `tick()` returns null on a non-broadcast tick, AND the clock stops dead when a step's
      * `pause` fires (#694) — the TMI-2 leg has several. The player releases that with Continue;
@@ -6156,6 +6200,7 @@ if (RUN_B) {
   })();
 }
 
+GT_FLUSH();
 console.log('\n' + '='.repeat(74));
 console.log('  ' + RUNNER_NAME + ': ' + nPass + ' passed, ' + nFail + ' failed  (' + (nPass + nFail) + ' checks)');
 console.log('='.repeat(74) + '\n');

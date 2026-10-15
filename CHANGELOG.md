@@ -37,6 +37,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ## [Alpha 1.8.4-rc3] — 2026-10-14
 
 - CI shard balance (rc3, CI run 38670341210): `secs` hints for all runners >= ~60 s reset to CI contention wall; shards now 4010 s each (was shard 1 timed out, 4 at 30.5 min). Longest single runner `run_checklist_pwr2_b` (1789 s) still bounds the wall.
+- CI shard balance (rc3, CI run 38670341210): `run_checklist_pwr2_b` (1789 s CI, over the 30-min shard step) split three ways; new `run_checklist_pwr2_c.js` owns section-2 groups 2j/2t/2al/2ae/2ag/2ah. Measured solo: B 757 s, C 795 s (CI estimate 860 / 903 s); 189 + 35 = the 224 checks B had. Startup scan throws on a group claimed by no part, both, or gated twice.
 
 ### Fixed — walkthrough card on a wider font; CI shard 3 timeout (CI run 38652572708)
 
