@@ -1032,6 +1032,7 @@ function runJob(legId, routeId, mutId, ctx) {
     }
     /* --- Continue -------------------------------------------------------------------- */
     if (c.awaiting_ack && (t() - S.ack0 >= ACK_S || (c.paused && ++S.pauseN > 20))) {
+      if (st.pause_on_met) { out[k].pom = true; out[k].lit_adv_s = t() - S.ack0; }   // plant-s the clock ran while Continue was lit (S-1)
       S.ack0 = null; send({ action: 'checklist_check', index: k });
       if (!svc.running) svc.running = true;   // a `pause` step stopped the clock (#694); ui/app.js releases it on Continue
       continue;
@@ -1638,6 +1639,15 @@ function verdicts(r) {
       v.own_row = { ok: !!tk && !imp, name: 'step ' + OR.step + ' row ' + OR.row + ' ticks on its own grading, not by its implied_by or overtaken relief',
         note: !so ? 'step never reached' : !tk ? 'row never ticked' : (imp ? 'RELIEVED (implied/overtaken) at ' : 'own tick at ') + tk[0] + ' plant-min into the step (reading ' + tk[1] + ')' };
     }
+    /* A RAPID WATCH BEAT HOLDS THE CLOCK ONCE CONTINUE LIGHTS (TMI-2 layman pass 4, S-1): a step authoring
+     * `pause_on_met` must stop the plant the tick it is met, so the next beat's event cannot play out under
+     * its card (measured in the browser before the fix: step 2 lit 60 wall-s at 1x ran 47 plant-s and step 4
+     * opened already met). Here the player notices Continue after ACK_S plant-s; held, the clock moves 0.
+     * INJECTION (2026-10-15): the `pause_on_met` block in InstructorLayer._stepChecklist deleted -> red, 3 s. */
+    var pom = (r.steps || []).filter(function (st) { return st.pom; });
+    if (pom.length) v.pom = { ok: pom.every(function (st) { return st.lit_adv_s <= 1; }),
+      name: 'every pause_on_met step holds the clock while its Continue is lit (at most 1 plant-s)',
+      note: pom.map(function (st) { return 'step ' + st.n + ' ' + f(st.lit_adv_s) + ' s'; }).join(', ') };
     var h = fl('hollow');
     v.hollow = { ok: h.length === 0, name: 'no step checks off on entry before the player acts (hollow)',
       note: h.length ? h.map(function (x) { return 'step ' + x.step + ' lit at +' + f(x.at_s) + ' s'; }).join('; ') : 'none' };

@@ -74,6 +74,10 @@ var BUB = '#instrCallout';
       var tgt = c.proc.steps[k];
       if (tgt && tgt.overtaken && tgt.overtaken.p === 'hpi_active') delete tgt.overtaken;
       c.idx = k;
+      /* a jump is a step change, so it clears what _checklistCheckOff clears: a `pause_on_met` step (TMI-2 layman
+       * pass 4, S-1) met on a plant the earlier jumps left drained would otherwise carry its clock hold into
+       * the step jumped to (measured: step 9 paced at 1x, not 60x) */
+      c.paused = false; c.awaitingAck = false;
       if (!sv.running) sv.start();   // a pause step stopped the clock: no broadcast would carry the jump
       for (var j = 0; j < c.done.length; j++) c.done[j] = j < k;
     }, i);

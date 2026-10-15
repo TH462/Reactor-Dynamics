@@ -4662,7 +4662,10 @@
         var rate = d / (t - o.t) * 60;
         cklPairHist.dir[key] = key === 'i'
           ?(t - o.t >= 10 ? (rate > 0.1 ? 'rising' : rate < -0.1 ? 'falling' : 'steady') : (cklPairHist.dir[key] || ''))
-          : (d > 0.3 ? 'rising' : d < -0.3 ? 'falling' : 'steady');
+          : (d > 0.3 && Math.round(now) !== Math.round(o[key]) ? 'rising' : d < -0.3 && Math.round(now) !== Math.round(o[key]) ? 'falling' : 'steady');
+        /* the GAUGE half says "steady" while its drawn (rounded) number has not changed (TMI-2 layman pass 4):
+         * PRESSURIZER LEVEL dipping 100 -> 99.5 at the peg read "100 % falling" in 7 samples. RCS INVENTORY keeps
+         * its rate rule above: it is drawn rounded too, and its slow real fall must still say "falling". */
       }
       return cklPairHist.dir[key] || '';
     }
@@ -4747,7 +4750,12 @@
       var ser = sers[k], o = H[0];
       if (o && t - o.t >= 5) {
         var r = serRange(ser), band = Math.abs(r[1] - r[0]) * 0.0025, d = vals[k] - baseAt(k);
-        cklSerHist.dir[k] = d > band ? 'rising' : d < -band ? 'falling' : 'steady';
+        var dw = d > band ? 'rising' : d < -band ? 'falling' : 'steady';
+        /* "steady" while the DRAWN number has not changed over the span (TMI-2 layman pass 4): a word that
+         * contradicts the digits beside it reads as a fault. Same span as the word, so a graded window's slow
+         * fall that moves the drawn value still says "falling". */
+        if (dw !== 'steady') { try { var f0 = ser.fmt ? ser.fmt(baseAt(k)) : baseAt(k).toFixed(1), f1 = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); if (f0 === f1) dw = 'steady'; } catch (e) {} }
+        cklSerHist.dir[k] = dw;
       }
       var txt;
       try { txt = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); } catch (e) { txt = vals[k].toFixed(1); }
@@ -4848,7 +4856,12 @@
           mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
       }).join('');
     }
-    if (spTxt) b += '<div class="ico-wait">' + mesc(spTxt) + '</div>';
+    /* THE STEP'S OWN `wait_hint` RIDES WITH THE WAIT LINE (TMI-2 layman pass 4, S-2): the card built
+     * `spTxt` itself and never read the field, so step 9's "reaches the bottom of its scale about an hour
+     * in" reached only the Instructor-tab card and the floating card printed "⏩ Waiting at 60×" alone.
+     * Same route-true read and same condition (a wait step still waiting) as the side card's line. */
+    var spHint = spTxt ? cklRouteField(st, ck, 'wait_hint') : null;
+    if (spTxt) b += '<div class="ico-wait">' + mesc(spTxt + (typeof spHint === 'string' ? ' ' + spHint : '')) + '</div>';
     el.querySelector('.ico-body').innerHTML = b;
     var bEl = el.querySelector('.ico-btns');
     bEl.innerHTML =
