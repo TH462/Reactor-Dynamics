@@ -183,15 +183,15 @@ While STARTUP RATE is still falling the counts are still climbing, and a point p
 
 *This point decides where the rods stop, so it gets the longest wait.*
 
-()8a. Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.
+()8a. Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.
 
-Note: Expect it near CONTROL ROD POSITION 205; do not hold past 205. If the count only touches 7.0e3, or is short at 205, tap one step at a time, letting STARTUP RATE settle. Stay at least 3 steps below the 1/M prediction.
+Note: Expect it near CONTROL ROD POSITION 202.
 
 ()8b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.
 
 Suggested time warp: 5× while the rods move, then 10×, set by itself.
 
-Note: After a pull to about 205 this wait is 5½ to 6½ plant-minutes. Plotting before +0.03 puts the prediction too far out.
+Note: After a SLOW hold to about 202 this wait is about 3 to 4 plant-minutes. Plotting before +0.03 puts the prediction too far out.
 
 
 
@@ -361,7 +361,7 @@ The warming water now holds power back, so each rod step buys a new steady level
 
 Suggested time warp: 1×.
 
-()15b. Set LOAD to 10 MW and wait for the generator to read above 8 MW.
+()15b. Set LOAD to 10 MW and wait for OUTPUT to read 8 MW or more.
 
 Suggested time warp: 10×.
 

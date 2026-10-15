@@ -3081,12 +3081,38 @@
   function updateAlarmQuiet(activeCount) {
     var app = document.querySelector('.app.pwr-synoptic');
     if (!app) return;
+    alarmQuietLast = activeCount;
     var t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     if (activeCount) alarmQuietSince = null;
     else if (alarmQuietSince == null) alarmQuietSince = t;
     var pinned = !!app.style.getPropertyValue('--bottomrow-h');
     var want = !pinned && alarmQuietSince != null && (t - alarmQuietSince) >= ALARM_QUIET_HOLD_MS;
+    /* NOT UNDER THE POINTER (cycle layman pass S-2, 2026-10-15): each flip reflows and rescales the
+     * board -- MEASURED 27 px at 1600x1000, up to 45 px vertical / 87 px horizontal at 1366x768 and
+     * 1920x1080 -- so a control the player is about to click moved. While the pointer is over the
+     * board (.plant-area) or a button is held, the FOLD waits; it lands on the pointer leaving the
+     * board or the button coming up (alarmQuietPointer below). THE EXPAND NEVER WAITS (quality pass,
+     * 2026-10-15): deferring it kept a CRITICAL (pressurizer pressure very low, trip + SI) folded for
+     * 30 s under a parked pointer, so a new alarm moves the board once, at once -- accepted. The first
+     * state is applied at once. */
+    if (want && !alarmQuietOn && alarmQuietOn !== null && (alarmQuietPtr.over || alarmQuietPtr.down)) return;
     if (want !== alarmQuietOn) { alarmQuietOn = want; app.classList.toggle('alarms-quiet', want); }
+  }
+  var alarmQuietPtr = { over: false, down: false };
+  function alarmQuietPointer(e) {
+    if (e.type === 'pointerdown') alarmQuietPtr.down = true;
+    else if (e.type === 'pointerup' || e.type === 'pointercancel') alarmQuietPtr.down = false;
+    if (e.type !== 'pointerup' && e.type !== 'pointercancel') {
+      var tg = e.type === 'pointerout' ? e.relatedTarget : e.target;
+      alarmQuietPtr.over = !!(tg && tg.closest && tg.closest('.plant-area'));
+    }
+    if (!alarmQuietPtr.over && !alarmQuietPtr.down) updateAlarmQuiet(alarmQuietLast);
+  }
+  var alarmQuietLast = 0;
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'pointercancel'].forEach(function (ev) {
+      document.addEventListener(ev, alarmQuietPointer, true);
+    });
   }
   function renderAlarms(s) {
     var stack = $('alarmStack');

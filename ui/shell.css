@@ -847,7 +847,8 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   background: transparent; border: none;
 }
 .app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel > .alarm-head { border-bottom: none; padding: 0; gap: 8px; flex: 0 0 auto; }
-.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel > .alarm-stack { padding: 0 8px; flex: 1 1 auto; min-width: 0; display: block; overflow: hidden; }
+.app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel > .alarm-stack { padding: 0 8px; flex: 1 1 auto; min-width: 0; display: block; overflow: hidden;
+  align-self: flex-start; max-height: 22px; }   /* top-aligned: a stack caught folded shows its FIRST (highest-priority) tile, not a clipped middle one */
 .app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel .alarm-empty { padding: 0; text-align: left; font-size: 11px; white-space: nowrap; }
 .app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .alarm-panel .btn { padding: 1px 6px; font-size: 10px; min-height: 18px; }
 .alarm-empty { color: var(--muted); font-size: 11px; padding: 10px; text-align: center; font-style: italic; }
