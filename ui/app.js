@@ -4496,16 +4496,27 @@
       }
       return best;
     }
-    el.classList.remove('ico-compact');
+    el.classList.remove('ico-compact', 'ico-tight');
     var w = el.offsetWidth, h = el.offsetHeight;
     var pick = search(w, h);
     // the acted-on control's margin is wanted, not required: full size without it beats compact
     if (pick && pick.hard > 0 && K.hardTight) pick = search(w, h, K.hardTight);
-    if (pick && pick.hard > 0) {               // nothing clear at full size: action line only
+    /* No pick at all = the full card is TALLER than the board area: that is the case compact exists for,
+     * not a reason to skip it (CI fonts, run 38652572708: step 9 at 444 px fell to the top-left corner
+     * over the top tiles and the pressurizer). */
+    if (!pick || pick.hard > 0) {              // nothing clear at full size: action line only
       el.classList.add('ico-compact');
       w = el.offsetWidth; h = el.offsetHeight;
       var pc = search(w, h);
       if (pc && pc.hard > 0 && K.hardTight) pc = search(w, h, K.hardTight);
+      if (!pc || pc.hard > 0) {                // still no room: drop the step note too
+        el.classList.add('ico-tight');
+        w = el.offsetWidth; h = el.offsetHeight;
+        var pt = search(w, h);
+        if (pt && pt.hard > 0 && K.hardTight) pt = search(w, h, K.hardTight);
+        if (pt) pc = pt;
+        else if (pc) { el.classList.remove('ico-tight'); w = el.offsetWidth; h = el.offsetHeight; }
+      }
       pick = pc || pick;
     }
     if (!pick) pick = { x: B.left, y: B.top, c: 0, hard: 0 };
@@ -4759,7 +4770,10 @@
     var PAD = 12;
     var actsPad = acts.map(function (r) { return { left: r.left - PAD, top: r.top - PAD, right: r.right + PAD, bottom: r.bottom + PAD }; });
     var hard = top.concat(plant, panel ? [panel] : [], actsPad, watches, cards);
-    var hardTight = top.concat(plant, panel ? [panel] : [], acts, watches, cards);
+    /* The fallback keeps the REQUIRED floor: 10 px clear (verify_tmi_callout), +1 px for the rounding of
+     * left/top and offsetWidth. At 0 px it placed step 6 7 px off STOP on CI fonts (run 38652572708). */
+    var actsMin = acts.map(function (r) { return { left: r.left - 11, top: r.top - 11, right: r.right + 11, bottom: r.bottom + 11 }; });
+    var hardTight = top.concat(plant, panel ? [panel] : [], actsMin, watches, cards);
     /* ACTION: THE CONTROL ITSELF, NOT ITS PANEL (review 2026-10-10). The panel is the smallest board
      * tile around the lit control; for a valve drawn ON a component that tile is the component, so
      * on step 18 the leader ran to the pressurizer's edge and ended on PZR SPRAY, 50 px from the
