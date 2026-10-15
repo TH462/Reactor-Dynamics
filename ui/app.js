@@ -4514,6 +4514,18 @@
         w = el.offsetWidth; h = el.offsetHeight;
         var pt = search(w, h);
         if (pt && pt.hard > 0 && K.hardTight) pt = search(w, h, K.hardTight);
+        /* ...and still colliding: WIDEN it, which shortens every wrapped line (CI run 38685630351,
+         * verify_tmi_callout 26/27). MEASURED at 1366x768, board area 458 px tall: step 9 tight is
+         * 346 px on Windows fonts and 397 px on Verdana (the CI stand-in) at the 242 px width, so it
+         * sat on the top tiles (9,655 px2). Kept only if it buys a clear spot. */
+        if (!pt || pt.hard > 0) {
+          var mw0 = el.style.maxWidth;
+          el.style.maxWidth = Math.min(340, Math.round(w * 1.3)) + 'px';
+          var w2 = el.offsetWidth, h2 = el.offsetHeight, pw = search(w2, h2);
+          if (pw && pw.hard > 0 && K.hardTight) pw = search(w2, h2, K.hardTight);
+          if (pw && pw.hard === 0) { pt = pw; w = w2; h = h2; }
+          else { el.style.maxWidth = mw0; }
+        }
         if (pt) pc = pt;
         else if (pc) { el.classList.remove('ico-tight'); w = el.offsetWidth; h = el.offsetHeight; }
       }

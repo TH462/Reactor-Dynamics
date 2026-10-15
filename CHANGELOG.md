@@ -36,6 +36,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.8.4-rc3] — 2026-10-14
 
+- Reactor vessel drawing: an uncovering core no longer draws as covered while the hot leg is partly voided (the core and upper-plenum halves were summed into one level: TMI-2 step 9, core 37 % uncovered, drew the core 93 % full). The level is the core half alone once the core uncovers. `run_pwr2_board` 111 -> 112.
+- Board card: a third fallback stage widens a tight card that still collides (CI run 38685630351, `verify_tmi_callout` 26/27 on CI fonts: step 9 at 1366x768 was 397 px tall in a 458 px board on Verdana and sat on the top tiles by 9,655 px2). Reproduced with Verdana forced on the card; now 315 x 299 px and clear. Windows fonts unchanged (242 x 346).
 - CI shard balance (rc3, CI run 38670341210): `secs` hints for all runners >= ~60 s reset to CI contention wall; shards now 4010 s each (was shard 1 timed out, 4 at 30.5 min). Longest single runner `run_checklist_pwr2_b` (1789 s) still bounds the wall.
 - CI shard balance (rc3, CI run 38670341210): `run_checklist_pwr2_b` (1789 s CI, over the 30-min shard step) split three ways; new `run_checklist_pwr2_c.js` owns section-2 groups 2j/2t/2al/2ae/2ag/2ah. Measured solo: B 757 s, C 795 s (CI estimate 860 / 903 s); 189 + 35 = the 224 checks B had. Startup scan throws on a group claimed by no part, both, or gated twice.
 

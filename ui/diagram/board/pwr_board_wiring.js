@@ -1790,9 +1790,15 @@
         coreInv: (function () {
           var unc = t.core_uncovered_frac, hlv = t.primary_void_fraction;
           if (unc == null) return t.core_inventory_pct != null ? t.core_inventory_pct : 100;
-          var core = 50 * (1 - Math.max(0, Math.min(1, unc)));
-          var upper = 50 * (1 - Math.max(0, Math.min(1, hlv == null ? 0 : hlv)));
-          return core + upper;
+          /* ONE COLUMN, NOT A SUM (layman pass 2026-10-15, TMI-2 step 9). The component reads a
+           * single level split at 50, so `core + upper` let a full plenum lift an uncovering
+           * core back over its top: MEASURED, browser, TMI-2 step 9, core 37 % uncovered with
+           * the hot leg 70 % voided drew the core pool 93 % full (46.5), and 22 % uncovered drew
+           * it full. A core that is uncovered at all has its water BELOW its top, so the plenum
+           * is drained and the core half is the whole level. */
+          var uc = Math.max(0, Math.min(1, unc));
+          if (uc > 0) return 50 * (1 - uc);
+          return 50 + 50 * (1 - Math.max(0, Math.min(1, hlv == null ? 0 : hlv)));
         })(),
         boil: Math.min(100, Math.max(voidFrac * 400, (sub != null && sub < 0) ? -sub * 3 : 0)),
         // coolant water color = live leg temperatures (fuel/glow stay power-driven)
