@@ -338,6 +338,9 @@ var ROUTES = {
      * MEASURED: typical 182-196 psia; the spray shut at step 11's entry and never reopened, 453.7 psia --
      * the leg still COMPLETES (the "step 15 strands" in the step's own record did not reproduce here) */
     end_psia_max: 400,
+    /* step 4's relation row (relations plan, 2026-10-15) must tick on its own grading: it is a `cont` with no relief,
+     * so this pins that the card's own route reaches it (MEASURED own tick 17.6 plant-min in, STEAM PRESS 881 psia) */
+    own_row: { step: 4, row: 4 },
     /* LAYMAN PASS 6 (2026-09-26) S-5: a player who reads the board every 4 s of WALL at the
      * card's own speed (the `when` triggers below poll at 4 s x the rung) must catch step 11's
      * spray-off before the alarm. At 600x that is one read every 40 plant-minutes, and pass 6

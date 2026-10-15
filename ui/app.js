@@ -3335,7 +3335,11 @@
       if (autoSpeedNote) {
         var curRate = (s.metadata && s.metadata.time_acceleration) || 1;
         if (curRate !== autoSpeedNote.rate || autoSpeedNote.step !== cklNoteStepKey(s)) autoSpeedNote = null;
-        else if (!text) text = 'Speeding up to ' + curRate + '× — nothing to do for a while.';
+        /* A CHART-LED STEP IS NOT "NOTHING TO DO" (cooldown 4 review, 2026-10-15): a step carrying `pair` asks the
+         * player to WATCH its two channels move (cooldown 4c "Watch STEAM PRESS and AVG COOLANT TEMPERATURE fall
+         * together"), and the line under the speed buttons said the opposite. */
+        else if (!text) text = 'Speeding up to ' + curRate + '× — ' +
+          (actv && actv.st && actv.st.pair ? 'watch the chart.' : 'nothing to do for a while.');
       }
     }
     /* THE COMPUTER'S CEILING, SAID IN WORDS (TMI-2 layman pass 3, V-3, 2026-10-15). MEASURED on step 9:

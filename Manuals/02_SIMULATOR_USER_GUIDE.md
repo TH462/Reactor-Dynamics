@@ -169,7 +169,8 @@ everything else. It also comes back down to
 **1×** the moment the step's
 check-off criterion is met, so a fast-forward cannot run the plant past the thing the next step is
 about. When it raises the clock for a long wait, the line under the speed buttons says so —
-*Speeding up to N× — nothing to do for a while.* You keep the bar: any rung you press stands for the rest of that step, and the walkthrough
+*Speeding up to N× — nothing to do for a while.*, or *Speeding up to N× — watch the chart.* on a step
+that asks you to watch two readings move together. You keep the bar: any rung you press stands for the rest of that step, and the walkthrough
 takes the clock again at the next one. The step's own rung stays marked on the strip throughout,
 and pulses only while the plant is not on it.
 
