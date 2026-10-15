@@ -36,6 +36,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.8.4-rc3] — 2026-10-14
 
+- CI 4 -> 5 shards (rc3, CI run 38700124714: shard walls 30.4 / 16.3 / 24.4 / 25.3 min vs 30 budget; runner times vary ~2x run to run). Hints refreshed for 15 moved runners; planner never co-locates two `lanes > 1` runners. Predicted 19-26 min per shard.
 - CI shard balance (rc3, CI run 38685630351): shard 1 timed out when two walkthrough-routes parts (8 child processes each, 4-core runner) co-located (warp_tier 402 -> 1201 s). New optional `lanes` BASELINES field multiplies a runner's planner cost; routes A-D carry `lanes: 2`, so each lands in its own shard (predicted CI wall 21.6 / 21.7 / 21.8 / 23.9 min). `run_ci_shards` asserts no two share a shard (injection-proven). `run_all` also prints a drifting runner's failure detail inline as it finishes.
 - Reactor vessel drawing: an uncovering core no longer draws as covered while the hot leg is partly voided (the core and upper-plenum halves were summed into one level: TMI-2 step 9, core 37 % uncovered, drew the core 93 % full). The level is the core half alone once the core uncovers. `run_pwr2_board` 111 -> 112.
 - Board card: a third fallback stage widens a tight card that still collides (CI run 38685630351, `verify_tmi_callout` 26/27 on CI fonts: step 9 at 1366x768 was 397 px tall in a 458 px board on Verdana and sat on the top tiles by 9,655 px2). Reproduced with Verdana forced on the card; now 315 x 299 px and clear. Windows fonts unchanged (242 x 346).
