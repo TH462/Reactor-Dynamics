@@ -5350,7 +5350,14 @@
            * cooldown rate, so the replay types it once, exactly as the player does. 120 psi = 0.8274 MPa. */
           cmd: { action: 'set_steam_dump_setpoint', mpa: 0.8274 }, hold: 14400,
           saw: { p: 'tavg_c', op: '<', v: 250 },
-          wait_speed: 60,
+          /* 600x, NOT 60x (OWNER RULING, 2026-10-14: "Change as you recommend", relations plan: cooldown 4 from 60x
+           * to 600x). Head entries 4a/4b keep their own 1x; this rung is 4c's wait. MEASURED, routes harness, seeds 42
+           * and 7 and Continue 120 s late: the step is 208.1 plant-min, about 21 s of wall at 600x (208 s at 60x). */
+          wait_speed: 600,
+          /* THE CHART THIS LEG IS LED BY (relations plan): STEAM PRESS and the water it drags down, with PRIMARY
+           * PRESSURE and SUBCOOLING MARGIN for the pressurizer's half. 4 h holds the whole ride at 600x. */
+          trend: ['steam_p', 'tavg', 'pressure', 'subcool'], window: 14400,
+          pair: ['steam_p', 'tavg'],
           /* 4c: `< 175` (347.0 °F, printed "347") -> `< 174.72` (346.5 °F, the floor of "346"). */
           /* 4a IS A CHECK SINCE THE 2026-09-25 bring-down ("Check ... If it does not, press AUTO").
            * The `cmd` stays so the replay still exercises the press. MEASURED, `hot_zero_power`,
@@ -5371,9 +5378,26 @@
                    wait_speed: 1, label: 'DUMP SETPOINT reads 120 psi' },
                  { p: 'tavg_c', op: '<', v: 174.72,
                    hl_watch: ['Tavg', 'SG Pressure'],
-                   ask: 'Wait for AVG COOLANT TEMPERATURE to read below 347 °F.',
+                   ask: 'Watch STEAM PRESS fall on the chart and AVG COOLANT TEMPERATURE fall with it, until AVG COOLANT TEMPERATURE reads below 347 °F.',
                    note: 'Low Coolant Temperature and Shutdown Cooling Not In Service come in: expected.',
-                   label: 'AVG COOLANT TEMPERATURE below 347 °F' }],
+                   label: 'AVG COOLANT TEMPERATURE below 347 °F' },
+                 /* THE RELATIONSHIP THIS LEG TEACHES (OWNER RULING, 2026-10-14: "Change as you recommend" -- chart-led,
+                  * one graded relation per leg; inbox/670_redesign/relations_plan.md): the steam generator is the only heat
+                  * sink, and the steam pressure the dump holds sets the water's temperature through saturation. A `cont` of
+                  * 4c, appended so no letter or row index moves. `moves` LATCHES and owes the whole 600 s window, so it
+                  * cannot tick on entry. Both channels are board INSTRUMENTS (Hard Rule 1).
+                  * MEASURED 2026-10-15, routes harness at 600x, instrument trace every broadcast (60 plant-s apart at 600x):
+                  *   - Before DUMP SETPOINT is typed STEAM PRESS sits at 1014-1020 psia: nothing moves, nothing can tick.
+                  *   - The row ticks 17.6 plant-min into the step (STEAM PRESS 881 psia) on typical seeds 42 and 7, Continue
+                  *     120 s late, and the five mistake routes alike: the window fills at ~10.5 min, then the 5-instant debounce
+                  *     costs five 60 s broadcasts. About 1.8 s of wall after 4b.
+                  *   - Every 10 plant-min of the step meets it (394 of 394 windows, seed 42): STEAM PRESS falls 76 psi per
+                  *     10 min at the top and 15.5 psi at the bottom while AVG COOLANT TEMPERATURE falls 8.8-10 degF each time
+                  *     (the saturation curve flattening, ~9.5 -> ~1.7 psi per degF). Seed 7's thinnest window is 14.9 psi, at
+                  *     the step's end, long after the latch. No pegged gauge on either channel (STEAM PRESS 0-1740 psia). */
+                 { cont: true, p: 'steam_pressure_mpa', op: 'moves', dir: 'down', v: 0.1034, window: 600,
+                   with: { p: 'tavg_c', dir: 'down', v: 2.778 },
+                   label: 'On the chart, STEAM PRESS falls 15 psi within 10 plant-minutes while AVG COOLANT TEMPERATURE falls 5 °F' }],
           hl: ['Steam Dump — Auto', 'Dump Setpoint'], hl_watch: ['Steam Dump Status', 'Tavg', 'SG Pressure'] },
         { text: 'Take the pressure setpoint to the bottom of its range.',
         why: 'Below 1700 psi the heaters have nothing to hold. A real cooldown leaves the setpoint there and lowers pressure with the spray.',
