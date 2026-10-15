@@ -18,6 +18,7 @@
  *      pressurizer level, RCS inventory, PORV; 30 min pinned) and widens to 3 h on the pumps step;
  *      the deciding beats draw the live PRESSURIZER LEVEL | RCS INVENTORY pair with the reason inline;
  *      Realistic mode drops the true-state half (Hard Rule 1); End puts the chart back.
+ *  11. A row latched by its `implied_by` sibling draws as covered on the card, never a plain ✓.
  *   5. DEFAULT ELSEWHERE IS UNCHANGED — another walkthrough draws no card and its step card shows;
  *      `?callout=0` (the player's Off) on TMI draws no card and the step card shows.
  *
@@ -436,6 +437,31 @@ var BUB = '#instrCallout';
   var gc = await G.page.evaluate(function () { return !!document.querySelector('#cklRun [data-ckl-pair]'); });
   ck('the side-panel line is gone when the active step authors no pair (step change)', !gc, String(gc));
   await G.ctx.close();
+
+  // ---------------------------------------------------------------- 11. AN IMPLIED TICK IS DRAWN AS ONE (#670 review, 2026-10-14)
+  /* Step 9's relation row carries `implied_by: 'subcooling_c'` for the late-AFW player (routes afw_late: the drain
+   * happened on step 8; MEASURED there, the row latches by implication at 17.75 plant-min with PRESSURIZER LEVEL
+   * reading 74 %). The card drew a plain ✓ beside "...while PRESSURIZER LEVEL still reads 90 % or more". Here the
+   * RUNTIME takes the implied latch for real: the SUBCOOLING MARGIN row's threshold is opened so it latches at
+   * once, and the relation row (600 s window) cannot latch on its own in the seconds this waits.
+   * INJECTION (2026-10-14): delete the `if (r.implied) return ...` line in cklCalloutFill -> this check red
+   * (the row draws '✓ RCS INVENTORY...'). */
+  var M = await session({ width: 1366, height: 768 });
+  await start(M.page, PROC);
+  await M.page.evaluate(function () { RD.__dev.service().instructor.checklist.proc.steps[8].accs[1].v = 1e6; });
+  await jump(M.page, 8);
+  await M.page.waitForTimeout(900);
+  var mi = await M.page.evaluate(function () {
+    var sv = RD.__dev.service(), c = sv.instructor.checklist;
+    var rows = [].map.call(document.querySelectorAll('#instrCallout .ico-crit'), function (x) { return { cls: x.className, txt: x.textContent }; });
+    return { idx: c.idx, rows: rows };
+  });
+  var r0 = mi.rows[0] || {};
+  ck('step 9: a row latched by its implied_by sibling draws as covered (↳ + "Covered by SUBCOOLING MARGIN..."), not a plain ✓',
+     mi.idx === 8 && /\bimplied\b/.test(r0.cls || '') && /^↳ RCS INVENTORY/.test(r0.txt || '') &&
+     /Covered by SUBCOOLING MARGIN pegged at -50 °F — not checked on its own\.$/.test(r0.txt || '') &&
+     !mi.rows.some(function (r) { return /^✓ RCS INVENTORY/.test(r.txt); }), JSON.stringify(mi));
+  await M.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail) + ' passed');

@@ -169,6 +169,14 @@
  *           never on the row that carries the step's real acceptance — a step whose ONLY row is
  *           implied grades nothing at all. Ignored on an `accs_ordered` step, where position is
  *           meaning; `run_checklist_pwr2` §2ad reddens if one is authored there.
+ *           ONE DECLARED EXCEPTION to "never on the real acceptance": `pwr_tmi2_incident` step 9, an
+ *           OBSERVATIONAL step whose relation row (RCS INVENTORY falling while PRESSURIZER LEVEL
+ *           reads full) IS the lesson. A player who opens the AFW valve late watches the whole
+ *           drain on step 8, so the row has nothing left to see here — MEASURED, routes `afw_late`:
+ *           a 195 plant-min strand without the relief. Its sibling, the -50 °F SUBCOOLING MARGIN
+ *           peg, is the plant's own proof the loop boiled down; the card draws the row as covered
+ *           (↳), not ✓. The startup INTER RANGE row this field was built for was deleted
+ *           2026-09-27, so TMI-2 step 9 is now the only carrier.
  *           TWO CONSTRAINTS ON THE SIBLING, neither of which any gate can enforce and both of
  *           which the one shipped instance satisfies (quality pass, 2026-09-18). (a) NAME A
  *           LATCHING SIBLING, not a `~` band or a `steady`/`stopped` row: those re-grade and can

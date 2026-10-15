@@ -401,7 +401,7 @@
        * this step, so their evidence is the acceptance-free issue itself (the live runtime
        * latches them off the command watch — that half is run_checklist's subject). */
       if (st.accs && st.accs.length) {
-        /* `implied_by` (#749 field; first live carrier TMI-2 step 9, 2026-10-14): the live `_gradeAccs`
+        /* `implied_by` (#749 field; second live carrier TMI-2 step 9, 2026-10-14, after the startup INTER RANGE row deleted 2026-09-27): the live `_gradeAccs`
          * latches a row whose NAMED sibling is met, so the replay grades it the same way — a failed row
          * passes when its sibling's own verdict passes, and says so. Ignored on an ordered step, as live. */
         var implPass = {};
