@@ -44,7 +44,7 @@ Both startup trips must be blocked. Left live, the climb trips the reactor at 25
 
 ()2a. Check the TURBINE-GENERATOR card shows LATCH lit and TRIP not lit. If it reads TRIP, press LATCH.
 
-()2b. Check OUTPUT reads above 8 MW. If it stays at 0.0 MW, set LOAD to 10 MW.
+()2b. Check OUTPUT reads 8 MW or more. If it stays at 0 MW, set LOAD to 10 MW.
 
 Suggested time warp: 1×.
 

@@ -40,7 +40,7 @@ In Cold Shutdown (Mode 5) the water is far below boiling and pressure is low. Re
 
 *With the reactor kept shut down, the pumps are what heat the plant.*
 
-()2a. Press ON on the RCP FLOW card and check RCP FLOW reads above 90 %.
+()2a. Press ON beside the reactor coolant pump, above RCP FLOW, and check RCP FLOW reads above 90 %.
 
 Suggested time warp: 1×.
 
@@ -62,7 +62,7 @@ A shut-down reactor makes almost no heat, but the pumps' work ends up in the wat
 
 Suggested time warp: 1×.
 
-Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once; if PRESS TO ARM, leave it. One click runs the bank to 627 of 627 in about 9 plant-minutes; a second click stops it.
+Note: If SCRAM on the ROD CONTROL card reads SCRAMMED / PRESS TO RESET, press it once; if PRESS TO ARM, leave it. One click runs the bank to 627 of 627 in about 9 plant-minutes; a second click stops it.
 
 ()3b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
 

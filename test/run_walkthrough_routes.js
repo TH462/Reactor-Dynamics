@@ -68,7 +68,7 @@ var LP_FORBID = ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high', 'sg_press
 
 /* ================================ THE ROUTE TABLES ====================================== */
 /* Policies: default | final (a ramp step's end value, typed once) | pull_plot{to,speed,plot_rate,repeat} | approach{short,min_rate,max_rate,
- * dwell,tap,to} | wait_tap{rate_below,power_below,dwell,skip} | hold_below{p} | nudge{steps,speed} | hold_until{p,speed}
+ * dwell,tap,to} | hold_count{speed} (one held WITHDRAW released on the tile; speed off the card's 'Press SLOW') | wait_tap{rate_below,power_below,dwell,skip} | hold_below{p} | nudge{steps,speed} | hold_until{p,speed}
  * | block_when{p,trip_id,param} | rows_then_cmd | seq{cmds:[...]} | observe | to_band{tref,dead,dead_hi,dir,pull,dwell,near}
  * | stair{from,to,step,wait_s|read_s,bands:[{above,step,wait_s}]}. Any step may add `stated_max_min` (the card's own time: the
  * typical route's `stated` check fails past it), and
@@ -94,7 +94,7 @@ var ROUTES = {
       '#5': { policy: 'pull_count', top: 80, tap_wait_s: 30 },    // note: lands 70 to 80 (hold-to-count 77-78, flicker + taps 72-74, layman pass 13); short at 80 -> taps, half a plant-minute apart
       '#6': { policy: 'pull_count', top: 155, tap_wait_s: 30 },   // lands 150 to 155
       '#7': { policy: 'pull_count', top: 192 },                   // lands 190 to 192; taps let STARTUP RATE settle
-      '#8': { policy: 'pull_count', top: 205 },                   // about 205
+      '#8': { policy: 'hold_count' },   // 8a held at the card's speed until the count (S-1, 2026-10-15); the old staircase stopped at its 205 cap and never tested the count
       // 9 and 10 are slow by the card's own design (a tap, a read once the rate has stopped falling —
       // about 10 minutes — repeat; then 30 to 60 minutes of climb after a 0.06 to 0.10 read), so their
       // bound is the card's, not 3 x hold. Measured 2026-09-24: step 9 21.6 / 26.7 min, step 10
@@ -522,6 +522,12 @@ var MUTATIONS = [
   { id: 'sr_note_too_soon', route: 'no_sr_block', expect: 'sr_trip',
     why: 'step 9 note claiming the trip "about 1 plant-minute" after the rods move (the check reads the card; measured 2.5)',
     mutate: function (P) { P.steps[8].accs[1].note = P.steps[8].accs[1].note.replace(/about \d+ plant-minutes/, 'about 1 plant-minute'); } },
+  /* CYCLE LAYMAN PASS S-1 (2026-10-15): 8a without 'Press SLOW' -- the player holds WITHDRAW at MED to the count, the
+   * count lags the rods about 5 steps, the core passes critical (207.1-207.7) before the tile reads 7.0e3, and SR HIGH FLUX
+   * trips the reactor (MEASURED 3 of 3 at 10x). The typical route reads its speed off the card, so this goes red on 'complete'. */
+  { id: 'startup8_med_hold', route: 'typical', expect: 'complete',
+    why: 'step 8a asking for the hold without SLOW (the rc5 text: the count-led hold at MED released at 209-211)',
+    mutate: function (P) { P.steps[7].accs[0].ask = P.steps[7].accs[0].ask.replace('Press SLOW, then hold', 'Hold'); } },
   { id: 'step17_1005', route: 'late_second_block', expect: 'invariant',
     why: 'step 18 (was 17 before #808) floor back to 10.05 % (unfinishable at LOAD 10 MWe, owner ruling 2026-09-23)',
     mutate: function (P) { P.steps[17].accs[0].v = 10.05; } },
@@ -1169,6 +1175,36 @@ function runJob(legId, routeId, mutId, ctx) {
      * row has not ticked once the rods have been still 60 s with STARTUP RATE at +0.03 or less,
      * they go back to WITHDRAW — one step at a time (`tap_top`) once the window top is reached,
      * the card's "keep tapping one step at a time and let the rate settle". Plots as pull_plot. */
+    /* "Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads <target>" AS A HELD BUTTON
+     * (cycle layman pass, S-1, 2026-10-15): one rod_start, released (rod_stop) the broadcast the TILE
+     * first reads the row's target -- the player the count-led card produces. `pull_count` is a
+     * staircase with a `top` cap, so it never drove "count is the target" past the window (step 8
+     * stopped at 205 every run). The SPEED IS READ OFF THE CARD: "Press SLOW" in the row's ask ->
+     * slow, else MED (`speed` overrides), so the old 8a text is its own injection. MEASURED on a2d0a51d
+     * (scratch copy, seeds 42/7/1): MED released at 209-211 and tripped on SR HIGH FLUX 3 of 3; SLOW
+     * released at 201-203 and tripped 0 of 6. After the release the card's note: if the row has not
+     * ticked once the rods are still 60 s and STARTUP RATE reads +0.03 or less, single SLOW taps. */
+    if (P === 'hold_count') {
+      var hr0 = (st2.accs || [])[0] || {}, hm0 = rows2[0] && rows2[0].met;
+      var htile = (s.instruments || {}).source_range; if (htile && typeof htile === 'object') htile = htile.value;
+      var hsp = spec.speed || (/\bPress SLOW\b/.test(hr0.ask || '') ? 'slow' : 'normal');
+      if (!S.memo.go) { S.memo.go = true; S.acts++; out[cur].hold_speed = hsp; out[cur].start_bank = bank();
+        send({ action: 'rod_start', group_id: 'control', direction: 1, speed: hsp }); }
+      if (!S.memo.rel && (htile >= hr0.v || hm0)) { S.memo.rel = true; send({ action: 'rod_stop', group_id: 'control' });
+        out[cur].rel_bank = bank(); out[cur].rel_sr = Math.round(htile); S.memo.still = t(); }
+      if (S.memo.rel) {
+        if (S.memo.lb2 !== bank() || moving()) { S.memo.lb2 = bank(); S.memo.still = t(); }
+        if (!hm0 && !moving() && t() - S.memo.still >= 60 && pv('startup_rate_dpm') <= 0.03) {
+          nudge(1, 'slow'); S.acts++; S.memo.still = t(); out[cur].taps = (out[cur].taps || 0) + 1; }
+        var hpRow = -1; (st2.accs || []).forEach(function (e, i) { if (cmdAction(e.cmd) === 'plot_1m_point') hpRow = i; });
+        if (hm0 && !moving() && hpRow >= 0 && !S.memo.plotted && !(rows2[hpRow] && rows2[hpRow].met) && pv('startup_rate_dpm') <= 0.03) {
+          if (plot()) { S.memo.plotted = true; S.acts++; out[cur].plot_bank = bank(); out[cur].plot_sr = Math.round(htile);
+            out[cur].plot_after_rel_s = Math.round(t() - (S.memo.tRel || t())); }
+        }
+      }
+      if (S.memo.rel && S.memo.tRel == null) S.memo.tRel = t();
+      return;
+    }
     if (P === 'pull_count') {
       var row0 = (st2.accs || [])[0] || {}, rd = pv(row0.p), m0 = rows2[0] && rows2[0].met;
       if (S.memo.tickBank == null && m0) {

@@ -1557,7 +1557,7 @@
           wait_speed: 1, speed_text: true,
           cmd: { action: 'set_rcp', running: true }, hold: 30,
           accs: [{ p: 'pump_flow_pct', op: '>', v: 90,
-                   ask: 'Press ON on the RCP FLOW card and check RCP FLOW reads above 90 %.',
+                   ask: 'Press ON beside the reactor coolant pump, above RCP FLOW, and check RCP FLOW reads above 90 %.',
                    /* LAYMAN PASS 6 (2026-09-26, AGENT-DRAFTED) S-2: MEASURED on the chain with the
                     * cooldown's spray shut late (19 psia at the seam): Tavg 194 -> 203 degF, SUBCOOLING
                     * MARGIN 25.1 degF by step 8; the reviewer, at 17-18 psi, got the alarm. From 50 psia
@@ -1627,7 +1627,7 @@
                     * WITHDRAW did nothing -- the rod drive refuses every move while the reactor trip
                     * is latched (pwr2_engine.js rodDriveDoor). The cooldown's 16d now resets it; this
                     * line is for a player who arrives any other way. */
-                   note: 'If SCRAM reads PRESS TO RESET, press it once first. Click WITHDRAW only once; a second click stops the bank.',
+                   note: 'If SCRAM reads SCRAMMED / PRESS TO RESET, press it once first. Click WITHDRAW only once; a second click stops the bank.',
                    wait_speed: 1, label: 'SHUTDOWN ROD POSITION counting up' },
                  { p: 'shutdown_bank_steps', op: '>=', v: 615,
                    hl_watch: ['Shutdown Rod Position'],
@@ -2169,7 +2169,11 @@
            * board invites — makes it quiet, and then each of the five `low_tavg` arrivals is a drop
            * on a 40,000 s ride. This declaration is the only thing standing between that player
            * and a 1x heatup. */
-          expect_alarms: ['low_tavg'],
+          /* + THE THREE 11b NAMES (cycle layman pass S-3, 2026-10-15): the card tells the player to expect them, and the
+           * typical route raises all three in this step (MEASURED seed 42, at 1726 psia, with low_tavg) -- by
+           * re-classification out of status, so today they never drop the clock; declared so an acknowledged-and-
+           * cleared one coming back is not read as a casualty either. Expected consequences, no action asked. */
+          expect_alarms: ['low_tavg', 'pzr_pressure_lolo', 'pzr_pressure_low', 'turbine_trip'],
           /* ⚰ THE RHR WATCH IS GONE FROM THIS STEP *(OWNER, 2026-09-20, #796 item 1: "step 11 in
            * mode 5-3 walkthrough highlights the RHR card when its just a wait for coolant temp
            * step.")*, and the justification that stood here was about a DIFFERENT LEG'S STEP 11.
@@ -3135,7 +3139,7 @@
            * rung, drawn once, with the Note after it; neither head carries a speed or a note. */
           wait_speed: 10, moving_speed: 5,   // OWNER RULING 2026-09-28 (option D): "In step 8 5x while the rods move."
           speed_text: '5× while the rods move, then 10×, set by itself.',
-          note: 'The wait for +0.03 is 5½ to 6½ plant-minutes.',
+          note: 'The wait for +0.03 is 3 to 4 plant-minutes.',   // MEASURED 2026-10-15, SLOW hold released at 202-203: plotted 199-235 s after release (seeds 7/42/1)
           control: 'Control Bank', target: 'SOURCE RANGE above 7.0e3 (7,000 counts a second); point 5 plotted; STARTUP RATE under 1.0',
           /* THE SETTLE IS 600 s, NOT 150 *(OWNER RULING, 2026-09-14/15, on options put as
            * "rewrite step 8's settle / rewrite step 9 / both": selected "Rewrite both")*.
@@ -3221,8 +3225,8 @@
           /* One step per plot point since #796 item 3 — the reasoning is on step 5. */
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
                    hl: ['Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
-                   ask: 'Hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
-                   note: 'Expect it near CONTROL ROD POSITION 205.',
+                   ask: 'Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
+                   note: 'Expect it near CONTROL ROD POSITION 202.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.',
@@ -4045,9 +4049,11 @@
           accs: [{ cmd: 'latch_turbine', hl: ['Turbine — Latch'],
                                          ask: 'Press LATCH on the TURBINE-GENERATOR card.', wait_speed: 1,
                    label: 'Turbine latched' },
-                 { p: 'mwe_output', op: '>', v: 8, hl: ['Load Setpoint'], hl_watch: ['Generator Output'],
-                                                   ask: 'Set LOAD to 10 MW and wait for OUTPUT to read above 8 MW.', wait_speed: 10,
-                   label: 'OUTPUT above 8 MW' },
+                 /* THE RENDER FLOOR (cycle layman pass, 2026-10-15): the OUTPUT tile is r0, so it draws '8' for [7.5, 8.5) and '> 8'
+                  * ticked under a tile reading 8 against an ask of 'above 8'. Graded at the floor of the reading the ask names. */
+                 { p: 'mwe_output', op: '>=', v: 7.5, hl: ['Load Setpoint'], hl_watch: ['Generator Output'],
+                                                   ask: 'Set LOAD to 10 MW and wait for OUTPUT to read 8 MW or more.', wait_speed: 10,
+                   label: 'OUTPUT 8 MW or more' },
                  /* 14c (2026-09-27-develop-a): the dump to average-temperature mode once the turbine carries
                   * the steam. NRC HRTD Westinghouse Technology Manual §19.4 (ML11223A342): "When the steam dump
                   * valves are fully closed, they are placed in the Tavg mode of operation." The board has one
@@ -4272,7 +4278,7 @@
            * evidence in player-facing prose). It is recorded here instead, because it is the reason
            * this step exists and deleting it would leave the claim unmeasured: from 40 %, left
            * tripped the climb scrams at 49.2 %; put back on line the same climb runs to 71 %. */
-          control: 'Turbine Load', target: 'OUTPUT above 8 MWe',
+          control: 'Turbine Load', target: 'OUTPUT 8 MWe or more',
           cmd: { action: 'latch_turbine' }, hold: 240, wait_hint: false,
           aim: 'Raising LOAD does nothing until the turbine takes steam.',
           note: 'LATCH is refused while the trip\'s cause remains; the card names it.',
@@ -4281,10 +4287,10 @@
                    hl: ['Turbine — Latch'],
                    ask: 'Check the TURBINE-GENERATOR card shows LATCH lit and TRIP not lit. If it reads TRIP, press LATCH.',
                    label: 'Turbine latched, TRIP not lit' },
-                 { p: 'mwe_output', op: '>', v: 8,
+                 { p: 'mwe_output', op: '>=', v: 7.5,   // the r0 tile's '8' floor, as pwr_startup 15b (2026-10-15)
                    hl: ['Load Setpoint'], hl_watch: ['Generator Output'],
-                   ask: 'Check OUTPUT reads above 8 MW. If it stays at 0.0 MW, set LOAD to 10 MW.',
-                   label: 'OUTPUT above 8 MW' }],
+                   ask: 'Check OUTPUT reads 8 MW or more. If it stays at 0 MW, set LOAD to 10 MW.',
+                   label: 'OUTPUT 8 MW or more' }],
           hl: ['Turbine — Latch', 'Load Setpoint'], hl_watch: ['Turbine Load', 'Generator Output'] },
         { text: 'Start the boron dilution that carries most of the climb.',
         why: 'Every percent of power costs reactivity as the fuel and water heat up. Rods alone would end deep in the core, so real plants dilute boron for the bulk and trim with rods. Dilution slows as it nears the target.',
@@ -4471,7 +4477,7 @@
                  { p: 'mwe_output', op: '>=', v: 49.5,
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 50 MW.',
-                   note: 'If AVG COOLANT TEMPERATURE sags well below its band, Pressurizer Pressure Low can come in: make the pulls on the next line.',
+                   note: 'If AVG COOLANT TEMPERATURE sags well below its band, Pressurizer Pressure Low can come in and drop the clock to 1×. Start the pulls on the next line then, without waiting for OUTPUT.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 50 MW' },
                  { p: 'tavg_c', op: '~', v: 298.972, tol: 7.028, latch: true,   /* 557.5-582.8 degF, green-segment floor (rc8f pass 10 S-2) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
@@ -5094,7 +5100,7 @@
           accs: [{ p: 'scrammed', op: '>', v: 0,
                    hl: ['SCRAM'],
                    ask: 'Press SCRAM on the ROD CONTROL card: once to arm it (PRESS TO ARM), then again to scram.',
-                   label: 'Reactor tripped: SCRAM reads PRESS TO RESET' },
+                   label: 'Reactor tripped: SCRAM reads SCRAMMED / PRESS TO RESET' },
                  { p: 'control_bank_steps', op: '<', v: 0.5,
                    hl_watch: ['Control Rod Position', 'Shutdown Rod Position'],
                    ask: 'Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.',
@@ -5148,6 +5154,10 @@
          * press (the turbine is tripped, so AUTO selects pressure mode). */
         { text: 'Put the decay heat on the steam dump: Mode 3, Hot Standby.',
         why: 'REACTOR POWER does not show the decay heat, about 2 % of full power. With the turbine tripped, AUTO puts the steam dump in pressure-holding mode and it carries that heat to the condenser. Hot, at pressure, shut down: Mode 3, Hot Standby.',
+          /* cycle layman pass S-3 (2026-10-15): 3b's note calls it expected either way, and the typical route raises it
+           * in this step (MEASURED seed 42 standalone, 2064 psia / 559.7 degF; not raised on the chain) -- a consequence of the
+           * dump taking the decay heat. */
+          expect_alarms: ['cooldown_rate_high'],
           predicts_alarms: ['cooldown_rate_high'], aim: 'With the turbine off line, the steam dump is where the decay heat leaves.',
           hold: 120, wait_hint: false,
           wait_speed: 10, speed_text: true,
@@ -5666,7 +5676,7 @@
            * The `why` still says why it stays; step 11's 11c is where it comes off. */
           accs: [{ p: 'pump_flow_pct', op: '<', v: 50,
                    hl: ['RCP — Off'],
-                   ask: 'Press OFF on the RCP FLOW card and check RCP FLOW falls below 50 %.',
+                   ask: 'Press OFF beside the reactor coolant pump, above RCP FLOW, and check RCP FLOW falls below 50 %.',
                    label: 'Pumps coasting down' }],
           /* THE CARD, NOT ALSO THE PUMP *(OWNER, 2026-09-09 playtest, #684 §D: "When the RCP is
            * highlighted it should highlight the RCP card not the pump. Currently both get
@@ -5905,8 +5915,8 @@
                  { cmd: { action: 'reset_rps' },
                    p: 'scrammed', op: '<', v: 1,
                    hl: ['SCRAM'],
-                   ask: 'If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once: no rod moves while the trip is latched.',
-                   label: 'SCRAM no longer reads PRESS TO RESET' },
+                   ask: 'If SCRAM on the ROD CONTROL card reads SCRAMMED / PRESS TO RESET, press it once: no rod moves while the trip is latched.',
+                   label: 'SCRAM no longer reads SCRAMMED / PRESS TO RESET' },
                  { p: 'shutdown_bank_steps', op: '<', v: 0.5,
                    hl: ['Rod Speed — Fast', 'Shutdown Bank — Insert'], hl_watch: ['Shutdown Rod Position'],
                    ask: 'If SHUTDOWN ROD POSITION already reads 0 of 627, the bank is in. Otherwise press FAST on the ROD CONTROL card, click INSERT under SHUTDOWN once, and wait for 0 of 627.',
