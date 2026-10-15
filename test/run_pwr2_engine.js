@@ -11,6 +11,7 @@
  * Run: node test/run_pwr2_engine.js            part A (the default — see THE PARTITION below)
  *      node test/run_pwr2_engine_b.js          part B
  *      node test/run_pwr2_engine_c.js          part C
+ *      node test/run_pwr2_engine_d.js          part D (group J, split out of I 2026-10-15)
  *      node test/run_pwr2_engine.js --all      the unsplit whole, for local debugging
  */
 'use strict';
@@ -109,19 +110,22 @@ var GROUPS = (function () {
  * The rule for moving one: re-measure with --groups=, do not guess. */
 var PART_B = ['B', 'C', 'D', 'H', 'K', 'Q', 'R'];
 var PART_C = ['I'];
-var PART_NAMES = ['A', 'B', 'C'];
+/* PART_D: group J, the IR rod stop block, cut out of group I (CI 38700124714: part C alone ran
+ * 1754 s and set the shard wall). I and J are one section 8 and were ONE group until 2026-10-15. */
+var PART_D = ['J'];
+var PART_NAMES = ['A', 'B', 'C', 'D'];
 function partOf(g) {
-  return PART_B.indexOf(g) >= 0 ? 1 : PART_C.indexOf(g) >= 0 ? 2 : 0;
+  return PART_B.indexOf(g) >= 0 ? 1 : PART_C.indexOf(g) >= 0 ? 2 : PART_D.indexOf(g) >= 0 ? 3 : 0;
 }
 /* the lists are hand-written, so they are CHECKED against the derived groups — a letter that
  * names no block, or one claimed by both parts, would quietly move checks out of every part
  * or run them twice, and either way `run_all` would go on scoring three green baselines. */
-PART_B.concat(PART_C).forEach(function (g) {
+PART_B.concat(PART_C, PART_D).forEach(function (g) {
   if (GROUPS.indexOf(g) < 0)
-    throw new Error('run_pwr2_engine: PART_B/PART_C names group ' + g +
+    throw new Error('run_pwr2_engine: PART_B/PART_C/PART_D names group ' + g +
       ', which no `if (grp(...))` block in this file defines (groups: ' + GROUPS.join(' ') + ')');
-  if (PART_B.indexOf(g) >= 0 && PART_C.indexOf(g) >= 0)
-    throw new Error('run_pwr2_engine: group ' + g + ' is claimed by BOTH part B and part C');
+  if ((PART_B.indexOf(g) >= 0) + (PART_C.indexOf(g) >= 0) + (PART_D.indexOf(g) >= 0) > 1)
+    throw new Error('run_pwr2_engine: group ' + g + ' is claimed by MORE THAN ONE of parts B, C, D');
 });
 var PART = globalThis.__PWR2_ENGINE_PART || 0;
 /* `--mut=<substring>` widens to the whole file, the same reasoning as --grp= below: the
@@ -187,7 +191,7 @@ function loadAll(engSource, coreSource) {
  * can see that mutation: 'A' equivalence/door/pushbutton (one engine chain), 'B' the
  * P-9/lying-channel family (eng4-6), 'C' the runback (eng7), 'D' the break + drain (eng2-3),
  * 'E' the AFW starts, 'F' the feed train, 'G' the electrical pair (#507 wave 4), 'H' the
- * SGTR (#507 wave 5), 'I' the failure levers (#507 wave 6), 'K' the initial conditions
+ * SGTR (#507 wave 5), 'I' the failure levers + trip breakers (#507 wave 6), 'J' the IR rod stop (#572), 'K' the initial conditions
  * (#507 §F, wave 7), 'L' the rod insertion limit (#507 §B, wave 8), 'M' the RCP restart
  * (#507 wave 9), 'N' the shutdown IC (#507 wave 10), 'O' the neutron-source construction
  * (#536), 'P' the heater-elevation seam (#573), 'Q' the letdown split (#624 items 14/25),
@@ -1889,6 +1893,9 @@ function runSuite(RD, rec, quiet, only) {
       sV0.toFixed(1) + ' -> ' + engV.rodSteps.toFixed(1) + ' steps in 120 s at 5.0/s ' +
       '(unheld it caps at 200)');
 
+  }
+
+  if (grp('J')) {
   /* ---- 8c. THE INTERMEDIATE-RANGE ROD STOP HOLDS A STARTUP (#572) ---------------------------
    * The protection suite pins the SIGNAL; this pins what the plant does with it, which is the
    * claim that matters: a rod stop that reports and does not hold is the wiring gap this file's
@@ -3215,7 +3222,7 @@ var RUNNER_NAME = 'run_pwr2_engine' + (PART && !ALL && !GROUP_OVERRIDE ?
   '_' + PART_NAMES[PART].toLowerCase() : '');
 var PART_LABEL = GROUP_OVERRIDE ? '--groups=' + MY_GROUPS.join(',')
                : ALL ? 'the UNSPLIT whole (--all)'
-               : 'part ' + PART_NAMES[PART] + ' of 3 (#637)';
+               : 'part ' + PART_NAMES[PART] + ' of 4 (#637)';
 console.log('\nPWR2 -- THE ENGINE FACADE: one door, the gates\' wiring written once');
 console.log('  ' + PART_LABEL + ' -- groups ' + MY_GROUPS.join(' ') +
   ' of ' + GROUPS.join(' '));
@@ -3296,10 +3303,10 @@ var MUTATIONS = [
    * single mutation could not tell the two apart. */
   ['the rod stop is clamped silently again (accepted, then discarded by the integrator)',
    '    if (!(target > steps + 1e-9)) return;',
-   '    return;', { grp: 'I' }],
+   '    return;', { grp: 'J' }],
   ['the rod stop refuses INWARD motion too (the source says it never may)',
    '    if (!(target > steps + 1e-9)) return;',
-   '    if (!(Math.abs(target - steps) > 1e-9)) return;', { grp: 'I' }],
+   '    if (!(Math.abs(target - steps) > 1e-9)) return;', { grp: 'J' }],
   ['the dump controller never reaches the relief valves',
    'dump_demand: dcr.dump_demand,',
    'dump_demand: 0,', { grp: 'A' }],
@@ -3322,7 +3329,7 @@ var MUTATIONS = [
    * as uncovered while being covered — the mirror of one that scores as covered while not. */
   ['the rod stop never blocks (outward motion continues at 3 % from the trip)',
    '      if (eng._rodStopSig && move > 0) move = 0;',
-   '', { grp: 'I' }],
+   '', { grp: 'J' }],
   ['the pressurizer ladder wire is cut (control reads truth again; no lie can drive the heaters)',
    'indicated_pressure_mpa: eng.ins.reading.primary_pressure,',
    '', { grp: 'B' }],
