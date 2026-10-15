@@ -19,6 +19,7 @@
  *      the deciding beats draw the live PRESSURIZER LEVEL | RCS INVENTORY pair with the reason inline;
  *      Realistic mode drops the true-state half (Hard Rule 1); End puts the chart back.
  *  11. A row latched by its `implied_by` sibling draws as covered on the card, never a plain ✓.
+ *  12. A row stood down by its own row-level `overtaken` draws ↳ and names the condition, never a plain ✓.
  *   5. DEFAULT ELSEWHERE IS UNCHANGED — another walkthrough draws no card and its step card shows;
  *      `?callout=0` (the player's Off) on TMI draws no card and the step card shows.
  *
@@ -476,6 +477,30 @@ var BUB = '#instrCallout';
      /Covered by SUBCOOLING MARGIN pegged at -50 °F — not checked on its own\.$/.test(r0.txt || '') &&
      !mi.rows.some(function (r) { return /^✓ RCS INVENTORY/.test(r.txt); }), JSON.stringify(mi));
   await M.ctx.close();
+
+  /* 12. A ROW STOOD DOWN BY ITS OWN ROW-LEVEL `overtaken` (raise power 4, 2026-10-15) draws as overtaken on the side
+   * card -- the arrow and the authored condition -- never a plain tick. The RUNTIME takes the latch for real: the row's
+   * own bound is made unreachable and its overtaken always true (and the step unordered, so the LOAD press is not owed).
+   * INJECTION (2026-10-15): the `av.overtaken ? '↳ '` glyph reverted to the plain tick -> this check red. */
+  var O = await session({ width: 1366, height: 768 });
+  await start(O.page, 'pwr_raise_power');
+  await O.page.evaluate(function () {
+    var st = RD.__dev.service().instructor.checklist.proc.steps[3], e = st.accs[2];
+    st.accs_ordered = false; e.v = -99; e.overtaken.v = -99;
+  });
+  await jump(O.page, 3);
+  await O.page.waitForTimeout(1500);
+  var ot = await O.page.evaluate(function () {
+    var c = RD.__dev.service().instructor.checklist;
+    var acc = (RD.__dev.service()._assembleWithInstructor().instructor.checklist.accs || [])[2] || {};
+    var rows = [].map.call(document.querySelectorAll('#cklRun .ckl-crit'), function (x) { return x.textContent; });
+    return { idx: c.idx, ot: !!acc.overtaken, rows: rows };
+  });
+  var orow = ot.rows.filter(function (t) { return /4 °F or more below TREF/.test(t); })[0] || '';
+  ck('raise power 4: a row stood down by its own overtaken draws ↳ and names the condition ("Overtaken: the rods led the load..."), never a plain ✓',
+     ot.idx === 3 && ot.ot && /^↳ /.test(orow) && /Overtaken: the rods led the load, so AVG COOLANT TEMPERATURE ran above TREF instead of lagging it/.test(orow) &&
+     !ot.rows.some(function (t) { return /^✓ .*4 °F or more below TREF/.test(t); }), JSON.stringify({ idx: ot.idx, ot: ot.ot, row: orow }));
+  await O.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail) + ' passed');
