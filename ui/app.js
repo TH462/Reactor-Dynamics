@@ -3246,6 +3246,11 @@
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
   }
+  /* The rate the sentence names: whole numbers under 10x (a 5x request that delivers 4.2x said "1x" off a
+   * floor-to-5), the nearest 5 to 100x, the floor to 50 above (measured: 14x at 60x read "10x"). */
+  function budgetShownRate(a) {
+    return a >= 100 ? Math.floor(a / 50) * 50 : a < 10 ? Math.max(1, Math.round(a)) : Math.round(a / 5) * 5;
+  }
   var budgetNote = { step: null, req: 0, since: 0, on: false, shown: 0 };   // the step-budget shortfall sentence's state (V-3, below)
   function syncWarpInfo(s) {
     var el = $('warpInfo');
@@ -3362,7 +3367,7 @@
       else if (!budgetNote.on && nowW - budgetNote.since >= 4000 && achR < 0.85 * reqB &&
                pcB.steps_requested > 0 && pcB.steps_done < pcB.steps_requested) budgetNote.on = true;
       if (budgetNote.on) {
-        var achF = achR >= 100 ? Math.floor(achR / 50) * 50 : Math.max(1, Math.floor(achR / 5) * 5);
+        var achF = budgetShownRate(achR);
         if (!budgetNote.shown || Math.abs(achF - budgetNote.shown) >= 0.25 * budgetNote.shown) budgetNote.shown = achF;
         text = (text ? text.replace(/\.?$/, '. ') : '') + 'This computer can only run the plant at about ' + budgetNote.shown + '× here.';
       }
@@ -4674,7 +4679,7 @@
    * off the SAME series definitions the chart draws: their label, their fmt (US units first, as the board
    * shows) and their side -- the instrument where one exists, truth where the chart traces truth
    * (sideOf), so Hard Rule 1 is the chart's own and not re-decided here. Direction is the change over a
-   * trailing 30 plant-seconds against 0.25 % of the series' own range (instrument noise sits below that on
+   * trailing window (60 plant-seconds, or the graded row's own `window`) against 0.25 % of the series' own range (instrument noise sits below that on
    * the PWR2 channels); under 5 s of history the last direction stands. History is keyed to the step
    * (`gk`) and dropped on a step change or when the clock goes back (Rewind). An id that is not a
    * series on this plant, or has no reading yet, draws no row at all rather than half of one. */

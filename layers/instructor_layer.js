@@ -239,16 +239,18 @@
   InstructorLayer.isBagOp = function (op) { return !!BAG_OPS[op]; };
   InstructorLayer.ACC_STABLE_N = ACC_STABLE_N;
   /* SAVE FORMAT, `accs_relief` (2026-10-15): per entry 0 = latched on its own grading (or unmet), 1 = by
-   * `implied_by`, 2 = by its row-level `overtaken`; optional, absent on older saves (restores 0). An
-   * overtaken row restores ARMED, so a re-grade after the load keeps it standing down. */
+   * `implied_by`, 2 = by its row-level `overtaken`, 3 = ARMED but still blocked (not met); optional, absent on older
+   * saves (restores 0). An overtaken row restores ARMED, so a re-grade after the load keeps it standing down;
+   * code 3 keeps a save/rewind inside the fallen-back-below-the-arm stretch from stranding the row. */
   function accsRelief(st) {
-    return st ? st.map(function (a) { return a.overtaken ? 2 : a.implied ? 1 : 0; }) : null;
+    return st ? st.map(function (a) { return a.overtaken ? 2 : a.implied ? 1 : a.otArmed ? 3 : 0; }) : null;
   }
   function reliefState(m, rel, i) {
     var r = (rel && rel[i]) | 0;
     return { streak: 0, met: !!m, obs: null, graded_by: null, implied: !!m && r === 1,
-             overtaken: !!m && r === 2, otArmed: !!m && r === 2, otStreak: 0 };
+             overtaken: !!m && r === 2, otArmed: r === 3 || (!!m && r === 2), otStreak: 0 };
   }   /* the row-level `overtaken` debounce, read by test/procedures_harness.js */
+  InstructorLayer.accsRelief = accsRelief; InstructorLayer.reliefState = reliefState;
   InstructorLayer.gradeBagged = function (bag, snapshot, pred) {
     if (pred && pred.op === 'stopped') return InstructorLayer.gradeStopped(bag, snapshot, pred);
     if (pred && pred.op === 'moves') return InstructorLayer.gradeMoves(bag, snapshot, pred);
@@ -2677,8 +2679,8 @@
        * degF at 60 s falling to +2.95 degF by the 239 s the row unblocks, so a re-checked condition
        * would race the noise), and it latches only when unblocked, so position keeps its meaning.
        * The row's own grading runs first, so a row whose own predicate is met latches as itself. It
-       * LATCHES and is flagged `overtaken` so the card never draws a plain tick for it. Not saved:
-       * it restores as the plain latch it is, like `implied`. Mirrored in test/procedures_harness.js. */
+       * LATCHES and is flagged `overtaken` so the card never draws a plain tick for it. Saved via
+       * `accs_relief` (2 latched, 3 armed-and-blocked). Mirrored in test/procedures_harness.js. */
       if (en && en.overtaken && en.overtaken.p && !ax.met) {
         var selfO = this, otRow = this._grade(snapshot, en.overtaken).met ||
           (en.overtaken.or || []).some(function (q) { return selfO._grade(snapshot, q).met; });

@@ -12,7 +12,7 @@
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, accs_ordered,
- *          wait_hint, wait_speed, overtaken, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
+ *          wait_hint, wait_speed, overtaken, pair, trend, window, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
  *          inject, clear,
  *          pause, wrong,
  *          wait_est_s, aim, speed_text }
@@ -28,6 +28,15 @@
  *           without its own `wait_speed` falls back to; this field only opts in to the drawn line
  *           — a string verbatim, `true` for the snapped rung as "N×.". Drawn once, after the
  *           substep rows and before the step's `note`. Scanned by `checklist_no_si`.
+ *   pair    OPTIONAL `true` | [idA, idB] — draws a live two-channel row (and puts both series on the top two
+ *           chart lanes) for the step; `true` is the TMI-2 PRESSURIZER LEVEL | RCS INVENTORY row, `[a, b]` names two
+ *           strip-chart series ids (ui/app.js cklPairRow).
+ *   trend   OPTIONAL [series ids] — presets the strip chart from this step on (latest step at or before wins).
+ *   window  OPTIONAL seconds — pins the strip-chart window from this step on (same carry-forward as `trend`).
+ *   Procedure-level `story_year` (e.g. 1979) labels each step's `story.clock` so it does not read as the sim's.
+ *   accs[].overtaken  OPTIONAL {p, op, v, label} on a predicate row — the plant condition (armed after
+ *           ACC_STABLE_N gradings while the row is blocked) under which the row latches as stood down; the card draws
+ *           ↳ and `label`. Distinct from the step-level `overtaken` above.
  *   (THE DEBT #694 LEFT IS PAID (#755): all 24 names on that line are documented below. MEASURED
  *   on the built pool rather than counted by hand — which is how this note came to claim 12 of
  *   19, then 20 — 22 of them are in use; `clear` and `wrong` are implemented and unused. A step
@@ -6021,7 +6030,7 @@
        *
        * NEW FIELDS (read only by the walkthrough card, ui/app.js): `trend` / `window` preset the
        * strip chart from the step on (the latest step at or before the current one wins); `pair`
-       * draws the live PRESSURIZER LEVEL | RCS INVENTORY row on the deception beats. */
+       * draws a live two-channel row (the deception beats use `pair: true`, PRESSURIZER LEVEL | RCS INVENTORY). */
       steps: [
         /* 1 — 04:00:36 / 04:00:37. Old steps 1, 2 and 3. App. II.1 E1 (polisher), E2 (feed pumps), E3
          * (turbine). FOUR INJECTIONS ON ONE PAUSE: the stuck-valve ARM must land within 21 s of the

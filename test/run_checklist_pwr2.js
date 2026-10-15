@@ -6381,6 +6381,23 @@ if (RUN_B) {
     }
     var aN = after(blob), aO = after(old);
     RD.MANUAL_PROCEDURES.pwr2.pop();
+    /* ARMED-AND-BLOCKED survives a save (code 3, reviewer finding 2026-10-15): rows a, b only, a's predicate
+     * unmet while b's overtaken arm holds, so b is armed and blocked at the save; after the load a goes met and b
+     * must latch OVERTAKEN. INJECTION: code 3 dropped from accsRelief -> the loaded row never latches, red. */
+    var il3 = Object.create(IL.prototype), h3 = {}, t3 = 0;
+    var ST3 = { text: 'f', accs_ordered: true, accs: [
+      { p: 'mwe_output', op: '>=', v: 29.5, label: 'a' },
+      { p: 'tavg_tref_dev_c', op: '<=', v: -2.222, overtaken: { p: 'tavg_tref_dev_c', op: '>=', v: 1.111, label: 'x' }, label: 'b' }] };
+    function sn3(mwe, dev) { return { metadata: { sim_time: t3, plant_id: 'pwr2' }, true_state: { mwe_output: mwe, power_pct: 30 }, instruments: { tavg_tref_dev: dev }, control_state: {} }; }
+    for (var q = 0; q < 10; q++) { t3++; il3._gradeAccs(h3, ST3, sn3(20, 6)); }
+    for (q = 0; q < 10; q++) { t3++; il3._gradeAccs(h3, ST3, sn3(20, 0.5)); }   // fallen back under the arm, still blocked
+    var rel3 = IL.accsRelief ? IL.accsRelief(h3.accsState) : null;
+    var il4 = Object.create(IL.prototype), h4 = { accsState: h3.accsState.map(function (a, i) {
+      return IL.reliefState(!!a.met, rel3, i); }) };
+    for (q = 0; q < 6; q++) { t3++; il4._gradeAccs(h4, ST3, sn3(30, 0.5)); }
+    ck('2ar.8b a save taken ARMED-AND-BLOCKED (reading back under the arm) restores armed: once the row ahead is met, the row latches overtaken',
+       !!rel3 && rel3[1] === 3 && !h3.accsState[1].met && h4.accsState[1].met && h4.accsState[1].overtaken,
+       'relief ' + JSON.stringify(rel3) + ' | after ' + JSON.stringify(h4.accsState.map(function (a) { return [!!a.met, !!a.overtaken]; })));
     ck('2ar.8 a save/load keeps HOW a row latched: the overtaken row and the implied row restore flagged (card keeps the ↳), an older save without `accs_relief` loads with both latched and unflagged',
        before[1].overtaken && before[2].implied && aN[1].met && aN[1].overtaken && aN[2].met && aN[2].implied &&
        aO[1].met && !aO[1].overtaken && aO[2].met && !aO[2].implied && aN[3].met === false,
@@ -6402,6 +6419,14 @@ if (RUN_B) {
     nv.handleCommand({ action: 'clear_instrument_failure', instrument_id: 'tavg_tref_dev' });
     var nq = []; for (nz = 0; nz < 20; nz++) nq.push(nv.tick().instruments.tavg_tref_dev);
     var qsd = sdOf(nq);
+    /* THE COMPUTER-CEILING SENTENCE'S NUMBER (reviewer finding 2026-10-15): the old floor-to-5 said "1x" for every
+     * rate under 10x and "10x" for 14x. INJECTION: old formula -> 4.2 gives 1 and 14 gives 10, red. */
+    var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+    var bm = /function budgetShownRate\(a\) \{[\s\S]*?\n  \}/.exec(appSrc);
+    var bf = bm ? new Function(bm[0] + '; return budgetShownRate;')() : null;
+    ck('2ar.10 the "This computer can only run" rate: 4.2x at a 5x request reads 4x, 14x at 60x reads 10-15, 40x stays 40, 100x+ steps by 50',
+       !!bf && bf(4.2) === 4 && bf(0.3) === 1 && bf(14) >= 10 && bf(14) <= 15 && bf(37) === 35 && bf(130) === 100,
+       bf ? [bf(4.2), bf(14), bf(37), bf(130)].join('/') : 'budgetShownRate not found');
     ck('2ar.9 a `noisy` failure on the Tavg-minus-Tref channel scatters the reading, and clearing it gives the derived reading back',
        nsd > 3 * hsd && qsd < 2 * hsd, 'sd over 20 broadcasts: healthy ' + hsd.toFixed(3) + ', noisy ' + nsd.toFixed(3) + ', cleared ' + qsd.toFixed(3) + ' degC');
   })();
