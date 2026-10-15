@@ -36,6 +36,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.8.4-rc2] — 2026-10-14
 
+### Fixed — walkthrough card on a wider font; CI shard 3 timeout (CI run 38652572708)
+
+- The board card's compact fallback now engages when the full card is taller than the board (TMI step 9, 444 px on CI fonts, had fallen to the top-left corner over the top tiles and the pressurizer); a second stage drops the step note when compact still collides; the no-margin retry keeps 11 px clear of the control (step 6 sat 8 px off STOP). Reproduced locally by forcing Verdana on the card (identical failure numbers); Windows fonts unchanged.
+- `run_walkthrough_routes` part D (`_d.js`) owns the TMI-2 leg; the four parts' `secs` hints are now CPU-seconds (8 child processes each): A 1232, B 1433, C 1806, D 859. Shard estimates 3365 s x 4; the old hints hid a 4116 s shard 3.
+
 ### Fixed — safety injection no longer restarts by itself after the operator resets it
 
 After an SI reset, automatic SI now stays disabled until the reactor trip is reset (P-4 clears), per WTSM 12.3.2.3 (ML11223A310): "all automatic SI actuation signals are disabled until the control room operator manually initiates an SI actuation or until ... (permissive P-4) is cleared by closing the reactor trip breakers." It used to re-arm when the delayed signal dropped, so one noise sample under the 3.5 psig containment setpoint (instrument sigma 0.145 psi) re-armed it, and the signal, still standing, re-latched SI 2.0 s later. Measured in a fixture, 5 seeds: true containment pressure was 3.83–3.99 psig and falling. In the live TMI-2 walkthrough this showed up as injection restarting at 144.5–156.8 plant-min. `run_pwr2_protection` 160 → 163, with two new mutations, both caught. AFW, feedwater isolation and containment spray keep the old live-signal re-arm.

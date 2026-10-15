@@ -3591,3 +3591,7 @@ select.num-input { width: auto; }
 .ico-btns .btn[disabled] { opacity: .5; }
 .ico-h { font-size: 12px; line-height: 1.35; margin-bottom: 6px; color: var(--ico-ink); }
 .instr-callout.ico-compact .ico-story { display: none; }
+/* Compact still colliding: drop the step NOTE too (the teaching tip). An overtaken-step line (.ico-over),
+   the crew tag, the criteria and the buttons stay. CI fonts, run 38652572708: step 9's compact card was
+   394 px on a wider-than-Windows font, too tall for the gap it had. */
+.instr-callout.ico-compact.ico-tight .ico-tip:not(.ico-over) { display: none; }

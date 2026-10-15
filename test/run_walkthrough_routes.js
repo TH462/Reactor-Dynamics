@@ -36,6 +36,7 @@
  *   node test/run_walkthrough_routes.js                 part A -- pwr_startup (see THE PARTITION)
  *   node test/run_walkthrough_routes_b.js               part B
  *   node test/run_walkthrough_routes_c.js               part C
+ *   node test/run_walkthrough_routes_d.js               part D -- pwr_tmi2_incident
  *   node test/run_walkthrough_routes.js --all           the unsplit whole, for local debugging
  *   node test/run_walkthrough_routes.js --leg=pwr_startup --route=typical   FILTERED: forced non-zero
  *   node test/run_walkthrough_routes.js --leg=chain     the six legs as ONE plant (layman pass 4, 2026-09-25)
@@ -1425,14 +1426,17 @@ var FILTERED = !!(LEG_F || ROUTE_F);
 var GROUPS = Object.keys(ROUTES).concat(['pwr_cooldown_muts', 'chain']);
 var PART_B = ['pwr_cooldown', 'pwr_raise_power', 'pwr_lower_power', 'pwr_heatup', 'pwr_shutdown'];
 var PART_C = ['pwr_cooldown_muts', 'chain'];
-PART_B.concat(PART_C).forEach(function (g) {
+/* PART D (CI run 38652572708, 2026-10-14): the TMI-2 leg left part A. MEASURED solo, 8-way: its 12
+ * jobs cost 993 job-s beside pwr_startup's 1295 (part A 302 s wall, 2288 job-s), and shard 3 timed out. */
+var PART_D = ['pwr_tmi2_incident'];
+PART_B.concat(PART_C, PART_D).forEach(function (g) {
   if (GROUPS.indexOf(g) < 0)
-    throw new Error('run_walkthrough_routes: PART_B/PART_C names group ' + g +
+    throw new Error('run_walkthrough_routes: PART_B/PART_C/PART_D names group ' + g +
       ', which is not in GROUPS (' + GROUPS.join(' ') + ')');
-  if (PART_B.indexOf(g) >= 0 && PART_C.indexOf(g) >= 0)
-    throw new Error('run_walkthrough_routes: group ' + g + ' is claimed by BOTH part B and part C');
+  if ((PART_B.indexOf(g) >= 0) + (PART_C.indexOf(g) >= 0) + (PART_D.indexOf(g) >= 0) > 1)
+    throw new Error('run_walkthrough_routes: group ' + g + ' is claimed by more than one of parts B, C, D');
 });
-function partOf(g) { return PART_B.indexOf(g) >= 0 ? 1 : PART_C.indexOf(g) >= 0 ? 2 : 0; }
+function partOf(g) { return PART_B.indexOf(g) >= 0 ? 1 : PART_C.indexOf(g) >= 0 ? 2 : PART_D.indexOf(g) >= 0 ? 3 : 0; }
 /* a job KEY is 'leg:route' or 'leg:route:mutId' ('chain:chain[:mutId]' for the chained plant).
  * Only pwr_cooldown splits routes from mutations; every other leg's mutations stay with its
  * routes (its own group), which is why the length check below is scoped to that one leg. */
@@ -1514,7 +1518,7 @@ function launch() {
   }
 }
 var PART_LABEL = ALL ? 'the UNSPLIT whole (--all)' : FILTERED ? 'a FILTERED subset (--leg/--route, ignores the split)'
-  : 'part ' + ['A', 'B', 'C'][PART];
+  : 'part ' + ['A', 'B', 'C', 'D'][PART];
 console.log(B + '\nWALKTHROUGH ROUTES — each leg on a typical-player route and on scripted mistakes (live runtime)' + X);
 console.log(D + '  ' + PART_LABEL + ' — ' + jobs.length + ' runs, ' + JOBS + ' at a time' + X);
 if (!jobs.length) { console.log('no jobs match'); process.exit(1); }
