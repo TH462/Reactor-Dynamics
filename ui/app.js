@@ -3246,6 +3246,7 @@
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
   }
+  var budgetNote = null;   // the step a step-budget shortfall was seen on (V-3, below)
   function syncWarpInfo(s) {
     var el = $('warpInfo');
     if (!el) return;
@@ -3336,6 +3337,22 @@
         if (curRate !== autoSpeedNote.rate || autoSpeedNote.step !== cklNoteStepKey(s)) autoSpeedNote = null;
         else if (!text) text = 'Speeding up to ' + curRate + '× — nothing to do for a while.';
       }
+    }
+    /* THE COMPUTER'S CEILING, SAID IN WORDS (TMI-2 layman pass 3, V-3, 2026-10-15). MEASURED on step 9:
+     * 60× requested, 34-40× then 14× delivered, no drop and no stated cause — the 40 ms step budget cut
+     * each broadcast to 250-300 of 300 steps, then 100 of 300 once the plant sub-stepped. The badge's
+     * "actual 14×" was the only sign. Said only on a walkthrough step, in the play tier, when the
+     * budget is what cut it (fewer steps done than asked) and under 0.9× of the request (the badge's
+     * own amber line, #581). */
+    /* LATCHED per step while the shortfall stands, so one broadcast that finishes its steps does not
+     * blink the sentence off and on. */
+    var pcB = s.metadata && s.metadata.pacing, reqB = (s.metadata && s.metadata.time_acceleration) || 1;
+    var shortB = !!(actv && pcB && pcB.tier === 'play' && reqB > 1 && pcB.achieved != null && pcB.achieved < 0.9 * reqB);
+    if (!shortB || budgetNote !== cklNoteStepKey(s)) budgetNote = null;
+    if (shortB && pcB.steps_requested > 0 && pcB.steps_done < pcB.steps_requested) budgetNote = cklNoteStepKey(s);
+    if (budgetNote) {
+      var achB = pcB.achieved >= 100 ? Math.round(pcB.achieved / 10) * 10 : Math.max(1, Math.round(pcB.achieved));
+      text = (text ? text.replace(/\.?$/, '. ') : '') + 'This computer can only run the plant at about ' + achB + '× here.';
     }
     if (el.textContent !== text) el.textContent = text;
     el.hidden = !text;
@@ -4733,7 +4750,7 @@
     if (key === callout.key) return;
     callout.key = key;
     var sy = st.story || {};
-    el.querySelector('.ico-who').textContent = 'Step ' + (idx + 1) + ' of ' + pr.steps.length + (sy.clock ? ' · ' + sy.clock : '');
+    el.querySelector('.ico-who').textContent = 'Step ' + (idx + 1) + ' of ' + pr.steps.length + (sy.clock ? ' · ' + sy.clock + (pr.story_year ? ' (' + pr.story_year + ')' : '') : '');
     var b = '';
     /* ACTION FIRST (#670 redesign; OWNER 2026-10-10: players read only the action line). The
      * event's one line follows it; a pair step draws its two numbers there instead, which keeps the
@@ -4954,11 +4971,34 @@
    * (#686) — one fact, one formatter, so the two can never disagree. `wait_est_s: false` drops
    * the number and keeps the rung, for a step whose duration is genuinely route-dependent (the
    * speed advice is right even with no honest number; see the call site in `renderChecklist`). */
-  function cklWaitSpan(st, holdS) {
-    if (st.wait_est_s === false) return null;
-    var mins = holdS / 60;
-    return mins < 90 ? Math.round(mins) + ' plant-minutes'
-                     : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+  /* THE SPAN IS A MEASURED ESTIMATE OR NOTHING (TMI-2 layman pass 3, V-1, 2026-10-15). It printed
+   * `hold / 60` — the replay's dwell, a gate fixture — as "About N plant-minutes left", and never
+   * counted down. MEASURED, typical route in the browser: TMI-2 step 7 printed 3 against 1.1, step
+   * 8 65 against 9.0 after the click, step 11 60 against 102.6, step 12 7 against 0.6. Now only a
+   * step that authors a number (`wait_est_s`, plant-seconds, measured on the typical route) prints
+   * one; `wait_est_from: 'cmd'` counts it from the step's own command instead of from step entry.
+   * The bar counts down from the anchor; the card prints the whole estimate (its render key does not
+   * move with the clock). Past the estimate, or with none, it says the length depends on the plant. */
+  var cklEstAnchor = { key: null, t0: 0, tc: null };
+  function cklSpanText(sec) {
+    var mins = sec / 60;
+    if (mins < 1) return 'Under a plant-minute';
+    if (mins < 1.5) return 'About a plant-minute';
+    return 'About ' + (mins < 90 ? Math.round(mins) + ' plant-minutes'
+                     : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours');
+  }
+  function cklWaitSpan(s, a, forBar) {
+    var st = a.st, est = st.wait_est_s;
+    if (typeof est !== 'number' || !(est > 0)) return null;
+    var now = (s && s.metadata && s.metadata.sim_time) || 0, key = a.ck.procedure_id + '#' + a.ck.step_index;
+    if (cklEstAnchor.key !== key || now < cklEstAnchor.t0) cklEstAnchor = { key: key, t0: now, tc: null };
+    if (a.ck.cmd_seen && cklEstAnchor.tc == null) cklEstAnchor.tc = now;
+    if (!a.ck.cmd_seen) cklEstAnchor.tc = null;   // a rewind un-sees the command
+    if (!forBar) return { text: cklSpanText(est), left: false };
+    var from = st.wait_est_from === 'cmd' ? cklEstAnchor.tc : cklEstAnchor.t0;
+    if (from == null) return { text: cklSpanText(est), left: false };
+    var rem = est - (now - from);
+    return rem > 0 ? { text: cklSpanText(rem), left: true } : null;
   }
 
   /* ---- THE WALKTHROUGH DRIVES THE CLOCK (#796) ------------------------------------------------
@@ -5330,13 +5370,13 @@
    * carry, and the player who overrode wants to know what they overrode. */
   function cklWaitAdvice(s, a, forBar) {
     var holdS = +a.st.hold || 0;
-    var span = cklWaitSpan(a.st, holdS);
+    var span = cklWaitSpan(s, a, forBar);
     var rung = cklRungFor(a.st, a.ck) || RD.CklSpeedHint(holdS);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
     if (a.ck.acc_met || a.ck.awaiting_ack) {
       return 'Wait complete — back at ' + cur + '× (this step fast-forwards at ' + rung.speed + '×).';
     }
-    var lead = span ? 'About ' + span + (forBar ? ' left' : '') + ' at 1× — '
+    var lead = span ? span.text + (span.left ? ' left' : '') + ' at 1× — '
                     : 'A wait whose length depends on the plant — ';
     var want = cklStepSpeed(s, a);
     /* NEVER "fast-forwarding at 1×" (layman pass 4): that sentence contradicts itself, and it is
@@ -5925,7 +5965,7 @@
     var headClock = (headSt && headSt.story && headSt.story.clock) ? headSt.story.clock : null;
     h += '<div class="ckl-head"><b>' + mesc(legPart(ui.engineKey, pr.id) ? legName(ui.engineKey, pr) + ' — ' + pr.title : pr.title) + '</b>' +
       '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) +
-      (headClock ? ' · ' + mesc(headClock) : '') + '</span></div>';
+      (headClock ? ' · ' + mesc(headClock) + (pr.story_year ? ' (' + mesc(String(pr.story_year)) + ')' : '') : '') + '</span></div>';   // V-4 (TMI-2 layman pass 3): the story's clock, labelled with its year so it does not read as the sim's
     /* THE WALKTHROUGH SAYS SO WHEN THE REACTOR TRIPS UNDER IT (#709, layman playthrough
      * 2026-09-07 finding S-15: "The checklist does not react to a reactor trip.")
      *
@@ -6109,7 +6149,7 @@
        * gates and headless probes (instructor_layer's checklist block); the card never uses it. */
       if (st.story) {
         var sy = st.story, syH = '';
-        if (sy.clock) syH += '<div class="ckl-story-l"><span>Clock</span>' + mesc(sy.clock) + '</div>';
+        if (sy.clock) syH += '<div class="ckl-story-l"><span>' + (pr.story_year ? 'Clock in ' + mesc(String(pr.story_year)) : 'Clock') + '</span>' + mesc(sy.clock) + '</div>';
         if (sy.saw)   syH += '<div class="ckl-story-l"><span>The crew saw</span>' + mesc(sy.saw) + '</div>';
         if (sy.knew)  syH += '<div class="ckl-story-l"><span>They knew</span>' + mesc(sy.knew) + '</div>';
         if (sy.did)   syH += '<div class="ckl-story-l"><span>They did</span>' + mesc(sy.did) + '</div>';

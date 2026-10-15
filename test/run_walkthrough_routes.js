@@ -480,6 +480,10 @@ var MUTATIONS = [
   { id: 'tmi_no_implied_9', leg: 'pwr_tmi2_incident', route: 'afw_late', expect: 'invariant',
     why: 'step 9 relation row without its implied_by (the drain already happened on step 8): 195 plant-min strand',
     mutate: function (P) { delete P.steps[8].accs.filter(function (e) { return e.op === 'moves'; })[0].implied_by; } },
+  /* V-1 (layman pass 3, 2026-10-15): the estimate check reads the step's authored number, not the hold */
+  { id: 'tmi_est_is_hold_7', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'est',
+    why: 'step 7 wait estimate set back to its replay hold (192 s against a measured 1.1 plant-min)',
+    mutate: function (P) { P.steps[6].wait_est_s = P.steps[6].hold; } },
   { id: 'tmi_old_step10', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'complete',
     why: 'step 10 back on PRIMARY PRESSURE above 750 psi (the plateau is ~741 psia: the typical route strands)',
     mutate: function (P) { P.steps[9].accs.splice(0, 1, { p: 'pressure_mpa', op: '>', v: 5.17, label: 'PRIMARY PRESSURE above 750 psi' }); } },
@@ -839,7 +843,8 @@ function runJob(legId, routeId, mutId, ctx) {
       var spec = specFor(k);
       S = { t0: t(), spec: spec, memo: {}, rowsMet: [], rowsMetAt: [], ack0: null, acts: 0, pressedAck: false,
             bound: spec.bound_s || Math.max(3 * (st.hold || 0), BOUND_FLOOR_S) };
-      out[k] = { n: k + 1, policy: spec.policy || 'default', stated_max_min: spec.stated_max_min };
+      out[k] = { n: k + 1, policy: spec.policy || 'default', stated_max_min: spec.stated_max_min,
+                 est_s: typeof st.wait_est_s === 'number' ? st.wait_est_s : null, est_from: st.wait_est_from || null, t0_min: (t() - T0) / 60 };
       /* pass 6: "settle(s) on N degF" (settle_check) and the alarms a step must not raise (forbid_raise) */
       var stx = [st.text].concat((st.accs || []).map(function (e) { return e.ask || ''; })).join(' '), sm = /settles? (?:the temperature )?on (\d{3}) °F/.exec(stx);
       if (table.settle_check && sm) out[k].settle = +sm[1];
@@ -1010,6 +1015,7 @@ function runJob(legId, routeId, mutId, ctx) {
       cur = -2;                                         // force re-entry bookkeeping
       continue;
     }
+    if (out[cur] && c.cmd_seen && out[cur].t_cmd_min == null) out[cur].t_cmd_min = (t() - T0) / 60;   // the wait estimate's 'cmd' anchor (V-1)
     policy(S.spec, st, c, rows, el);
   }
   if (!result) result = { kind: 'strand', why: 'guard' };
@@ -1549,6 +1555,19 @@ function verdicts(r) {
   if (r.typical) {
     v.complete = { ok: res.kind === 'complete', name: 'the typical route completes (no strand, no trip)',
       note: res.kind + (res.step ? ' at step ' + res.step : '') + (res.why ? ': ' + res.why : '') + ' | ' + f(res.t_min) + ' plant-min | ' + rd(res.end) };
+    /* THE WAIT LINE'S NUMBER IS A MEASUREMENT (TMI-2 layman pass 3, V-1, 2026-10-15): it printed the replay's
+     * `hold` (step 8: 65 against 9.0). A step's authored `wait_est_s` must land within half of itself (60 s
+     * floor) of the typical route's own time, from step entry or, with `wait_est_from: 'cmd'`, from its command. */
+    var estOff = (r.steps || []).filter(function (st) {
+      if (st.est_s == null || st.t_done_min == null) return false;
+      var from = st.est_from === 'cmd' ? st.t_cmd_min : st.t0_min;
+      if (from == null) return true;
+      st.est_act_s = (st.t_done_min - from) * 60;
+      return Math.abs(st.est_act_s - st.est_s) > Math.max(0.5 * st.est_s, 60);
+    });
+    v.est = { ok: estOff.length === 0, name: 'every authored wait estimate (wait_est_s) matches the typical route',
+      note: estOff.length ? estOff.map(function (st) { return 'step ' + st.n + ' took ' + (st.est_act_s == null ? 'no command' : f(st.est_act_s / 60) + ' plant-min') + ' against an estimate of ' + f(st.est_s / 60); }).join('; ')
+        : (r.steps || []).filter(function (st) { return st.est_act_s != null; }).map(function (st) { return 'step ' + st.n + ' ' + f(st.est_act_s / 60) + '/' + f(st.est_s / 60); }).join(', ') || 'no estimates on this leg' };
     var over = (r.steps || []).filter(function (st) { return st.stated_max_min != null && !(st.dur_min <= st.stated_max_min); });
     v.stated = { ok: over.length === 0, name: 'every step with a stated time finishes inside it (the card number, on the player route)',
       note: over.length ? over.map(function (st) { return 'step ' + st.n + ' ' + f(st.dur_min) + ' plant-min against a stated ' + st.stated_max_min; }).join('; ') : 'none over' };
