@@ -5999,7 +5999,7 @@
          * revokes the block itself (the `overtaken`). Nothing on this panel is "lit": the button
          * goes red and reads RELEASE? (#670 operator pass 2, S-8). The block does not cover
          * containment pressure (#784). */
-        { text: 'Press TRIP BLOCKS on ROD CONTROL, then BLOCK on SI REACTOR TRIP. SI is safety injection.',   // V-5 (layman pass 3): SI was never spelled out
+        { text: 'Block safety injection (SI): press TRIP BLOCKS on ROD CONTROL, then BLOCK on SI REACTOR TRIP.',   // V-5 (layman pass 3): SI spelled out on first use, guide W3
           crew: true,
           control: 'Trip Blocks', target: 'SI REACTOR TRIP blocked — its button now reads RELEASE?',
           why: 'Low pressure can no longer start injection by itself.',   // quality pass 2026-10-14: 'High containment pressure still can' went false at a06c449c -- after the STOP reset no automatic signal restarts injection until P-4 clears (Manuals/03 §11)
@@ -6050,7 +6050,7 @@
           note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered. Injection stays off: after a reset it restarts only when you press START.',   // layman pass 2026-10-14 S-4; re-measured after a06c449c (SI held off until P-4 clears): no automatic restart on any route through 7 plant-h (typical, late, never-close-block-valve)
           /* THE KEEP-INJECTION ROUTE (step 6 overtaken). MEASURED 2026-10-14, routes gate keep_injection, seed 42:
            * injection on for the whole leg, core uncovered 0 % throughout (inventory minimum 78.3 %). */
-          route_alt: [{ overtaken: [6], note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered. Injection is still on.' }],
+          route_alt: [{ overtaken: [6], wait_est_s: 6, /* MEASURED 2026-10-15, routes gate keep_injection: 0.1 plant-min (already saturated at entry) */ note: 'The vessel drawing shows the water around the core, not all the water in the plant. The core is still covered. Injection is still on.' }],
           pair: true,
           story: { clock: '04:06:28', line: 'The pressurizer level goes off the top of its scale as the coolant reaches saturation.',
             saw: 'The level indicator went off the top of its scale, past 400 inches.',
@@ -6080,7 +6080,7 @@
             knew: 'The auxiliary pumps were running. Nobody had checked whether the water was getting past the valves.',
             did: 'An operator found the two block valves shut and opened them.' },
           cmd: { action: 'set_afw_block', open: true }, hold: 3900,
-          wait_est_s: 540, wait_est_from: 'cmd',   // MEASURED 2026-10-15, browser typical route: 541 / 540 s (9.0 plant-min) from the click, two runs
+          wait_est_s: 600, wait_est_from: 'cmd',   // MEASURED 2026-10-15, from the click: browser typical route 541 / 540 s (9.0 plant-min, two runs), routes gate typical 11.5 plant-min; 600 sits between
           acc: { p: 'sg_level_pct', op: '>', v: 5 },
           hl: ['AFW — Block Valve'], hl_watch: ['AFW', 'SG Level'] },
         /* 9 — 05:13:37. Old steps 15, 16 and 17. App. II.1 E99 (loop B), E111 (loop A), E119. ONE
@@ -6144,7 +6144,7 @@
            * at -50 °F is the plant's own proof the loop boiled down (inventory 22 % or less at the peg on every route
            * measured); on the routes that reach this step in time the row latches first, 30 plant-min before it. */
           accs: [{ p: 'core_inventory_pct', op: 'moves', dir: 'down', v: 10, window: 600, with: { p: 'pzr_level_pct', op: '>=', v: 90 }, implied_by: 'subcooling_c',
-                   label: 'RCS INVENTORY on the chart fell 10 points in 10 plant-minutes while PRESSURIZER LEVEL read 90 % or more' },   // S-1 residue (layman pass 3): past tense, true once latched (the level falls later); grading unchanged
+                   label: 'RCS INVENTORY on the chart drops 10 points within 10 plant-minutes, PRESSURIZER LEVEL at 90 % or more throughout' },   // S-1 residue (layman pass 3): a condition, true before the tick and after it (the level falls later); grading unchanged
                  { p: 'subcooling_c', op: '<=', v: -27.778, label: 'SUBCOOLING MARGIN pegged at -50 °F' },
                  { cmd: { action: 'set_rcp', running: false }, label: 'OFF pressed for the reactor coolant pumps' },
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'after OFF: the pump cavitation alarm clears' }],
@@ -6205,9 +6205,9 @@
           why: 'Injection puts the water back. With it off, RCS INVENTORY barely moves.',   // MEASURED 2026-10-14 (a06c449c): 21.6 -> 20.5 % over 80 plant-min with the block valve shut and injection off; nothing restarts it by itself. Early-close route (block_valve_early): 73.5 -> 75.7 % over 10 plant-min. Was 'stays near 20 %', false on that route (quality pass)
           wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. It takes about an hour and three-quarters of plant time to reach +10 °F.',   // RE-MEASURED 2026-10-14 after a06c449c (no self-restart): 103.5 / 105.1 plant-min (typical / 120 s late)
           // KEEP-INJECTION ROUTE. MEASURED 2026-10-14, seed 42: injection already on, the step done 2.5 plant-min after the press
-          route_alt: [{ overtaken: [6], wait_hint: 'Injection is already on here and SUBCOOLING MARGIN is high, so the step ticks once START is pressed.' },
+          route_alt: [{ overtaken: [6], wait_est_s: 150, wait_est_from: 'cmd',   /* MEASURED 2026-10-15, routes gate keep_injection: 2.5 plant-min from the press */ wait_hint: 'Injection is already on here and SUBCOOLING MARGIN is high, so the step ticks once START is pressed.' },
             // EARLY-CLOSE ROUTE. MEASURED 2026-10-14, block_valve_early, seed 42: step 11 done 45.0 plant-min after entry
-            { overtaken: [9], wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. Here it takes about three-quarters of an hour of plant time to reach +10 °F.' }],
+            { overtaken: [9], wait_est_s: 2580, wait_est_from: 'cmd',   /* MEASURED 2026-10-15, routes gate block_valve_early: 43.0 plant-min from the press */ wait_hint: 'Watch SUBCOOLING MARGIN, not the pressure. Here it takes about three-quarters of an hour of plant time to reach +10 °F.' }],
           story: { clock: '07:20:37', line: 'They start a makeup pump by hand.',
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',

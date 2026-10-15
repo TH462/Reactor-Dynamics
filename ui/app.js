@@ -3246,7 +3246,7 @@
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
   }
-  var budgetNote = null;   // the step a step-budget shortfall was seen on (V-3, below)
+  var budgetNote = { step: null, req: 0, since: 0, on: false, shown: 0 };   // the step-budget shortfall sentence's state (V-3, below)
   function syncWarpInfo(s) {
     var el = $('warpInfo');
     if (!el) return;
@@ -3344,15 +3344,24 @@
      * "actual 14×" was the only sign. Said only on a walkthrough step, in the play tier, when the
      * budget is what cut it (fewer steps done than asked) and under 0.9× of the request (the badge's
      * own amber line, #581). */
-    /* LATCHED per step while the shortfall stands, so one broadcast that finishes its steps does not
-     * blink the sentence off and on. */
+    /* HYSTERESIS AND A SETTLE DELAY (review of 8db64bb4): `achieved` is a smoothed figure, so right after a
+     * speed change or a resume it lags low. The sentence waits 4 s of wall after the request or the step
+     * changes, comes on below 0.85x with the budget cutting, and goes off only at 0.95x. The number shown is
+     * floored to 5 (50 above 100) and moves only on a change of a quarter or more, so 34-40x reads steadily. */
     var pcB = s.metadata && s.metadata.pacing, reqB = (s.metadata && s.metadata.time_acceleration) || 1;
-    var shortB = !!(actv && pcB && pcB.tier === 'play' && reqB > 1 && pcB.achieved != null && pcB.achieved < 0.9 * reqB);
-    if (!shortB || budgetNote !== cklNoteStepKey(s)) budgetNote = null;
-    if (shortB && pcB.steps_requested > 0 && pcB.steps_done < pcB.steps_requested) budgetNote = cklNoteStepKey(s);
-    if (budgetNote) {
-      var achB = pcB.achieved >= 100 ? Math.round(pcB.achieved / 10) * 10 : Math.max(1, Math.round(pcB.achieved));
-      text = (text ? text.replace(/\.?$/, '. ') : '') + 'This computer can only run the plant at about ' + achB + '× here.';
+    var keyB = cklNoteStepKey(s), nowW = Date.now();
+    var playB = !!(actv && pcB && pcB.tier === 'play' && reqB > 1 && pcB.achieved != null);
+    if (!playB || budgetNote.step !== keyB || budgetNote.req !== reqB) budgetNote = { step: keyB, req: reqB, since: nowW, on: false, shown: 0 };
+    if (playB) {
+      var achR = pcB.achieved;
+      if (budgetNote.on && achR >= 0.95 * reqB) budgetNote.on = false;
+      else if (!budgetNote.on && nowW - budgetNote.since >= 4000 && achR < 0.85 * reqB &&
+               pcB.steps_requested > 0 && pcB.steps_done < pcB.steps_requested) budgetNote.on = true;
+      if (budgetNote.on) {
+        var achF = achR >= 100 ? Math.floor(achR / 50) * 50 : Math.max(1, Math.floor(achR / 5) * 5);
+        if (!budgetNote.shown || Math.abs(achF - budgetNote.shown) >= 0.25 * budgetNote.shown) budgetNote.shown = achF;
+        text = (text ? text.replace(/\.?$/, '. ') : '') + 'This computer can only run the plant at about ' + budgetNote.shown + '× here.';
+      }
     }
     if (el.textContent !== text) el.textContent = text;
     el.hidden = !text;
@@ -4988,14 +4997,14 @@
                      : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours');
   }
   function cklWaitSpan(s, a, forBar) {
-    var st = a.st, est = st.wait_est_s;
+    var st = a.st, est = cklRouteField(st, a.ck, 'wait_est_s'), estFrom = cklRouteField(st, a.ck, 'wait_est_from');   // route-true (#670 route_alt)
     if (typeof est !== 'number' || !(est > 0)) return null;
     var now = (s && s.metadata && s.metadata.sim_time) || 0, key = a.ck.procedure_id + '#' + a.ck.step_index;
     if (cklEstAnchor.key !== key || now < cklEstAnchor.t0) cklEstAnchor = { key: key, t0: now, tc: null };
     if (a.ck.cmd_seen && cklEstAnchor.tc == null) cklEstAnchor.tc = now;
     if (!a.ck.cmd_seen) cklEstAnchor.tc = null;   // a rewind un-sees the command
     if (!forBar) return { text: cklSpanText(est), left: false };
-    var from = st.wait_est_from === 'cmd' ? cklEstAnchor.tc : cklEstAnchor.t0;
+    var from = estFrom === 'cmd' ? cklEstAnchor.tc : cklEstAnchor.t0;
     if (from == null) return { text: cklSpanText(est), left: false };
     var rem = est - (now - from);
     return rem > 0 ? { text: cklSpanText(rem), left: true } : null;
