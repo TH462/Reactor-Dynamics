@@ -2429,6 +2429,13 @@
         /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;
          * aw.blocked and the pzDrivers seats ride their own saved objects */
         scramBlocked: e.scramBlocked, runaway: e.runaway,
+        /* THE P-9 DEFEAT (#515) WAS NOT SAVED (TMI-2 layman pass 4 review, 2026-10-15): the
+         * `anticipatory_trip_failure` lever lives only here, so a Rewind into TMI-2 step 2 came
+         * back with the Failures tab still listing it and the plant without it — the reactor
+         * tripped WITH the turbine, pressure never reached the PORV, the stuck-open latch stayed
+         * armed and STEAM GENERATOR LEVEL climbed 60.8 -> 69 % instead of falling below 55 %, so
+         * Continue never lit. An old save lands on undefined: the healthy channel, as before. */
+        p9Defeated: e.p9Defeated,
         /* THE CASUALTY SEATS THAT READ NOTHING ELSE (#551, #671 — added on the #671 quality
          * pass, 2026-09-18; joined by `_lofwInjected` on #785 and `_afwFailureInjected` on #787,
          * both 2026-09-18). Every other row in `engineActiveFailures` is derived from plant

@@ -73,7 +73,8 @@ var LP_FORBID = ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high', 'sg_press
  * | stair{from,to,step,wait_s|read_s,bands:[{above,step,wait_s}]}. Any step may add `stated_max_min` (the card's own time: the
  * typical route's `stated` check fails past it), and
  * `repeat` (press its controls N times) and `rewind_after` (seconds into the step: press the
- * walkthrough's Rewind once) and `delay_s` (the player acts no sooner than this). */
+ * walkthrough's Rewind once) and `rewind_on_lit` (press Rewind instead of Continue the first time the
+ * step lights: back into the previous step) and `delay_s` (the player acts no sooner than this). */
 var ROUTES = {
   pwr_startup: {
     final: true,
@@ -427,6 +428,11 @@ var ROUTES = {
       { id: 'block_valve_early', kind: 'press early', at: '#9', override: { '#10': { policy: 'observe' } },
         set: { on: [{ ins: true, p: 'subcooling_margin', op: '<', v: -27.7, cmd: { action: 'set_rcp', running: false } },
                     { p: 'pressure_mpa', op: '>', v: 0, cmd: { action: 'close_block_valve' } }] } },
+      /* Rewind pressed on step 3's lit Continue, back into step 2 (TMI-2 layman pass 4 review, 2026-10-15): the
+       * restored plant must re-run step 2's event and light it. MEASURED before the fix (the P-9 defeat was not in
+       * the pwr2 save): STEAM GENERATOR LEVEL 60.8 -> 69 %, step 2 never lit, a strand; after, lit at 30.6 s as
+       * on the first pass. */
+      { id: 'rewind_3_to_2', kind: 'rewind back a step', at: '#3', set: { rewind_on_lit: true } },
     ],
   },
 };
@@ -1033,6 +1039,15 @@ function runJob(legId, routeId, mutId, ctx) {
     /* --- Continue -------------------------------------------------------------------- */
     if (c.awaiting_ack && (t() - S.ack0 >= ACK_S || (c.paused && ++S.pauseN > 20))) {
       if (st.pause_on_met) { out[k].pom = true; out[k].lit_adv_s = t() - S.ack0; }   // plant-s the clock ran while Continue was lit (S-1)
+      if (S.spec.rewind_on_lit && !rewound) {   // the player presses Rewind on the lit card instead of Continue
+        rewound = true; S.ack0 = null;
+        if (!c.rewind_ready) { flags.push({ kind: 'rewind_unavailable', step: k + 1 }); continue; }
+        var rl = send({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+        if (rl && rl.type === 'error') flags.push({ kind: 'rewind_refused', step: k + 1, why: rl.message });
+        if (!svc.running) svc.running = true;   // ui/app.js releases the walkthrough hold on Rewind
+        cur = -2;
+        continue;
+      }
       S.ack0 = null; send({ action: 'checklist_check', index: k });
       if (!svc.running) svc.running = true;   // a `pause` step stopped the clock (#694); ui/app.js releases it on Continue
       continue;

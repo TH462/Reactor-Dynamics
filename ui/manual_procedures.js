@@ -6161,6 +6161,7 @@
             knew: '"The condition to avoid at all costs is going solid." A pressurizer full of water leaves nowhere to control pressure from.',
             did: 'They throttled the injection valves, stopped a makeup pump and opened letdown to its high limit.' },
           cmd: { action: 'set_hpi', active: false }, hold: 90,
+          pause_on_met: true,   // review of layman pass 4: Continue left lit 60 plant-s and step 7 opened met (0.05 vs 1.1 plant-min)
           acc: { p: 'hpi_active', op: '<', v: 1 },
           /* THE PLAYER WHO KEEPS INJECTION ON (#670 Fable pass, 2026-10-14). MEASURED, live runtime, seed
            * 42, STOP never pressed: RCS INVENTORY 98 % at entry, 74 % at 30 plant-min, 25 % minimum; with
@@ -6225,7 +6226,7 @@
           crew: true,
           control: 'RCP ON/OFF', target: 'after OFF, the pump cavitation alarm clears',
           why: 'They are cavitating. Stopping them also removes the only thing stirring the core.',
-          wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale about an hour in. That is the reading to wait for before securing the pumps.',   // MEASURED 2026-10-14, live runtime: 61.0 / 63.8 / 67.7 plant-min (typical / slow / warp)
+          wait_hint: 'SUBCOOLING MARGIN reaches the bottom of its scale about an hour into the accident. That is the reading to wait for before securing the pumps.',   // MEASURED 2026-10-14, live runtime: 61.0 / 63.8 / 67.7 plant-min (typical / slow / warp)
           wait_first: true,   // the wait comes BEFORE the press — see cklActionPending (ui/app.js)
           /* THE CORE UNCOVERS ON THIS STEP, SO IT IS WATCHED AT 60x (layman pass 2026-10-14, S-1). At the
            * 600x rung `CklSpeedHint(3900)` gave it, the boil-down ran in about 5 s of wall time and a player

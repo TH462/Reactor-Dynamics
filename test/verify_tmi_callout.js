@@ -303,6 +303,19 @@ var BUB = '#instrCallout';
       await page.click(BUB + ' [data-ico-fwd="[data-ckl-check]"]').catch(function () {});
       var moved = await page.waitForFunction(function (k) { return RD.__dev.service().instructor.checklist.idx === k + 1; }, pIdx, { timeout: 8000 }).then(function () { return true; }).catch(function () { return false; });
       ck(tag + ': Continue clicked in the card advances a pause step (step ' + (pIdx + 1) + ')', pIdx >= 0 && moved);
+      /* PLAY ON A HELD STEP IS CONTINUE (review of the TMI-2 layman pass 4 fix, 2026-10-15): the play button
+       * used to run the clock under the held card with the hold still named (9.0 plant-s in 10 s at 1x on step 2).
+       * A fresh leg, so step 1's own #694 pause genuinely holds the clock; then Play.
+       * INJECTION (2026-10-15): the play handler's held-step branch deleted -> red (step 1 stays, the clock runs). */
+      await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });
+      await page.waitForTimeout(600);
+      await start(page, PROC);
+      var held = await page.waitForFunction(function () { var sv = RD.__dev.service(), c = sv.instructor.checklist; return c.idx === 0 && c.paused && !sv.running; }, null, { timeout: 8000 }).then(function () { return true; }).catch(function () { return false; });
+      await page.click('#playBtn').catch(function () {});
+      var movedP = await page.waitForFunction(function () { return RD.__dev.service().instructor.checklist.idx === 1; }, null, { timeout: 4000 }).then(function () { return true; }).catch(function () { return false; });
+      var pSt = await page.evaluate(function () { var sv = RD.__dev.service(), c = sv.instructor.checklist; return { idx: c.idx, paused: !!c.paused, run: sv.running }; });
+      ck(tag + ': Play pressed on a held step does what its Continue does (step 1 moves on, never a running clock under the held card)', held && movedP,
+         'held ' + held + ', ' + JSON.stringify(pSt));
       /* NO HOVER FADE (OWNER 2026-10-13: "they also shouldnt go clear when moused over"). The next
        * card is drawn under the pointer that pressed Continue; it must be solid at rest, while the
        * pointer moves on it, and after leaving and returning. */
