@@ -884,6 +884,39 @@ function pinChannel(ch) {
   ck('dev (pwr2): a wait_first step is paced from entry (the opt-out)', pw1.accel === 60, 'clock ' + pw1.accel + '×');
   await b.ctx.close();
 
+  /* ---- A CHART-LED STEP SAYS "WATCH THE CHART", NOT "NOTHING TO DO" (cooldown 4 review, 2026-10-15) ----
+   * The #warpInfo line auto prints when it raises the clock on a step with no generated wait line
+   * (`wait_hint: false`, as every substep-format step has). On a step carrying `pair` the card asks the
+   * player to WATCH two channels move (cooldown 4c), so the line must not say there is nothing to do.
+   * Two otherwise identical probes, one with `pair`, one without: the negative half keeps it non-vacuous.
+   * INJECTION (2026-10-15): the `pair` branch in syncWarpInfo removed -> the pair probe reads
+   * "nothing to do for a while" and this check goes red. */
+  async function watchLine(withPair) {
+    b = await build('dev', WT2 + '&run=1&dev=1');
+    await b.page.evaluate(function (wp) {
+      var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_watch'; });
+      window.RD.MANUAL_PROCEDURES.pwr2 = P;
+      var st = { text: 'Watch the two readings move.', control: '(observe)', hold: 600, wait_first: true, wait_hint: false,
+                 wait_speed: 60, cmd: { action: 'set_pressure_setpoint', mpa: 15.41 },
+                 accs: [{ p: 'power_pct', op: '<', v: -1, label: 'the wait' }] };
+      if (wp) st.pair = ['tavg', 'pressure'];
+      P.push({ id: 'zz_pace_watch', category: 'control', manual_ref: 'ZZ-11', title: 'Watch-line probe',
+               purpose: 'Speed-line fixture.', from: 'hot_full_power', steps: [st] });
+    }, withPair);
+    await openManualProcs(b.page).catch(function () {});
+    await b.page.click('#manualContent [data-checklist="zz_pace_watch"]', { timeout: 4000 }).catch(function () {});
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+    await b.page.waitForTimeout(1800);
+    var r = await paceRead();
+    await b.ctx.close();
+    return r;
+  }
+  var pwP = await watchLine(true), pwN = await watchLine(false);
+  ck('dev (pwr2): auto speeding up on a chart-led step (`pair`) says "watch the chart"; without `pair` it still says "nothing to do"',
+    pwP.accel === 60 && /Speeding up to 60× — watch the chart\./.test(pwP.info) && !/nothing to do/.test(pwP.info) &&
+    pwN.accel === 60 && /Speeding up to 60× — nothing to do for a while\./.test(pwN.info),
+    'pair: ' + pwP.accel + '× "' + pwP.info + '" | no pair: ' + pwN.accel + '× "' + pwN.info + '"');
+
   /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
    * the pwr_startup reconcile). The two synthetic probes above each read ONE substep from the first
    * paint; neither proves auto acts AGAIN when the player moves from one substep to the next inside

@@ -4690,7 +4690,7 @@
     if (!st || !s || !IL || !IL.gradedInstrument) return out;
     (st.accs || []).forEach(function (e) {
       if (!e || e.op !== 'moves') return;
-      [e.p, e.with && e.with.p].forEach(function (p) { var iid = p ? IL.gradedInstrument(s, p) : null; if (iid) out[iid] = true; });
+      [e.p, e.with && e.with.p].forEach(function (p) { var iid = p ? IL.gradedInstrument(s, p) : null; if (iid) out[iid] = Math.max(out[iid] || 0, e.window > 0 ? e.window : 1); });   /* value = the row's window (plant s): cklPairSeries' direction span */
     });
     return out;
   }
@@ -4700,6 +4700,12 @@
     steam_p: 'STEAM PRESS', power: 'REACTOR POWER', sur: 'STARTUP RATE', pzr_level: 'PRESSURIZER LEVEL',
     inventory: 'RCS INVENTORY', dump_valve: 'STEAM DUMP' };
   var cklSerHist = { gk: null, rows: [], dir: {} };
+  /* THE DIRECTION WORD IS TAKEN OVER A FIXED PLANT-TIME SPAN (lower power 2 / cooldown 4 reviews, 2026-10-15), not
+   * against the previous broadcast: at 600x broadcasts land 43-60 plant-s apart, and cooldown's STEAM PRESS (15 psi
+   * per 600 s, band 3.6 psi) read 'steady' in 44 % of samples while falling. A series a `moves` row grades (either
+   * side) uses THAT row's window, so the word agrees with the tick beside it; any other series CKL_PAIR_SPAN_S. The
+   * value at the span's trailing edge is interpolated; until the history reaches it, the oldest sample (>= 5 s). */
+  var CKL_PAIR_SPAN_S = 60;
   function cklPairSeries(s, gk, ids, st) {
     if (!s || ids.length < 2) return null;
     var sers = [seriesById(ids[0]), seriesById(ids[1])];
@@ -4722,11 +4728,20 @@
     var H = cklSerHist.rows;
     if (H.length && t < H[H.length - 1].t) { H.length = 0; cklSerHist.dir = {}; }
     if (!H.length || t > H[H.length - 1].t) H.push({ t: t, v: vals });
-    while (H.length > 2 && t - H[1].t >= 30) H.shift();
+    var span = [0, 1].map(function (k) { return (sers[k].instr && gIns[sers[k].instr]) || CKL_PAIR_SPAN_S; });
+    var spanMax = Math.max(span[0], span[1]);
+    while (H.length > 2 && t - H[1].t >= spanMax) H.shift();
+    function baseAt(k) {   // the reading `span[k]` plant-s ago, interpolated; the oldest sample while the history is shorter
+      var te = t - span[k], i0 = -1;
+      for (var i = 0; i < H.length; i++) if (H[i].t <= te) i0 = i;
+      if (i0 < 0 || i0 >= H.length - 1) return H[Math.max(0, i0)].v[k];
+      var a = H[i0], b = H[i0 + 1], f = (b.t > a.t) ? (te - a.t) / (b.t - a.t) : 0;
+      return a.v[k] + (b.v[k] - a.v[k]) * f;
+    }
     return [0, 1].map(function (k) {
       var ser = sers[k], o = H[0];
       if (o && t - o.t >= 5) {
-        var r = serRange(ser), band = Math.abs(r[1] - r[0]) * 0.0025, d = vals[k] - o.v[k];
+        var r = serRange(ser), band = Math.abs(r[1] - r[0]) * 0.0025, d = vals[k] - baseAt(k);
         cklSerHist.dir[k] = d > band ? 'rising' : d < -band ? 'falling' : 'steady';
       }
       var txt;
@@ -7405,6 +7420,12 @@
       var last = ck.complete ? pr.steps.length - 1 : Math.min(ck.step_index, pr.steps.length - 1);
       for (var k = 0; k <= last; k++) { if (pr.steps[k].trend) tr = pr.steps[k].trend; if (pr.steps[k].window) win = pr.steps[k].window; }
     }
+    /* THE ACTIVE STEP'S `pair: [a, b]` OWNS THE TOP TWO LANES (lower power 2 review, 2026-10-15): drawChart never
+     * demotes a pair series to a numeric row while another can go, and stacks the pair first, in pair order. MEASURED,
+     * Edge 1600x1000: two lanes fit, so lower power 2's Tavg and raise power 4's TAVG / TREF drew no trace. */
+    var stNow = pr && pr.steps && !ck.complete ? pr.steps[Math.min(ck.step_index, pr.steps.length - 1)] : null;
+    var pairNow = stNow && Array.isArray(stNow.pair) ? stNow.pair.slice(0, 2) : null;
+    if (String(pairNow) !== String(cklChart.pair || null)) { cklChart.pair = pairNow; if (tr || win) instrTrendRedraw(); }
     if (!tr && !win) { if (cklChart.saved) restoreCklChart(); return; }
     var key = pr.id + '|' + (tr || []).join(',') + '|' + win;
     if (key === cklChart.key) return;
@@ -9291,13 +9312,19 @@
     var order = pinOrder();
     var demoted = {};
     if (split.rows > 0) {
-      var over = split.rows;
-      for (var oi = order.length - 1; oi >= 0 && over > 0; oi--) {
-        if (!ui.series[order[oi]]) continue;
-        demoted[order[oi]] = true; over--;
-      }
+      var over = split.rows, keepPair = {};
+      (cklChart.pair || []).forEach(function (id) { keepPair[id] = true; });   // the active walkthrough step's pair (applyCklChart)
+      for (var pass = 0; pass < 2 && over > 0; pass++)   // pass 0 spares the pair; pass 1 only if the floor still needs it
+        for (var oi = order.length - 1; oi >= 0 && over > 0; oi--) {
+          if (!ui.series[order[oi]] || demoted[order[oi]] || (pass === 0 && keepPair[order[oi]])) continue;
+          demoted[order[oi]] = true; over--;
+        }
     }
     var traced = active.filter(function (s) { return !demoted[s.id]; });
+    if (cklChart.pair) {   // the pair stacks on top, in pair order, so its two traces sit adjacent
+      var pRank = function (s) { var i = cklChart.pair.indexOf(s.id); return i < 0 ? 99 : i; };
+      traced = traced.map(function (s, i) { return [s, i]; }).sort(function (a, b) { return (pRank(a[0]) - pRank(b[0])) || (a[1] - b[1]); }).map(function (x) { return x[0]; });
+    }
     var numeric = active.filter(function (s) { return demoted[s.id]; });
     var N = traced.length;
     var lastY = [], laneChrome = [], numRows = [];

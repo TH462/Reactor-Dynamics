@@ -130,6 +130,14 @@ contrast those tiers should carry.
 > ≥ 75 MWe, where the dump is shut** — hence 80 MWe, five megawatts clear of the boundary. The
 > dump behaviour itself is filed as **#489** and is not settled here.
 >
+> **Lineup note (record, not a ruling change; measured 2026-10-15, routes harness, `pwr_lower_power`
+> step 2, seed 42):** the A1 row above stands for the free-play lineup it names. The load-rampdown
+> walkthrough runs a different one — the steam dump is in **TAVG** mode from Mode 3 to Mode 1 step
+> 14c — and there the dump **opens at the 80 MWe cut** (39 % about 200 s into the step, about 40 % at
+> 75 MWe, shut again by about 500 s), power climbs back 83.8 → 88.6 % while Tavg falls, and power
+> settles about **73 % at 75 MWe** once the rods bring Tavg down. That walkthrough therefore grades
+> *power follows load* on the first plant-minute after a cut, where the dump is still shut.
+>
 > **Three other numbers on this page were stale the same way** and were re-measured rather than
 > carried: A9's divergence (the row claimed −2.45 % against a ±0.6 % band; the band measures
 > **±1.0 %** and the A1 drop yields only ~−0.5 %, *inside* it — so A9 moved to a turbine trip and
