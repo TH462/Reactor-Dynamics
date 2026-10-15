@@ -168,14 +168,14 @@
   <details class="log-entry" open>
     <summary class="log-head">
       <h2>Opener help, quieter board, consistent buttons</h2>
-      <span class="log-ver mono">Alpha 1.8.4-rc5</span>
+      <span class="log-ver mono">Alpha 1.8.4-rc6</span>
       <time class="log-date mono" datetime="2026-10-15">15 October 2026</time>
     </summary>
     <ul>
       <li><span class="log-tag added">Added</span><strong>Full-power opener help.</strong> Every ask has a Show me button that does the step for you; hints come about 30 s after an ask; an early reactor trip offers Restart or an explanation.</li>
       <li><span class="log-tag added">Added</span><strong>Instructor cards.</strong> Settings option to show instructor steps as small cards pointing at the board; cards stay solid under the pointer.</li>
-      <li><span class="log-tag changed">Changed</span><strong>Walkthroughs grade plant relationships.</strong> Heatup, power ascension, load rampdown and cooldown each check one coupling on a preset chart, such as AVG COOLANT TEMPERATURE lagging TREF as load rises. Wait times are measured; the speed line says when to watch the chart and when this computer cannot keep up.</li>
-      <li><span class="log-tag changed">Changed</span><strong>Alarm strip.</strong> Folds away when no alarm is up, giving the board more room.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Walkthroughs grade plant relationships.</strong> Heatup, power ascension, load rampdown and cooldown each check one coupling on a preset chart, such as AVG COOLANT TEMPERATURE lagging TREF as load rises. Wait times are measured; the speed line says when to watch the chart, when the clock is held for Continue, and when this computer cannot keep up. Startup: the last rod pull before criticality runs at SLOW, so it no longer trips the reactor; Play on a paused step continues it.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Alarm strip.</strong> Folds away when no alarm is up, giving the board more room; it waits for the pointer to leave the board before folding.</li>
       <li><span class="log-tag added">Added</span><strong>Hover help.</strong> Control descriptions appear beside the pointer; the board shows PAUSED when the clock is stopped.</li>
       <li><span class="log-tag changed">Changed</span><strong>Board labels.</strong> Temperatures read °F; Charging reads MANUAL; Letdown and Atmospheric Dump read CLOSE.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>Small targets.</strong> Number-box step arrows are easier to hit; the chart window fits its data.</li>
