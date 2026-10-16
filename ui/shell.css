@@ -252,8 +252,12 @@ body {
     grid-template-rows: minmax(0, 1fr);
     grid-template-areas: "diagram";
   }
-  /* stack chart above alarms rather than squeezing both into a narrow row */
-  .app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 auto; flex-direction: column; }
+  /* stack chart above alarms rather than squeezing both into a narrow row. ONE height in both alarm
+     states (review 2026-10-15): `auto` collapsed the row to its 150 px floor, two chart lanes, once the
+     quiet rule stopped forcing 176 px. 176 px is THREE 36 px lanes (LANE_FLOOR_PX); the splitters are
+     hidden at this width, so nothing else writes the variable here. */
+  .app.pwr-synoptic { --bottomrow-h: 176px; }
+  .app.pwr-synoptic .plant-area > .bottom-row { flex: 0 0 var(--bottomrow-h); flex-direction: column; }
   /* (the 1/M dock used to be pinned here — it left the bottom row for the right-hand column,
      #724 item 7; its narrow-screen rule now lives with the dock itself, below.) */
 }

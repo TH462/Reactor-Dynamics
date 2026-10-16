@@ -723,6 +723,54 @@ function pinChannel(ch) {
     'auto ' + lg0 + '×, player pressed 1× -> ' + ov0 + '×, row A met ' + ov1.met0 + ' -> ' + ov1.accel + '×');
   await b.ctx.close();
 
+  /* ---- ...AND THE SAME ON A STEP THAT DOES AUTHOR A PER-ROW RUNG, FOR THE ROWS THAT DO NOT (review,
+   * 2026-10-15). TMI-2 step 9 gained `wait_speed: 1` on its OFF row, which keyed every head of the
+   * step by index: RCS INVENTORY latching (head 0 -> 1, same wanted rung) changed the key and auto
+   * re-forced the step's 60x over the player's speed. Fixture: step 10×, rows A and B with no rung,
+   * row C 1×. The player presses 5×, A ticks: the clock must stay 5×. Then B ticks, C is the head and
+   * carries its own rung: the clock must go to 1× (the rung row still acts). INJECTION-PROVEN: the
+   * old key (`'|s' + head` on every head) reds the first half at 10×. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_rowrung'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_rowrung', category: 'control', manual_ref: 'ZZ-09',
+             title: 'Pacing row-rung probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A three-row step, the last row with a rung of its own.', control: '(observe)',
+                       wait_speed: 10,
+                       accs: [
+                         { p: 'power_pct', op: '<', v: -1, label: 'A not met yet' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met yet' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'C not met', wait_speed: 1 }
+                       ] }] });
+  });
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_rowrung"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var rr0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var btn = document.querySelector('#speed [data-speed="5"]'); if (btn) btn.click();
+  });
+  await b.page.waitForTimeout(1500);
+  var rr1 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+  });
+  await b.page.waitForTimeout(2000);
+  var rr2 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    if (c.accsState && c.accsState[1]) c.accsState[1].met = true;
+  });
+  await b.page.waitForTimeout(2000);
+  var rr3 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  ck('dev (pwr2): on a step with a per-row rung, a row without one ticking keeps the player\'s override; the rung row still acts',
+    rr0 === 10 && rr1 === 5 && rr2 === 5 && rr3 === 1,
+    'auto ' + rr0 + '×, player pressed 5× -> ' + rr1 + '×, row A met -> ' + rr2 + '× (want 5), row B met, row C (1×) head -> ' + rr3 + '× (want 1)');
+  await b.ctx.close();
+
   /* ---- A TAP ON A LATCHED TAP-AND-WAIT STEP DOES NOT HAND THE CLOCK BACK (2026-09-23 layman
    * playtest S-1). `pwr_startup` 9a is a `stopped` row; before `latch` every tap 9b asks for
    * un-ticked it, the active substep fell back to 9a and auto forced its 1× over 9b's 10× wait.

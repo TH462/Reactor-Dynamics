@@ -761,12 +761,12 @@
         // and because the chart picks its side by mode (physics in Teaching, instruments in
         // Realistic), plotting this in Realistic shows the operator exactly the lie TMI-2's
         // control room was shown for two hours and twenty minutes.
-        // AUTHORED hint, overriding the manual's own first sentence. `measures` opens with
-        // "Relief-valve indicator." and only says the load-bearing part — that the light shows
-        // the COMMANDED position — in its second sentence, which the summary tier drops. On
-        // every other row losing the tail is fine; on this one the tail is the whole lesson.
+        // AUTHORED hint, overriding the manual's own first sentence (`measures` opens with
+        // "Relief-valve indicator.", i.e. the LIGHT). The hint describes what the LANE DRAWS: in
+        // Learning mode (`chartTruth`, the only mode built) that is `tru`, the valve's true
+        // position, not the light (review 2026-10-15: the old hint called the lane the light).
         { id: 'porv',     instr: 'porv_indicator', grp: 'Pressure boundary', label: 'PORV Open', c: '#e08050',
-          hint: 'the relief-valve position LIGHT, which shows the commanded position and not the valve.',
+          hint: 'the relief valve itself, open or shut. The relief-valve light on the board shows the commanded position, so a stuck-open valve reads OPEN here beside a CLOSED light.',
           get: function (i) { return i.porv_indicator === 'open' ? 1 : 0; }, tru: function (t) { return t.porv_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'OPEN' : 'shut'; } },
         // NO SERIES for `block_valve_open`, `porv_stuck` or `spray_stuck`, deliberately. All
         // three are true-state-only, so they are absent from the Indications list by its own
@@ -5326,8 +5326,23 @@
      * the "exact key it always did" claim above was false for every other walkthrough. */
     var subRungs = !!a.st.accs && a.st.accs.some(function (e) { return e && +e.wait_speed > 0; });
     var head = subRungs ? cklActiveAccsHead(a.st, a.ck) : -1;
+    /* ...AND EVEN THERE, ONLY A ROW THAT CARRIES ITS OWN RUNG GETS ITS OWN KEY (review, 2026-10-15).
+     * Keyed `|s<head>` on every head of such a step, TMI-2 step 9 (a 60x step with one 1x OFF row)
+     * changed key when RCS INVENTORY latched and the head moved 0 -> 1 at the same wanted 60x, so
+     * auto re-forced 60x over the player's speed. A head without its own rung is keyed by the
+     * SEGMENT it sits in, counted in rung rows before it (`|step`, then `|step@k`): a row ticking
+     * inside a segment keeps the override, and the rows after a rung row are a new moment. */
+    var suffix = '';
+    if (subRungs) {
+      if (head >= 0 && +a.st.accs[head].wait_speed > 0) suffix = '|s' + head;
+      else {
+        var seg = 0, end = head >= 0 ? head : a.st.accs.length;
+        for (var k = 0; k < end; k++) if (a.st.accs[k] && +a.st.accs[k].wait_speed > 0) seg++;
+        suffix = '|step' + (seg ? '@' + seg : '');
+      }
+    }
     return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
-           (head >= 0 ? '|s' + head : '') +
+           suffix +
            ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
   }
   function cklAutoKey(s) {
@@ -5995,7 +6010,8 @@
        * with the 1/M table (a Clear, a rewind) while `met` need not move. */
       /* ...and so does a `below_1m` row's prediction and reading (quality pass, 2026-09-24): the
        * "past the mark" line below appears when the rods step past prediction-minus-N while
-       * `met` stays 0. Only a `below_1m` row carries a non-null `pred_1m`. */
+       * `met` stays 0. A `below_1m` or `reach_1m` row carries a non-null `pred_1m` (the latter
+       * since develop-k; it also draws 10a's `ask_1m` stop, so a moved prediction must repaint). */
       (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.overtaken ? 4 : a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
         (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : '') + cklProgKey(a); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
