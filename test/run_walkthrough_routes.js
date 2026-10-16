@@ -110,7 +110,7 @@ var ROUTES = {
       /* #13 (#808) the feed transfer runs the DEFAULT policy: the step's own entry press (50 gpm in SG
        * FEED RATE), then each row's press as it goes live — AUTO once level reads 60 %, then aux feed STOP */
       '#13': { policy: 'feed_fill' },
-      '#14': { policy: 'pulses', k: 2, rate_le: 99, until_p: 5.05, peak: true, dwell: 60, stated_max_min: 4 },   // "tap WITHDRAW twice, then wait one plant-minute ... repeat until above 5 %" (layman pass 14 S-1: the +0.10 cue never fired for a player who waited out each pull; about 4 pulls, 3 to 4 plant-min)
+      '#14': { policy: 'pulses', k: 2, rate_le: 99, until_p: 5.05, peak: true, dwell: 60, stated_max_min: 5 },   // "tap WITHDRAW twice, then wait one plant-minute ... repeat until above 5 %" (layman pass 14 S-1: the +0.10 cue never fired for a player who waited out each pull; about 4 pulls, 3 to 5 plant-min; MEASURED 2026-10-15 rc6: 3.9-4.1, seeds 42/7/1, typical + chain, so 4 sat on the platform-math edge)
       '#15': { policy: 'seq', cmds: [{ action: 'latch_turbine' }, { action: 'set_load_target', mwe: 10 }] },   // 15a, 15b; 15c's AUTO pressed when its row is live
       '#16': { policy: 'block_when', p: 8.5, trip_id: 'ir_high', param: 'ir_high_blocked' },   // 16a at 8.5 % (pass-13 review item 3): the block must HOLD from there
     },

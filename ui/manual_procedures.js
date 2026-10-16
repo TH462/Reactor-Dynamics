@@ -4035,7 +4035,7 @@
            * +45 s, `>= 5.05` at +47 s; the step ends at 10.57 %. Two plant-seconds. */
           accs: [{ p: 'power_pct', op: '>=', v: 5.05,
                    ask: 'Press SLOW. Tap WITHDRAW twice (2 steps), then wait one plant-minute while STARTUP RATE rises and falls back. Repeat until REACTOR POWER reads above 5 %.',
-                   note: 'Expect about 4 pulls over 3 to 4 plant-minutes.',
+                   note: 'Expect about 4 pulls over 3 to 5 plant-minutes.',
                    wait_speed: 5, label: 'REACTOR POWER above 5 %' }],
           hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Intermediate Range', 'Control Rod Position'] },
         /* "MWe", NOT HIS "MW" (2026-09-25): his 14b and 17b write a bare "MW", and N6
