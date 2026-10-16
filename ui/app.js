@@ -3072,47 +3072,21 @@
     return 'T+' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
   }
   /* QUIET-BOARD LAYOUT (quick win 1, owner 2026-10-10: "more intuitive and easier"). With no alarm
-   * up, the alarm panel is a one-line strip under a shorter chart and the board takes the height
-   * (CSS: .alarms-quiet). LAYOUT ONLY -- the alarm list and its behaviour are untouched (#822).
-   * The first alarm expands it at once; collapsing waits ALARM_QUIET_HOLD_MS of continuous quiet so a
-   * chattering alarm cannot make the board resize every second. A pinned (dragged) strip height is
-   * the operator's and is never collapsed. */
+   * up, the alarm panel folds to a one-line strip over the chart's legend corner and the chart takes
+   * the row's width (CSS: .alarms-quiet). LAYOUT ONLY -- the alarm list and its behaviour are untouched
+   * (#822). The first alarm expands it at once; folding waits ALARM_QUIET_HOLD_MS of continuous quiet
+   * so a chattering alarm cannot flip the strip every second. THE BOARD NEVER MOVES (cycle layman pass
+   * S-1, 2026-10-15): the row keeps its height in both states, so the pointer deferral that used to
+   * hold the fold while the pointer was on the board is gone -- there is no board movement to defer. */
   var ALARM_QUIET_HOLD_MS = 8000, alarmQuietSince = -1e9, alarmQuietOn = null;
   function updateAlarmQuiet(activeCount) {
     var app = document.querySelector('.app.pwr-synoptic');
     if (!app) return;
-    alarmQuietLast = activeCount;
     var t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     if (activeCount) alarmQuietSince = null;
     else if (alarmQuietSince == null) alarmQuietSince = t;
-    var pinned = !!app.style.getPropertyValue('--bottomrow-h');
-    var want = !pinned && alarmQuietSince != null && (t - alarmQuietSince) >= ALARM_QUIET_HOLD_MS;
-    /* NOT UNDER THE POINTER (cycle layman pass S-2, 2026-10-15): each flip reflows and rescales the
-     * board -- MEASURED 27 px at 1600x1000, up to 45 px vertical / 87 px horizontal at 1366x768 and
-     * 1920x1080 -- so a control the player is about to click moved. While the pointer is over the
-     * board (.plant-area) or a button is held, the FOLD waits; it lands on the pointer leaving the
-     * board or the button coming up (alarmQuietPointer below). THE EXPAND NEVER WAITS (quality pass,
-     * 2026-10-15): deferring it kept a CRITICAL (pressurizer pressure very low, trip + SI) folded for
-     * 30 s under a parked pointer, so a new alarm moves the board once, at once -- accepted. The first
-     * state is applied at once. */
-    if (want && !alarmQuietOn && alarmQuietOn !== null && (alarmQuietPtr.over || alarmQuietPtr.down)) return;
+    var want = alarmQuietSince != null && (t - alarmQuietSince) >= ALARM_QUIET_HOLD_MS;
     if (want !== alarmQuietOn) { alarmQuietOn = want; app.classList.toggle('alarms-quiet', want); }
-  }
-  var alarmQuietPtr = { over: false, down: false };
-  function alarmQuietPointer(e) {
-    if (e.type === 'pointerdown') alarmQuietPtr.down = true;
-    else if (e.type === 'pointerup' || e.type === 'pointercancel') alarmQuietPtr.down = false;
-    if (e.type !== 'pointerup' && e.type !== 'pointercancel') {
-      var tg = e.type === 'pointerout' ? e.relatedTarget : e.target;
-      alarmQuietPtr.over = !!(tg && tg.closest && tg.closest('.plant-area'));
-    }
-    if (!alarmQuietPtr.over && !alarmQuietPtr.down) updateAlarmQuiet(alarmQuietLast);
-  }
-  var alarmQuietLast = 0;
-  if (typeof document !== 'undefined' && document.addEventListener) {
-    ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'pointercancel'].forEach(function (ev) {
-      document.addEventListener(ev, alarmQuietPointer, true);
-    });
   }
   function renderAlarms(s) {
     var stack = $('alarmStack');
@@ -4869,7 +4843,7 @@
     if (overTxt) b += '<div class="ico-tip ico-over">' + mesc(overTxt) + '</div>';
     var stNote = cklRouteField(st, ck, 'note');
     if (stNote) b += '<div class="ico-tip">' + mesc(stNote) + '</div>';
-    var rows = (st.accs || []).map(function (en, k) { var v = (ck.accs && ck.accs[k]) || {}; return { en: en, met: !!v.met, implied: !!(v.met && v.implied), overtaken: !!(v.met && v.overtaken) }; })
+    var rows = (st.accs || []).map(function (en, k) { var v = (ck.accs && ck.accs[k]) || {}; return { en: en, av: v, met: !!v.met, implied: !!(v.met && v.implied), overtaken: !!(v.met && v.overtaken) }; })
       .filter(function (r) { return !r.en.hidden && !r.en.cont; });
     if (rows.length > 1) {
       b += rows.map(function (r) {
@@ -4883,7 +4857,7 @@
         if (r.implied) return '<div class="ico-crit met implied">↳ ' + mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) +
           '<div class="ico-impl">Covered by ' + mesc(impliedSay(st, r.en, idx + 1, true)) + ' — not checked on its own.</div></div>';
         return '<div class="ico-crit' + (r.met ? ' met' : '') + '">' + (r.met ? '✓ ' : '○ ') +
-          mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
+          mesc(cklAskText(r.en, r.av) || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
       }).join('');
     }
     /* THE STEP'S OWN `wait_hint` RIDES WITH THE WAIT LINE (TMI-2 layman pass 4, S-2): the card built
@@ -5935,6 +5909,17 @@
    * player watching SOURCE RANGE sit on 7.0e2 saw a dark row and no reason. This prints the count
    * the runtime is keeping (`prog`, InstructorLayer.holdProgress: plant-seconds off the grader's own
    * bag) and says so when it starts again. Unmet rows only; a met row has nothing left to count. */
+  /* A ROW'S ACTION LINE. `ask_1m` (pwr_startup 10a, layman chain pass 2 S-3, 2026-10-15) is the ask with the
+   * 1/M stop written in as a number: drawn when the runtime has a prediction for the row (`pred_1m`, never
+   * re-derived here), with {stop} = prediction minus the row's `reach_1m` margin rounded down and {pred} = the
+   * prediction. No prediction: the plain `ask`, which says to work it out. */
+  function cklAskText(en, av) {
+    if (en && en.ask_1m && av && typeof av.pred_1m === 'number' && en.reach_1m != null) {
+      var pr = av.pred_1m, stop = pr - Math.floor(en.reach_1m);
+      return en.ask_1m.replace('{stop}', String(stop)).replace('{pred}', String(pr));
+    }
+    return en ? en.ask : '';
+  }
   function cklProgLine(en, av) {
     var p = av && av.prog;
     if (!p || av.met || !(p.need > 0)) return '';
@@ -6395,7 +6380,7 @@
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
                * and an unescaped insert would swallow the rest of the line as a tag. */
-              (av.met ? (av.overtaken ? '↳ ' : '✓ ') : ordWait ? '· ' : '○ ') + mesc(en.ask || enTxt) +   /* overtaken: never a plain tick */
+              (av.met ? (av.overtaken ? '↳ ' : '✓ ') : ordWait ? '· ' : '○ ') + mesc(cklAskText(en, av) || enTxt) +   /* overtaken: never a plain tick */
               /* BOTH THE ASK AND THE DONE-WHEN, when the entry carries an instruction: the
                * player needs to know what to do AND what the sim is waiting for. Quieter, on
                * its own line, so the imperative is what the eye lands on. Not on a row that is

@@ -834,12 +834,17 @@ button.armed { background: #3a1618 !important; color: #ff9d9d !important; border
   grid-column: 1 / -1;
 }
 /* QUIET BOARD (quick win 1): no alarm up -> the alarm panel becomes a one-line strip laid over the
-   chart's (always empty) legend corner, the row shrinks to the chart alone, and the board takes the
-   height. The chart keeps THREE 36 px lanes (LANE_FLOOR_PX) -- any shorter and the default channels
-   demote to numeric rows. app.js toggles .alarms-quiet (8 s of quiet to collapse, instant expand;
-   never when the operator has dragged the strip, never with the side panel hidden). */
+   chart's (always empty) legend corner and the CHART takes the row's whole width. app.js toggles
+   .alarms-quiet (8 s of quiet to fold, instant expand; never with the side panel hidden).
+   THE ROW KEEPS ITS HEIGHT (cycle layman pass S-1, 2026-10-15). This rule used to shrink the row to
+   176 px so the board took the height -- and every fold/expand then reflowed and RESCALED the board,
+   MEASURED 27 px at 1600x1000 and up to 45 px vertical / 87 px horizontal at 1366x768 and 1920x1080,
+   so a click aimed a second earlier landed on a card header. Deferring the fold while the pointer was
+   on the board did not stop it (the expand cannot wait). The board's size is now independent of the
+   alarm strip: the row is --bottomrow-h in both states, the board keeps the expanded-state room it
+   always had with an alarm up, and the fold hands the freed width to the chart. */
 .app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .plant-area > .bottom-row {
-  flex: 0 0 var(--bottomrow-quiet-h, 176px); min-height: 0; position: relative;
+  position: relative;
 }
 .app.pwr-synoptic.alarms-quiet:not(.sim-hidden) .plant-area > .bottom-row > .alarm-panel {
   position: absolute; left: 9px; top: 7px; z-index: 3; height: 22px; width: auto; max-width: calc(100% - 330px);

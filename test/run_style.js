@@ -154,7 +154,7 @@ function stepFields(s, fields) {
      * not an imperative. */
     if (f === 'accs') {
       (s.step.accs || []).forEach(function (a) {
-        ['ask', 'label', 'note', 'speed_text'].forEach(function (k) { if (typeof a[k] === 'string') out.push(a[k]); });
+        ['ask', 'ask_1m', 'label', 'note', 'speed_text'].forEach(function (k) { if (typeof a[k] === 'string') out.push(a[k]); });
       });
       return;
     }
@@ -375,6 +375,7 @@ var CHECKS = [
         (s.step.accs || []).forEach(function (a, j) {
           chk(s.proc + ' step ' + s.n + '.accs' + j, a.label);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.ask', a.ask);
+          chk(s.proc + ' step ' + s.n + '.accs' + j + '.ask_1m', a.ask_1m);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.note', a.note);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.speed_text', a.speed_text);
         });

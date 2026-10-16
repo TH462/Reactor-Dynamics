@@ -500,6 +500,10 @@ var BUB = '#instrCallout';
    * the authoring. Anti-vacuity: at least one series is demoted (else every series traces and this proves nothing).
    * INJECTION (2026-10-15): the `keepPair` spare in drawChart removed -> lanes [power, mwe], red. */
   var Lp = await session({ width: 1600, height: 1000 });
+  /* THE STRIP IS DRAGGED SHORT (polish batch, 2026-10-15): the alarm strip no longer shrinks the row when quiet (the board
+   * must not move), so the row is 230 px in both states and all four series trace -- which voided the anti-vacuity. The
+   * player's own drag (the pinned --bottomrow-h) to 176 px (the old quiet row height; 150 fits one lane, 190 three) puts the strip back where two lanes fit. */
+  await Lp.page.evaluate(function () { document.querySelector('.app.pwr-synoptic').style.setProperty('--bottomrow-h', '176px'); });
   await Lp.page.evaluate(function () { RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === 'pwr_lower_power'; })[0].steps[1].trend = ['mwe', 'power', 'tavg', 'dump_valve']; });
   await start(Lp.page, 'pwr_lower_power');
   await jump(Lp.page, 1);
