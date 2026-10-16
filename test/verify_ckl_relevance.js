@@ -1128,6 +1128,127 @@ function readMenu(page) {
          JSON.stringify(near.past));
     })();
 
+    /* THE 10a STOP AS A NUMBER, AND NO STILLNESS COUNT FOR A ROW THAT IS NOT WAITING ON STILLNESS (layman chain pass 2,
+     * S-3, 2026-10-15). pwr_startup 10a read "Holding still... 1 of 60 plant-seconds" on entry, before any rod moved,
+     * and asked for "3 steps short of the predicted position" from a window the step before said to close. With a
+     * prediction printed, a `reach_1m` row ticks on the counter reaching prediction minus 3 (no stillness), so the
+     * count graded nothing; the ask now carries the number (`ask_1m`). SYNTHETIC row, the real 10a's fields; the 1/M
+     * table planted through RD.OneOverMCore as above, prediction = bank + 10. The CONTROL is the same card with the
+     * table cleared: no prediction, so the fallback really is a 60 s stillness wait and its count must draw -- which
+     * is what proves the "no count" read above can see a count at all. */
+    await (async function () {
+      await page.goto(url + '&dev=1', { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_reach_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        P.push({ id: 'zz_reach_probe', category: 'control', manual_ref: 'ZZ-06', title: '1/M reach probe',
+                 purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'Pull to the mark.', control: '(observe)', accs_ordered: true,
+                           accs: [{ p: 'control_bank_steps', op: 'stopped', v: 60, latch: true, reach_1m: 3.9,
+                                    ask: 'Pull to 3 short of the predicted position.',
+                                    ask_1m: 'Pull until CONTROL ROD POSITION reads {stop}, 3 steps short of the predicted {pred}.',
+                                    label: 'Rods 3 short' },
+                                  { p: 'power_pct', op: '<', v: -1, ask: 'Never.', label: 'never' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-minit="hot_full_power"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await startFreePlay(page).catch(function () {});
+      await page.waitForTimeout(2600);
+      await startFromMenu(page, 'zz_reach_probe');
+      await page.waitForTimeout(1500);
+      async function read(d) {
+        var bank = await page.evaluate(function (d) {
+          var C = RD.OneOverMCore, svc = RD.__dev.service(), s = svc.assembleSnapshot();
+          var M = C.fullScale(s), b = C.controlGroup(s).steps, tb = svc.instructor.oneOverM;
+          C.clear(tb);
+          if (d != null) {
+            var xp = (b + d) / M;
+            C.add(tb, 0, 1000, s.metadata.sim_time);
+            C.add(tb, 0.5, 1000 / (1 - 0.5 / xp), s.metadata.sim_time);
+          }
+          return b;
+        }, d);
+        await page.waitForTimeout(3000);
+        var r = await page.evaluate(function () {
+          var card = document.querySelector('.ckl-step.ckl-active');
+          var row = card ? card.querySelector('.ckl-crit') : null;
+          var c = RD.__dev.service().instructor.getSnapshotBlock().checklist || {};
+          return { text: row ? row.textContent : '', prog: row ? !!row.querySelector('.ckl-prog') : null,
+                   acc: (c.accs || [])[0] || null };
+        });
+        r.bank = bank;
+        return r;
+      }
+      var withP = await read(10), noP = await read(null);
+      ck('#10a: the fixture row is graded against the planted prediction, not yet reached (anti-vacuity)',
+         !!withP.acc && withP.acc.pred_1m === withP.bank + 10 && !withP.acc.met,
+         'pred ' + (withP.acc && withP.acc.pred_1m) + ' bank ' + withP.bank);
+      ck('#10a: with a prediction the ask names the stop as a number (prediction minus 3) and the prediction',
+         withP.text.indexOf('reads ' + (withP.bank + 7) + ', 3 steps short of the predicted ' + (withP.bank + 10)) !== -1,
+         JSON.stringify(withP.text.slice(0, 140)));
+      ck('#10a: ...and draws no "Holding still" count before any rod has moved',
+         withP.prog === false && withP.text.indexOf('Holding still') === -1, 'prog ' + withP.prog);
+      ck('#10a CONTROL: no prediction -> the plain ask and the fallback stillness count, which is a real 60 s wait',
+         !!noP.acc && noP.acc.no_1m === true && noP.text.indexOf('Pull to 3 short of the predicted position.') !== -1 &&
+         noP.prog === true && noP.text.indexOf('Holding still') !== -1, 'no_1m ' + (noP.acc && noP.acc.no_1m) + ', prog ' + noP.prog);
+    })();
+
+    /* A WAIT-FIRST STEP HANDS THE CLOCK BACK WHEN ITS WAIT IS MET (layman TMI pass 5, S-1, 2026-10-15). TMI-2 step 9
+     * ("Once SUBCOOLING MARGIN pegs at -50 °F, press OFF") ran 60x until OFF: the press row had no rung of its own
+     * and inherited the step's, so a player who looked away when the margin pegged lost RCS INVENTORY 24 -> 20 %. The
+     * press row now carries `wait_speed: 1`. SYNTHETIC wait_first step, the real step's shape: a step rung of 60x, a
+     * wait row that is already met, then the press row. The clock the APP drives (cklStepSpeed, auto) is read off the
+     * service. The CONTROL is the same step with the press row's rung removed: it must still run at 60x, which is the
+     * defect -- and the proof the read can see a 60x clock. Plus the real step's own field, so the fixture cannot
+     * drift from what ships. */
+    await (async function () {
+      async function speedFor(pressRung) {
+        await page.goto(url + '&dev=1', { waitUntil: 'load' });
+        await page.waitForTimeout(1200);
+        await page.evaluate(function (pr) {
+          var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_waitfirst_probe'; });
+          window.RD.MANUAL_PROCEDURES.pwr2 = P;
+          var press = { cmd: { action: 'set_rcp', running: false }, label: 'OFF pressed' };
+          if (pr) press.wait_speed = pr;
+          P.push({ id: 'zz_waitfirst_probe', category: 'control', manual_ref: 'ZZ-07', title: 'wait-first probe',
+                   purpose: 'Speed fixture.', from: 'hot_full_power',
+                   steps: [{ text: 'Once the reading arrives, press OFF.', control: 'RCP ON/OFF', wait_first: true, wait_speed: 60,
+                             cmd: { action: 'set_rcp', running: false }, hold: 3900,
+                             accs: [{ p: 'power_pct', op: '<', v: 1000, label: 'the reading arrived' }, press] }] });
+        }, pressRung || 0);
+        await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(200);
+        await page.click('[data-minit="hot_full_power"]', { timeout: 4000 }).catch(function () {});
+        await page.waitForTimeout(200);
+        await startFreePlay(page).catch(function () {});
+        await page.waitForTimeout(2600);
+        await startFromMenu(page, 'zz_waitfirst_probe');
+        await page.waitForTimeout(4000);
+        return page.evaluate(function () {
+          var svc = RD.__dev.service(), c = svc.instructor.getSnapshotBlock().checklist || {};
+          return { acc: (c.accs || []).map(function (a) { return !!(a && a.met); }), speed: svc.timeAcceleration };
+        });
+      }
+      var fixed = await speedFor(1), ctl = await speedFor(0);
+      ck('#wait-first: the wait row is met and the press row is not, in both fixtures (anti-vacuity)',
+         fixed.acc[0] && !fixed.acc[1] && ctl.acc[0] && !ctl.acc[1], JSON.stringify([fixed.acc, ctl.acc]));
+      ck('#wait-first: once the wait is met, a press row with its own 1x rung drops the clock to 1x',
+         fixed.speed === 1, 'speed ' + fixed.speed);
+      ck('#wait-first CONTROL: without that rung the press row inherits the step rung (60x, the reported defect)',
+         ctl.speed === 60, 'speed ' + ctl.speed);
+      var shipped = await page.evaluate(function () {
+        var t = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id === 'pwr_tmi2_incident'; })[0];
+        var st = t && t.steps.filter(function (s) { return /pegs at -50/.test(s.text || ''); })[0];
+        var row = st && (st.accs || []).filter(function (e) { return e.cmd && e.cmd.action === 'set_rcp'; })[0];
+        return { wf: !!(st && st.wait_first), ws: st && st.wait_speed, rung: row ? row.wait_speed : null };
+      });
+      ck('#wait-first: the shipped TMI-2 step 9 is that shape (wait_first, 60x step, OFF row at 1x)',
+         shipped.wf && shipped.ws === 60 && shipped.rung === 1, JSON.stringify(shipped));
+    })();
+
   } catch (err) {
     ck('the gate ran to completion', false, String((err && err.message) || err).slice(0, 160));
   }

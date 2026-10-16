@@ -2,9 +2,9 @@
  * verify_quickwins_ui.js — the desktop UI quick wins (OWNER 2026-10-10: "make the UI more intuitive
  * and easier for people to understand and use"). One section per item, each in the real page.
  *
- *   QW1  Quiet board: with no alarm up the alarm panel is a one-line strip under a shorter chart and
- *        the board takes the height (scale 0.605 -> ~0.70 at 1366x768); the first alarm expands it at
- *        once; a dragged (pinned) strip is never collapsed. Layout only.
+ *   QW1  Quiet board: with no alarm up the alarm panel folds to a one-line strip and the chart takes the
+ *        row's width; the first alarm expands it at once. The board never moves or rescales across a
+ *        quiet -> alarm -> quiet cycle (0.0 px at three viewports, layman S-1 2026-10-15). Layout only.
  *   QW2  Hover help at the cursor: resting on a described board item for ~0.4 s shows the Scanner's
  *        one-line brief beside the pointer (same text); a press or leaving dismisses it; never over
  *        the instructor callout card.
@@ -64,70 +64,67 @@ function ck(name, ok, detail) {
   }
 
   // ---- QW1 ---------------------------------------------------------------------------------
-  var s = await session({ width: 1366, height: 768 });
-  var q = await board(s.page);
-  ck('QW1 no alarms: the strip collapses (class on, row <= 180 px)', q.quiet && q.rowH <= 180, JSON.stringify(q));
-  ck('QW1 board scale grows past 0.66 (was 0.605)', q.scale >= 0.66, 'scale ' + q.scale);
-  ck('QW1 the short chart still draws THREE trace lanes (36 px floor; fewer demote channels to numbers)', q.lanes === 3, 'lanes ' + q.lanes);
-  var oneLine = await s.page.evaluate(function () {
-    var a = document.querySelector('.alarm-panel').getBoundingClientRect();
-    return a.height;
-  });
-  ck('QW1 the alarm panel is a one-line strip (<= 34 px)', oneLine <= 34, oneLine + ' px');
-  await shot(s.page, 'qw1_quiet');
-  if (await s.page.evaluate(function () { return document.getElementById('playBtn').classList.contains('paused'); })) await s.page.click('#playBtn');   // the sim opens RUNNING; only press Play if it is not
-  await s.page.evaluate(function () { RD.__dev.cmd({ action: 'scram' }); });
-  await s.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length > 0; }, null, { timeout: 15000 }).catch(function () {});
-  await s.page.waitForTimeout(400);
-  var e = await board(s.page);
-  ck('QW1 first alarm expands it at once (class off, row >= 220 px, tiles shown)', !e.quiet && e.rowH >= 220 && e.tiles > 0, JSON.stringify(e));
-  ck('QW1 expanded board scale is the old one (no stale collapse)', e.scale < q.scale, e.scale + ' < ' + q.scale);
-  await shot(s.page, 'qw1_alarm');
-  await s.ctx.close();
-
-  var p = await session({ width: 1366, height: 768 });
-  await p.page.evaluate(function () { document.querySelector('.app.pwr-synoptic').style.setProperty('--bottomrow-h', '230px'); });
-  await p.page.waitForTimeout(600);
-  var pin = await board(p.page);
-  ck('QW1 a dragged (pinned) strip height is never collapsed', !pin.quiet && pin.rowH === 230, JSON.stringify(pin));
-  await p.ctx.close();
-
-  /* QW1b THE FOLD IS NOT UNDER THE POINTER (cycle layman pass S-2, 2026-10-15): a flip reflows and rescales the
-   * board (MEASURED 27-45 px vertical, up to 87 px horizontal), so the FOLD waits while the pointer rests on the
-   * board and lands when it leaves. The EXPAND never waits (quality pass: a deferred expand kept a CRITICAL
-   * folded 30 s under a parked pointer) -- it moves the board once per new alarm, accepted. A real quiet ->
-   * alarm -> quiet cycle: PZR LEVEL stuck at 80 %, over the 75 % High alarm, then cleared. */
-  var u = await session({ width: 1366, height: 768 });
-  if (await u.page.evaluate(function () { return document.getElementById('playBtn').classList.contains('paused'); })) await u.page.click('#playBtn');
-  function target(page) {
+  /* THE BOARD NEVER MOVES (cycle layman pass S-1, 2026-10-15). The fold used to shrink the row and rescale the
+   * board -- MEASURED 27 px at 1600x1000, up to 45 px vertical / 87 px horizontal at 1366x768 and 1920x1080 -- so
+   * a click aimed a second earlier landed on a card header. Now the row keeps its height in both states and the
+   * fold hands its room to the chart. A real quiet -> alarm -> quiet cycle at each viewport (PZR LEVEL stuck at
+   * 80 %, over the 75 % High alarm, then cleared): the class must flip both ways (or the check is hollow), and
+   * the plant area, the board stage and a board control must sit on the same pixels, 0.0 px, in all three. */
+  function geom(page) {
     return page.evaluate(function () {
-      var e = document.querySelector('.pwr-board-stage [data-item]'), r = e.getBoundingClientRect();
-      return { x: r.x, y: r.y, cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
+      function bb(el) { var r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }
+      var st = document.querySelector('.pwr-board-stage'), m = getComputedStyle(st).transform;
+      var ap = document.querySelector('.app.pwr-synoptic');
+      return { plant: bb(document.querySelector('.plant-area')),
+               stage: bb(st), item: bb(document.querySelector('.pwr-board-stage [data-item]')),
+               scale: m && m !== 'none' ? parseFloat(m.match(/matrix\(([^,]+)/)[1]) : null,
+               rowH: Math.round(document.querySelector('.bottom-row').getBoundingClientRect().height),
+               chartW: Math.round(document.querySelector('.bottom-row > .strip-chart').getBoundingClientRect().width),
+               quiet: ap.classList.contains('alarms-quiet'),
+               tiles: document.querySelectorAll('#alarmStack .alarm-tile').length,
+               lanes: document.querySelectorAll('#chartFloats .lane-chrome').length,
+               panelH: document.querySelector('.alarm-panel').getBoundingClientRect().height };
     });
   }
-  function quietNow(page) { return page.evaluate(function () { return document.querySelector('.app.pwr-synoptic').classList.contains('alarms-quiet'); }); }
-  function tilesNow(page) { return page.evaluate(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length; }); }
-  function moved(a, b) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); }
-  var u0 = await target(u.page), uq0 = await quietNow(u.page);
-  await u.page.mouse.move(u0.cx, u0.cy);
-  await u.page.evaluate(function () { RD.__dev.cmd({ action: 'set_instrument_failure', instrument_id: 'pzr_level', mode: 'stuck', value: 80 }); });
-  await u.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length > 0; }, null, { timeout: 20000 }).catch(function () {});
-  await u.page.waitForTimeout(1500);
-  var u1 = await target(u.page), uq1 = await quietNow(u.page), ut1 = await tilesNow(u.page);
-  ck('QW1b an alarm with the pointer parked on the board expands the strip AT ONCE (the board moves once)',
-     uq0 && ut1 > 0 && !uq1, 'quiet ' + uq0 + '->' + uq1 + ', tiles ' + ut1 + ', board moved ' + moved(u0, u1).toFixed(1) + ' px');
-  var u2 = await target(u.page);
-  await u.page.evaluate(function () { RD.__dev.cmd({ action: 'clear_instrument_failure', instrument_id: 'pzr_level' }); });
-  await u.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length === 0; }, null, { timeout: 30000 }).catch(function () {});
-  await u.page.waitForTimeout(9500);   // past the 8 s quiet hold
-  var u3 = await target(u.page), uq3 = await quietNow(u.page), ut3 = await tilesNow(u.page);
-  ck('QW1b quiet again past the 8 s hold with the pointer on the board: no fold, no movement',
-     ut3 === 0 && !uq3 && moved(u2, u3) < 1, 'tiles ' + ut3 + ', quiet ' + uq3 + ', moved ' + moved(u2, u3).toFixed(1) + ' px');
-  await u.page.mouse.move(3, 3);
-  await u.page.waitForTimeout(500);
-  var uq4 = await quietNow(u.page);
-  ck('QW1b ...and folds once the pointer leaves the board', uq4, 'quiet ' + uq4);
-  await u.ctx.close();
+  function drift(a, b) {
+    var d = 0;
+    ['plant', 'stage', 'item'].forEach(function (k) { for (var i = 0; i < 4; i++) d = Math.max(d, Math.abs(a[k][i] - b[k][i])); });
+    return d;
+  }
+  var VPS = [{ width: 1366, height: 768 }, { width: 1600, height: 1000 }, { width: 1920, height: 1080 }];
+  for (var vi = 0; vi < VPS.length; vi++) {
+    var vp = VPS[vi], tag = vp.width + 'x' + vp.height;
+    var s = await session(vp);
+    if (await s.page.evaluate(function () { return document.getElementById('playBtn').classList.contains('paused'); })) await s.page.click('#playBtn');   // the sim opens RUNNING; only press Play if it is not
+    var g0 = await geom(s.page);
+    await s.page.evaluate(function () { RD.__dev.cmd({ action: 'set_instrument_failure', instrument_id: 'pzr_level', mode: 'stuck', value: 80 }); });
+    await s.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length > 0; }, null, { timeout: 20000 }).catch(function () {});
+    await s.page.waitForTimeout(600);
+    var g1 = await geom(s.page);
+    if (vi === 0) await shot(s.page, 'qw1_alarm');
+    await s.page.evaluate(function () { RD.__dev.cmd({ action: 'clear_instrument_failure', instrument_id: 'pzr_level' }); });
+    await s.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length === 0; }, null, { timeout: 30000 }).catch(function () {});
+    await s.page.waitForTimeout(9500);   // past the 8 s quiet hold
+    var g2 = await geom(s.page);
+    if (vi === 0) await shot(s.page, 'qw1_quiet');
+    ck('QW1 ' + tag + ' the strip folds, expands on an alarm, and folds again (class quiet->off->quiet, tiles shown)',
+       g0.quiet && !g1.quiet && g1.tiles > 0 && g2.quiet && g2.tiles === 0, 'quiet ' + g0.quiet + '->' + g1.quiet + '->' + g2.quiet + ', tiles ' + g1.tiles);
+    var dmax = Math.max(drift(g0, g1), drift(g1, g2), drift(g0, g2));
+    ck('QW1 ' + tag + ' the plant area, board stage and a board control do not move or rescale across the cycle (0.0 px)',
+       dmax === 0 && g0.scale === g1.scale && g1.scale === g2.scale, 'max drift ' + dmax.toFixed(1) + ' px, scale ' + g0.scale + '/' + g1.scale + '/' + g2.scale);
+    ck('QW1 ' + tag + ' the fold gives its room to the chart (chart wider folded than expanded; row height unchanged)',
+       g2.chartW > g1.chartW && g2.rowH === g1.rowH, 'chart ' + g1.chartW + ' -> ' + g2.chartW + ' px, row ' + g1.rowH + '/' + g2.rowH);
+    ck('QW1 ' + tag + ' folded: the alarm panel is a one-line strip (<= 34 px) and the chart draws >= 3 trace lanes',
+       g2.panelH <= 34 && g2.lanes >= 3, g2.panelH + ' px, lanes ' + g2.lanes);
+    await s.ctx.close();
+  }
+
+  var p = await session({ width: 1366, height: 768 });
+  await p.page.evaluate(function () { document.querySelector('.app.pwr-synoptic').style.setProperty('--bottomrow-h', '260px'); });
+  await p.page.waitForTimeout(600);
+  var pin = await geom(p.page);
+  ck('QW1 a dragged (pinned) strip height is honoured while folded', pin.quiet && pin.rowH === 260, JSON.stringify({ quiet: pin.quiet, rowH: pin.rowH }));
+  await p.ctx.close();
 
   // ---- QW2 ---------------------------------------------------------------------------------
   var h = await session({ width: 1366, height: 768 }, '&callout=1');

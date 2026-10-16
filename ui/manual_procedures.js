@@ -2146,7 +2146,7 @@
                     * 42, both heatups -- `pzr_pressure_lolo` (1800 psia, critical outside Modes 4-5)
                     * and `pzr_pressure_low` raise in this step at 1726 psia as the plant enters Mode 3
                     * with the pressure setpoint at its 1700 psi floor; the step ends at 1715 psia. */
-                   note: 'Expected near the end: Pressurizer Pressure Very Low, Pressurizer Pressure Low and Turbine Trip / Low Steam Demand alarms.',
+                   note: 'Expected near the end: Pressurizer Pressure Very Low, Pressurizer Pressure Low and Turbine Trip / Low Steam Demand alarms. Very Low stays lit while PRIMARY PRESSURE is under its 1800 psi setpoint, even as pressure rises.',   // layman chain pass 2 S-8 (2026-10-15): read critical at 1711 psi rising; pzr_pressure_lolo setpoint 1800 psi (layers/control/pwr_control.js)
                    label: 'AVG COOLANT TEMPERATURE 542 °F or higher' }],
           /* ⚠ AND THE LONG RIDE DECLARES THE ONE THE RIDE ITSELF CAUSES (same 2026-09-14 ruling).
            * This is the leg's longest hold — 40,000 s — i.e. exactly where the player is at 600x.
@@ -3267,7 +3267,7 @@
                    label: 'INTER RANGE reads 1.0e-10 A or more (P-6)' },
                  { p: 'sr_high_blocked', op: '>', v: 0,
                    hl: ['Trip Blocks'],
-                   ask: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SR HIGH FLUX row. Check it reads BLOCKED and SOURCE RANGE reads a dash, then press TRIP BLOCKS to close.',
+                   ask: 'Press TRIP BLOCKS on the ROD CONTROL card, then BLOCK on the SR HIGH FLUX row, SR for SOURCE RANGE. Check it reads BLOCKED and SOURCE RANGE reads a dash, then press TRIP BLOCKS to close.',
                    note: 'Skip this and the reactor trips on SR HIGH FLUX about 2 plant-minutes after the rods start moving in the next step.',
                    label: 'SR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'], hl_watch: ['Intermediate Range', 'Source Range'] },
@@ -3653,6 +3653,10 @@
                     * the card's "no prediction" line. */
                    reach_1m: 3.9,
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted position. If 10a is already ticked, leave the rods and go to 10b.',
+                   /* THE STOP AS A NUMBER (layman chain pass 2, S-3, 2026-10-15): the prediction lives in the 1/M window the
+                    * step before says to close, and the player had to subtract 3 from memory. With a prediction printed, the card
+                    * draws this instead of `ask`: {stop} = prediction minus 3, {pred} = the prediction (ui/app.js cklAskText). */
+                   ask_1m: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION reads {stop}, 3 steps short of the 1/M prediction, {pred}. If 10a is already ticked, leave the rods and go to 10b.',
                    wait_speed: 1,
                    label: 'CONTROL ROD POSITION 3 steps short of the 1/M prediction' },
                  /* 9b: ONE TARGET RATE, READ FIVE MINUTES AFTER A TAP *(OWNER, #807 item 10, 1.8.0-rc6
@@ -4111,7 +4115,7 @@
                  { p: 'ir_high_blocked', op: '>', v: 0,
                    hl: ['Trip Blocks'], hl_watch: ['Reactor Power'],
                    ask: 'Press TRIP BLOCKS on the ROD CONTROL card and BLOCK on the IR HIGH FLUX row (IR is INTER RANGE). Check the row reads BLOCKED.',
-                   note: 'If the block drops out, let power rise and press it again.',
+                   note: 'If the block drops out, let power rise and press it again. The red RELEASE? on the SR HIGH FLUX row is expected: leave that row alone.',   // layman chain pass 2 S-7 (2026-10-15): SR HIGH FLUX was blocked earlier in the leg and its setpoint is long crossed, so the row warns a release would trip
                    wait_speed: 1, label: 'IR HIGH FLUX reads BLOCKED on the TRIP BLOCKS panel' }],
           hl: ['Trip Blocks'], hl_watch: ['Reactor Power'] },
         { text: 'Block the second startup trip, PR HIGH (LOW SETPT).',
@@ -4483,7 +4487,7 @@
                  { p: 'mwe_output', op: '>=', v: 49.5,
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 50 MW.',
-                   note: 'If AVG COOLANT TEMPERATURE sags, Pressurizer Pressure Low can drop the clock to 1×: start the pulls on the next line.',
+                   note: 'If the Pressurizer Pressure Low alarm lights before OUTPUT reaches 50 MW and AVG COOLANT TEMPERATURE reads below 558 °F, start the next line now: withdraw 5 steps at MED, a plant-minute apart.',   // layman chain pass 2 S-2 (2026-10-15): the next line is dark on this ordered step, so the old note read as "wait for it"; 136 wall-s lost at 1x. Pulls before 5b ticks were the authored intent (38558766's parent: "without waiting for OUTPUT")
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 50 MW' },
                  { p: 'tavg_c', op: '~', v: 298.972, tol: 7.028, latch: true,   /* 557.5-582.8 degF, green-segment floor (rc8f pass 10 S-2) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
@@ -6102,7 +6106,7 @@
          * encloses the lamp. */
         { text: 'No action. The relief valve lamp (PORV) reads CLOSED; the orange temperature beside it is above 240 °F. Press Continue.',   // layman pass 4 S-5/S-6: PORV expanded on first use; the unlabelled tailpipe readout named by what the player sees
           why: 'The lamp shows the solenoid (the electric opener), not the valve. A hot pipe means steam is still passing.',
-          note: 'The orange temperature is the pipe out of the valve.',
+          note: 'The orange temperature is the pipe out of the valve. The PORV Open lane on the chart already reads OPEN: the chart shows what the valve is really doing.',   // layman TMI pass 5 S-4 (2026-10-15): the lane read OPEN from step 2 beside the CLOSED lamp, unexplained
           story: { clock: '04:00:40', line: 'The relief valve lifts, is told to shut, and sticks open.',
             saw: 'Pressure reached 2255 psi and the valve opened as designed. It was told to shut at 13 seconds, and its light went out.',
             knew: '"Light off indicates solenoid deenergized. There is no actual position indicator."',
@@ -6144,6 +6148,7 @@
         { text: 'Block safety injection (SI): press TRIP BLOCKS on ROD CONTROL, then BLOCK on SI REACTOR TRIP.',   // V-5 (layman pass 3): SI spelled out on first use, guide W3
           crew: true,
           control: 'Trip Blocks', target: 'SI REACTOR TRIP blocked — its button now reads RELEASE?',
+          note: 'The red RELEASE? on the SR HIGH FLUX row, SR for SOURCE RANGE, is expected: leave that row alone.',   // layman TMI pass 5 (2026-10-15): the panel's SR row reads red beside the row this step blocks
           why: 'Low pressure can no longer start injection by itself.',   // quality pass 2026-10-14: 'High containment pressure still can' went false at a06c449c -- after the STOP reset no automatic signal restarts injection until P-4 clears (Manuals/03 §11)
           story: { clock: '04:03:50', line: 'Before touching a valve, they block automatic injection.',
             saw: 'Pressurizer level climbing hard while pressure fell.',
@@ -6290,7 +6295,8 @@
           accs: [{ p: 'core_inventory_pct', op: 'moves', dir: 'down', v: 10, window: 600, with: { p: 'pzr_level_pct', op: '>=', v: 90 }, implied_by: 'subcooling_c',
                    label: 'RCS INVENTORY on the chart fell 10 points or more over 10 plant-minutes while PRESSURIZER LEVEL read 90 % or more.' },   // S-4 (layman pass 4): past tense, true after the latch; "over 10 plant-minutes" says why it waits (the window must fill). The with-test is graded at the latch, not throughout. Grading unchanged
                  { p: 'subcooling_c', op: '<=', v: -27.778, label: 'SUBCOOLING MARGIN pegged at -50 °F' },
-                 { cmd: { action: 'set_rcp', running: false }, label: 'OFF pressed for the reactor coolant pumps' },
+                 { cmd: { action: 'set_rcp', running: false }, label: 'OFF pressed for the reactor coolant pumps',
+                   wait_speed: 1 },   // THE WAIT IS OVER: REAL TIME FOR THE PRESS (layman TMI pass 5, S-1, 2026-10-15). Without a rung of its own this row inherited the step's 60x, so a player who looked away when the margin pegged lost RCS INVENTORY 24 -> 20 % before pressing OFF. A per-row rung is the substep hand-over the startup legs already use.
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'after OFF: the pump cavitation alarm clears' }],
           /* THE BRANCH WHERE INJECTION WAS KEPT ON (step 6 overtaken). MEASURED, routes gate, seed 42: injection
            * holds the loop at saturation (pressure 337-510 psia), SUBCOOLING MARGIN reads 0 and never pegs, and

@@ -2641,6 +2641,11 @@
         }
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.prog = InstructorLayer.holdProgress(ax, en, g, snapshot);   /* #818: the card's "holding… N of M s" */
+        /* WITH A PREDICTION, A `reach_1m` ROW IS NOT A STILLNESS WAIT (layman chain pass 2, S-3, 2026-10-15): it ticks on
+         * the broadcast the counter reaches prediction minus 3, so the fallback `stopped` op's "Holding still... 1 of 60"
+         * was drawn on entry, before any rod moved, for a count that grades nothing. Only the no-prediction fallback
+         * (which really does tick on 60 s of stillness) keeps the line. */
+        if (en.reach_1m != null && !g.no_1m) ax.prog = null;
         ax.streak = g.met ? ax.streak + 1 : 0;
         /* A `reach_1m` verdict reads the operator's own step counter against a printed number — exact,
          * no instrument noise to debounce — so it ticks on the FIRST broadcast it holds, which is the
