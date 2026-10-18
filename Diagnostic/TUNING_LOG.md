@@ -57,6 +57,7 @@ must-happen-every-time rules in hooks, and stop bolding everything.
   OUTSTANDING, FIRST PRINCIPLES, ask-with-recommendation) kept with their delimiters. Inventory of
   every rule and where it landed: the session scratchpad `claude_md_inventory.md` (summarised in
   the commit message).
+- **Commit 3 (reviewer findings).** Binding substance put back as CLAUDE.md one-liners (walkthrough both-routes/reviewer/layman, version timing and rc digits, owner-review close rule) and eleven dropped clauses restored; themes back to ~80 words; node_modules rule corrected (permanent lanes junctioned, scratch worktrees NODE_PATH); LANES.md notes the lanes carry the guard only after their next merge of develop. Guard rewritten: quote-aware splitting incl. lone `&`, prefix strippers (`&`, env, command, time, nohup), recursion into `bash -c` / `powershell -Command` / `cmd /c` / `$(...)`, `gh api .../pulls/N/merge`, develop-moving `fetch :develop` / `branch -f` / `update-ref` / `checkout -B` / `switch -C`, lane push denied by refspec destination or by the tree branch, `git reset HEAD <file>` and `/c/` paths pass. `${CLAUDE_PROJECT_DIR}` is documented for shell-form hooks but not confirmable in-session (empty in the tool env; hooks snapshot at start) — hook commands left relative.
 - Gates: `run_doc_budget`, `run_hardrules` (baseline re-measured after the quote move),
   `run_session_labels`, `run_release` — results in the commit message.
 

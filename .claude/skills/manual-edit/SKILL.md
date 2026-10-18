@@ -9,9 +9,10 @@ Moved out of `CLAUDE.md` 2026-10-18. Owner quotes: `Blueprint/RULINGS.md`.
 
 ## Three steps, in order — or `run_manual_rev.js` reddens
 
-1. **Add a row at the TOP of the table in `Manuals/00_REVISION_HISTORY.md`** (newest first — the
-   set revision is set-wide, one number for all 13 documents). **Do not open a new revision row
-   for an edit; extend the pending row.** The revision number advances only at a release (owner,
+1. **Extend the pending (top) row of the table in `Manuals/00_REVISION_HISTORY.md`** with a new
+   lettered item (newest first — the set revision is set-wide, one number for all 13 documents).
+   **Do not open a new revision row for an edit.** A new row is opened only by a release; if the
+   top row is a released one, the release procedure opens the next. The revision number advances only at a release (owner,
    2026-08-06: "The revision number only matters during a release to the website. Revision numbers
    should never go up until a release happens."). The newest row is the pending one and extends
    until the next release; that is also how a revision-number collision between two lanes

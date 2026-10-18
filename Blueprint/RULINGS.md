@@ -130,6 +130,10 @@ and a quote.
 - **The standing-procedure list is capped at 25.** *(OWNER RULING, 2026-08-10: selected "Cap at 25,
   evict to TRAPS.md" from options I wrote — a selection, not verbatim words)*
 - **The project-status history cut.** *(OWNER RULING, 2026-07-27: "Execute the cut.")*
+- **Not an owner ruling — recorded for provenance.** On 2026-10-18 `test/run_doc_budget.js`'s
+  `MAX_WORDS` was lowered 15,000 → 5,700 (measured 4,968 after the prune, plus ~15 % headroom).
+  The agent's call under the 2026-08-06 ruling above, whose direction is *cut, never raise*; it
+  needs no new ruling to lower and would need one to raise.
 
 ## Gates, pushes and agents
 

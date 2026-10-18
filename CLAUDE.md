@@ -28,8 +28,8 @@ lane/branch state.
   `§8(2)` likewise. Bare codes only inside a document that defines them, or between agents.
 - **Ask with the recommendation attached** (owner, 2026-07-29; re-issued 2026-08-14): what he is
   deciding, the options, your pick and why, what you do with no reply. Never "blocked on your
-  ruling" with the options somewhere else. Routine calls: make them, state the assumption, move
-  on. `Blueprint/SOP.md` §5.
+  ruling" with the options somewhere else — no exceptions for brevity. Rank them if there are
+  several. Routine calls: make them, state the assumption, move on. `Blueprint/SOP.md` §5.
 
 **End with what is still outstanding** (owner, 2026-07-30; 2026-09-20; 2026-09-25) — last thing
 before you stop, scoped to the task in hand:
@@ -42,7 +42,9 @@ before you stop, scoped to the task in hand:
 ```
 
 Every item names one of those three. Waiting on none of them is unstarted — do it before you
-stop; "waiting on your yes" is not a category. Omit the block when nothing is outstanding and say
+stop. "Waiting on your yes" is not a category: if you would act the instant he said yes and
+nothing in it is irreversible or his to judge, the yes was never load-bearing — make the call,
+do the work, say what you did. He cannot monitor; the default is KEEP GOING. Omit the block when nothing is outstanding and say
 so in a sentence; show it only when it changed or carries a decision, else one status line. It is
 a report: never a substitute for asking when genuinely blocked (SOP §5), never a plan built on an
 unmeasured claim (HR12).
@@ -75,15 +77,16 @@ isolates nothing; only a separate tree does. Full protocol: `Blueprint/LANES.md`
 
 - First thing in a session the `SessionStart` hook (`tools/hook_lane_status.js`) sweeps all trees
   and the `status-wip-*` issue tags; run it by hand if it did not fire. "Could not check" is not
-  "clear". The tag is the only signal that is not a guess (owner, 2026-08-04): when tag and sweep
-  disagree the tag wins — but a stale tag on a quiet issue with a clean tree is not occupancy
+  "clear". The tag is the only signal that is not a guess (owner, 2026-08-04); run both, since an
+  agent can work without touching an issue, and when they disagree the tag wins — but a stale tag on a quiet issue with a clean tree is not occupancy
   (owner, 2026-10-02): clear it, say so, carry on. Re-check before your first commit.
 - On a positive, **warn and ask — do not move on your own** (owner, 2026-07-29). Investigate in
-  place; no edits, probe files or commits until he answers.
+  place; no edits, probe files or commits until he answers — absent a reply, stay read-only.
 - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** (owner, 2026-07-31) — fast-forwards
   included; a clean tree is not permission. "Committed on the lane, gated, waiting" is the correct
   end state. **PWR2 (#479) carries a standing hold on top** (owner, 2026-08-14): the bar is the
-  whole engine finished, tested and validated — no milestone merges, no "just the docs" carve-outs.
+  whole engine finished, tested and validated — do not propose a merge at each milestone, and no
+  "just the docs" carve-outs.
   A lane accumulating commits is the intended state; manage conflicts, do not merge.
 - **NEVER PUSH UNTIL HE SAYS SO** (owner, 2026-09-14). Ending a session with nothing pushed is
   correct. A push is what triggers the aggregate gate (below).
@@ -98,9 +101,10 @@ isolates nothing; only a separate tree does. Full protocol: `Blueprint/LANES.md`
   revision rows chapter-qualified with a `§`, and grep the chapter after any merge. `LANES.md` §6.
 - Session-log headings name the lane: `YYYY-MM-DD-<lane>-<letter>`, `-a` first, never bare
   (`run_session_labels.js` gates it; `LANES.md` §7).
-- New tree: `git worktree add <path> <branch>`, `node_modules` via `NODE_PATH` (a junction is
-  followed by `worktree remove` and empties the primary's), an `inbox/` directory. Commit to your
-  own branch.
+- New tree: `git worktree add <path> <branch>` plus an `inbox/` directory; commit to your own
+  branch. A permanent lane junctions `node_modules` from the primary and is never removed; a
+  SCRATCH worktree uses `NODE_PATH` instead, because `worktree remove` follows a junction and
+  empties the primary's (`LANES.md` §9).
 - Two subagents at once get a scratch worktree each (`LANES.md` §9); brief step 1 is
   `git reset --hard <develop tip>`, and remove the worktree when it merges (owner, 2026-09-29).
 
@@ -156,9 +160,11 @@ it shows a Tier A coupling under stress; promotion needs a Q0 measurement) vs **
 - **HR10.** A passing test is not evidence the mechanism is right; a test written from observed
   behaviour confirms the wrong parts too. When a change reddens a gate, ask what the gate was
   asserting; if you move a test, validate the new form against the old behaviour as well and say
-  which. `CONTEXT.md` §3; `SOP.md` §2.
+  which. If you cannot say why a mechanism is correct without citing which tests pass, you have
+  not finished. `CONTEXT.md` §3; `SOP.md` §2.
 - **Manual first, then auto** (owner, 2026-08-12): establish a system's behaviour with its
-  automatic control OFF before testing it ON — on setpoint, a wrong mechanism and a right one paint
+  automatic control OFF before testing it ON — every system with an auto mode: pressure control,
+  feed, rods, boron, steam dump, ADV, turbine load. On setpoint, a wrong mechanism and a right one paint
   the same board (measured 2026-08-12: a 30 MWe load change moved pressure 0 psi with
   `P_restore_rate_gain` live, +31 psi and −10.7 °F of subcooling without it; 47 runners agreed
   with the hollow plant). Manual-mode acceptance first; the auto row asserts the controller holds
@@ -207,7 +213,7 @@ revision number advances only at a release** (owner, 2026-08-06): read the top r
 runner (M7) built; the PWR models a Mode 5 initial condition and the full Mode 5 ↔ Mode 1
 transition on integrated physics; UI (M8) is a functional alpha, PWR only.
 
-**Recent themes** — max 5 bullets, newest first, ≤ 40 words each; adding one evicts the oldest
+**Recent themes** — max 5 bullets, newest first, ~80 words each; adding one evicts the oldest
 (rescue its trap to the standing list first). Full entries: `Diagnostic/TUNING_LOG.md`.
 
 - **An acceptance threshold at the centre of its render band is a step the board cannot show as
@@ -300,12 +306,15 @@ A change is finished when the gates it touches are green at or above `BASELINES`
   push means no `run_all`; say when cross-effects are overdue, never run it on your own.
 - **Agent cost is tool calls, not prompt length** (owner, 2026-09-12). Every subagent gets a
   ~150-call ceiling: past it, stop and report. A subagent never runs the aggregate (the Bash
-  ceiling is 600 s; the coordinator owns it). No polling. Hand over numbers marked MEASURED or
-  INHERITED, never as a premise. One writer per file per tree (else scratch worktrees,
+  ceiling is 600 s; the coordinator owns it). No polling: put "wait for the notification; do not
+  re-check, do not re-read what you have read" in every brief. An agent that edits before it
+  plans pays for the rework twice. Hand over numbers marked MEASURED or INHERITED, never as a
+  premise. One writer per file per tree (else scratch worktrees,
   `LANES.md` §9). No agent where no judgement is needed and the facts are in hand. A brief carries
   constraints and numbers, not rationale. Never cut the re-measurement pass, the injection proof
   on every added check, or the agent saying what it did not verify. Worked cases: `SOP.md` §6.
-- **Sonnet by default; Opus where judgement is the work** (owner, 2026-09-18) — an open diagnosis,
+- **Sonnet by default; Opus where judgement is the work** (owner, 2026-09-18). Well-scoped = the
+  brief already names the files, the interface and the checks; Opus buys an open diagnosis or
   per-probe adjudication. **Opus drafts prose** the player or owner reads (owner, 2026-09-24);
   transcribing ruled wording stays Sonnet. **Fable judges taste** — design critique, headlines,
   copy voice (owner, 2026-10-13).
@@ -315,7 +324,10 @@ A change is finished when the gates it touches are green at or above `BASELINES`
   `run_autoctl.js` and `run_m4.js`; check `run_ops.js` for a PASS turning FAIL. Scenario, campaign
   or instructor → `run_campaign.js` + `_b` + `_c` (51/51 together), `run_m6.js`,
   `run_procedures.js`. UI → drive the flow (skill `run`), `verify_e2e_ui.js` stays PASS.
-  Walkthrough → skill `walkthrough-change` (owner, 2026-09-24). Save format → old saves migrate,
+  Walkthrough → `run_walkthrough_routes.js` + parts, every number in step text measured on BOTH
+  the typical-player and scripted-mistake routes, then the reviewer and its fixes, ONLY THEN one
+  layman pass that confirms, never discovers (owner, 2026-09-24; 2026-09-29) — procedure: skill
+  `walkthrough-change`. Save format → old saves migrate,
   `run_m7.js`; a `true_state` field change needs its §6.3 line in `CONTEXT.md` (`run_contract.js`).
   `Manuals/` → skill `manual-edit` (revision row → stamp → pack, or `run_manual_rev.js` reddens).
   Then `CHANGELOG.md`, this file's status, and `BUILD_DECISIONS.md` if a decision or flag changed.
@@ -335,7 +347,7 @@ A change is finished when the gates it touches are green at or above `BASELINES`
   plant; otherwise the finding goes in `TUNING_LOG.md`, and an answer goes in a comment on the
   asking issue. Always add the `Claude` label; one label from each of the four axes
   (priority/type/system/plant — issue #61); `status-owner-review` means done and gated, look
-  before it closes; `status-work-next` is his to apply (owner, 2026-07-31); `status-deliberate`
+  before it closes — never close an issue carrying it without his word; `status-work-next` is his to apply (owner, 2026-07-31); `status-deliberate`
   names who decided and when. **Tag `status-wip-<lane>` when you start, clear it when you stop**
   (owner, 2026-08-04). Sweep with `--search 'label:a,b,c'` (repeated `--label` is ANDed). Procedure:
   skill `issue-workflow`.
@@ -343,8 +355,11 @@ A change is finished when the gates it touches are green at or above `BASELINES`
   a PR (#196). Fast-forward `develop` to `main` after a release.
 - **Website changelog & version numbers**: `Alpha X.Y.Z` = Platform.Feature.Refinement; Y only
   for something you could list on the Roadmap, Z for everything else however visible (owner,
-  2026-07-31). The pending version wears `-rc<N>`, N bumped on every push to `develop` that changes
-  the sim (owner, 2026-09-03); the `changelog.html` entry is facts only, at most 8 bullets,
+  2026-07-31). Bump at the first push to `develop` after a release, not at the merge to `main`;
+  the pending version wears `-rc<N>`, digits required (never relax `run_release` to quiet a red,
+  #611), N bumped on every push to `develop` that changes the sim, later pushes extend the one
+  entry, and a website-only change gets no bump (owner, 2026-09-03; 2026-08-06); the
+  `changelog.html` entry is facts only, at most 8 bullets,
   simulator changes only, no flag-gated features (owner, 2026-08-04; 2026-08-06; 2026-09-03).
   `run_release.js` gates the agreement, not the digit. Procedure: skill `version-changelog`.
 
