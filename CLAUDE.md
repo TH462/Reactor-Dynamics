@@ -171,7 +171,8 @@ it shows a Tier A coupling under stress; promotion needs a Q0 measurement) vs **
   what manual proved.
 - **RBMK AND BWR ARE ON HOLD.** Do not implement, tune, refactor or fix-while-you're-here their
   engines, controls, scenarios, UI or tests; leave their known reds alone. PWR only until the
-  owner reopens them. Shared code may change for a PWR need.
+  owner reopens them — no end date, and they may never be built (owner, 2026-10-18). Shared code
+  may change for a PWR need.
 - **Verify a claim before you act on it.** Issue comments, file headers, specs and this file age
   fast here (#326: correct when written, wrong hours later). Re-measure on the tree you stand in.
 

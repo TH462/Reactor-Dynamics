@@ -82,6 +82,9 @@ and a quote.
 
 ## Design criteria, curriculum and the premise
 
+- **RBMK and BWR on hold.** *(OWNER RULING, 2026-10-18: "RBMK and BWR are on hold with no end
+  date. I may or may not ever build them.")*
+
 - **The four design questions.** *(OWNER DIRECTIVE, 2026-08-02: "I think there are a few important
   criteria on weather we should include a feature or make a change. 1. Is it prototypical? What is
   the educational value? Is the increased complexity worth it? What are the actual tested numbers
