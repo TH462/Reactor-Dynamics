@@ -1,1206 +1,402 @@
 # CLAUDE.md — coding-agent instructions
 
-**This file is the orientation document for coding agents** (Claude and others)
-working in this repo. The public, visitor-facing overview is `README.md`.
+Orientation for coding agents in this repo; `README.md` is the public overview. Tracked in git
+since 2026-07-29 — edit it in the commit that makes it true. **Loaded every turn: keep it short.**
+`test/run_doc_budget.js` caps it; when the cap binds, cut — never raise the number. Every dated
+rule below has the owner's verbatim words in **`Blueprint/RULINGS.md`**; that ledger is what makes
+the short line binding. In doubt about a number, trust as-built engine/config values over prose.
 
-**It is TRACKED IN GIT** (since 2026-07-29 — it used to be gitignored). Edit it like
-source: the change belongs in the commit that makes it true, and `git log CLAUDE.md`
-is how a future agent finds out *when* a rule arrived and *why*. It goes public with
-the repo; there is nothing secret in it. It does reference two directories that stay
-local (`inbox/`, `terminals/`) — that is fine, they are named as local.
+**When compacting, preserve:** modified files, gate results, owner rulings given this session,
+lane/branch state.
 
-**Keep it SHORT.** It is loaded into every agent's context on every turn. Prefer a
-pointer over a paragraph, and delete as readily as you add. Hard caps that are part
-of the file's design, not suggestions: the *Project status* themes list is **max 5
-bullets** (drop the oldest), and nothing here may duplicate `Diagnostic/TUNING_LOG.md`
-— if you are writing history, you are writing it in the wrong file.
+## How to reply
 
-When in doubt about a number, prefer the as-built engine/config values over prose
-docs.
+- **Be brief — facts, numbers, decisions** (owner, 2026-07-30; 2026-09-11). Lead with what changed
+  and the number that shows it. Cut restating the request, narration, unasked reasoning, victory
+  laps. Keep measurements, deltas, what broke and why, what changes his next move. Detail goes in
+  the commit, the issue or `Diagnostic/TUNING_LOG.md`. Token-efficient, never at the cost of quality.
+- **One number, two habits** (owner, 2026-08-06): the only hard cap is this file's word budget.
+  Chat default: lead with the answer in ~150 words; expand when asked or when a table of
+  measurements is the answer. Write-ups get a content rule, not a length: record the trap and the
+  numbers that prove it; do not restate the diff.
+- **US customary first, SI in parentheses** in everything he reads — chat, issues, commits,
+  `Diagnostic/`, `Manuals/` (owner, 2026-07-29): `2235 psi (15.41 MPa)`. Differences and rates
+  convert ×9/5 with no offset (41 °C of subcooling is 73.8 °F). Engine internals stay SI.
+  `run_manual_units.js` gates the manual; prose is not gateable.
+- **Spell out every code on first use** in anything he reads (owner, 2026-08-14): `L0` → Layer 0,
+  water properties; `HR9` → Hard Rule 9, the plant is ground truth; `A4`, `E09`, `P-11`, `CA-15`,
+  `§8(2)` likewise. Bare codes only inside a document that defines them, or between agents.
+- **Ask with the recommendation attached** (owner, 2026-07-29; re-issued 2026-08-14): what he is
+  deciding, the options, your pick and why, what you do with no reply. Never "blocked on your
+  ruling" with the options somewhere else. Routine calls: make them, state the assumption, move
+  on. `Blueprint/SOP.md` §5.
 
-> **Be brief. Facts, numbers, decisions** *(OWNER DIRECTIVE, 2026-07-30: "I would also like to
-> adjust the conciseness of replies. Most replies are a bit too long. I need just the facts and
-> important information to know what the ai did and to make decisions.")*. Lead with what
-> changed and the number that shows it. **Cut**: restating the request, narrating what you are
-> about to do, reasoning nobody asked for, re-explaining a decision already made, and the
-> victory lap after a green gate. **Keep**: measurements, deltas, what broke and why, and
-> anything that changes what he does next. Detail belongs in the commit message, the issue or
-> `Diagnostic/TUNING_LOG.md` — the reply is not where the record lives. The two delimited blocks
-> below are already bounded; this does not shrink them further. **Be token efficient — but never
-> at the cost of quality** *(OWNER DIRECTIVE, 2026-09-11: "Be token efficient but do not sacrifice
-> quality in any way")*.
->
-> **The shape** *(OWNER RULING, 2026-08-06: "Go with your recommendation." — given after
-> "Should we add word limits? Wouldn't it hamstring you sometimes?", on the recommendation that
-> only ONE of three proposed caps should be a hard number)*. **One number, two habits.**
-> - **A hard cap where length is the harm: `CLAUDE.md` ≤ 15,000 words**, gated by
->   `test/run_doc_budget.js`. This file is paid for on every turn by every agent, which no other
->   document is. It hit **42,065** words under its own "Keep it SHORT" heading, with a single
->   physical line of 5,310, because the caps lived in prose inside the file they governed.
->   **When it binds, CUT — do not raise the number**; the history belongs in `TUNING_LOG`.
-> - **A chat DEFAULT, not a cap: lead with the answer in ~150 words.** Expand when he asks, or
->   when a table of measurements *is* the answer — a 30-row A/B is not verbosity.
-> - **Write-ups get no word limit — they get a content rule:** don't restate what the diff shows;
->   record the trap and the numbers that prove it. Length then falls out.
->
-> **Why not three caps** (so it is not re-litigated): a word limit on write-ups would forbid the
-> worked A/B that makes a trap believable — #363's lesson is worthless without the 15 °F number
-> that disproved the filed symptom — leaving HR12 unsatisfiable. Caps are also a proxy an honest
-> writer games without noticing: the gate-baselines blob was bad for duplicating a
-> machine-readable authority, not for its word count.
+**End with what is still outstanding** (owner, 2026-07-30; 2026-09-20; 2026-09-25) — last thing
+before you stop, scoped to the task in hand:
 
-> **End with what is STILL OUTSTANDING** *(OWNER DIRECTIVE, 2026-07-30: "I would like to add to
-> claude.md to have the ai place a 'Still Outstanding' summary at the bottom so i know exactly
-> what still need to be done with respect to the task the ai is working on. This summary should
-> include a recommendation for what to work on next.")*. Close any response that leaves work
-> unfinished with a delimited block, last thing before you stop:
->
-> ```
-> **— STILL OUTSTANDING —**
-> - <item> — <why it is not done: not started / blocked on X / needs your ruling>
-> **Next:** <the ONE thing you recommend, and why>
-> **— END STILL OUTSTANDING —**
-> ```
->
-> **Scope it to the task in hand**, not the whole backlog — the owner is asking "where are we on
-> *this*", and a list of everything open answers a different question. **One recommendation, not
-> a menu** — same rule as the block above.
->
-> **THE BLOCK IS A REPORT, NOT A PLACE TO PUT WORK** *(OWNER DIRECTIVE, 2026-09-20: "You often
-> stop with work that needs to be done in the STILL OUTSTANDING block. how can we adjust so that
-> you keep working until its complete? I cant always monitor your work just to say 'keep going'
-> every time.")*. **Every item names which of exactly THREE things it waits on: his RULING** (a
-> judgement only he can make) · **his PERMISSION** (push and merge, already gated) · **a CLOCK**
-> (a gate actually running).
->
-> **Waiting on none of those is not OUTSTANDING, it is UNSTARTED — do it before you stop.**
-> *"Waiting on your yes"* is not a category: if you would act the instant he said yes, and nothing
-> in it is irreversible or his to judge, the yes was never load-bearing — make the call, do the
-> work, say what you did. In the session that produced this rule, one block parked two items as
-> *"waiting on your yes"* that needed nothing from him **while calling two branches that carried
-> his own rulings "undecided"**. **He cannot monitor; the default is KEEP GOING.**
->
-> **Omit it entirely when nothing is outstanding**, and say so in a sentence instead. A section
-> that appears every turn stops being read, which is the failure mode the First Principles rule
-> already names. It is a *status report*: it never substitutes for asking when a decision
-> genuinely blocks (SOP §5), and it never turns an unmeasured claim into a plan (HR12).
->
-> **Show it only when it CHANGED since your last reply, or carries a decision for him** *(OWNER,
-> 2026-09-25: "Do it")*. Unchanged, it is one status line.
+```
+**— STILL OUTSTANDING —**
+- <item> — <waits on: his RULING / his PERMISSION (push, merge) / a CLOCK (a gate running)>
+**Next:** <the ONE thing you recommend, and why>
+**— END STILL OUTSTANDING —**
+```
 
-> **When you ask the owner something, bring the recommendation with it** *(OWNER RULING,
-> 2026-07-29: "I think we should add to SOP to have you automatically give your recommendation
-> when asking for my input so I don't have to keep asking for it.")*. Lead with the answer you
-> would give and why, then the alternatives — a neutral menu is a recommendation you declined
-> to make. Say what you will do if there is no reply, and what would change your mind. Rank
-> them if there are several. And do not ask at all when the call is routine: make it, state
-> the assumption, move on. Full guidance, including the cases where it genuinely blocks:
-> `Blueprint/SOP.md` §5.
->
-> **RE-ISSUED, because the rule above was not enough** *(OWNER DIRECTIVE, 2026-08-14: "From now on,
-> whenever you need a ruling, tell me what you need me to decide, my options and your
-> recommendation. I'm tired of having to ask every time.")*. **The failure mode is NOT refusing to
-> recommend — it is naming a blocker without the decision attached.** *"Blocked on your ruling"* in
-> a status line, a STILL OUTSTANDING block or an issue comment, with the options in a document he
-> must go find, makes him ask. **Every time you say a thing is blocked on him, the decision travels
-> WITH it, in that message:** what he is deciding · the options · your recommendation and why. **No
-> exceptions for brevity.** A pointer to where the options are written is not the options.
+Every item names one of those three. Waiting on none of them is unstarted — do it before you
+stop; "waiting on your yes" is not a category. Omit the block when nothing is outstanding and say
+so in a sentence; show it only when it changed or carries a decision, else one status line. It is
+a report: never a substitute for asking when genuinely blocked (SOP §5), never a plan built on an
+unmeasured claim (HR12).
 
-> **The First Principles section — a CANARY, not an essay** *(OWNER RULING, 2026-07-29: "I would
-> label it the 'First Principles' section. The start and end should be marked."; narrowed hours
-> later, on the first two in the wild: "the first principles section is usually too long. I
-> consider it a canary. Something to tell me if there's something that needs to be looked into.
-> It doesn't need to be verbose.")*. Any response may carry one delimited block giving the raw
-> read — the blunt judgement, the disagreement with the framing, the thing the body would have
-> softened into a menu:
->
-> ```
-> **— FIRST PRINCIPLES —**
-> <ONE concern. Two or three sentences, ~50 words.>
-> **— END FIRST PRINCIPLES —**
-> ```
->
-> **One concern, not a survey** — two candidates: ship the one you would most regret him not
-> seeing. Needs more than three sentences: a short line plus an offer to expand, or an issue.
-> Same sense as HR9's — it says *look here*, it settles nothing.
->
-> **Unhedged, not unaccountable.** Exempt from habit (hedging, deferring to documents, ranking the
-> cheap option first), never from the rules: **HR12 still binds** — a rules-free zone for confident
-> plant-dynamics claims is what #205 and #220 are the record of — as do HR11 and
-> no-fabricated-sources, and it can never authorise an action or excuse a gate. **Optional and
-> never padded**: a slot filled every turn trains the owner to skip it. **Two triggers** — the
-> *ranking disclosure* (you are recommending the safe option and a higher-fidelity one exists: say
-> which you would pick on fidelity alone, #251), and a doubt about your own work you would
-> otherwise bury. Not gateable.
+**First Principles — a canary, not an essay** (owner, 2026-07-29). Optional, one per reply, never
+padded:
 
-> **You may not be the only agent in this repo. Check all lanes before you edit.** Two sessions
-> in one working directory overwrite each other's files and sweep each other's work into the
-> wrong commit — it happened on 2026-07-29 and cost a set of manual edits their attribution. A
-> **branch isolates nothing**; only a separate working directory does. **`Blueprint/LANES.md` is
-> the full protocol** — the detection's two blind spots, the merge procedure, the audit lane, and
-> the worked failure behind each rule below. What follows is only what binds.
->
-> | Working tree | Branch | |
-> |---|---|---|
-> | `C:\grok_build\Reactor_Dynamics` | `develop` | the main working branch — use this unless it is taken |
-> | `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1 — a NORMAL lane, loads this file |
-> | `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2 — a NORMAL lane, loads this file |
-> | `C:\grok_build\RD_Audit` | *(none — detached)* | **the AUDIT LANE.** Not a work lane, do not commit from it — `LANES.md` §8, `Blueprint/AUDIT_CHARTER.md` |
->
-> - **First thing in a session, check ALL trees** — a `SessionStart` hook does it for you
->   (`tools/hook_lane_status.js`, #343) and **reports without deciding**; run it by hand if it
->   did not fire. **"COULD NOT CHECK" is not "clear."**
->   ```
->   git worktree list
->   git -C C:/grok_build/Reactor_Dynamics status --short && git log develop   -1 --format='%h %cr'
->   git -C C:/grok_build/RD_workbench   status --short && git log workbench -1 --format='%h %cr'
->   git -C C:/grok_build/RD_backshop    status --short && git log backshop  -1 --format='%h %cr'
->   gh issue list --repo TH462/Reactor-Dynamics --search 'label:status-wip-develop,status-wip-workbench,status-wip-backshop'
->   ```
->   **The last line is the only one that is not a guess** *(OWNER DIRECTIVE, 2026-08-04: "Since
->   that's done add an in process tag that shows which worktree it's being worked on.")* — a lane
->   tag is an agent SAYING where it is. **Tag your issue when you start, clear it when you stop**
->   (full rule under *Issue tracking*). Run both: an agent can work without touching an issue.
->   **When the tag and the sweep disagree, the TAG wins.** The sweep cannot see an agent between
->   commits, and unmerged commits on an overflow lane are not occupancy — `LANES.md` §2, which
->   also has the `--search`-not-`--label` trap that made this query return 0 for months.
->   **Re-check before your first commit.**
-> - **On a positive, WARN AND ASK — do not move on your own** *(OWNER RULING, 2026-07-29: "Maybe
->   it shouldn't be automatic. The agent should warn the user and ask if they should use
->   workbench.")*. The detection misfires both ways and only the owner can tell the cases apart.
->   Investigating in place is fine; **editing, probe files and commits are not**. Absent a reply,
->   stay read-only — the heuristic never gets an action.
-> - **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** *(OWNER DIRECTIVE, 2026-07-31: "We
->   need a rule to never merge unless I say so. Develop was being worked")*. Applies to
->   fast-forwards and anything else that moves `develop`. A clean `git status` is not permission.
->   "Committed on the lane, gated, waiting" is the correct end state.
-> - **PWR2 (#479) HAS A STANDING HOLD ON TOP OF THAT RULE** *(OWNER DIRECTIVE, 2026-08-14: "Do not
->   merge until I explicitly tell you to. We are not going to merge until the new physics have been
->   finished, tested and validated.")*. **The bar is the whole engine — finished, tested AND
->   validated — not a green lane and not a finished layer.** Do not propose a merge at each
->   milestone; do not carve out "just the docs" or "just the manual fix" (asked and declined
->   2026-08-14). The lane accumulating commits is the INTENDED state, so treat conflict management,
->   not merging, as the maintenance job.
-> - **The lanes are LOCAL. Never `git push origin workbench` / `backshop`** *(OWNER DIRECTIVE,
->   2026-07-31: "I don't want the workbench or backshop trees pushed to gh. Gh should only have
->   main and develop.")*. The repo is public and a pushed lane also builds a Vercel preview site.
-> - **Starting on an overflow lane: `git merge --ff-only develop`, and when it refuses do a real
->   `git merge develop`.** Guaranteed conflicts, all newest-at-top: `CHANGELOG.md`,
->   `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, and the `BASELINES` map in
->   `test/run_all.js` — keep both sides, then **re-run `run_all`**, because a mechanical BASELINES
->   resolution can take the wrong number silently.
-> - **`Manuals/` is the DANGEROUS one**: those four conflict LOUDLY, but a chapter edited in the
->   MIDDLE by both lanes resolves in one lane's favour **saying nothing** — a 2026-08-03 merge
->   dropped a whole `§5.5` while the digests re-sealed around it. `run_manual_rev`'s content canary
->   **only sees what a revision row NAMES**, so write rows chapter-qualified with a `§`, and after
->   any `Manuals/` merge grep the chapter for what you wrote. `LANES.md` §6.
-> - **Your session-log heading names your LANE: `YYYY-MM-DD-<lane>-<letter>`**, `-a` first, never
->   bare — `test/run_session_labels.js` gates it; `LANES.md` §7 for why.
-> - A new tree comes from `git worktree add <path> <branch>`, and needs `node_modules` junctioned
->   from the primary tree plus an `inbox/` directory. Commit to **your own branch**.
-> - **Two SUBAGENTS at once? Give each a scratch worktree — `LANES.md` §9.** 1 s to make; sharing
->   a tree serializes their gates and lets one `git checkout --` the other's work, silently.
->   **Brief step 1: `git reset --hard <develop tip>`; remove the worktree when it merges** *(OWNER RULING, 2026-09-29: "Adopt 1,2,4 as recommended.")*
->   — the tool cut them from a stale `2ec0b85a`, and leftovers redden gates scanning `.claude/`.
+```
+**— FIRST PRINCIPLES —**
+<ONE concern. Two or three sentences, ~50 words.>
+**— END FIRST PRINCIPLES —**
+```
 
-> **Four questions decide whether a feature or change goes in — `Blueprint/DESIGN_CRITERIA.md`
-> is BINDING** *(OWNER DIRECTIVE, 2026-08-02: "I think there are a few important criteria on
-> weather we should include a feature or make a change. 1. Is it prototypical? What is the
-> educational value? Is the increased complexity worth it? What are the actual tested numbers or
-> behaviors of our plant?" — clarified: "I meant the complexity to the user. Are the extra
-> controls going to increase educational value or will they confuse the player? We should codify
-> this decision making process.")*. In order, because three are unanswerable until the first is done:
->
-> 1. **What are the tested numbers?** A GATE, not a vote — no measurement, no decision (HR12).
-> 2. **Is it prototypical?** The real question is *can I cite it* — recall is not evidence.
->    Unsourceable ≠ no; mark it UNVERIFIED and take it to 3.
-> 3. **What is the educational value?** The only legitimate reason to depart from 2, and only as
->    a **declared** departure (`DESIGN_COMPANION.md` §8). Operational test: **can the player reach
->    it on the board, and does something visible change when they do?**
-> 4. **Does it complicate things FOR THE PLAYER?** *User* complexity, not code. It is a **VETO** —
->    it can only ever say no. Tests: orphan control, observability, duplicate authority, register.
->
-> The doc also carries §5, the per-plant artifacts each question needs to be answerable at all —
-> the prerequisite list for automating the RBMK/BWR builds *(OWNER, 2026-08-02: "My goal is to
-> eventually automate the building of the BWR and RBMK plants.")*. Those plants stay ON HOLD.
->
-> **Q2's yardstick is `Blueprint/CURRICULUM.md`** — the per-plant educational goals (dynamics,
-> procedures, casualties, flagship scenarios). It was DESIGN_CRITERIA §6 until 2026-08-03, split
-> out because it is PWR-only and grows with every plant while the criteria are binding and
-> plant-agnostic. **Do not merge it back**: one file with two statuses is how a proposal gets
-> cited as law — and that file now genuinely carries two, so **check the per-tier status table
-> before citing it.**
->
-> **All four tiers are RULED and BINDING for the PWR** — A and B *(OWNER RULING, 2026-08-03:
-> "Tier A looks good, make it so. Tier b looks good, also make it so.")*, C *(OWNER RULING,
-> 2026-08-03: "Do as you recommend.")*. **Tier B carries a known gap**: its eight evolutions are
-> exactly the eight that already have a checklist, while the manual documents **15** — the list
-> was derived from what is built, so a second pass is owed. **Tier C** — it has two bands. **CORE** (11 casualties) means the player is expected to
-> handle it: it owes a response procedure, a board cue **and a runnable checklist**. **COVERED**
-> means documented, injectable, live in free play — and owing **no mission**. A casualty is Core
-> iff it demonstrates a **Tier A coupling under stress**. Promoting one out of Covered needs a Q0
-> measurement first. Tiers A and B remain PROPOSAL.
+The blunt read the body would soften. Triggers: you recommend the safe option while a
+higher-fidelity one exists (say which you would pick on fidelity alone, #251), or a doubt about
+your own work you would otherwise bury. Unhedged, but HR12, HR11 and no-fabricated-sources still
+bind; it never authorises an action or excuses a gate.
 
-> **The plant is the ground truth (HR9).** The only question that decides a tuning or
-> behaviour change is **"what should this plant actually do?"** — never "what keeps this
-> mission green?" Authority runs one way: physics/prototypicality → this plant's ruled-on
-> identity → the behaviour catalog + physics acceptance suites → control setpoints →
-> authored content → that content's gates. **Content never votes on physics** — and content
-> CHURN is never a consideration either *(OWNER DIRECTIVE, 2026-08-07: "Documentation and
-> gameplay always follow the model/physics, not the other way around.")*: the cost of
-> re-authoring manuals, missions or checklists is not an input to a physics decision. When a
-> mission, procedure or checklist breaks after a plant change, presume the *content* is
-> stale. Read the break — it is a canary, not an authority — but settle it against the top
-> three levels, and say which behaviour you are treating as ground truth. Full rule and the
-> worked near-miss: `Blueprint/CONTEXT.md` §3 HR9.
+## Lanes and git — check all trees before you edit
 
-> **Prototypicality claims are SOURCED, never recalled — run an evidence pass** *(OWNER
-> DIRECTIVE, 2026-07-28: "I like the idea of the evidence pass to find the data on how a real
-> plant does it instead of relying on recall. I think that should be our SOP for issues like
-> this one. All sim plant designs should be based on real plant documentation.")*. Before you
-> change a plant number, setpoint or behaviour on the grounds that "real plants do X", go find
-> the document that says so and **cite it in the change** — ADAMS accession number, section,
-> and enough verbatim quote to check. Recall is not evidence; neither is another agent's
-> summary, nor a claim already in this repo (many were written from recall and several have
-> been disproved — see #220, #230, #205). If you cannot source it, say so plainly and mark the
-> claim unverified rather than acting on it. Worked examples: **#220** (ten claims verdicted
-> against NRC primaries) and **#205** (an evidence pass that overturned the filed diagnosis
-> *and* one of my own interim findings). Source corpus and the nrc.gov fetch workaround:
-> `Diagnostic/TUNING_LOG.md` 2026-07-28q and the `pwr-prototypicality-sources` memory.
+Two sessions in one working directory overwrite each other (it happened 2026-07-29). A branch
+isolates nothing; only a separate tree does. Full protocol: `Blueprint/LANES.md`.
 
-> **A passing test is not evidence the mechanism is right (HR10).** Tests check that the sim
-> does what it is **intended** to do — not just that it does what it already does. A test
-> written from observed behaviour can only confirm that behaviour, including the wrong parts. If you cannot say why a mechanism is correct without citing
-> which tests pass, you have not finished — three probes accepting a design only means those
-> three probes accept it. When a change reddens a gate, first ask what the gate was actually
-> asserting: it may be pinning a fixture, a transient, or the defect you are fixing. If you
-> move a test, validate the new form against the OLD behaviour too — passing on both makes it
-> a better test; passing only on your change means you refitted it, and you must say so. Full
-> rule and the three worked cases (#200, #206, #219): `Blueprint/CONTEXT.md` §3 HR10.
+| Tree | Branch | |
+|---|---|---|
+| `C:\grok_build\Reactor_Dynamics` | `develop` | main working lane |
+| `C:\grok_build\RD_workbench` | `workbench` | overflow lane 1 — a normal lane, loads this file |
+| `C:\grok_build\RD_backshop` | `backshop` | overflow lane 2 — a normal lane, loads this file |
+| `C:\grok_build\RD_Audit` | detached | audit lane — never commit from it (`LANES.md` §8, `Blueprint/AUDIT_CHARTER.md`) |
 
-> **RBMK and BWR are on hold.** Do **not** implement, tune, refactor, extend, or
-> "fix while you're here" the RBMK or BWR engines, controls, scenarios, UI, or
-> their tests. All active work is **PWR only** until the PWR is finished and the
-> owner reopens those plants. Touching them wastes tokens; leave known RBMK/BWR
-> reds and backlog items alone unless the owner explicitly asks. Shared code is
-> fine to change for a PWR need — do not start RBMK/BWR-specific work.
+- First thing in a session the `SessionStart` hook (`tools/hook_lane_status.js`) sweeps all trees
+  and the `status-wip-*` issue tags; run it by hand if it did not fire. "Could not check" is not
+  "clear". The tag is the only signal that is not a guess (owner, 2026-08-04): when tag and sweep
+  disagree the tag wins — but a stale tag on a quiet issue with a clean tree is not occupancy
+  (owner, 2026-10-02): clear it, say so, carry on. Re-check before your first commit.
+- On a positive, **warn and ask — do not move on your own** (owner, 2026-07-29). Investigate in
+  place; no edits, probe files or commits until he answers.
+- **NEVER MERGE INTO `develop` UNLESS THE OWNER SAYS SO** (owner, 2026-07-31) — fast-forwards
+  included; a clean tree is not permission. "Committed on the lane, gated, waiting" is the correct
+  end state. **PWR2 (#479) carries a standing hold on top** (owner, 2026-08-14): the bar is the
+  whole engine finished, tested and validated — no milestone merges, no "just the docs" carve-outs.
+  A lane accumulating commits is the intended state; manage conflicts, do not merge.
+- **NEVER PUSH UNTIL HE SAYS SO** (owner, 2026-09-14). Ending a session with nothing pushed is
+  correct. A push is what triggers the aggregate gate (below).
+- **THE LANES ARE LOCAL — never push `workbench` or `backshop`** (owner, 2026-07-31); GitHub
+  carries only `main` and `develop`. `tools/hook_guard_push_merge.js` asks on a push or a
+  develop-moving merge and denies a lane push; approval in the prompt is his permission.
+- Starting on an overflow lane: `git merge --ff-only develop`, else a real `git merge develop`.
+  Guaranteed newest-at-top conflicts: `CHANGELOG.md`, `Diagnostic/TUNING_LOG.md`,
+  `Blueprint/BUILD_DECISIONS.md`, the `BASELINES` map in `test/run_all.js` — keep both sides, then
+  re-run `run_all` (a mechanical BASELINES merge takes the wrong number silently).
+- `Manuals/` merges drop a middle-of-chapter edit silently (a whole §5.5, 2026-08-03): write
+  revision rows chapter-qualified with a `§`, and grep the chapter after any merge. `LANES.md` §6.
+- Session-log headings name the lane: `YYYY-MM-DD-<lane>-<letter>`, `-a` first, never bare
+  (`run_session_labels.js` gates it; `LANES.md` §7).
+- New tree: `git worktree add <path> <branch>`, `node_modules` via `NODE_PATH` (a junction is
+  followed by `worktree remove` and empties the primary's), an `inbox/` directory. Commit to your
+  own branch.
+- Two subagents at once get a scratch worktree each (`LANES.md` §9); brief step 1 is
+  `git reset --hard <develop tip>`, and remove the worktree when it merges (owner, 2026-09-29).
 
-> **What actually binds you** *(OWNER RULING, 2026-07-27: "I think we have too many
-> instructions in this project and it's starting to confuse the coding agents and gum up the
-> works… Go with your recommendations")*. There are ~229,000 words of docs here containing
-> ~650 "do not / never / by design" phrases. Four rules make that tractable:
-> 1. **Binding: the Hard Rules in `Blueprint/CONTEXT.md` §3, and this file.** Nothing else.
->    Ten rules, deliberately short. **`Blueprint/SOP.md` §1–4 is NOT binding** — it holds the
->    *how* (worked cases, failure modes, procedure) that used to bloat §3 to 200 lines. Read
->    it for technique; do not cite it as authority. **§5 is the exception**: it records a
->    direct owner instruction, quoted and dated, so it binds under rule 4 below — because the
->    owner said it, not because SOP.md says it. That is the only way anything in that file
->    binds, and it is why every entry there must carry its quote.
-> 2. **`Diagnostic/`, `BUILD_DECISIONS.md` and `Manuals/` are RECORD, not policy** — they say
->    what happened and why, not what you must do. Read them for evidence; don't obey them.
-> 3. **Plans expire when executed.** A phased work order stops binding the moment it is done
->    (`PWR_SHIP_REVIEW_PLAN.md` was the worked example — it governed for a week after finishing,
->    and was retired 2026-07-29; see `Blueprint/RETIRED.md`, which is where deleted documents
->    are indexed so you can find one you did not know existed).
-> 4. **A directive with no date + verbatim owner quote is advisory.** Weigh it, say you did,
->    move on. See `CONTEXT.md` §3 for the format and why.
->
-> If you find yourself blocked by a sentence in a doc, check which of the four it falls under
-> before deferring to it.
+## What binds you
 
----
+(owner, 2026-07-27) ~229,000 words of docs carry ~650 "do not / never / by design" phrases. Four
+rules decide what is law:
+1. **Binding: the Hard Rules in `Blueprint/CONTEXT.md` §3, and this file.** Nothing else.
+   `Blueprint/SOP.md` §1–4 is technique, not authority; its §5 binds because it quotes dated owner
+   instructions.
+2. `Diagnostic/`, `BUILD_DECISIONS.md` and `Manuals/` are record, not policy — evidence, not orders.
+3. Plans expire when executed (`Blueprint/RETIRED.md` indexes deleted documents).
+4. A directive with no date and no verbatim owner quote is advisory (HR11). **A dated rule in this
+   file whose quote is in `Blueprint/RULINGS.md` is fully binding** — the ledger is the quote.
+
+Blocked by a sentence in a doc? Check which of the four it falls under before deferring to it.
+
+## The four design questions — `Blueprint/DESIGN_CRITERIA.md` is binding
+
+(owner, 2026-08-02) In order, because three are unanswerable until the first is done:
+**1. What are the tested numbers?** — a gate, not a vote (HR12). **2. Is it prototypical?** — can
+you cite it; unsourceable means UNVERIFIED, not no. **3. What is the educational value?** — the
+only legitimate departure from 2, and only declared (`DESIGN_COMPANION.md` §8); test: can the
+player reach it on the board, and does something visible change. **4. Does it complicate things
+for the PLAYER?** — a veto, it can only say no (orphan control, observability, duplicate
+authority, register). §5 lists the per-plant artifacts needed before the RBMK/BWR builds can be
+automated (the owner's goal, 2026-08-02); those plants stay on hold.
+
+Q2's yardstick is `Blueprint/CURRICULUM.md` (PWR only; never merge it back into the criteria;
+check its status table before citing). All four tiers are ruled and binding for the PWR (owner,
+2026-08-03): A = 9 couplings; B = 8 evolutions (a subset — the manual documents 15, a second pass
+is owed); C = **Core** (11 casualties: response procedure, board cue, runnable checklist; Core iff
+it shows a Tier A coupling under stress; promotion needs a Q0 measurement) vs **Covered**
+(documented, injectable, live in free play, no mission); D = adopt existing.
+
+## The plant is the ground truth
+
+- **HR9.** The only question is "what should this plant actually do?" — never "what keeps this
+  mission green?". Authority runs physics/prototypicality → ruled plant identity → behaviour
+  catalog + acceptance suites → setpoints → authored content → its gates. Content never votes on
+  physics and content churn is never an input (owner, 2026-08-07). A mission that breaks after a
+  plant change is a canary: presume the content is stale, settle it against the top three levels,
+  say which behaviour you treat as truth. `CONTEXT.md` §3; `SOP.md` §1.
+- **HR12 — MEASURE IT** (owner, 2026-07-29): any claim about plant dynamics is backed by stepping
+  the plant; quote the number, not the verdict. Coverage claims and "X is not built" are the same
+  class: prove them by injection — break it and see what notices.
+- **PROTOTYPICALITY CLAIMS ARE SOURCED, NEVER RECALLED — RUN AN EVIDENCE PASS** (owner,
+  2026-07-28): before changing a plant number on "real plants do X", find the document and cite it
+  in the change (ADAMS accession, section, verbatim quote). Recall, another agent's summary and a
+  claim already in this repo are not evidence (#220, #230, #205). Before declaring anything
+  unsourced run `node tools/find_source.js <regex>` — the corpus spans three lanes' `inbox/sources`.
+  `SOP.md` §4; the `pwr-prototypicality-sources` memory.
+- **HR10.** A passing test is not evidence the mechanism is right; a test written from observed
+  behaviour confirms the wrong parts too. When a change reddens a gate, ask what the gate was
+  asserting; if you move a test, validate the new form against the old behaviour as well and say
+  which. `CONTEXT.md` §3; `SOP.md` §2.
+- **Manual first, then auto** (owner, 2026-08-12): establish a system's behaviour with its
+  automatic control OFF before testing it ON — on setpoint, a wrong mechanism and a right one paint
+  the same board (measured 2026-08-12: a 30 MWe load change moved pressure 0 psi with
+  `P_restore_rate_gain` live, +31 psi and −10.7 °F of subcooling without it; 47 runners agreed
+  with the hollow plant). Manual-mode acceptance first; the auto row asserts the controller holds
+  what manual proved.
+- **RBMK AND BWR ARE ON HOLD.** Do not implement, tune, refactor or fix-while-you're-here their
+  engines, controls, scenarios, UI or tests; leave their known reds alone. PWR only until the
+  owner reopens them. Shared code may change for a PWR need.
+- **Verify a claim before you act on it.** Issue comments, file headers, specs and this file age
+  fast here (#326: correct when written, wrong hours later). Re-measure on the tree you stand in.
 
 ## Start here (the map)
 
-Find your task and go straight to the authoritative source — you do **not** need
-to read everything.
-
 | If you want to… | Read / run |
 |---|---|
-| **Understand the whole system** | `README.md`, then `Blueprint/CONTEXT.md` (interfaces, hard rules, data contract). |
-| **Understand *why* it's built this way** | `Blueprint/DESIGN_COMPANION.md` (vision, rationale, deliberate exclusions, v2 roadmap). |
-| **Decide whether a feature or change goes in** | **`Blueprint/DESIGN_CRITERIA.md`** — the four questions (binding; summarized in the block above). §5 is the per-plant artifact list they need to be answerable, i.e. the automation prerequisites. |
-| **Argue a feature's EDUCATIONAL value (Q2)** | **`Blueprint/CURRICULUM.md`** — what each plant is meant to teach, in four tiers. PWR only. **All four tiers RULED 2026-08-03 and binding for the PWR.** A = 9 couplings; B = 8 evolutions (**list is a subset — a second pass is owed**); C = Core/Covered, Core owes a mission and Covered does not; D = adopt existing. |
-| **Apply a Hard Rule to a real decision** | `Blueprint/CONTEXT.md` §3 for the rule (binding, 10 rules, each names its guard), then **`Blueprint/SOP.md`** §1–4 for the worked cases and technique (advisory). |
-| **Put a decision to the owner** | `Blueprint/SOP.md` §5 — always bring your recommendation; see the block above. |
-| **Design anything the owner sees** | **`Blueprint/TASTE_LOG.md`** — log his reactions verbatim; AI-tells list. |
-| **Write or review any player-facing text** | **Checklist steps: `Blueprint/CHECKLIST_WRITING_GUIDE.md`** (2026-09-06, built from two fresh-reader reviews in `Diagnostic/CHECKLIST_REVIEW_2026-09-06_*.md`). Everything else: `Blueprint/STYLE_GUIDE.md`. Both ADVISORY. |
-| **Play the walkthroughs as a fresh-context layman / operator** | `.claude/skills/layman-playthrough/` — no repo access, panel and board only; every claim re-measured before filing. |
-| **Find a document that was deleted** | `Blueprint/RETIRED.md` — what was removed, why, and the command to read it again. |
-| **Work out which lane to use, or merge one** | **`Blueprint/LANES.md`** — the occupancy check's two blind spots, warn-and-ask, the merge-conflict list and the `Manuals/` silent-drop case. The block at the top of this file is only what binds. |
-| **Look up a trap that used to be in this file** | **`Blueprint/TRAPS.md`** — bullets evicted from the standing list under its 25-cap, plus the criterion for which ones go. |
-| **Run an independent audit slice (#221)** | **`Blueprint/AUDIT_CHARTER.md`** — the lane, the prep and the close-out (yours, as the primed agent). The auditor's own rules are **`Blueprint/AUDITOR_ORIENTATION.md`**, deployed by `node tools/audit_deploy.js`; do not restate them elsewhere. Verify with `node tools/audit_preflight.js <slice>`. **Launch a fresh session in `C:\grok_build\RD_Audit` itself, NOT its `tree/`** — which silently gets the repo's settings and no auditor orientation. **Reading THIS file auto-loaded means you are primed and cannot be the auditor**: prep the slice per §4 and stop. Preflight proves the config, not the session. |
-| **Build or modify a module** | `Blueprint/CONTEXT.md` **plus that one module's spec** (`Blueprint/M1`–`M8`) — and nothing else. |
-| **Know what changed recently** | `CHANGELOG.md` (skimmable) → `Blueprint/BUILD_DECISIONS.md` (dense engineering rationale, tuning, gate tallies). |
-| **Operate the plant / look up a control, setpoint, or procedure** | `Manuals/` — start at `Manuals/README.md` (commercial-format PWR operator manuals). |
-| **Pick up the active tuning / bug-fixing effort, or see known issues and playtest findings** | `Diagnostic/TUNING_LOG.md` — the session-continuity record: current status, the tuning toolbox (knobs + tests + workflow), a dated worklog, and the backlog of known & suspected issues. **Read it first when continuing tuning work.** Then the rest of `Diagnostic/` (`SPEC_AUDIT_*`, `OPS_TUNING_REPORT`, `PLAYTEST_REPORT`) and `Manuals/ISSUES_AND_FINDINGS.md`. |
-| **Tune plant behavior (the physics "knobs")** | Each plant's **`[tune]`-annotated constants** in `engines/<plant>/<plant>_config.js` (PWR 89, RBMK 27, BWR 37 — the file header explains the convention: `[tune]` values are starting points arbitrated by the scenario suite; un-marked values are fixed). Protection/alarm/failure setpoints are data too, in `layers/control/<plant>_control.js`. Validate with `test/run_ops.js` and `test/run_behavior.js`; open tuning targets are tracked in `Diagnostic/OPS_TUNING_REPORT.md`, and the live worklog + toolbox is `Diagnostic/TUNING_LOG.md`. **BEFORE you move a constant, run `node tools/perturb_sweep.js`** — it nudges `[tune]` values by 2–3 % and reports which checks flip, so "what will this break?" is answered ahead of the retune instead of by a mystery red after it (#321). |
-| **Run the simulator** | Open `index.html` (landing page — Operate the PWR from there), or `ui/shell.html` directly — see below. |
-| **Run the tests** | `node test/run_<suite>.js` — see below. |
-
----
+| Understand the system; why it is built this way | `README.md` → `Blueprint/CONTEXT.md`; `Blueprint/DESIGN_COMPANION.md` |
+| Decide whether a change goes in; argue educational value | `Blueprint/DESIGN_CRITERIA.md`; `Blueprint/CURRICULUM.md` |
+| Apply a Hard Rule; put a decision to the owner | `CONTEXT.md` §3, then `Blueprint/SOP.md` §1–4 (advisory) and §5 |
+| Find the owner's words behind a dated rule here | **`Blueprint/RULINGS.md`** |
+| Design anything the owner sees | `Blueprint/TASTE_LOG.md` — his reactions verbatim, the AI-tells list |
+| Write player-facing text | checklist steps: `Blueprint/CHECKLIST_WRITING_GUIDE.md`; else `Blueprint/STYLE_GUIDE.md` (both advisory) |
+| Play the walkthroughs as a fresh layman / operator | skill `layman-playthrough` |
+| Find a deleted document; a trap evicted from this file | `Blueprint/RETIRED.md`; `Blueprint/TRAPS.md` |
+| Pick a lane or merge one | `Blueprint/LANES.md` |
+| Run an independent audit slice (#221) | `Blueprint/AUDIT_CHARTER.md`; launch in `C:\grok_build\RD_Audit` itself, not its `tree/`; having this file loaded means you are primed and cannot be the auditor |
+| Build or modify a module | `CONTEXT.md` plus that one module's spec (`Blueprint/M1`–`M8`) — nothing else |
+| Know what changed recently | `CHANGELOG.md` → `Blueprint/BUILD_DECISIONS.md` |
+| Operate the plant; look up a setpoint or procedure | `Manuals/README.md` |
+| Continue tuning or bug-fixing; known issues | **`Diagnostic/TUNING_LOG.md` first** (status, toolbox, worklog, backlog), then `Diagnostic/*`, `Manuals/ISSUES_AND_FINDINGS.md` |
+| Tune plant behaviour | `[tune]` constants in `engines/<plant>/<plant>_config.js`; setpoints in `layers/control/<plant>_control.js`; validate with `run_ops`/`run_behavior`; **run `node tools/perturb_sweep.js` before moving a constant** (#321) |
+| Which layer a gate runs at; take a number | skill `gate-layers` |
+| File, label or claim an issue | skill `issue-workflow` |
+| Edit a manual chapter | skill `manual-edit` |
+| Change a walkthrough | skill `walkthrough-change` |
+| Bump the version; write the changelog entry | skill `version-changelog`; cutting the release: skill `release-to-main` |
 
 ## Project status
 
-> **Keep this section current.** When you finish work that changes what is built,
-> working, or broken, update the status line and gate baselines below in the same
-> change. The dense, append-only version lives in `Blueprint/BUILD_DECISIONS.md`
-> (Status line + Open Flags table) — update both.
+_Last updated: **2026-10-18**._ **`gh issue list --state open` is the authority on what is open;
+`Blueprint/PWR2_VALIDATION.md` is the engineering record** — a hand-kept list here rotted twice and
+was cut (owner, 2026-09-12). **Gate baselines live in `BASELINES` in `test/run_all.js`, never
+here**; a tracked red carries its own `note` there — do not re-band one. **The manual set's
+revision number advances only at a release** (owner, 2026-08-06): read the top row of
+`Manuals/00_REVISION_HISTORY.md`, extend the pending row, never open a new one for an edit.
 
-_Last updated: **2026-09-18**._
+**Layers** — engines PWR/RBMK/BWR, control (M4), service (M5, with rewind), instructor (M6), test
+runner (M7) built; the PWR models a Mode 5 initial condition and the full Mode 5 ↔ Mode 1
+transition on integrated physics; UI (M8) is a functional alpha, PWR only.
 
-**What is open, and where the plant stands: `gh issue list --state open` is the authority, and
-`Blueprint/PWR2_VALIDATION.md` is the engineering record.** A hand-kept copy here rotted twice
-(measured 2026-08-10, 2026-08-28: bullets called issues open that were closed) and was cut
-*(OWNER DIRECTIVE, 2026-09-12: "Implement the ruleset and Claude.md cuts as recommended.")*.
-**Run the query; read the sections.**
+**Recent themes** — max 5 bullets, newest first, ≤ 40 words each; adding one evicts the oldest
+(rescue its trap to the standing list first). Full entries: `Diagnostic/TUNING_LOG.md`.
 
-**The manual set's revision number does not advance until a RELEASE** *(OWNER DIRECTIVE,
-2026-08-06: "The revision number only matters during a release to the website. Revision numbers
-should never go up until a release happens.")*. **Read the top row of
-`Manuals/00_REVISION_HISTORY.md`, never a number written here** — a number written here rotted
-two revisions behind that table, the same rot as the gate baselines. The newest row is the
-pending one and extends until the next release. **Do not open a new revision row for a manual
-edit; extend the pending row** — that is also how a revision-number collision resolves, which is
-what two lanes editing the manuals produce (Rev 13 shipped thirteen lettered items for that
-reason).
+- **An acceptance threshold at the centre of its render band is a step the board cannot show as
+  met** (2026-09-18, #749): `> 1400` refused half of what `toFixed(1)` drew as `1.4e3` — 107 s of
+  dark Continue. Grade the band floor on the channel the tile draws; measure the player's route.
+- **A latching failure armed after the event it latches on is a no-op that reads as a working
+  injection** (2026-09-09, #670): armed at 30–60 s, `stuck_porv_open` saw the valve reseat at
+  1985 psia (13.69 MPa). A step's `inject` fires before the event — measure the window.
 
-**Recent themes** — **max 5 bullets, newest first; adding one means deleting the oldest.** A
-reading aid, not a record: the full entry is in `Diagnostic/TUNING_LOG.md`, and anything that is
-standing procedure rather than news belongs in the list below. **Evicting one: RESCUE THE TRAP
-FIRST** — ask what in it would still burn someone in a month, move that to the standing list as
-ONE line, drop the rest. **A bullet is ~80 words.**
+**Standing procedure** — traps no gate can catch, one line each, **max 25** (owner, 2026-08-10),
+gated by `run_doc_budget.js`. Adding one evicts one to `Blueprint/TRAPS.md` (criterion there:
+move what a gate already catches). The worked detail behind every line: `TRAPS.md` §"Standing
+list, compressed 2026-10-18".
 
-- **AN ACCEPTANCE THRESHOLD AT THE CENTRE OF ITS OWN RENDER BAND IS A STEP THE BOARD CANNOT TELL
-  THE PLAYER IS MET** (2026-09-18, #749). `fmtExp` is `toFixed(1)`, so `1.4e3` draws for
-  [1350, 1450) while `> 1400` refused the whole lower half; REACTOR POWER's `digits: 1` did the
-  same at 0.1 — **107.4 s of dark Continue beside a tile already reading the target**. Grade the
-  band FLOOR, on the channel the tile DRAWS: the map's "PWR2 has no SR/IR channels" was stale, 88
-  reused channels. **Measure the PLAYER's route — the same fix buys 1 s on the replay, 127 on
-  theirs.**
-
-- **A LATCHING FAILURE ARMED AFTER THE EVENT IT LATCHES ON IS A NO-OP THAT READS AS A WORKING
-  INJECTION** (2026-09-09, #670 Phase 2): `stuck_porv_open` latches on the first lift; the lift is
-  at 5.5 s and the reseat near 25 s, so armed at 0–20 s the accident follows, at 30–60 s the valve
-  reseats at 1985 psia (13.69 MPa) and nothing happens. A step's `inject` must fire before the
-  event its failure waits for — **measure the window.**
-
-**Standing procedure — not part of the rotation above; these do not expire.** One trap per entry.
-**MAX 25 BULLETS** *(OWNER RULING, 2026-08-10: selected "Cap at 25, evict to TRAPS.md")*,
-gated by `test/run_doc_budget.js`. Adding
-one means evicting one to **`Blueprint/TRAPS.md`**, and the criterion is written there: **move
-what a GATE already catches**, keep what nothing can tell you.
-
-- **A check can pin a BIFURCATION, not a claim** (#543, 2026-08-28; #588, 2026-08-30). One bit
-  picks the branch — green here, red on CI. **Assert the invariant the defect violated.**
-  **It also reads as a one-platform defect** (#588: **+1 ulp reproduced the other platform's
-  branch**, Math bit-identical). Move the FIXTURE off the cliff, not the budget; **sweep five ulps
-  before trusting a blowdown check**. `playwright:v1.61.1-noble` reproduces CI's MATH, **not its
-  FONTS** (no DejaVu): CI is `ubuntu:24.04` + `install-deps chromium`. **A geometry bound from a
-  local render dates your FONT STACK** — 179.34 px on Windows is **206.38** there, eating a
-  14.5 px margin (2026-09-12, #713).
-- **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
-  limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
-  criterion, not just the result, before you let it reject anything. **So does a FIXTURE BUILT AT
-  AN ENVELOPE WALL** (#524, rescued 2026-09-02): `P_MIN = 0.1` was `PLow=0.1` in a NIST fetch URL.
-  Move the wall and every probe standing on it reddens — adjudicate per-probe, refit inside it.
-- **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
-  eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
-  both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
-
-- **A ruling names the WORK, not the THING — read it as "build it, having found out what it is"**
-  (rescued from the #572 bullet on eviction, 2026-08-28): "build the 1.5 DPM startup-rate rod block"
-  named a stop that exists in no source, and `Manuals/09` was CITING the document that lists the four
-  real ones beside the row contradicting it. A citation can sit three lines from what it refutes.
-- **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
-  three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped
-  two wrong claims — #315 §6 (an OTΔT argument built and reverted while the primary sat in another
-  lane) and `DESIGN_COMPANION` §8.34, which declared *"no document in any lane's corpus"* two days
-  after the refuting document landed in develop's. It exits **1** on a genuine zero, so "not in the
-  corpus" is a command's verdict rather than your claim.
-- **A claim about COVERAGE OR ABOUT WHAT IS BUILT is an unmeasured claim — prove it by injection**
-  *(my call, 2026-07-31; broadened from tests to the PLANT 2026-08-27, #570)*. HR12 binds
-  plant-dynamics claims; the class that keeps going wrong is the neighbouring one — *"X is
-  untested"*, *"the gate covers Y"*, **and *"X is not built"***. **To prove something is untested or
-  unbuilt, BREAK IT AND SEE WHAT NOTICES.** That is how #286 found five inert automation channels
-  behind a green 24/24 — and skipping it is how #562 reported a protection half as newly built when
-  the engine had carried it all along (deleting the one line it "lacked" would have changed nothing;
-  deleting the FWI line's `tb.tripped` changes everything). **Inherited claims are the risky ones,
-  and A MODULE HEADER IS ONE**: a sentence from a review, an issue, a file header or this file has
-  usually aged, and repeating it in your own voice launders it into a fresh assertion. **AND THE
-  SPECIFICATION CAN BE THE STALE SECOND COPY** (rescued from the #562 themes bullet on eviction,
-  2026-08-28): `CONTEXT.md` defined AFW flow as *"capacity × throttle × level hold"* and the manual
-  documented the throttle box while PWR2 had none of the three — a spec is what you check code
-  against, so nothing could catch it. Same shape as a ruling that was executed on the RETIRED
-  engine and never reached the shipped one (#573). **Grep for the EFFECT, never the name you
-  expected it to have.**
-- **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were stale
-  or mis-framed. An issue's own investigation comment is a claim like any other, and this repo
-  merges faster than one ages well (#326 — both comments were correct when written and wrong hours
-  later). Re-measure on the tree you are standing in, including your own lane's. **A filed root
-  cause repeated in four documents was still never re-measured** (rescued from the #403/#433
-  bullet on eviction, 2026-08-12): "MSLI flow reads 0" came from watching the turbine-only
-  variable, and repetition is not corroboration — neither is a sourced number being the WHOLE
-  source ("600 psig" was adopted and "(Rate sensitive)" dropped from the same cell).
-- **Declare a simplification only after you have MEASURED the regime it lives in** (rescued from
-  the #347 themes bullet on eviction, 2026-08-07). "Optimistic" and "defeats the relief ladder"
-  look identical from outside: spray-at-solid was declared harmless and held pressure 164 psi
-  under the code safeties on the one path #346 never exercised. Corollary from the same change —
-  the TMI-2 securing beat sits BEFORE the decision, on its historical cue, and the decision is
-  RESTORE injection or not; re-litigating that order re-breaks nine missions.
-- **A passing check can be HOLLOW — the failure modes seen here.** A `range()` call on a BOOLEAN
-  returns NaN, so `!range(x).max` is `!NaN`, true always (TR-17, shipped #392, could never fail). A
-  check asserting an ABSENCE can be pinning a NON-EVENT (`run_reachability` exists for the
-  instrument half). `h.range()` spans the WHOLE run, the wrong window for a loss on an event that
-  recovers — take the ends and assert the SPAN. A gate that iterates a hand-maintained MAP tests
-  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). **ASK WHAT A GATE
-  READS, not only what it asserts** — `run_manual_setpoints` scored 9/9 over a chapter-09 §3.0 it
-  never opened (#532), and marked a row `narrative` *because the plant lacked the constant*, which
-  is how a rod stop's setpoint lived in a trip's row (#601). A SOURCE SCAN for a
-  rendered string cannot tell you the string is REACHABLE — `/\(partial\)/` passed green on
-  `(false ? ' (partial)' : '')` (#485); make it a function and test the claim, don't spell it. And
-  a term that is
-  an IDENTITY in the regime you test in is a term nothing tests — 44 green probes agreed with a
-  leg-split formula that computed 0.0 °F on a scrammed core. **A check can SAMPLE THE DEFECT and
-  call it the claim**: "flow RAMPS, it does not step" took both samples BELOW the setpoint, where
-  the mis-anchored ramp lived — certifying a 60 %-of-rated step for as long as it existed (#542). **A DEGENERATE LATCH reads exactly
-  like a working feature** (rescued from the #403/#433 bullet on eviction, 2026-08-12): a no-dt
-  harness left `held_within_s` permanently satisfied (age `0 <= 60` for ever) and three green
-  probes certified an isolation that never once fired. **And the OBSERVER is where
-  the defect can be, invisible to any source read** (rescued from the #436 bullet on eviction,
-  2026-08-26): a paired list comparing FORMATTED strings lit five rows on a healthy plant
-  (`-0.0` vs `0.0`), a recorder emitted 46 `alarm_clear` events at t=0, and a lane-height check
-  measuring `plot ÷ lanes` certified 56 px while 38 px was drawn. **`isFinite(null)` is TRUE and
-  `Number.isFinite` is used NOWHERE in this tree** — a JSON round trip writes NaN out as null,
-  so a dead channel comes back a plausible ZERO that every guard in `engines/` accepts (#555;
-  fix at the save boundary, not by sweeping ~20 guards). **A row's gate must assert the
-  EFFECT — flow, area, the landed value — never the WRITE**, or a DARK WIRE (a driver
-  documented, read, and never passed; a field read off a channel nothing publishes) reads as a
-  working feature: #507 wave 6 shipped three that way, #540 shipped a fourth for six days.
-  **And a MUTATION goes blind
-  when the defect it needs is FIXED, or when a refactor moves the line its anchor names**
-  (rescued from the #501–#504 bullet on eviction, 2026-08-27): settling the startup ring sent
-  three caught mutations blind; rewriting four protection gates orphaned four anchors — and a
-  NEIGHBOUR's fix blinds too: #544's air term fixed the initial condition that was exposing the
-  unbounded-bisection mutation (2026-08-28). Fix a
-  defect, then re-run the INJECTIONS — the whole file's, not just yours.
-- **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
-  from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
-  hid an interlock with no reset differential chattering at 35 % duty. **And CHECK THE BAND'S
-  PROVENANCE before you retune what sits inside it** (#598, rescued 2026-09-03): AUTO charging
-  held its program to 0.11 % while the tile's hard-coded 40–70 % painted an on-program Mode 5
-  level 15 points below normal.
-- **Adjudicate a physics change's red probes ONE AT A TIME** (rescued from the #364/#365
-  themes bullet on eviction, 2026-08-08). Batch-judging 11 reds as "the retune moved things"
-  would have hidden two real defects — each red is the fix working, a stale fixture, or a new
-  defect, and only per-probe adjudication (HR10) tells which.
-- **Know which LAYER owns the effect you are asserting** (table below). A multi-part fix whose
-  parts are each sufficient makes a one-sided injection lie — revert BOTH to reproduce (#295;
-  #545 shipped it again with a level hold AND a door that refuses by name, and `run_pwr2_engine`
-  came back 59/60 — **plant the demand PAST the half you are not testing**).
-  Neutering an automation channel: blank the ENGAGE direction ONLY, or the plant sits in the IC's
-  own AUTO and the probe passes against a dead channel (#286).
-- **A de-energization written into the operator's DEMAND heals itself on the next button press.**
-  Take away the delivered power/flow/head; leave the selector and the latched demand where the
-  operator put them (#200, #329, #332). The `afw_pump_running` vs `afw_flow_normalized` split is
-  the house idiom. Relatedly `true_state.ac_available` is the question every motor load must ask —
-  today exactly `!station_blackout`, and the point is that the question has a NAME; a plain LOOP
-  KEEPS it, and **AFW carries a do-not-gate note** (WTSM 5.7.5).
-- **`power_pct` is FISSION power, not core thermal power** — total is `true_state.core_heat_pct`.
-  Equal by construction at steady power, which is why no gate caught it; seconds into a LOCA it is
-  11.0 MWt against 21.0 MWt of decay heat. Anything reading `power_pct` as core heat is wrong from
-  the moment the rods drop. **Decimals belong to the UNIT**: `toFixed(0)` on MPa printed three
-  different pressures as "15 MPa" and collapsed the loop split that panel exists to show.
-- **The pressurizer's level constants are ONE object** — `level_per_mass` (776), `level_per_void`
-  (375.33), `level_per_tavg` (1.62); the pressure surge reads the same geometry (#337) and since
-  #385 the NODE's credit does too (`level_per_mass_surplus` retired at #365). The TMI deception
-  is a DIFFERENCE between two of them, so moving one inverts it. **Touch one, re-solve the set.**
-  And a SINGLE TERM of a coupled pressure/inventory regime is worse than none — three independent
-  measurements say so (#346, `Manuals/12` §12.4c, the #384 attempt).
-- **Measure a limit's INCIDENCE before trusting a green suite about it** (#362, rescued
-  2026-08-08): the `levelBase` clip bound on 95.7 % of loss-of-heat-sink samples, 0.0 % of every
-  other IC — removing it reddened nothing because no probe stood where it bound. Corollary:
-  **this plant goes solid at an inventory DEFICIT** (thermal expansion), not overfilled.
-- **Natural circulation: the SHAPE is sourced (W ∝ Q^⅓), the SCALE is this plant's** and is fitted
-  — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
-  ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the
-  floor once already.
-- **Protection cadence is written down TWICE** — `PROTECTION_DT` 0.1 s and an independent copy in
-  `test/ops_harness.js`. Move one and not the other and the ops suites certify a plant no player
-  can produce. 1× is byte-identical by construction, which is why a divergence hides at the speed
-  you are most likely to test at.
-- **A sourced anchor can be the WRONG FORM of the measurement for your model** (rescued from the
-  #386 hydrogen bullet on eviction, 2026-08-11): GEND-061's burn ΔP is real, and the adiabatic
-  form vs the measured 27.5 psi form decides whether the drained family lands over or under the
-  ruled 30 psig hi-hi. Having the document is not having the number.
-- **"Block SI" is THREE actions on a cooldown** and the procedure named one: `lo_press` and
-  `si_trip` both watch pressure downward and neither auto-blocks on the way down; both need P-11,
-  so the Pressure SP comes down first. **The live checklist NEVER issues the step's `cmd`** — it
-  draws text, grades off `acc`, `cmd`/`hold`/`ramp` stay replay-side (it DOES fire
-  `inject_failure`/`clear_failure` behind the scenes since #670 — #694). **Only a rate
-  guard can tell a ramp from a staircase.**
-- **A red probe can be the REFERENCE moving, not the plant — adjudicate at BOTH values** (#508,
-  2026-09-06). Three of six pre-adjudicated probes had their filed reading inverted: a dump check
-  read 18.5 °F against an 18.4 °F bound because **Tref fell 4.0 °F while Tavg fell 1.14 °F** — the
-  better-controlled plant read as the regression.
-  **Run the fixture at the old constant AND the new one and ask which quantity moved.** And a fix
-  that reddens something DISTANT may have been **cancelling against it**: a 4.9 % ΔT head start and
-  an equal, opposite K3 credit read as a healthy plant for three weeks (#647/#650). Ask *"what was
-  this cancelling?"* before writing the red off as stale. **And a fixture pinned at an ARBITRARY
-  state can be right only because the model IGNORES that state** (rescued on eviction, 2026-09-09):
-  56 relief checks green over a FLAT mass flow, ten sampled at 6.0 MPa (#633).
-- **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
-  Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
-  a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
-  of the very same number. HR12 does not stop at engine prose.
-- **THREE runners now gate the manual's NUMBERS against the engine, and NOTHING gates its PROSE**
-  (rewritten 2026-08-30, #532; was "nothing gates manual prose", #468 via 2026-08-22).
-  `run_manual_setpoints` checks chapter 09's three tables and BOOTS all four initial conditions;
-  `run_manual_commands` checks §18 and the ESF arm payload. **A setpoint, action or IC that drifts
-  now reddens a gate — a described BEHAVIOUR or a procedure's reasoning still does not**, and #532
-  found six sites teaching an ESF arm that never existed. **Grep the manual for the subject of every
-  ruling and board change**, and add the map entry when you add a row: coverage is asserted.
-- **A subscriber that reads inside the rAF paint is ONE FRAME LATE, and only a browser
-  can see it** (rescued from the #432 themes bullet on eviction, 2026-08-11): the
-  recorder's drain sat in the paint and logged **1475 rows in, 35 recorded** — call sites
-  all correct to a source scan, and green to a Node gate that hands it the rows itself.
-  `drainFine()` is the single `takeFine()` caller and is called synchronously from
-  `render()`; keep it there.
-- **On a board issue, read `git log develop`, not just the lane TAGS.** A tag says someone is
-  THERE; the log says what they have already DONE. Four #357 items were worked against a
-  convention #350 had already inverted.
-**The full history lives in `Diagnostic/TUNING_LOG.md` (newest first)** — it is the
-session-continuity record and a strict superset of what this section used to duplicate. Cut 2026-07-27
-*(OWNER RULING, 2026-07-27: "Execute the cut.")*. **Keep it short: current state and pointers,
-not a changelog.**
-
-
-**Layers** — engines PWR/RBMK/BWR ✅ (all with full balance-of-plant), control (M4) ✅,
-service (M5, +rewind) ✅, instructor (M6) ✅, test runner (M7) ✅. The PWR models a **Mode 5
-initial condition** and the **full Mode 5 ↔ Mode 1 on integrated physics**. **UI (M8):
-functional alpha, PWR only** 🟦.
-
-**Known open work** — the query above. Detail: `Diagnostic/`, `Manuals/ISSUES_AND_FINDINGS.md`,
-`BUILD_DECISIONS.md` Open Flags.
-
-**Current gate baselines — `BASELINES` in `test/run_all.js` IS the authority. Do not copy
-numbers here.** ~24,000 words of per-runner prose lived here until 2026-08-06 and EVERY figure
-had rotted, one runner listed **twice with different numbers**. Run the gate; read the map.
-Per-change rationale: `Diagnostic/TUNING_LOG.md`, `Blueprint/BUILD_DECISIONS.md`, newest first.
-
-```
-node test/run_all.js            # every discovered runner vs BASELINES (10-way parallel locally;
-                                #   the wall is the longest runner — run_pwr2_engine_c, ~14 min)
-node test/run_all.js --fast     # skip the 3 gates marked `slow` (same wall; they are not the floor)
-node test/run_all.js --jobs=1   # SEQUENTIAL (~35 min) — escape hatch if a runner is
-                                #   ever suspected of not being isolated
-node test/run_all.js --only run_pwr,run_ops
-node test/run_all.js --record   # print observed results as a BASELINES block
-```
-
-Four things about it that are procedure, not history:
-
-- **Drift is SYMMETRIC** — a runner scoring *better* than baseline also fails, so a red turning
-  green has to be acknowledged (update `BASELINES`, close the issue) rather than silently
-  absorbed. Same convention as the strict xfails in `run_meltdown` / `run_behavior`.
-- **`run_all` auto-discovers `test/(run|verify)_*.js` and fails on any runner it has no baseline
-  for** — add the `BASELINES` entry in the same change as the runner. A gate that is not a
-  `run_*.js` is invisible to it: `board_check.html` sat at 1 FAILURE through a lane merge, a green
-  CI run and a release before `verify_board_check.js` wrapped it.
-- **Per-runner times in a parallel run are CONTENTION times, not costs** (`run_pwr` reads 54 s
-  where it takes 22 s alone). The `secs:` hints only nudge scheduling — never maintain them.
-- **CI is a 5-WAY MATRIX of `run_all --shard=i/5`** (4 -> 5, 2026-10-15: run 38700124714 shard 1 hit 30.4 min of 30; times vary ~2x); the fan-in job is named exactly
-  `aggregate-gate`** because `main`'s ruleset requires that context and a matrix job's `(1)`
-  suffix would leave it unreported for ever (`run_ci_shards.js` gates the shape, #637). **On CI the
-  wall is TOTAL CPU ÷ LANES, not the longest runner** (4 cores → 3 lanes; 5189 s / 3 = 28.8 min vs
-  29.1 observed), so a runner split moved nothing there; locally (10 lanes) the longest runner IS
-  the wall. Unsharded baseline **29.1 / 38.4 / 40.2 min**. **Check it after you push** —
-  `gh run list --workflow=gates.yml --limit 3`: it ran red for **32 consecutive runs** through one
-  release, and 1.7.2 merged behind a timeout with none of 34 finished runners red. **Watch EVERY
-  push's run to the end; fix a red before new work** *(OWNER RULING, 2026-09-29: "Adopt 1,2,4 as recommended.")* (4 of 6 timed out unread,
-  2026-09-26 on). Poll `gh run view <id>` with retries — `gh run watch` dies on one blip.
-
-**Tracked reds carry their own `note` in `BASELINES` — read it there, and do NOT re-band one.**
-A red kept on purpose is reporting against a target; re-banding it whenever the plant moves
-retires the target instead. Naming them here rots inside a day (measured 2026-09-14) — same as
-the gate baselines above.
----
+- A check can pin a bifurcation, not a claim (#543, #588): assert the invariant the defect violated; sweep five ulps before trusting a blowdown check; a bound from a local render dates your font stack (179 px here is 206 px on CI, #713).
+- A pre-declared reject criterion, or a fixture built at an envelope wall, can outlive its measurement (#378, #524): re-measure the criterion before it rejects anything; move the wall and adjudicate per probe.
+- A bracketed template placeholder cites like a number (#380): NUREG-1431's "~30–32 %" survived two evidence passes; Ginna, the anchor plant, says 17 %.
+- A ruling names the work, not the thing (#572): "build the 1.5 DPM rod block" named a stop no source has, and the chapter cited the document that refutes it three lines away.
+- Before declaring anything unsourced run `node tools/find_source.js <regex>` — three lanes' corpora cannot see each other (#315 §6, `DESIGN_COMPANION` §8.34); its exit 1 is the verdict.
+- A coverage or "not built" claim is unmeasured until you break it and see what notices (#286, #562, #570, #573): inherited claims, module headers and the spec itself can be the stale copy — grep for the effect, never the name you expected.
+- A filed root cause repeated in four documents was still never re-measured (#403/#433): repetition is not corroboration, and a sourced number is not the whole source ("600 psig" adopted, "(Rate sensitive)" dropped from the same cell).
+- Declare a simplification only after measuring the regime it lives in (#347): spray-at-solid held 164 psi under the safeties on the one path never exercised. The TMI-2 securing beat sits before the decision; re-ordering it re-breaks nine missions.
+- A passing check can be hollow — seen here: `range()` on a boolean (TR-17); an absence pinning a non-event; a whole-run span; a gate over a hand-kept map; a chapter never opened (#532, #601); a source scan for an unreachable string (#485); a term that is an identity in the tested regime; samples taken on the defect (#542); a degenerate latch under a no-dt harness; the observer itself (#436); `isFinite(null)` is true (#555); a write asserted instead of its effect (#507, #540); a mutation blinded by a neighbour's fix (#544) — after a fix, re-run the whole file's injections.
+- A tolerance band claims what it excludes is harmless — measure that (#348: a 1-point band hid 35 % interlock chatter) and check the band's provenance before retuning inside it (#598: a hard-coded 40–70 % tile band, 15 points off program).
+- Adjudicate a physics change's red probes one at a time (#364/#365): each is the fix working, a stale fixture, or a new defect; batch-judging 11 would have hidden two.
+- Know which layer owns the effect you assert (skill `gate-layers`); a multi-part fix needs both halves reverted to reproduce — plant the demand past the half you are not testing (#295, #545); neuter an automation channel by blanking the engage direction only (#286).
+- A de-energization written into the operator's demand heals on the next button press (#200, #329, #332): remove the delivered power/flow/head, leave the selector; `true_state.ac_available` is the named question every motor load asks; AFW carries a do-not-gate note (WTSM 5.7.5).
+- `power_pct` is fission power; core heat is `true_state.core_heat_pct` — equal only at steady power (11.0 vs 21.0 MWt seconds into a LOCA). Decimals belong to the unit: `toFixed(0)` on MPa collapsed the loop split a panel exists to show.
+- The pressurizer level constants are one object (`level_per_mass` 776, `level_per_void` 375.33, `level_per_tavg` 1.62; #337, #385): the TMI deception is a difference between two of them — touch one, re-solve the set; a single term of the coupled regime is worse than none (#346, #384).
+- Measure a limit's incidence before trusting a green suite about it (#362): the `levelBase` clip bound on 95.7 % of one IC's samples and 0 % of every other. This plant goes solid at an inventory deficit, not overfilled.
+- Natural circulation: the shape is sourced (W ∝ Q^⅓), the scale is fitted — never quote our percentage as a real-plant figure; the dash-speed ladder needs a step below that flow (#364).
+- Protection cadence is written twice — `PROTECTION_DT` 0.1 s and a copy in `test/ops_harness.js`; move both or the ops suites certify a plant no player can produce.
+- A sourced anchor can be the wrong form of the measurement (#386): GEND-061's adiabatic vs measured 27.5 psi burn ΔP decides which side of the ruled 30 psig hi-hi the family lands on.
+- "Block SI" is three actions on a cooldown (`lo_press` and `si_trip` both need P-11; the Pressure SP comes down first); the live checklist never issues a step's `cmd` — it grades off `acc` and fires `inject_failure`/`clear_failure` (#670, #694); only a rate guard tells a ramp from a staircase.
+- A red probe can be the reference moving, not the plant (#508: Tref fell 4.0 °F, Tavg 1.14 °F): run the fixture at both constants and ask which quantity moved; a distant red may be a cancellation (#647/#650); a fixture at an arbitrary state is right only while the model ignores that state (#633).
+- An unmeasured claim in player-facing copy is still unmeasured: a "mass-only level" row promised a TMI divergence that measures 0.0 everywhere.
+- Three runners gate the manual's numbers (`run_manual_setpoints`, `run_manual_commands`, `run_manual_units`) and nothing gates its prose (#532): grep the manual for the subject of every ruling and board change, and add the coverage-map entry with the row.
+- A subscriber reading inside the rAF paint is one frame late and only a browser sees it (#432: 1475 rows in, 35 recorded): `drainFine()` stays synchronous in `render()`.
+- On a board issue read `git log develop`, not just the lane tags — a tag says someone is there, the log says what they did (#357 worked against a convention #350 had inverted).
+**The full history lives in `Diagnostic/TUNING_LOG.md`** (newest first) — current state and
+pointers here, never a changelog (owner, 2026-07-27).
 
 ## Running it
 
-No build step. Either open `index.html` (the landing page — the PWR card opens the
-control room at `ui/shell.html?engine=pwr`), open `ui/shell.html` directly, or serve
-the folder with any static server (`npx serve .` or `python3 -m http.server`).
-
-The control-room UI is `ui/shell.html` (loads engines + layers, wired through
-`ui/app.js`). Standalone engine test pages: `test_pwr.html`, `test_rbmk.html`,
-`test_bwr.html`.
-
-**Offline / portable:** it already runs from `file://` with no server — nothing loads
-anything at runtime. `node tools/make_portable.js` collapses the control room into one
-self-contained `dist/Reactor_Dynamics_<version>.html` (~2.5 MB) you can email or carry on a
-stick; `tools/make_portable.cmd` is the double-clickable wrapper (builds + zips, and exists
-because double-clicking the `.js` gets Windows Script Host, not Node — `800A03EA`).
-`test/run_portable.js` is what keeps that possible; read its header before adding any
-runtime load. **A batch file must stay pure ASCII** — cmd reads it in the OEM code page, and
-one UTF-8 em dash inside an `if (…)` block ends the block early and runs the prose as
-commands.
+No build step: open `index.html` (the landing page; the PWR card opens `ui/shell.html?engine=pwr`)
+or `ui/shell.html` directly, or serve the folder statically; it runs from `file://`. Standalone
+engine pages: `test_pwr.html`, `test_rbmk.html`, `test_bwr.html`. Offline single file:
+`node tools/make_portable.js` → `dist/Reactor_Dynamics_<version>.html` (~2.5 MB);
+`tools/make_portable.cmd` wraps it (batch files stay pure ASCII — one UTF-8 em dash ends an
+`if (…)` block early). `test/run_portable.js` keeps that possible — read its header before adding
+any runtime load.
 
 ## Running the tests
 
-Plain Node CLI runners (no framework, no `package.json`). Engine/layer files are
-global-namespace scripts that attach to `globalThis.RD`; `require()` executes them
-into a shared global.
+Plain Node runners, no framework, no `package.json`; `require()` only executes each
+global-namespace file into `globalThis.RD`.
 
 ```
-node test/run_all.js            # THE AGGREGATE GATE — every discovered runner vs recorded baselines
-node test/run_all.js --fast     #   …skipping the 2 slow Playwright gates
-node test/run_pwr.js            # PWR scenario suite (all)
-node test/run_pwr.js <name>     # one scenario by key, e.g. flagship_tmi
-node test/run_rbmk.js · run_bwr.js  # RBMK / BWR suites (both plants ON HOLD)
-node test/run_scenarios.js      # all flagship + library scenarios
-node test/run_campaign.js       # PWR training campaign gate (structural + functional)
-node test/run_autoctl.js        # control-layer automation gate
-node test/run_ops.js            # engine-under-M4 ops probes (FAILs = tuning targets)
-node test/run_m4.js … run_m7.js # per-layer stack tests
-node test/run_contract.js       # §6.3 true_state contract vs getTrueState() (static; both directions)
-node test/run_e2e_controls.js   # service-level control plumbing
-node test/run_procedures.js     # manual procedures replay (strict known-fails annotated)
-node test/run_meltdown.js [MD-5]   # PWR core-damage paths, all or one by id (strict xfail)
-node test/run_procedures_stack.js          # the SAME procedures through M4+M5+M6 (see below)
-node test/run_procedures_stack.js pwr_startup   # one by id
-node test/run_procedures_stack.js --lineup=bare # the noDefaults/campaign lineup
-node test/run_pwr2_engine.js --no-mutations   # skip the replay while fixing a check (34 pwr2
-                                # runners; --mut=/--grp= too). FILTERED = FORCED NON-ZERO, never
-                                # a baseline. 115 s -> 2.9 s (#602)
-                                # FOUR PARTS (#637): bare = A, _b, _c, _d.js (group J, the
-                                # tail); --all = unsplit
-node test/run_all.js --shard=2/3 --list # what CI shard 2 runs (derived, never a hand list)
-node test/run_warp_tier.js             # the two pacing tiers (#625): WARP's fidelity band, the
-                                # cliff at 1.0 s, the in-loop lockout, the step budget
-node tools/perturb_sweep.js            # WHICH CHECKS BREAK IF I RETUNE THIS? (see below)
-node tools/perturb_sweep.js --suite=behavior --nudge=thermal.h_sg*1.03
-node tools/perturb_sweep.js --self-test  # prove the harness can detect anything at all
-node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa
-                                # TAKE A NUMBER from a long FULL-STACK evolution (see below)
+node test/run_all.js            # THE AGGREGATE GATE — every run_*/verify_* runner vs BASELINES
+node test/run_all.js --fast | --jobs=1 | --only a,b | --record | --shard=i/5 --list
+node test/run_pwr.js [name]     # PWR scenario suite; also run_scenarios, run_campaign(+_b,_c),
+                                #   run_autoctl, run_ops (FAILs = tuning targets), run_m4..m7,
+                                #   run_contract, run_procedures[_stack], run_meltdown [MD-5],
+                                #   run_checklist, run_e2e_controls, run_rbmk/run_bwr (on hold)
+node test/run_pwr2_engine.js --no-mutations   # four parts (bare, _b, _c, _d); --all unsplit;
+                                #   FILTERED = forced non-zero, never a baseline
+node tools/perturb_sweep.js     # which checks break if I retune this? (--suite, --nudge, --self-test)
+node test/measure_stack.js --for=12h --every=1h --watch=tavg_c,pressure_mpa   # a number, full stack
 ```
 
-`test/ops_*.js` and `test/*_harness.js` are supporting harnesses.
-`run_e2e_controls.js` and `run_procedures.js` are PART OF THE GATE LIST — both
-drifted red unnoticed once because they weren't listed (2026-07-19 review). **`run_all.js` discovers `test/run_*.js` and
-`test/verify_*.js` automatically and fails on any runner it has no baseline for**, so
-a new gate cannot go unlisted again — add it to `BASELINES` when you add the runner.
-
-### MANUAL FIRST, THEN AUTO — the order in which a system gets tested
-
-> *(OWNER DIRECTIVE, 2026-08-12: "Testing of systems should happen without automatic mode first.
-> Once proper manual behavior is established we test auto mode. This goes for all systems with an
-> auto mode.")*
-
-**Establish that a system behaves correctly with its automatic control OFF before you test it
-with the control ON.** Applies to every system with an auto mode — pressure control, feed,
-rods, boron, steam dump, ADV, turbine load.
-
-**Why it binds rather than being style.** An automatic controller holds the plant on setpoint,
-which is exactly the condition under which a *wrong* mechanism and a *right* one produce the
-same board. Measured 2026-08-12: `P_restore_rate_gain` drags pressurizer pressure to the
-operator's setpoint whether or not the heaters and spray are in AUTO, so a 30 MWe load change
-moved pressure **0 psi** — while the real coupling underneath it moves **+31 psi and −10.7 °F of
-subcooling**, which is what the plant does once the term is neutered. Every gate we had asserted
-endpoints with the controllers on, so 47 runners and a frozen behaviour catalog all agreed with a
-plant whose central pressure coupling was invisible. The owner found it in free play.
-
-**In practice:** a behaviour row that can only be demonstrated with the automation engaged is
-testing the automation, not the plant. Write the manual-mode acceptance first; the auto-mode row
-then asserts that the controller *holds* what manual proved, which is a different claim.
-
-### Know which LAYER a gate runs at (this has bitten us three times)
-
-A runner that holds a `ControlFailureLayer` still is **not** full-stack.
-`ControlLayer.stepAutomation()` and `engageDefaults()` have **exactly one production
-caller each — both in `layers/simulation_service.js`** (:176, :152), as does
-`engine.getStartupLineup()` (:156-159). So anything that stops below M5 runs with **the
-automation-channel runtime never ticking and no channel ever engaged**, and without the
-free-play lineup. Since `feed_sg` (the three-element feed controller that *replaces coupled
-feed as the level backbone*), `cvcs_makeup` and `boron_conc` are all `defaultOn`, such a
-harness is testing a plant the player never gets.
-
-| layer | runners |
-|---|---|
-| **engine-direct** | `run_pwr`, `run_rbmk`, `run_bwr`, `run_meltdown`, `run_procedures` |
-| **engine + M4** (looks full-stack, isn't) | `run_ops`, `run_behavior`, `run_m4` |
-| **shell A/B** (two engines, one command apart) | `run_pwr2_roundtrip` — does a command move anything the player can read back? The control leg IS the test (#570) |
-| **full stack** (M4+M5+M6) | `run_procedures_stack`, `run_procedures_chain` (one CONTINUOUS plant across procedures — the seam the per-procedure IC reload cannot see), `run_m5`, `run_m6`/`run_m6ph` (integration halves), `run_m7`, `run_autoctl`, `run_campaign`, `run_checklist`, `run_scenarios`, `run_e2e_controls` |
-| **browser** | `verify_e2e_ui`, `verify_manual_follow` (the latter never plays the sim — control-surface reachability only) |
-| **static** (source/doc/registry consistency — the plant is never stepped) | `run_hr3`, `run_hardrules`, `run_contract` (resets the engine to read its field list, never runs it), `run_inspect`, `run_flags`, `run_manual_commands` (the manual's command table vs the registries — #570) |
-
-Engine-direct is the right choice for isolated-physics acceptance; the mistake is *relying*
-on it for anything the control layer decides. **When you write a procedure, scenario, or
-behaviour assertion, ask which layer owns the effect you are asserting.** Known open
-consequences: **#209** (`run_behavior`/`run_ops` certify on a lineup that never ships),
-**#206**/**#208** (procedures green engine-direct, broken under the stack).
-
-**To take an ad-hoc number, use `node test/measure_stack.js`** — full stack, any IC/duration/
-scheduled commands, US-first units, and it stamps the LAYER into its own output so a
-wrong-layer figure is visible in the artifact (#266). **Never drive a measurement with
-`svc.start()`**: it arms `setTimeout(broadcastMs)` and advances in WALL time — measured, 5.0 s
-of wall bought 48.0 s of sim at 10×, which is why #266 published two engine-direct numbers
-instead (one 13× wrong). Driving `tick()` directly, cost is linear in sim duration. **BUDGET A LONG RIDE OFF
-A MEASUREMENT**: 12 plant-hours is ~35 s on the RETIRED engine QUIET, but **~100 s per plant-hour
-on a PWR2 endgame** — an uncovered core sub-steps (#802).
+- `run_all` discovers `test/(run|verify)_*.js` and fails on a runner with no baseline — add the
+  `BASELINES` entry in the same change. Drift is symmetric: scoring better than baseline also
+  fails; acknowledge it (update `BASELINES`, close the issue).
+- Per-runner times in a parallel run are contention, not cost; locally the wall is the longest
+  runner (~14 min). CI is a 5-way `--shard=i/5` matrix whose fan-in job is named exactly
+  `aggregate-gate`. **Watch every push's run to the end; fix a red before new work** (owner,
+  2026-09-29): `gh run list --workflow=gates.yml --limit 3`, poll `gh run view <id>`.
+- Which layer a runner stops at (engine-direct / engine+M4 / full stack / browser / static), why
+  `run_ops` and `run_behavior` are not full-stack (#209), CI costs, and how to take a number:
+  skill `gate-layers`. Never drive a measurement with `svc.start()` — it advances in wall time;
+  budget a long PWR2 ride at ~100 s per plant-hour on an uncovered core (#802).
 
 ## Definition of done
 
-A change is not finished until the gates it touches are green (at or above the
-baselines in _Project status_). Runners print `PASS`/`FAIL` per test and a tally.
+A change is finished when the gates it touches are green at or above `BASELINES`.
 
-> **BATCH THE AGGREGATE — ONE `run_all` PER PUSH, NOT PER CHANGE** *(OWNER DIRECTIVE, 2026-09-12:
-> "Can we save the gate until just before pushing instead of doing it after every change?")*.
-> Measured that day: `run_all` is **34 min**, FOUR ran for one bundle, ~100 minutes of it waste.
-> - **Per change, run only the runners it touches** — `run_all.js --only run_flags,verify_flags_ui`.
-> - **Run it ONCE, immediately before the push, tree settled, NOTHING else live in it.** A commit
->   landing mid-run VOIDS it — the drift is the tree moving, not the code (cost a 34 min run,
->   2026-09-12). Same trap as stashing under a background gate.
->
-> The line above still binds: the gates a change touches are green before it commits.
+- **Batch the aggregate — one `run_all` per push, not per change** (owner, 2026-09-12). Per
+  change, `run_all.js --only <the runners it touches>`. Run the aggregate once, immediately before
+  a push he has called for, tree settled, nothing else live in it (a commit mid-run voids it). No
+  push means no `run_all`; say when cross-effects are overdue, never run it on your own.
+- **Agent cost is tool calls, not prompt length** (owner, 2026-09-12). Every subagent gets a
+  ~150-call ceiling: past it, stop and report. A subagent never runs the aggregate (the Bash
+  ceiling is 600 s; the coordinator owns it). No polling. Hand over numbers marked MEASURED or
+  INHERITED, never as a premise. One writer per file per tree (else scratch worktrees,
+  `LANES.md` §9). No agent where no judgement is needed and the facts are in hand. A brief carries
+  constraints and numbers, not rationale. Never cut the re-measurement pass, the injection proof
+  on every added check, or the agent saying what it did not verify. Worked cases: `SOP.md` §6.
+- **Sonnet by default; Opus where judgement is the work** (owner, 2026-09-18) — an open diagnosis,
+  per-probe adjudication. **Opus drafts prose** the player or owner reads (owner, 2026-09-24);
+  transcribing ruled wording stays Sonnet. **Fable judges taste** — design critique, headlines,
+  copy voice (owner, 2026-10-13).
+- "Gate X forces Y" is a claim — grep for a ruling on Y first (owner, 2026-09-25). Kill processes
+  by PID, never by filter. One doc-budget pass per block added here: cut what it costs.
+- Engine or scenario change → `run_<plant>.js`, `run_scenarios.js`. Control layer →
+  `run_autoctl.js` and `run_m4.js`; check `run_ops.js` for a PASS turning FAIL. Scenario, campaign
+  or instructor → `run_campaign.js` + `_b` + `_c` (51/51 together), `run_m6.js`,
+  `run_procedures.js`. UI → drive the flow (skill `run`), `verify_e2e_ui.js` stays PASS.
+  Walkthrough → skill `walkthrough-change` (owner, 2026-09-24). Save format → old saves migrate,
+  `run_m7.js`; a `true_state` field change needs its §6.3 line in `CONTEXT.md` (`run_contract.js`).
+  `Manuals/` → skill `manual-edit` (revision row → stamp → pack, or `run_manual_rev.js` reddens).
+  Then `CHANGELOG.md`, this file's status, and `BUILD_DECISIONS.md` if a decision or flag changed.
+- **Then hand it to a fresh agent for a quality pass** (owner, 2026-09-11): give it the diff, the
+  issue and what is already open; it reviews, never re-litigates a ruling or replaces a gate.
+  Report every finding and what you did about it; one you declined, with the reason.
+- Release → skill `release-to-main`: version bump + `changelog.html` entry + `CHANGELOG.md` roll in
+  one change, `run_release` green, a PR to protected `main` (`--merge`, never squash), and **a
+  `Production` deployment must exist for the released SHA** (owner, 2026-08-04;
+  `node tools/verify_release_deploy.js`) before `develop` is pushed.
 
-> **NEVER PUSH UNTIL HE SAYS SO** *(OWNER DIRECTIVE, 2026-09-14: "Let's change the rule to don't
-> push until I tell you to.")*, which supersedes the same day's "push once a session, at the end"
-> — that rule did not go far enough. **Same shape as the never-merge rule:
-> a clean tree and a green gate are not permission.** "Committed on the lane, gated, waiting" is
-> the correct end state, and so is ending a session with nothing pushed.
-> - **THE PUSH IS WHAT TRIGGERS THE AGGREGATE, so no push means NO `run_all`.** Per-change gates
->   still run and still bind. When he calls for a push: settle the tree, run it ONCE, then the
->   release-candidate bump and the changelog extension, then push. **Do not run it speculatively
->   "so it is ready"** — a finished work unit is not a finished session (cost a 34 min run
->   abandoned mid-flight and a second release cycle, 2026-09-14).
-> - **The cost of holding is that cross-effects go uncertified.** Say when it is overdue; never
->   run it to fix that on your own.
-> - **Give every subagent a tool-call ceiling: past ~150 calls, STOP and report what remains.**
->   Cost is tool calls, not brief length (the rule below), and the tail is where it goes: measured
->   the same day, seven agents ran 84–156 for five of them, then **1231** and **2274**. The two
->   long ones were not scoped worse — they ground, and a check-in would have let the coordinator
->   re-scope instead. **An agent that EDITS BEFORE IT PLANS pays for the rework twice**: the
->   2274-call run hit a contradiction its own change had created.
+## Issues, branches, versions
 
-> **AGENT COST IS TOOL CALLS, NOT PROMPT LENGTH** *(OWNER DIRECTIVE, 2026-09-12: "How can you be
-> more efficient with time and tokens without sacrificing quality?")*. Counted **across two lanes**
-> that day: **~34 dispatches, 13 full `run_all` runs, ~8 h of gate wall time**; the expensive agents
-> ran **300–360 tool calls** each. Every call re-sends that agent's whole context, so the brief's
-> length is noise beside its call count.
->
-> **CUT NONE OF THESE THREE. They are what an efficiency rule endangers:** the **re-measurement
-> pass** before anything is filed · the **injection proof** on every added check · an agent
-> **saying what it did NOT verify**. A tenth of the cost, and they caught six hollow checks, three
-> refuted diagnoses, a wrong citation, and a false reproduction claim in this file that three
-> sessions were acting on.
->
-> - **A SUBAGENT NEVER RUNS THE AGGREGATE — the coordinator owns it.** Not "foreground it": the Bash
->   ceiling is **600 s** and `run_all` is **34–44 min**, so a foreground run is killed mid-gate and
->   backgrounding then handing back is the only move left (measured 2026-09-12, after this rule
->   shipped saying otherwise). A resumed agent re-reads its whole context. **Structural — an agent
->   cannot comply by being careful.**
-> - **No polling.** Put *"wait for the notification; do not re-check, do not re-read what you have
->   read"* in every brief.
-> - **Hand over the measured numbers, each marked MEASURED or INHERITED, never as a premise the
->   agent may not test** — or this cancels the re-measurement pass above. Two filed mechanisms were
->   refuted by the agents handed them.
-> - **One WRITER per file per TREE.** Two agents editing different regions merge clean; the same
->   line conflicts loudly; two writers in one tree destroy work with `git status` clean. Both need
->   the same file → a scratch worktree each, `LANES.md` §9.
-> - **No agent where no judgement is required and the facts are in hand** — a ruling record, a
->   cross-link, a version bump. One such cost **112 k tokens for three string edits**. No size
->   threshold: size is not the axis.
-> - **SONNET BY DEFAULT; OPUS WHERE JUDGEMENT IS THE WORK** *(OWNER DIRECTIVE, 2026-09-18: "change
->   our standard practice to use sonnet agents for well scoped work and only use opus agents for
->   Work that needs more intelligence")*. **Well-scoped = the brief already names the files,
->   the interface and the checks.** Opus buys an open diagnosis or per-probe adjudication.
->   **OPUS WRITES PROSE** *(OWNER DIRECTIVE, 2026-09-24: "I'm thinking of changing the policy to
->   have you use opus to write prose.")*: anything a player or the owner reads
->   that is being DRAFTED — step and card text, notes, changelog entries, write-ups. Applying
->   wording he already ruled on is transcription, and stays Sonnet.
->   **FABLE JUDGES TASTE** *(OWNER DIRECTIVE, 2026-10-13: "When a decision requires taste, I want you
->   to use a fable agent.")*: design critique, headlines, copy voice.
-> - **A brief carries constraints and numbers, not rationale.** The *why* is for the owner.
-> - **"Gate X forces Y" is a claim — grep for a RULING on Y first** *(OWNER, 2026-09-25: "Do
->   it")*: a bring-down overrode his "use the board's" MW on a misread N6. **Kill processes by
->   PID, never by filter.**
-> - **One doc-budget pass**: compute what the block costs, cut that much in the same edit, measure
->   once.
+- Open items belong in GitHub issues (`TH462/Reactor-Dynamics`; `gh` authed as `TH462` — on
+  `command not found`, `export PATH="$PATH:/c/Users/Tim H/AppData/Local/Programs/gh/bin"`), but
+  **the filing bar** (owner, 2026-09-20) is a player consequence or a wrong number on the shipped
+  plant; otherwise the finding goes in `TUNING_LOG.md`, and an answer goes in a comment on the
+  asking issue. Always add the `Claude` label; one label from each of the four axes
+  (priority/type/system/plant — issue #61); `status-owner-review` means done and gated, look
+  before it closes; `status-work-next` is his to apply (owner, 2026-07-31); `status-deliberate`
+  names who decided and when. **Tag `status-wip-<lane>` when you start, clear it when you stop**
+  (owner, 2026-08-04). Sweep with `--search 'label:a,b,c'` (repeated `--label` is ANDed). Procedure:
+  skill `issue-workflow`.
+- Commit ongoing work on `develop`, never straight to `main`; `main` is protected and a release is
+  a PR (#196). Fast-forward `develop` to `main` after a release.
+- **Website changelog & version numbers**: `Alpha X.Y.Z` = Platform.Feature.Refinement; Y only
+  for something you could list on the Roadmap, Z for everything else however visible (owner,
+  2026-07-31). The pending version wears `-rc<N>`, N bumped on every push to `develop` that changes
+  the sim (owner, 2026-09-03); the `changelog.html` entry is facts only, at most 8 bullets,
+  simulator changes only, no flag-gated features (owner, 2026-08-04; 2026-08-06; 2026-09-03).
+  `run_release.js` gates the agreement, not the digit. Procedure: skill `version-changelog`.
 
-- **Any engine or scenario change** → the affected `run_<plant>.js` and `run_scenarios.js`.
-- **Control-layer change** → `run_autoctl.js` **and** `run_m4.js`; check `run_ops.js`
-  for regressions (don't turn a `PASS` into a `FAIL`).
-- **Scenario / campaign / instructor change** → `run_campaign.js` + `run_campaign_b.js` +
-  `run_campaign_c.js` (split #513 — A: structural + most pwr missions, B: rbmk + bwr, C: the
-  three HEAVY pwr missions by measured cost, list in run_campaign.js; together they must stay
-  **51/51**), `run_m6.js`, `run_procedures.js`.
-- **UI change** → `run` the app and drive the affected flow (see `/run` and the
-  headless Edge workflow); `verify_e2e_ui.js` must stay **PASS**.
-- **Walkthrough change** *(OWNER DIRECTIVE, 2026-09-24: "Make the adjustments to your process as you
-  recommend")* → `run_walkthrough_routes.js` + parts (`--all` unsplit; typical-player and
-  scripted-mistake routes: no silent strand, no tick on entry, no Continue flash); every number
-  in step text measured on BOTH routes;
-  then the REVIEWER and its fixes, ONLY THEN one layman pass *(OWNER RULING, 2026-09-29: "Adopt 1,2,4 as recommended.")*: it confirms, never discovers.
-- **Snapshot/contract or save-format change** → old saves must still migrate (see the
-  migration-note pattern in `CHANGELOG.md`); re-run `run_m7.js`. **A new/renamed/removed
-  `true_state` field also needs its §6.3 line in `Blueprint/CONTEXT.md`** — `run_contract.js`
-  fails until it has one, and fails again if a documented field disappears (#225).
-- **Any `Manuals/*.md` content change** → three steps, in order, or `run_manual_rev.js`
-  reddens: (1) add a row at the **top** of the table in `Manuals/00_REVISION_HISTORY.md`
-  (newest first — the set revision is **set-wide**, one number for all 13 documents);
-  (2) `node tools/stamp_manual_revision.js` to propagate it and re-seal the content
-  digests; (3) `node tools/pack_manuals.js` so the in-app copy carries it. The digest is
-  the point: **editing a chapter without recording it is a red gate**, which is how six
-  changes (#247, #248, #251, #260 ×2, the gpm scale fix, #263) came to be missing from
-  the history while ten chapters still read `Revision: 0`.
-- **Then update** `CHANGELOG.md`, the `Project status` section above, and
-  `Blueprint/BUILD_DECISIONS.md` if a decision or flag changed.
-- **On release (merge `develop` → `main`)** → the ordinary procedure under *Website changelog &
-  version numbers* below: version bump + `changelog.html` entry + `CHANGELOG.md` roll, all in
-  **one change**, then `run_release` green before the merge. **`Alpha 1.0.0` SHIPPED 2026-08-04**
-  *(OWNER DIRECTIVE, 2026-08-04: "The next release will take the program out of pre-Alpha and into
-  Alpha and bring back the update tracking page. Update tracking summaries/lists should be
-  concise.")*; the next release is an ordinary Platform.Feature.Refinement bump.
-- **A RELEASE IS NOT DONE UNTIL A `Production` DEPLOYMENT EXISTS FOR THE RELEASED SHA** *(OWNER,
-  2026-08-04: "Let's fix the gap and release.")*. Alpha 1.0.0 merged, tagged and passed CI while
-  the live site kept serving the previous release — the only deployment for that commit was a
-  **Preview**, and a green *"Vercel — success"* status is satisfied by one. **Run
-  `node tools/verify_release_deploy.js`** — Cloudflare-only since 2026-08-10; its header says why
-  a hand-written `gh api` query cannot do this, and records the two mirrored failures it has had
-  (a half that could never pass, a half that could never fail). **Do not push `develop` until it
-  exists** — fast-forwarding it seconds after
-  the merge gives two events for one SHA, which is how the production build went missing. From
-  outside, a missing deploy and a slow one are indistinguishable for ever, so waiting is never the
-  answer. Full step: `release-to-main` skill §5b.
+## Code conventions
 
-> **THEN HAND IT TO A FRESH AGENT FOR A QUALITY PASS** *(OWNER DIRECTIVE, 2026-09-11: "Upon
-> completing your work, spawn a subagent to do a full and thorough quality pass through it for any
-> remaining bugs, issues or QoL improvements.")*. Once the work is done and the gates it touches are
-> green, THEN spawn a reviewer: hand it the diff, the issue and what you already know is open — a
-> reviewer guessing the scope reviews the wrong thing. **It reviews; it does not re-litigate a
-> ruling or replace a gate.** Report every finding and what you did about it; one you declined is
-> one you report, with the reason.
-
----
-
-## Issue tracking (GitHub) — the owner's preferred workflow
-
-**Open items belong in GitHub issues**, not only in `Diagnostic/` prose — but the issue has to
-EARN itself.
-
-> **THE FILING BAR** *(OWNER DIRECTIVE, 2026-09-20: "The last few sessions kept adding issues by
-> themselves but I found a lot of these issues went on a tangent and are a waste of time.")*. Of
-> 34 closed as not worth doing that day, **6 concluded in their own body that nothing should
-> change**; **8 were tests about tests.**
-> - **`Diagnostic/TUNING_LOG.md` is where a finding GOES; an issue is the EXCEPTION.** This line
->   used to read "keep the log **and** file the issue" — it instructed double-filing.
-> - **The bar: a PLAYER CONSEQUENCE, or a wrong number on the SHIPPED plant.** *"A gate could be
->   tighter"* and *"I measured this and it is fine"* fail it.
-> - **A finding you would not file if you could not fix it yourself is not an issue.**
-> - **An ANSWER goes in a COMMENT on the asking issue, never a new one.**
->
-> **Not gateable**, like HR12 and the units rule — it decays unless the sweep re-runs.
-
-Repo: **`TH462/Reactor-Dynamics`**. `gh` is installed per-user and on the PATH, authed as
-`TH462`. On `gh: command not found`, prepend it (mind the space in the path):
-`export PATH="$PATH:/c/Users/Tim H/AppData/Local/Programs/gh/bin"`. **`gh auth login` is
-interactive — you cannot run it**; ask the owner to run it with the `!` prefix if the token
-ever expires.
-
-```
-gh issue list   --repo TH462/Reactor-Dynamics --limit 30
-gh issue view   <n> --repo TH462/Reactor-Dynamics
-gh issue create --repo TH462/Reactor-Dynamics --title "…" --body-file <path> --label …
-gh issue edit   <n> --repo TH462/Reactor-Dynamics --body-file <path>
-gh issue close  <n> --repo TH462/Reactor-Dynamics --comment "…"
-```
-
-- **ALWAYS add the `Claude` label to every issue you touch** (`--label Claude` on create,
-  `gh issue edit <n> --add-label Claude` otherwise). It means **"Claude worked on this"**, not
-  just authorship — create, comment, or do the work it tracks. It is how the owner sees agent
-  involvement at a glance.
-- **Draft long bodies to a file and use `--body-file`** — `inbox/` is gitignored. Inline
-  `--body` mangles multi-line markdown.
-- **Labels — four required axes** (scheme revised 2026-07-25; the canonical definition is
-  **GitHub issue #61**, which is self-contained — the `PROJECT_WORKFLOW.md` it used to cite
-  never existed). Every issue gets one of each:
-  - `priority-critical` · `priority-high` · `priority-medium` · `priority-low` — by
-    **consequence**, not effort.
-  - `type-bug` · `type-tuning` · `type-feature` · `type-enhancement` · `type-test-gap` ·
-    `type-docs` · `type-cleanup` · `type-decision` · `type-process`. `type-bug` = the model is
-    *wrong*; `type-tuning` = structurally right, the number reads badly.
-  - `system-physics` · `system-control` · `system-service` · `system-instructor` ·
-    `system-hmi` · `system-scenarios` · `system-test` · `system-docs` · `system-web`
-  - `plant-pwr` · `plant-rbmk` · `plant-bwr` · `plant-shared`
-
-  Then `status-*` only when it applies: `status-on-hold` (RBMK/BWR — pair with the plant
-  label), `status-needs-ruling`, `status-deliberate` (**known and intentional — do not "fix"**,
-  e.g. the deliberately-red C2 probe, the B3 known-fail), `status-verified` (claim re-checked
-  against current source, not inherited from a stale doc).
-
-  **Two labels the owner added 2026-07-31** *(OWNER DIRECTIVE, 2026-07-31: "The review tag
-  is for when the ai wants me to review something before closing the issue"; "Add an owner
-  review tag and a 'work next' tag to issues")*:
-  - **`status-owner-review`** — the work is **done and gated**; you want the owner to look
-    before it closes. Not the same as `status-needs-ruling`, which means you are *blocked*
-    and have delivered nothing. Use it when you shipped something with a judgement call
-    inside it — a recategorisation, a threshold, a wording choice — and the owner should
-    see the call before it becomes history. **Say what to look at**, in one line, or the
-    label just means "read the whole thread". **Do not close an issue carrying it** without
-    the owner's word.
-  - **`status-work-next`** — the owner's work order: pick this up next. Owner-applied by
-    convention; do not add it to your own issues to promote them.
-  - **`status-work-complete`** — built, gated and pushed; nothing left to do on the issue
-    itself. It is **not** the same as closed: an issue can be complete and still open
-    because it is waiting on a review, a release, or a decision on a follow-up. Apply it
-    with the gate result in the comment, and **clear `status-work-next` when you do**.
-
-  **The three IN-PROGRESS lane tags** *(OWNER DIRECTIVE, 2026-08-04: "Since that's done add
-  an in process tag that shows which worktree it's being worked on.")*:
-  - **`status-wip-develop`** · **`status-wip-workbench`** · **`status-wip-backshop`** — an
-    agent is **live on this issue right now**, in the named tree. One only; the lane is the
-    tree, not the branch.
-
-  **Apply it when you START, clear it when you STOP** — not when you finish. A lane tag left
-  standing after a session ends is worse than no tag, because the next agent reads it as
-  occupancy and stands down for nobody. Clear it on the same turn you hand the issue back,
-  whether the work landed, is blocked, or you were interrupted.
-
-  **This is the FIRST occupancy signal that is not a guess** — the file sweep cannot tell a live
-  session from the owner's edits from your own leftovers, which is why it may only WARN AND ASK.
-  A lane tag is an agent SAYING where it is, and `gh issue list --label status-wip-workbench`
-  answers *who is in that tree and on what*. It does not replace the sweep (an agent can work
-  without touching an issue), so run both. **A STALE tag is not occupancy** *(OWNER DIRECTIVE,
-  2026-10-02, on #811 — untouched 3 days, work released, tree clean: "Next time don't use that as
-  an indication that the worktree is occupied.")*: clear it, say so, carry on.
-
-  **ONE `--label` is fine; THREE are not** — `gh` ANDs repeated `--label`, so the all-lanes
-  sweep must be `--search 'label:a,b,c'`. `Blueprint/LANES.md` §2 for what that cost.
-
-  **`status-deliberate` must name who decided it, and when** *(added 2026-07-27)*. The label
-  turns any past call into standing law, so a comment on the issue has to say either
-  `OWNER RULING (YYYY-MM-DD): "<their words>"` or "<agent>'s call, owner-approved
-  YYYY-MM-DD" — otherwise it is one agent's preference wearing the project's authority.
-  An unattributed `status-deliberate` is advisory: weigh it and say you did.
-
-  Retired labels (left on old issues, never applied to new ones) are listed in **issue #61**,
-  the canonical scheme; `gh label list` shows what is live.
-- **Cross-link related issues by number** (`#122`) once both exist.
-- **The log is the narrative; the issue is the tracked unit of work** — and per the filing bar
-  above, most findings are only the former.
-
-## Branching & workflow
-
-**Commit ongoing work to `develop`, not `main`.** `develop` is the active
-integration branch; `main` is stable/release. Do not commit straight to `main`.
-
-- **New work** → branch from / commit on `develop`.
-- **Releasing** → merge `develop` → `main` and push both, only when gates are green.
-  **Immediately before the merge, add the website changelog entry + version number.**
-- Keep `develop` current with `main` (fast-forward) before starting new work.
-
-> **The repo IS public and `main` IS protected — releasing is a PR** (2026-07-30, #196).
-> A branch ruleset requires a pull request before merging to `main`, blocks force-push and
-> deletion, and allows only the merge method, so `git push origin main` is **rejected** and
-> the direct merge above no longer works. Approvals are set to **0** deliberately — GitHub
-> forbids approving your own PR, so any higher number would block every merge on a
-> solo-maintained repo. Use:
->
-> ```
-> gh pr create --base main --head develop --title "Release Alpha X.Y.Z — <headline>" --body-file <path>
-> gh pr merge --merge          # --merge, NOT --squash: squashing flattens the release history
-> git checkout develop && git merge --ff-only main && git push origin develop
-> git push origin --tags       # tags are pushed separately; the PR does not carry them
-> ```
->
-> Everything else is unchanged — gates green first, changelog entry and version bump
-> **before** opening the PR, annotated tag on the merge commit. Check whether the ruleset
-> is actually on (`gh api repos/TH462/Reactor-Dynamics/rulesets`) rather than assuming:
-> until #196 step 3 lands, the direct merge is still correct.
-
-### Website changelog & version numbers
-
-> **The page is LIVE** *(OWNER DIRECTIVE, 2026-08-04: "…bring back the update tracking page.
-> Update tracking summaries/lists should be concise.")*. `Alpha 1.0.0` shipped 2026-08-04.
-> `CHANGELOG.md`'s pre-public sections are **`## [Pre-launch 1.x.y]`**, not `Alpha` — parsed as
-> released, `1.0.0` sorts under `1.11.0` and `run_release` reddens on newest-first.
-
-The public site has a **player-facing** changelog at **`changelog.html`** — separate
-from the developer `CHANGELOG.md`. **Every release gets a version number and a
-`changelog.html` entry — required, not optional; do it as part of the merge.**
-
-- **When** — **at the first push to `develop` after a release, not at the merge to `main`**
-  *(OWNER DIRECTIVE, 2026-09-03: "The version should be ticked up appropriately and change log
-  updated as if it was going to main… so that I can review all of this stuff before it gets
-  pushed to [main] and published.")*. The
-  pending version wears **`-rc<N>`** in all three files or none, digits REQUIRED (`run_release`
-  has a `PENDING` state; do not quieten a red by relaxing it, #611). **Bump N on every push to
-  `develop` that changes the sim** *(OWNER, 2026-09-03: "add a release candidate version number
-  to the right of rc so I can keep track of the release candidate builds")* — bug reports carry
-  `RD_RELEASE`, so an unnumbered `-rc` cannot tie a symptom to a build. One changelog entry per
-  release; **later pushes EXTEND it**, like the manual's pending revision row, while N advances. Review it on the tester site
-  (`develop.reactor-dynamics.pages.dev`); the release commit then only strips `-rc` and sets the
-  date. **A flag-gated feature is not released and gets no `changelog.html` entry** — check
-  `site/flags.js` — but does belong in `CHANGELOG.md` *(OWNER RULING, 2026-09-03: "they're
-  technically not released so don't put them in the change logs yet")*.
-- **Version** — `Alpha X.Y.Z` = **Platform . Feature . Refinement**. Read the top entry
-  and bump the highest-significance digit in the release:
-  - **X** platform milestone (new reactor type, engine overhaul, alpha→beta). Rare.
-  - **Y** a **major change or a genuinely new capability** — something that did not exist
-    before and that you would list on the Roadmap. **Resets Z to 0.**
-  - **Z** everything else — **including player-facing changes and fixes**, as long as they
-    improve something the sim already did.
-
-  **Y IS FOR NEW THINGS, NOT FOR VISIBLE THINGS** *(OWNER DIRECTIVE, 2026-07-31: "I think we
-  should have the y part of the change number be for major changes or feature additions in
-  order to reduce the change number blowup. Z is for smaller changes and fixes even if they
-  are player facing.")* — the old wording took the version **1.2.0 → 1.11.0 in eight days**.
-  **The operative test: could you add it to the Roadmap as a line item?** New system, scenario,
-  mode or page → **Y**. Better/clearer/fixed version of something already there → **Z**, however
-  visible it is.
-
-  **Do not trust a version written here** — read `changelog.html`'s top entry and
-  `site/release.js`, which must agree. `run_release.js` gates that agreement but **not** the
-  digit choice: which digit fits is judgement and is not parseable.
-- **The entry** — a new `<details class="log-entry" open>` at the TOP (newest-first): version,
-  date (visible text *and* `datetime`), player-facing summary. One line per change, no marketing.
-  Copy the file's `ADDING AN ENTRY` template.
-- **FACTS ONLY, MINIMIZE PROSE** *(OWNER, 2026-08-04: "Just keep to facts in the changelog page.
-  Minimize prose.")*. Name the thing that changed and stop. No sentence that would still read fine
-  if deleted, no lead-in paragraphs. `CHANGELOG.md` stays dense; this page stays bare.
-- **SIMULATOR CHANGES ONLY — website changes do not go in it** *(OWNER DIRECTIVE, 2026-08-06:
-  "Also, don't include website changes in the changelog. The changelog is strictly for
-  simulator changes.")*. The plant the player operates — physics, board, controls, procedures,
-  scenarios and the in-app manuals. The surrounding site (pages, styling, navigation, the
-  download plumbing) gets no entry however visible, but still belongs in `CHANGELOG.md`.
-  **A website-only change ships with NO version bump** — `run_release` forbids "bump, no entry".
-- **BE CONCISE, and that is a CAP** *(same 2026-08-04 directive)*. **At most 8 bullets per
-  entry, one line each**. **Aggregate, do not enumerate**:
-  one line per system's worth of work, not one per commit. The site entry is **not** derived
-  one-to-one from `CHANGELOG.md`, which is dense on purpose. Over 8: group and summarise.
-- **Not** the same as the `RD_VERSION` deploy stamp (`site/version.js` — git SHA Vercel
-  stamps at build time).
-
----
-
-## Code conventions (how the code is wired)
-
-Read this before editing any source file — the wiring is deliberate and easy to break.
-
-- **No module system. Do not add `import` / `export` / `require` to source files.**
-  Every file in `engines/`, `layers/`, `scenarios/`, and `ui/` is a plain
-  global-namespace script that attaches to `globalThis.RD`. In the browser they load
-  via `<script>` tags in order; the Node test runners call `require()` only to
-  *execute* each file into the shared global. ES-module/CommonJS syntax inside a source
-  file breaks both load paths.
-- **Load order matters.** `pwr_config.js` / control modules load before the engine
-  files that consume them (see the ordered list in any `test/run_*.js` and `ui/shell.html`).
-- **File naming.** Plant-specific files are prefixed `pwr_` / `rbmk_` / `bwr_`.
-- **Hard Rules are non-negotiable.** Before changing engine behaviour or the data
-  contract, read the **Hard Rules** in `Blueprint/CONTEXT.md` §3 — **ten rules, and the
-  list is meant to stay short.** Reorganized 2026-07-29: architecture (HR1–HR6) is split
-  from practice (HR9, HR10, HR11, HR12); each rule now names its **guard**; the *how* — worked
-  cases, failure modes, procedure — moved to **`Blueprint/SOP.md`**, which is advisory,
-  not binding. HR7 (failure taxonomy → §11) and HR8 (params-in-code → §8) were retired
-  from §3 as a convention and a scope boundary; their numbers are not reused, because
-  ~580 citations point at these numbers.
-  The five you will actually trip over: **HR1** instruments-vs-truth · **HR5** commands
-  only flow down through the service · **HR9** the plant is the ground truth, content
-  follows the plant · **HR10** a passing test is not evidence the mechanism is right ·
-  **HR12** an assertion about plant dynamics must be MEASURED — step the plant and quote
-  the number *(OWNER RULING, 2026-07-29: "if you make assertions about plant dynamics, you
-  must back it up by testing them.")*. **HR11** (a ruling needs a date + the owner's
-  verbatim words, or it is advisory) was extracted from inside HR9 — it is cited constantly
-  and was unfindable.
-- **Snapshot / save compatibility is a contract.** New snapshot fields must migrate
-  older saves — follow the migration-note pattern in `CHANGELOG.md`.
-- **Minimize tokens spent editing files.** All else being equal, surgically edit
-  rather than rewrite a whole file.
-
-### Authoritative vs. scratch
-
-Source of truth: `engines/`, `layers/`, `scenarios/`, `ui/`, `test/`, `tools/` (code)
-and `Blueprint/`, `Manuals/`, `CHANGELOG.md` (docs). **Not** source of truth — don't
-mine these for intent: `terminals/` (raw session logs), `inbox/` (handoff drafts),
-`mcps/`, `node_modules/`, and the `Diagnostic/*.json` dumps (the `.md` reports are
-curated). **Local-only (kept out of the public GitHub repo):** `terminals/`, `mcps/`,
-`inbox/`, `Diagnostic/*.json`, `GO_PUBLIC_CHECKLIST.md`. The curated
-`Diagnostic/*.md` reports ARE published.
-
-**Running the SITE, as opposed to building it: `C:\grok_build\RD_Ops\`** *(owner, 2026-08-08:
-"Set up the folder as store secrets as you recommend.")*. Outside every repo and sibling to the
-three worktrees, so every lane reads the same copy and nothing in it can be committed. It holds
-`runbook.md` (account/zone/project ids, what is deployed where, how to read the usage data),
-`cutover.md` (the Vercel → Cloudflare migration, #413, with live state), saved Analytics Engine
-queries, and bug-report bundles pulled from R2 by `node tools/fetch_bug_reports.js` (or the
-`read-bug-reports` skill). **Read it before touching the live site** — those identifiers
-otherwise exist only in one session's conversation.
-**NO SECRETS LIVE THERE**, deliberately: `C:\grok_build\` syncs off-site (`.SynologyWorkingDirectory`),
-and every agent reads the folder, so a plaintext credential there is replicated *and* shared.
-Tokens go in a user env var (`CLOUDFLARE_API_TOKEN`); wrangler, `gh` and the MCP servers keep
-their own OAuth. A credential found there is a defect — move it and revoke the exposed one.
-
----
+- **No module system.** No `import` / `export` / `require` in `engines/`, `layers/`, `scenarios/`,
+  `ui/`: plain scripts attaching to `globalThis.RD`, loaded in `<script>` order (`pwr_config.js`
+  and the control modules before the engines that consume them — see `ui/shell.html` or any
+  runner). Plant files are prefixed `pwr_` / `rbmk_` / `bwr_`.
+- The Hard Rules (`CONTEXT.md` §3; ten rules, each naming its guard; HR7/HR8 retired, numbers
+  not reused) are non-negotiable. The five you will trip: HR1 instruments vs truth · HR5 commands
+  flow only down through the service · HR9 · HR10 · HR12. HR11: a ruling needs a date and verbatim
+  words, or a `RULINGS.md` row.
+- Snapshot/save compatibility is a contract: new fields migrate old saves (the migration-note
+  pattern in `CHANGELOG.md`). Protection, alarm and failure setpoints are data in
+  `layers/control/<plant>_control.js`. Surgical edits over rewrites.
+- Source of truth: `engines/`, `layers/`, `scenarios/`, `ui/`, `test/`, `tools/`, `Blueprint/`,
+  `Manuals/`, `CHANGELOG.md`. Not: `terminals/`, `inbox/`, `mcps/`, `node_modules/`,
+  `Diagnostic/*.json` — all local-only, with `GO_PUBLIC_CHECKLIST.md`; the curated
+  `Diagnostic/*.md` ships.
+- Running the live site: `C:\grok_build\RD_Ops\` (owner, 2026-08-08) — `runbook.md`, `cutover.md`,
+  analytics queries, bug-report bundles (`node tools/fetch_bug_reports.js`, skill
+  `read-bug-reports`); read it before touching the site. **No secrets there** — it syncs
+  off-site; tokens live in user env vars (`CLOUDFLARE_API_TOKEN`). A credential found there is a
+  defect: move it and revoke it.
 
 ## The specification (`Blueprint/`)
 
-**To build a module, read `CONTEXT.md` plus that one module's spec — nothing else.**
-
-- `CONTEXT.md` — shared interfaces, hard rules, data contract, scope, build map.
-- `DESIGN_COMPANION.md` — vision, rationale, deliberate exclusions, v2 roadmap.
-- `M1`–`M8` module files — full implementation spec for each buildable unit.
-- `M4b_control_layer.md`, `M5_*`, `M6*` — expanded control/service/instructor specs.
-- `BUILD_DECISIONS.md` — running log of what was decided and why during the build.
-- Feature specs: `pwr_synoptic_prerequisites.md`, `pwr_training_campaign.md`,
-  `load_mode_spec.md`, `new_diagram_controls.md`, `OPERATOR_MANUAL_PLAN.md`.
-
----
+`CONTEXT.md` (interfaces, hard rules, data contract, scope) · `DESIGN_COMPANION.md` (vision,
+rationale, deliberate exclusions, roadmap) · `M1`–`M8` module specs plus `M4b_control_layer.md`,
+`M5_*`, `M6*` · `BUILD_DECISIONS.md` · feature specs (`pwr_synoptic_prerequisites.md`,
+`pwr_training_campaign.md`, `load_mode_spec.md`, `new_diagram_controls.md`,
+`OPERATOR_MANUAL_PLAN.md`). To build a module, read `CONTEXT.md` plus that one spec.
 
 ## Domain conventions
 
-- **The educational goal is PLANT DYNAMICS** *(OWNER, 2026-08-02: "The point of the sim is in
-  the name. I want to teach people plant dynamics. They should learn the dynamics between the
-  different components.")*, with **procedure a second goal, not a subordinate one**. The six
-  Tier A couplings and the two routes a feature can take to educational credit are
-  `Blueprint/DESIGN_CRITERIA.md` §6 — binding, and the thing Q2 is scored against.
-- **Instruments vs truth is a MODELLING rule (HR1), NOT the premise.** Gauges, alarms and
-  automatic protection read *instrumented* values (lag, noise, possible failure); true state
-  is an explicit diagnostic overlay only; never soften the gap. But **instrument deception is
-  deliberately not a headline objective** *(OWNER, 2026-08-02: "I don't want to focus on
-  instruments lying. It will come up in failure scenarios but I dont know if it should be a
-  major focus."; and OWNER DIRECTIVE, 2026-08-03: "THR STATED PREMIS IS NOT INSTRUMENT VS
-  TRUTH THE PREMIS IS TO TEACH PLANT DYNAMICS!!! We must purge the idea of the instruments vs
-  truth premise from all documents.")* — it is a Tier C payoff, because you cannot perceive a
-  lying instrument without already knowing what
-  the plant should be doing. HR1 is unaffected and stays exactly as it is; what is retired is
-  the framing that made deception *the point*.
-- **Two registers.** Every label/instructional string exists in a **Learning** register
-  (plain language) and an **Industry** register (real plant terminology).
-- **Units.** SI internally (MPa, °C, %). The UI has a display-unit toggle (scoped OFF for the PWR board, which is US). **US customary FIRST with SI in parentheses — `2235 psi (15.41 MPa)`, `565 °F (296 °C)` — in the `Manuals/` set AND in everything you hand the owner**: chat replies, issue bodies and comments, commit messages, `Diagnostic/` entries *(OWNER DIRECTIVE, 2026-07-29: "also add a gh issue to add to claude.md to always give me imperial numbers not SI.")*. Temperature DIFFERENCES and RATES (subcooling margin, leg ΔT, DNB margin, deadbands, heatup/cooldown rates) convert ×9/5 with NO offset — this is the one that gets written wrong: 41 °C of subcooling is 73.8 °F, not 105.8, and 21.8 °C/hr is 39.2 °F/hr. `test/run_manual_units.js` enforces it across the manual and the board-facing copy (`ui/manual_procedures.js`, `ui/diagram/board/pwr_board_inspect.js`); **agent prose is not gateable**, like HR10 and HR12 — a green run does not cover it. Engine internals stay SI and do not move: command payloads, config constants, `true_state`.
-- **SPELL OUT EVERY CODE — ALL OF THEM, not a favoured few** *(OWNER DIRECTIVE, 2026-08-14: "I
-  don't know what these letter number combos are (L0, D1). Always spell them out."; broadened
-  minutes later when a first pass named only two families: "Not just those to, spell out all of
-  them.")*. **The test: if a token abbreviates something that HAS a name, write the name the first
-  time it appears in anything the owner reads.** That covers the PWR2 build layers (`L0`→**Layer 0,
-  water properties**), the five PWR2 design documents (`D1`→**the design spine,
-  `PWR2_DESIGN.md`**), the Hard Rules (`HR9`→**Hard Rule 9, the plant is ground truth**), the Tier A
-  couplings (`A4`→**level is not inventory, the TMI coupling**), casualty ids (`E09`→**large
-  LOCA**), interlocks (`P-11`), probe and finding ids (`CA-15`, `MDS-2`, `F1`), and section refs
-  (`§8(2)`→**the stop condition in the design spine §8, item 2**). Agents invent these constantly
-  and go blind to them, then put them in decision briefs — so the owner is asked to rule on options
-  he cannot parse. **Bare codes are fine only INSIDE a document that defines them, and between
-  agents.** Never in chat, an issue body or comment, or a commit message. **Not gateable** — like
-  HR12 and the units rule, a green run does not cover it.
-- **Plant MODES** use commercial numbering, written **Mode N, Name** (e.g. *Mode 1, At
-  Power*). Do not confuse with turbine load modes (Follow / Manual / Disconnected).
-- **This is an educational lumped-parameter plant,** not a full-scope replica of a
-  licensed reactor. Where a simplification understates reality, say so plainly.
+- **The educational goal is plant dynamics** (owner, 2026-08-02), with procedure a second goal, not
+  a subordinate one; the Tier A couplings in `DESIGN_CRITERIA.md` §6 are what Q2 scores against.
+- **Instruments vs truth is a modelling rule (HR1), not the premise** (owner, 2026-08-02;
+  2026-08-03): gauges, alarms and protection read instrumented values, true state is an explicit
+  diagnostic overlay, never soften the gap — but deception is a Tier C payoff, not a headline
+  objective, and the "instruments vs truth" framing is purged from all documents.
+- Two registers for every label and instruction: Learning (plain language) and Industry (real
+  plant terminology).
+- Units: SI internally (MPa, °C, %); the PWR board is US (display toggle scoped off). Reporting
+  rule under *How to reply*.
+- Plant modes use commercial numbering, written *Mode N, Name* (*Mode 1, At Power*); not the
+  turbine load modes (Follow / Manual / Disconnected).
+- An educational lumped-parameter plant, not a full-scope replica: where a simplification
+  understates reality, say so plainly.
 
----
+## Licensing
 
-## Licensing (for public release)
-
-Dual-licensed, © 2026 Timothy Holt: **code → AGPL-3.0** (`LICENSE`), **manuals &
-training prose → CC BY 4.0** (`LICENSE-CONTENT`). Public terms/disclaimer at
-`legal.html`, whose AGPL §13 source-repo URL is filled and live.
+Dual-licensed, © 2026 Timothy Holt: code AGPL-3.0 (`LICENSE`), manuals and training prose
+CC BY 4.0 (`LICENSE-CONTENT`); public terms and disclaimer at `legal.html`.

@@ -29,6 +29,37 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-10-18-develop-a (CLAUDE.md pruned 14,998 → under 5,000 words; push/merge guard hook)
+
+Owner approved two changes from the Claude Code best-practices guide: keep CLAUDE.md short (ask of
+each line "would removing it cause mistakes?"), move sometimes-relevant workflows to skills, put
+must-happen-every-time rules in hooks, and stop bolding everything.
+
+- **Hook.** `tools/hook_guard_push_merge.js`, registered as `PreToolUse` on `Bash|PowerShell` in
+  `.claude/settings.json`. Any `git push` → `ask` (never push until he says so, 2026-09-14 — the
+  prompt approval is his permission); a push naming `workbench`/`backshop` or `--all`/`--mirror` →
+  `deny` (lanes are local, 2026-07-31); `gh pr merge` → `ask`; merge/pull/rebase/cherry-pick/reset
+  that would move `develop` → `ask` (2026-07-31), resolving the target tree from `git -C`, a leading
+  `cd`, or a `git checkout` earlier in the chain, so a lane's `git merge --ff-only develop` passes
+  silently. Exit 0 silent on anything else and on any parse error. Pipe-tested on 17 payloads.
+  `settings.audit.json` layers on `settings.json` and inherits hooks; untouched.
+- **Prune.** CLAUDE.md 14,998 → see the commit for the measured count (cap in
+  `test/run_doc_budget.js` lowered to the new size + ~15 %). Every rule kept as a dated one-liner;
+  every verbatim owner quote (55 citations) moved exactly as written to `Blueprint/RULINGS.md`,
+  grouped by topic; HR11 in `CONTEXT.md` §3 amended so a dated CLAUDE.md line whose quote is in the
+  ledger is fully binding. Procedure moved to five new skills: `gate-layers` (layer table,
+  measure_stack, run_all/CI costs), `issue-workflow` (labels, filing bar, lane tags), `manual-edit`
+  (revision row → stamp → pack), `walkthrough-change` (both routes, reviewer, layman), and
+  `version-changelog` (rc numbering, digit choice, changelog.html rules). The 25 standing-procedure
+  bullets cut to one line each; their worked detail is verbatim in `Blueprint/TRAPS.md` §"Standing
+  list, compressed 2026-10-18". Bold kept only on never-push, never-merge-develop, lanes-local,
+  RBMK/BWR-on-hold, HR12 measure, the evidence pass. Output-format blocks (brevity, STILL
+  OUTSTANDING, FIRST PRINCIPLES, ask-with-recommendation) kept with their delimiters. Inventory of
+  every rule and where it landed: the session scratchpad `claude_md_inventory.md` (summarised in
+  the commit message).
+- Gates: `run_doc_budget`, `run_hardrules` (baseline re-measured after the quote move),
+  `run_session_labels`, `run_release` — results in the commit message.
+
 ## Session log — 2026-10-14-develop-a (SI restarts by itself after its reset — the re-arm law, not tick ordering)
 
 **Filed claim (INHERITED, `inbox/670_redesign/si_relatch.md`):** after SI is reset and stopped, injection restarts by itself as containment pressure falls back through ~3.82 psig. The suspected cause was one-tick ordering: the re-arm block clears on the live signal while the delayed trip signal still asserts.
