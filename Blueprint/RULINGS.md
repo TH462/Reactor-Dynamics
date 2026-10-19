@@ -160,7 +160,10 @@ and a quote.
   adjustments to your process as you recommend")*
 - **Hand finished work to a fresh agent for a quality pass.** *(OWNER DIRECTIVE, 2026-09-11: "Upon
   completing your work, spawn a subagent to do a full and thorough quality pass through it for any
-  remaining bugs, issues or QoL improvements.")*
+  remaining bugs, issues or QoL improvements.")* Extended to a loop *(OWNER DIRECTIVE, 2026-10-18:
+  "I think we should use I think it's called a gauntlet loop where one agent builds something and
+  a second critiques it then the first goes back and edits based on the second agents critique.
+  Use opus as the critic.")*
 
 ## Releases, versions and the changelog
 

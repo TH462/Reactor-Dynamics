@@ -332,9 +332,12 @@ A change is finished when the gates it touches are green at or above `BASELINES`
   `run_m7.js`; a `true_state` field change needs its §6.3 line in `CONTEXT.md` (`run_contract.js`).
   `Manuals/` → skill `manual-edit` (revision row → stamp → pack, or `run_manual_rev.js` reddens).
   Then `CHANGELOG.md`, this file's status, and `BUILD_DECISIONS.md` if a decision or flag changed.
-- **Then hand it to a fresh agent for a quality pass** (owner, 2026-09-11): give it the diff, the
-  issue and what is already open; it reviews, never re-litigates a ruling or replaces a gate.
-  Report every finding and what you did about it; one you declined, with the reason.
+- **Then run the build/critique loop** (owner, 2026-09-11; 2026-10-18): the `critic` subagent
+  (Opus, read-only, `.claude/agents/critic.md`) gets the diff, the issue, the intent and what is
+  already open; it never re-litigates a ruling or replaces a gate. Its findings go back to the
+  SAME builder (resume it, so it keeps its context), which fixes and re-gates; the critic then
+  re-checks. Stop at `VERDICT: PASS` (no HIGH/MEDIUM left) or after 3 rounds — then report what
+  is left. Report every finding and what was done; one declined, with the reason.
 - Release → skill `release-to-main`: version bump + `changelog.html` entry + `CHANGELOG.md` roll in
   one change, `run_release` green, a PR to protected `main` (`--merge`, never squash), and **a
   `Production` deployment must exist for the released SHA** (owner, 2026-08-04;
