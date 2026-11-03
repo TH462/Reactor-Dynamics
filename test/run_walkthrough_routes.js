@@ -204,6 +204,17 @@ var ROUTES = {
        * and was hollow: 6a is met on entry there, Continue goes at 3 s, and the presses never ran. */
       { id: 'dump_auto_early', kind: 'press early', at: 'cmd:set_afw', set: { policy: 'seq', cmds: [   // #808: step 5 is AUX FEED AUTO now
         { action: 'set_afw', active: true, pump: 'mdafw' }, { action: 'set_steam_dump', mode: 'auto' }] } },
+      /* OFF-PRESET STARTS (#823 critic round 1, MEDIUM). The manual's Walkthrough button starts this leg on the plant
+       * as it stands, and Manuals/04 tells a player to secure the RCP to hold a heatup. Before the fold the confirm
+       * step's catch-up (`past`: shutdown bank >= 98 %, Mode < 5) skipped these; on the merged step those clauses
+       * would skip the pump start, so the cold-state rows carry their own `overtaken` instead. ON at +2 s, as the
+       * critic measured; the route stops once step 1 checks off (the rest of the leg is not what it tests). */
+      { id: 'hot_start', kind: 'off-preset start (Mode 4, pumps off)', from: 'hot_shutdown', until_step: 1,
+        at: 'cmd:set_rcp', set: { delay_s: 2 } },
+      { id: 'bank_out_start', kind: 'off-preset start (shutdown bank out, pumps off)', until_step: 1,
+        setup: [{ action: 'rod_nudge', group_id: 'shutdown_rods', steps: 627, speed: 'fast' }],
+        setup_until: { p: 'shutdown_bank_steps', op: '>=', v: 627 },
+        at: 'cmd:set_rcp', set: { delay_s: 2 } },
     ],
   },
   pwr_raise_power: {
@@ -609,6 +620,19 @@ var MUTATIONS = [
    * carrying the four cold-state rows, the pump start a step of its own. Rebuilt from today's step 1
    * (rows 1a-1d out, 1e left), so it tracks the live rows. The new `first` check must go red on it:
    * the confirm step is met on entry, Continue lights in the first plant-second, nothing pressed. */
+  /* #823 critic round 1: the b7897bd1 rows, rebuilt -- 1a/1b and the shutdown-bank row without their `overtaken`.
+   * Each off-preset start must then strand at step 1 (the critic's measurement: Continue dark 300 s). */
+  { id: 'heatup_no_hot_relief', leg: 'pwr_heatup', route: 'hot_start', expect: 'invariant',
+    why: 'heatup 1a/1b without their overtaken (b7897bd1): started in place on hot_shutdown, Continue never lights',
+    mutate: function (P) { P.steps[0].accs.forEach(function (e) { if (e.p === 'tavg_c' || e.p === 'pressure_mpa') delete e.overtaken; }); } },
+  { id: 'heatup_no_bank_relief', leg: 'pwr_heatup', route: 'bank_out_start', expect: 'invariant',
+    why: 'heatup 1d shutdown-bank row without its overtaken (b7897bd1): bank out, pumps off, Continue never lights',
+    mutate: function (P) { P.steps[0].accs.forEach(function (e) { if (e.p === 'shutdown_bank_steps') delete e.overtaken; }); } },
+  /* ...and the STRUCTURAL half of `first`: step 1 with no command anywhere, rows intact. The timing half stays green
+   * here (nothing is pressed, so nothing lights), so only the structural half can turn this red. */
+  { id: 'heatup_first_no_cmd', leg: 'pwr_heatup', route: 'typical', expect: 'first',
+    why: 'heatup step 1 with its set_rcp command removed (a confirm-shaped first step that never lights early)',
+    mutate: function (P) { delete P.steps[0].cmd; P.steps[0].accs.forEach(function (e) { delete e.cmd; }); } },
   { id: 'heatup_confirm_first', leg: 'pwr_heatup', route: 'typical', expect: 'first',
     why: 'heatup step 1 split back into a confirm-only step ahead of the pump start (the pre-#823 layout; 27 % of starters quit on it)',
     mutate: function (P) {
@@ -829,7 +853,8 @@ function runJob(legId, routeId, mutId, ctx) {
   var svc = ctx && ctx.svc;
   if (!svc) {
     svc = new RD.SimulationService({ seed: +(process.env.WR_SEED || 42) });   // WR_SEED: a measurement knob, never the gate
-    svc.selectPlant('pwr2', proc.from, null, undefined);
+    /* a mistake may start the leg on another IC (`from`) -- the manual's Walkthrough button starts it on the plant as it stands (#823 review) */
+    svc.selectPlant('pwr2', (MIS0 && MIS0.from) || proc.from, null, undefined);
     svc.running = true; svc.attentionStops = false; svc.speedHolds = false;
     svc.configurePacing({ warp: true });
     svc.timeAcceleration = 10;
@@ -873,6 +898,13 @@ function runJob(legId, routeId, mutId, ctx) {
   function setSpeed(v) { v = Math.max(1, Math.min(600, v || 10)); if (v !== speedNow) { send({ action: 'set_speed', value: v }); speedNow = v; } }
 
   for (var w = 0; w < 3; w++) tick();
+  /* `setup` / `setup_until` (#823 review): commands the player gave BEFORE starting the walkthrough, and the
+   * plant condition to wait for -- e.g. the shutdown bank pulled out on a cold plant with the pumps off. */
+  if (!ctx && MIS0 && MIS0.setup) {
+    MIS0.setup.forEach(function (c) { send(c); });
+    var su = MIS0.setup_until, sg = 0;
+    while (su && !IL.prototype._predMet(IL.paramValue(s, su.p), su) && sg++ < 200000) tick();
+  }
   send({ action: 'start_checklist', procedure_id: legId });
   tick();
   /* a chained leg can START scrammed (the cooldown after the shutdown's scram): only a trip
@@ -897,6 +929,11 @@ function runJob(legId, routeId, mutId, ctx) {
     if (!c) { result = { kind: 'strand', step: cur + 1, why: 'the walkthrough is gone' + (rewound ? ' after its own Rewind' : '') }; break; }
     if (c.complete) { result = { kind: 'complete' }; break; }
     var k = c.step_index, st = proc.steps[k];
+    /* `until_step` (#823 review): a route about the leg's OPENING stops once that many steps are checked off --
+     * the rest of the leg from an off-preset start is not what it tests */
+    if (!ctx && MIS0 && MIS0.until_step != null && k >= MIS0.until_step) {
+      result = { kind: 'complete', why: 'route stops after step ' + MIS0.until_step + ', checked off at +' + f(t() - T0, 1) + ' plant-s' }; break;
+    }
     if (k !== cur) {                                     // step entry (forward or by Rewind)
       if (cur >= 0 && k > cur && out[cur]) {
         out[cur].by = c.done_by[cur]; out[cur].t_done_min = (t() - T0) / 60;
@@ -1116,7 +1153,11 @@ function runJob(legId, routeId, mutId, ctx) {
   result.t_min = (t() - T0) / 60;
   result.end = readings();
   result.blocks = { lo_press: pv('lo_press_blocked'), si_trip: pv('si_trip_blocked') };   // pass 6: what the next leg inherits
-  var ret = { leg: legId, route: routeId, kind: mistake ? mistake.kind : 'typical', typical: typicalKind, result: result, steps: out.filter(Boolean), flags: flags };
+  /* the STRUCTURAL half of `first` (#823 review, LOW): the window above cannot see a confirm-only first step whose
+   * rows take longer than ENTRY_S to settle; a first step that carries no command at all is that shape by construction */
+  var s0 = proc.steps[0] || {};
+  var firstStruct = !!(s0.cmd || (s0.accs || []).some(function (e) { return e && e.cmd; }));
+  var ret = { leg: legId, route: routeId, kind: mistake ? mistake.kind : 'typical', typical: typicalKind, result: result, steps: out.filter(Boolean), flags: flags, first_struct: firstStruct };
   if (ctx) ret._ctx = { svc: svc, s: s, chain: true };
   return ret;
 
@@ -1732,9 +1773,9 @@ function verdicts(r) {
     if (pom.length) v.pom = { ok: pom.every(function (st) { return st.lit_adv_s <= 1; }),
       name: 'every pause_on_met step holds the clock while its Continue is lit (at most 1 plant-s)',
       note: pom.map(function (st) { return 'step ' + st.n + ' ' + f(st.lit_adv_s) + ' s'; }).join(', ') };
-    var fe = fl('first_entry');
-    v.first = { ok: fe.length === 0, name: 'the first step is not complete on entry: Continue waits for the player\'s first action (#823)',
-      note: fe.length ? 'step 1 lit at +' + f(fe[0].at_s) + ' s with nothing pressed' : ((ROUTES[r.leg.replace(/#2$/, '')] || {}).first_step_confirm ? 'exempt: ' + ROUTES[r.leg.replace(/#2$/, '')].first_step_confirm : 'none') };
+    var fe = fl('first_entry'), fex = (ROUTES[r.leg.replace(/#2$/, '')] || {}).first_step_confirm;
+    v.first = { ok: fe.length === 0 && (!!fex || r.first_struct !== false), name: 'the first step carries a command and is not complete on entry: Continue waits for the player\'s first action (#823)',
+      note: (!fex && r.first_struct === false ? 'step 1 carries no command (no step cmd, no cmd row); ' : '') + (fe.length ? 'step 1 lit at +' + f(fe[0].at_s) + ' s with nothing pressed' : ((ROUTES[r.leg.replace(/#2$/, '')] || {}).first_step_confirm ? 'exempt: ' + ROUTES[r.leg.replace(/#2$/, '')].first_step_confirm : 'none')) };
     var h = fl('hollow');
     v.hollow = { ok: h.length === 0, name: 'no step checks off on entry before the player acts (hollow)',
       note: h.length ? h.map(function (x) { return 'step ' + x.step + ' lit at +' + f(x.at_s) + ' s'; }).join('; ') : 'none' };

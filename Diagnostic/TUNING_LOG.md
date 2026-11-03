@@ -60,6 +60,17 @@ old cold-state checks (letters kept), 1e is the old 2a press. Unordered; every r
   flash, no un-tick, no hollow.
 - **Telemetry:** `walkthrough_step` indices for `pwr_heatup` shift by one from this release (old step N
   is N−1). The `release` column separates the layouts; #823's success measure reads off it.
+- **Critic round 1 — the narrowed `past` stranded two in-place starts.** The manual's Walkthrough button
+  starts the leg on the plant as it stands. MEASURED on b7897bd1 (routes harness, seed 42, ON at +2 s):
+  - `hot_shutdown` as booted (250 °F, 364 psia, pumps off): stranded at step 1 for 30 plant-min, 1a unlatched.
+  - Shutdown bank out on the cold plant: stranded 30 plant-min, the bank row unlatched.
+  Fix: 1a, 1b and the shutdown-bank row stand down on their own negation (row-level `overtaken`). MEASURED
+  after: step 1 checked off at +21.0 and +20.9 plant-s; preset rows still latch as themselves at +0.3 s, none
+  overtaken. The new routes `hot_start` and `bank_out_start` gate this. Injections `heatup_no_hot_relief` and
+  `heatup_no_bank_relief` rebuild the b7897bd1 rows and turn each route red.
+- **`first` gained a structural half:** a non-exempt leg's step 1 must carry a `cmd` (or a `cmd` row), because the
+  5-plant-s window cannot see a confirm step whose rows settle slower. Injection `heatup_first_no_cmd` reddens it
+  with the timing half green.
 - **Not changed:** `Manuals/` (PWR-N01 carries its own step numbers, not the walkthrough's). Dated code
   comments that quote a heatup step number keep the 17-step numbering; the pool's header note says so.
 

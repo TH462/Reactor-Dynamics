@@ -1555,10 +1555,17 @@
            * The rod tiles draw integer steps. Measured on each route: see the step file's Notes. */
           /* HIGHLIGHTS PER SUBSTEP (#809 item 14): each check rings its own tile while it is the active
            * row; 1e pulses ON. The step's own lists are the superset the hover preview draws. */
+          /* OFF-PRESET STARTS (#823 critic round 1): the manual's Walkthrough button starts this leg on the plant as it
+           * stands. The old confirm step's `past` skipped it on Mode < 5 or the shutdown bank out; here those clauses
+           * would skip the pump start, so 1a, 1b and the shutdown-bank row each stand down on their OWN negation instead
+           * (row-level `overtaken`, 5-grading debounce). On the preset and the round trip every row latches as itself at
+           * +0.3 plant-s, so the relief never fires there (MEASURED, step file #823 record). Labels AGENT-DRAFTED. */
           accs: [{ p: 'tavg_c', op: '<', v: 93.05, hl_watch: ['Tavg'],
+                   overtaken: { p: 'tavg_c', op: '>=', v: 93.05, label: 'the plant was already above 200 °F' },
                    ask: 'Check AVG COOLANT TEMPERATURE reads below 200 °F.',
                    label: 'AVG COOLANT TEMPERATURE below 200 °F' },
                  { p: 'pressure_mpa', op: '<', v: 4.995, hl_watch: ['Primary Pressure'],
+                   overtaken: { p: 'pressure_mpa', op: '>=', v: 4.995, label: 'PRIMARY PRESSURE was already above 725 psi' },
                    ask: 'Check PRIMARY PRESSURE reads below 725 psi.',
                    label: 'PRIMARY PRESSURE below 725 psi' },
                  /* 1c IS THE ONE ROW THE STEP'S OWN ACTION MAKES FALSE: pressing ON lights ON and puts
@@ -1575,6 +1582,7 @@
                    ask: 'Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.',
                    label: 'CONTROL ROD POSITION 0 of 627' },
                  { cont: true, p: 'shutdown_bank_steps', op: '<', v: 1,
+                   overtaken: { p: 'shutdown_bank_steps', op: '>=', v: 1, label: 'the shutdown bank was already out' },
                    label: 'SHUTDOWN ROD POSITION 0 of 627' },
                  { p: 'pump_flow_pct', op: '>', v: 90, hl: ['RCP — On'], hl_watch: ['RCP ON/OFF'],
                    ask: 'Press ON beside the reactor coolant pump, above RCP FLOW, and check RCP FLOW reads above 90 %.',

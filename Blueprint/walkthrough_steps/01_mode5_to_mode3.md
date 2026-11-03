@@ -748,3 +748,13 @@ Mode 3 runs on the motor-driven aux feed pump, main feed secured (OWNER: "Yes", 
 **Catch-up.** `past` is only "RCP FLOW above 90 %". The old step 1's shutdown-bank and Mode clauses would now skip the pump start.
 
 **Round trip** (the cooldown's plant, `run_walkthrough_routes --leg=chain`, seed 42): enters at 193.7 °F, 252 psia, pumps off, bank in; 1a–1d latch at once, 1e at +0.28 plant-min (91.7 %), Tavg 204.7 °F by the end of step 2. The leg completes, 331.3 plant-min. The 1e note's "under about 25 psi" / "about 205 °F" is INHERITED (layman pass 6, a 19 psia seam); no gate route reaches it.
+
+**Critic round 1 (2026-11-02, develop-b): off-preset starts.** Narrowing `past` stranded two in-place starts that the old confirm step's catch-up had skipped. Both use the manual's 📋 Walkthrough button, which starts the leg on the plant as it stands. MEASURED on the pre-fix pool (`run_walkthrough_routes`, seed 42, ON pressed at +2 s):
+- `hot_shutdown` as booted (Mode 4, 250 °F, 364 psia, pumps off): 1a never latched; stranded at step 1 for 30 plant-min.
+- Shutdown bank pulled to 627 on the cold plant, pumps off: the shutdown-bank row never latched; stranded for 30 plant-min.
+
+Fix: 1a, 1b and the shutdown-bank row each carry a row-level `overtaken` on their own negation. MEASURED after the fix: step 1 checked off at +21.0 plant-s (hot start) and +20.9 plant-s (bank out). On the preset every row still latches as itself at +0.3 plant-s, with none overtaken.
+
+AGENT-DRAFTED card strings (shown only on those starts): "the plant was already above 200 °F", "PRIMARY PRESSURE was already above 725 psi", "the shutdown bank was already out".
+
+`Manuals/04` §PWR-N01 "works identically from step 2" and "step 5b" use the manual procedure's own step numbers, not the walkthrough's, so they are unchanged.
