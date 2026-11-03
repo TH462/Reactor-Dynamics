@@ -87,6 +87,14 @@ rows (public channel, 2026-09-16 → 2026-11-02; session counts are floors). Scr
 - **Open:** startup step 8 (the final 1/M plot point) was rewound 24 times by 15 sessions, always after
   rod moves; step 12 (raise power to about 1 %) 41 times by 6 sessions. Telemetry carries action names
   but not values, so it cannot say whether these were overshoots or early plots.
+- **"Is wordiness turning players off?" (owner question).** Per-step word count from the v1.8.3 step
+  files, compared with 1.8.3 public telemetry over 63 non-final steps (Spearman). Words vs quit rate:
+  total 0.22, action lines 0.06, notes 0.31, Background 0.11. Words vs median time on step: 0.75, but
+  steps with more words also have more to do. Quitting clusters at a leg's FIRST steps, not its long
+  ones: heatup step 1 (97 words, below the 116 median) loses 20 %; startup 13 (228 words) loses 3 %.
+  The one before/after is confounded. 1.8.2 cut 25–35 % of the words (#819), and heatup completion went
+  35 % → 57 % with step-1 quits 31 % → 21 %. The same release pinned Continue (#818 C), which had been
+  off-screen on 34 of 69 steps. Reading: first-screen load, not per-step length. #823 tests it.
 - **Oddity, unverified as a defect:** heatup started from the manual at full power marks steps 1–3 done.
   That includes step 1, which grades AVG COOLANT TEMPERATURE below 200 °F (93 °C) while it reads 580 °F.
 
