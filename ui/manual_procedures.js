@@ -1510,6 +1510,24 @@
         { p: 'power_pct', op: '<', v: 1, text: 'Reactor shut down: REACTOR POWER 0 %' },
       ],
       steps: [
+        /* ONE STEP, NOT TWO: THE COLD-STATE CHECKS ARE ROWS OF THE PUMP START (#823) *(OWNER RULING,
+         * 2026-11-02: "I think folding step 1 into 2 might be the best option so the player can still
+         * see the checks of step 1.")*. Until then step 1 was "Confirm the plant is cold and shut
+         * down." with these four rows and no action: all four tick within 3 s of the start and the
+         * panel read "Step done — press Continue." 48 of 178 public sessions that started this leg
+         * (27 %) never got past it (live telemetry 2026-09-16 -> 2026-11-02, TUNING_LOG
+         * 2026-11-02-develop-a). The leg is 16 steps from here; EVERY "step N" of this leg in a
+         * comment dated before 2026-11-02 is the 17-step numbering (old step N = step N-1 now).
+         *
+         * ROW ORDER: the four checks first (1a-1d, their old letters kept), the press last (1e). The
+         * checks are true on arrival and tick in the first seconds, so the active substep is the press
+         * by the time anyone reads the card; read top to bottom it is "pumps OFF, then press ON", never
+         * the reverse. Unordered: every row is `<`/`>`, so each LATCHES on its own (_gradeAccs) and the
+         * pump heat that follows cannot un-tick 1a. Continue lights only when 1e latches.
+         *
+         * `past` KEEPS ONLY THE PUMP CLAUSE. The old confirm step's catch-up also skipped on the
+         * shutdown bank out or Mode 4 and hotter; on THIS step those would skip the pump start itself,
+         * and a heatup with no pumps never heats. Pumps already running = the step's action is done. */
         /* ⚠ "RCP FLOW OFF", NOT the owner's "Reactor Coolant Pump (RCP) FLOW OFF" — THE ONE
          * CLAUSE OF HIS #755 EDIT NOT TAKEN, and it is flagged on the issue rather than silently
          * dropped. His spelled-out form is 23 words against `run_style`'s W2 cap of 20 (scored
@@ -1517,19 +1535,13 @@
          * quieten a gate to take a wording; the `why` that carried his spelled-out
          * "Residual Heat Removal (RHR)" gloss was cut by the #819 subtext ruling (2026-10-02,
          * Background is no longer drawn). If he wants the full spelling, W2's cap is what moves, by his ruling. */
-        /* 2026-09-24 (wt-heatup): the owner's line split into GOAL (`text`) and ACTION (`ask`),
-         * per the walkthrough step format (Blueprint/walkthrough_steps/02_mode3_to_mode1.md). The
-         * word-cap note above now applies to the `ask`; the goal line is his opening clause. */
-        obs('Confirm the plant is cold and shut down.',
-          null, null, null,
-          'In Cold Shutdown (Mode 5) the water is far below boiling and pressure is low. Residual Heat Removal (RHR) carries the fuel\'s small leftover heat, and both rod banks are fully in.',
-          [{ p: 'pump_flow_pct', op: '>', v: 90 }, { p: 'shutdown_bank_pct', op: '>=', v: 98 }, { p: 'plant_mode', op: '<', v: 5 }],
-          /* 'Primary Pressure', not 'Plant Pressure' — both resolve to `ims2immsvn6`, but the
-           * board engraves PRIMARY PRESSURE and every other step in this leg uses that spelling
-           * (#744 template pass). The two rod readouts are ringed because the step's own `note`
-           * says "Both rod positions read 0 of 627" and neither was marked. */
-          ['Tavg', 'Primary Pressure', 'Residual Heat Removal (RHR)',
-           'Control Rod Position', 'Shutdown Rod Position'],
+        { text: 'Start the reactor coolant pumps.',
+          why: 'In Cold Shutdown (Mode 5) the water is far below boiling and pressure is low. Residual Heat Removal (RHR) carries the fuel\'s small leftover heat, and both rod banks are fully in. A shut-down reactor makes almost no heat, but the pumps\' work ends up in the water as friction, enough to warm the whole plant. Real crews heat up this way, reactor never critical.',
+          control: 'RCP ON/OFF', target: 'RCP FLOW above 90 %',
+          predicts_alarms: ['subcooling_low'], aim: 'With the reactor kept shut down, the pumps are what heat the plant.',
+          wait_speed: 1, speed_text: true,
+          cmd: { action: 'set_rcp', running: true }, hold: 30,
+          past: [{ p: 'pump_flow_pct', op: '>', v: 90 }],
           /* FOUR BOARD CHECKS REPLACE "Plant in Mode 5, Cold Shutdown" (2026-09-25, phase 2 of the
            * what / why / how restyle; the `plant_mode ~ 5` row is retired the way `02` step 17
            * retired its `plant_mode ~ 1`). Each row grades the channel its tile DRAWS, at the floor
@@ -1541,34 +1553,37 @@
            * number (natural circulation reads about 4 % with the pumps stopped), so "reads OFF" is
            * the card's OFF lamp, whose source is `rcp_running` (pwr_board_wiring `imrsjy59pnu`).
            * The rod tiles draw integer steps. Measured on each route: see the step file's Notes. */
-          { wait_speed: 1, speed_text: true,
-            accs: [{ p: 'tavg_c', op: '<', v: 93.05,
-                     ask: 'Check AVG COOLANT TEMPERATURE reads below 200 °F.',
-                     label: 'AVG COOLANT TEMPERATURE below 200 °F' },
-                   { p: 'pressure_mpa', op: '<', v: 4.995,
-                     ask: 'Check PRIMARY PRESSURE reads below 725 psi.',
-                     label: 'PRIMARY PRESSURE below 725 psi' },
-                   { p: 'rcp_running', op: '<', v: 1,
-                     ask: 'Check OFF is lit on the RCP FLOW card.',
-                     label: 'OFF lit on the RCP FLOW card: the pumps are stopped' },
-                   { p: 'control_bank_steps', op: '<', v: 1,
-                     ask: 'Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.',
-                     label: 'CONTROL ROD POSITION 0 of 627' },
-                   { cont: true, p: 'shutdown_bank_steps', op: '<', v: 1,
-                     label: 'SHUTDOWN ROD POSITION 0 of 627' }] }),
-        { text: 'Start the reactor coolant pumps.',
-        why: 'A shut-down reactor makes almost no heat, but the pumps\' work ends up in the water as friction, enough to warm the whole plant. Real crews heat up this way, reactor never critical.',
-          control: 'RCP ON/OFF', target: 'RCP FLOW above 90 %',
-          predicts_alarms: ['subcooling_low'], aim: 'With the reactor kept shut down, the pumps are what heat the plant.',
-          wait_speed: 1, speed_text: true,
-          cmd: { action: 'set_rcp', running: true }, hold: 30,
-          accs: [{ p: 'pump_flow_pct', op: '>', v: 90,
+          /* HIGHLIGHTS PER SUBSTEP (#809 item 14): each check rings its own tile while it is the active
+           * row; 1e pulses ON. The step's own lists are the superset the hover preview draws. */
+          accs: [{ p: 'tavg_c', op: '<', v: 93.05, hl_watch: ['Tavg'],
+                   ask: 'Check AVG COOLANT TEMPERATURE reads below 200 °F.',
+                   label: 'AVG COOLANT TEMPERATURE below 200 °F' },
+                 { p: 'pressure_mpa', op: '<', v: 4.995, hl_watch: ['Primary Pressure'],
+                   ask: 'Check PRIMARY PRESSURE reads below 725 psi.',
+                   label: 'PRIMARY PRESSURE below 725 psi' },
+                 /* 1c IS THE ONE ROW THE STEP'S OWN ACTION MAKES FALSE: pressing ON lights ON and puts
+                  * OFF out. On arrival it latches in the first broadcasts, before any press (MEASURED:
+                  * see the step file's #823 record), and a latched row is never re-graded. `overtaken`
+                  * covers the player who presses ON before it has latched: the row then stands down
+                  * as overtaken (the pumps were started, so "they are stopped" no longer applies)
+                  * instead of holding the step open for ever against a pump that is running. */
+                 { p: 'rcp_running', op: '<', v: 1, hl_watch: ['RCP ON/OFF'],
+                   overtaken: { p: 'rcp_running', op: '>=', v: 1, label: 'the pumps were started before OFF was read' },   /* AGENT-DRAFTED (#823) */
+                   ask: 'Check OFF is lit on the RCP FLOW card.',
+                   label: 'OFF lit on the RCP FLOW card: the pumps are stopped' },
+                 { p: 'control_bank_steps', op: '<', v: 1, hl_watch: ['Control Rod Position', 'Shutdown Rod Position'],
+                   ask: 'Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.',
+                   label: 'CONTROL ROD POSITION 0 of 627' },
+                 { cont: true, p: 'shutdown_bank_steps', op: '<', v: 1,
+                   label: 'SHUTDOWN ROD POSITION 0 of 627' },
+                 { p: 'pump_flow_pct', op: '>', v: 90, hl: ['RCP — On'], hl_watch: ['RCP ON/OFF'],
                    ask: 'Press ON beside the reactor coolant pump, above RCP FLOW, and check RCP FLOW reads above 90 %.',
                    /* LAYMAN PASS 6 (2026-09-26, AGENT-DRAFTED) S-2: MEASURED on the chain with the
                     * cooldown's spray shut late (19 psia at the seam): Tavg 194 -> 203 degF, SUBCOOLING
-                    * MARGIN 25.1 degF by step 8; the reviewer, at 17-18 psi, got the alarm. From 50 psia
-                    * the same steps hold 83 degF; from 240 psia (the fixed cooldown) 198 degF. */
-                   note: 'If PRIMARY PRESSURE reads under about 25 psi, the Low Subcooling Margin alarm can come in; step 9\'s heaters clear it.',
+                    * MARGIN 25.1 degF by old step 8 (step 7 since #823); the reviewer, at 17-18 psi, got
+                    * the alarm. From 50 psia the same steps hold 83 degF; from 240 psia (the fixed
+                    * cooldown) 198 degF. */
+                   note: 'If PRIMARY PRESSURE reads under about 25 psi, the Low Subcooling Margin alarm can come in; step 8\'s heaters clear it.',
                    label: 'RCP FLOW above 90 %' }],
           /* NOT THE PUMP ITSELF — THE CARD AND THE ON BUTTON *(OWNER, 2026-09-14, #755 item 6:
            * "mode 5->3 step 2 shouldn't highlight the pump itself. it should highlight the pump
@@ -1581,8 +1596,12 @@
            * label on the same id would draw two rings on one element and redden
            * run_manual_controls' overlap check. */
           /* #807 item 3: the ON button pulses and the card around it takes the steady ring, the
-           * split the owner asked for on steps 7 and 8. 'RCP — On' is the button's own key. */
-          hl: ['RCP — On'], hl_watch: ['RCP ON/OFF'] },
+           * split the owner asked for on steps 7 and 8. 'RCP — On' is the button's own key.
+           * 'Primary Pressure', not 'Plant Pressure' — both resolve to `ims2immsvn6`, but the
+           * board engraves PRIMARY PRESSURE (#744 template pass). */
+          hl: ['RCP — On'],
+          hl_watch: ['RCP ON/OFF', 'Tavg', 'Primary Pressure', 'Residual Heat Removal (RHR)',
+                     'Control Rod Position', 'Shutdown Rod Position'] },
         /* ONE CLICK, NOT A HOLD *(OWNER, 2026-09-03, #619 item 9: "you dont need to hold
          * withdraw. its set to go automatically on a click")*. Verified at the control:
          * `toggleLatchRod` (pwr_board_wiring.js:3585) issues `rod_start` and latches, and
@@ -2803,7 +2822,7 @@
           hold: 5,
           wait_speed: 1, speed_text: true,
           /* #808: 3a grades AUX FEED, not main feed — Mode 3 runs on the motor-driven aux feed pump,
-           * main feed secured (the Hot Standby preset boots so; the heatup's step 5 starts it). */
+           * main feed secured (the Hot Standby preset boots so; the heatup's step 4 starts it; step 5 before the #823 fold). */
           accs: [{ p: 'afw_pump_running', op: '>', v: 0,
                    hl: ['AFW — Auto'], hl_watch: ['SG Level'],
                    ask: 'Check the AUX FEED WATER card reads RUNNING. If not, press AUTO on that card.',
@@ -5139,7 +5158,7 @@
          * `p` already true and `cmd` never issued latches on its own), so a plant already there
          * ticks the box; `_accsCmdWatch` still latches the SAME entry instantly on the press for
          * a plant that is not (an entry with a `p` AND a `cmd` is not the two-entry
-         * hidden-cmd-plus-predicate shape `pwr_heatup` step 8 uses — that shape still requires
+         * hidden-cmd-plus-predicate shape `pwr_heatup` step 7 (8 before #823) uses — that shape still requires
          * the actual press, proven by injection with the SAME two functions, so it does not fix
          * a pre-satisfied step; the merge does). `steam_dump_auto` never reads 0 on this leg (it
          * is `dumpMode() !== 'off'`, true since the IC's own lineup), so this half of the step
@@ -5545,7 +5564,7 @@
            * LOW and is watching a cooldown that will not finish.
            * The pressure `acc` had to become an `accs` ENTRY, not sit beside one — `accs`
            * REPLACES `acc` in `_gradeAccs`, which is exactly the dead field #739 filed against
-           * `pwr_heatup` step 15. Both halves are entries; neither is silent. */
+           * `pwr_heatup` step 14 (15 before #823). Both halves are entries; neither is silent. */
           /* THREE ROWS, IN THE ORDER THE PLAYER ACTS (#741 lettered substeps). The heater lamp is
            * first because the heaters go off first; the spray carries the step's SECOND command
            * and its own state; the pressure row is the consequence and carries no `ask`, because
@@ -5892,7 +5911,7 @@
          * ENDS by inserting the shutdown bank, closing the steam dump and resetting DUMP SETPOINT
          * to 1020 psi, so the round trip hands the heatup a clean Mode 5. The defect, measured by
          * the heatup lane on one continuous plant (seed 42): the cooldown left DUMP SETPOINT near
-         * 197 psi (1.36 MPa) with the dump in AUTO, the heatup's step-13 AUTO press opened it 100 %
+         * 197 psi (1.36 MPa) with the dump in AUTO, the heatup's step-13 (step 12 since #823) AUTO press opened it 100 %
          * against that setpoint and the reactor tripped on safety injection (low steam pressure)
          * at its step 14. Measurements for each row: the step file's Notes, bring-down record.
          * 16a grades the bank (steps, the unit the tile prints; 0 of 627 exactly, `< 0.5`). 16b
@@ -5915,7 +5934,7 @@
                  /* 16a since layman pass 6 (2026-09-26, AGENT-DRAFTED, S-8): the reset comes FIRST, because the
            * INSERT below is refused while the trip is latched (ROD DRIVE BLOCKED, pwr2_engine.js).
            * Was 16d (2026-09-25, AGENT-DRAFTED, layman pass 5 S-1). The round trip stranded at
-                  * the NEXT heatup's step 3: the shutdown's scram was still latched, the rod drive
+                  * the NEXT heatup's step 3 (step 2 since #823): the shutdown's scram was still latched, the rod drive
                   * refused WITHDRAW, and only a hover line said so. Graded on `scrammed` (the SCRAM
                   * button's own state) so a standalone cooldown, which starts unscrammed, meets it
                   * on arrival. The `cmd` is what the route gate presses (round_trip_no_reset proves

@@ -317,13 +317,16 @@ if (!only && RUN_LIVE) {
      * that satisfied itself after the scram and then HELD. That step is an action now (STEAM
      * DUMP AUTO, graded on the valve carrying flow), so no step of the shutdown leg holds for an
      * acknowledgement any more — and "0 acks" here says only that. The mechanism is proved on a
-     * step that still holds: the heatup's opening Mode 5 confirm, which satisfies itself on the
-     * cold plant at once and waits for the button. */
+     * step that still holds: the heatup's opening step. Until #823 (2026-11-02) that was a Mode 5
+     * confirm that satisfied itself at once; it is now the pump start, so the fixture presses ON
+     * (as the player does) and the step HOLDS once RCP FLOW is above 90 %. Same claim: met, then held
+     * for the button, then advanced by it. */
     (function () {
       var svc2 = mkSvc('cold_shutdown');
       svc2.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      svc2.tick(); svc2.handleCommand({ action: 'set_rcp', running: true });
       var s2 = null, held = false, acked = false;
-      for (var k2 = 0; k2 < 80; k2++) {
+      for (var k2 = 0; k2 < 400; k2++) {
         s2 = svc2.tick();
         var c2 = s2.instructor && s2.instructor.checklist;
         if (c2 && c2.awaiting_ack && !c2.complete) {
@@ -335,9 +338,9 @@ if (!only && RUN_LIVE) {
       }
       var after = s2 && s2.instructor && s2.instructor.checklist;
       for (var k3 = 0; k3 < 5 && after && after.step_index === 0; k3++) { s2 = svc2.tick(); after = s2.instructor.checklist; }
-      ck('at least one step HELD for an acknowledgement (#619 item 4 — not a vacuous loop): the heatup\'s opening confirm',
+      ck('at least one step HELD for an acknowledgement (#619 item 4 — not a vacuous loop): the heatup\'s opening step, after ON',
          held && acked && !!after && after.step_index >= 1,
-         held ? 'held; acknowledged; index now ' + (after && after.step_index) : 'never held in 80 ticks');
+         held ? 'held; acknowledged; index now ' + (after && after.step_index) : 'never held in 400 ticks');
     })();
     ck('grading ran instrument-first on pwr2 (graded_by never fell back for mapped params)',
        true, 'asserted structurally by 2a; per-step graded_by is in the snapshot');
@@ -773,7 +776,7 @@ if (!only && RUN_LIVE) {
     for (var m = 0; m < 4; m++) s = svc.tick();
     var mid = s.instructor && s.instructor.checklist;
     ck('heatup started with RCPs already running lands past the opening confirm (#607 item 7)',
-       !!mid && mid.step_index >= 2 && mid.complete !== true,
+       !!mid && mid.step_index >= 1 && mid.complete !== true,   /* >= 2 until #823: the confirm and the pump start were two steps; both are step 1 now */
        mid && ('step_index ' + mid.step_index + ' flow ' + (s.true_state && s.true_state.pump_flow_pct)));
   })();
 
@@ -4016,7 +4019,7 @@ if (!only && RUN_LIVE) {
    *   · rename `pwr2:` to `pwrZZ:` in the scan regex        -> 2ae.1 red, "SCAN MISSED:
    *     pump_flow_pct, pressure_mpa, tavg_c, …" (16 params), and 2ae.1b/.2/.3/.4/.5 red with it —
    *     the scan is load-bearing for the whole section, which is why 2ae.1 exists
-   *   · delete `'pwr_heatup:2:pump_flow_pct'` from STRAND_EXPECTED -> 2ae.2 red, "UNPINNED:
+   *   · delete `'pwr_heatup:1:pump_flow_pct'` from STRAND_EXPECTED -> 2ae.2 red, "UNPINNED:
    *     pwr_heatup:2:pump_flow_pct. 49 row(s) …"
    *   · add `'pwr_nonesuch:1:power_pct'` to STRAND_EXPECTED  -> 2ae.2 red, "PINNED BUT NOT SEEN"
    *   · add `tavg` to UNBREAKABLE_EXPECTED                   -> 2ae.3 red (tavg took the stuck
@@ -4157,7 +4160,7 @@ if (!only && RUN_LIVE) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 78 && predRows === 179 && rows.length === 102 && soleInst === 17,   /* merge cooldown 4 + lower power 2 (2026-10-15): both rows, 179/102 -- MEASURED, part C 35/0 */   /* relations plan cooldown 4, 2026-10-15: +1 predicate, +1 instrument-graded (STEAM PRESS moves row), step 4 not sole -- MEASURED, part C 35/0 */   /* relations plan lower power 2, 2026-10-15: +1 predicate, +1 instrument-graded (the power/Tavg `moves` row), not sole -- verify by run */   /* merge of heatup 11 + raise power 4 (2026-10-15): both rows, re-pin expected 78/177/100/17 -- verify by run */   /* relations plan raise power 4, 2026-10-15, MEASURED 78/176/99/18: +1 predicate, +1 instrument-graded (the tavg_tref_dev lag row), not sole */   /* relations plan change 1, 2026-10-14, MEASURED: TMI 9's `moves` row on RCS INVENTORY (true_state, +1 predicate; instrument-graded and sole unchanged) */   /* quality pass 2026-10-14, MEASURED: TMI 10's press row also grades block_valve_open (true_state, +1 predicate), so its tailpipe row is no longer the step's only one (-1 sole) */   /* #670 Fable pass 2026-10-14, MEASURED: TMI 10's PRIMARY PRESSURE row removed (-1 predicate, -1 instrument-graded), which leaves its tailpipe row the step's only one (+1 sole) */   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 77 && predRows === 179 && rows.length === 102 && soleInst === 16,   /* #823 (2026-11-02), MEASURED 77/179/102/16: heatup steps 1+2 folded -- one graded step fewer; rows unchanged (the four checks and the pump row all stay); the pump row is no longer its step's only row (-1 sole) */   /* merge cooldown 4 + lower power 2 (2026-10-15): both rows, 179/102 -- MEASURED, part C 35/0 */   /* relations plan cooldown 4, 2026-10-15: +1 predicate, +1 instrument-graded (STEAM PRESS moves row), step 4 not sole -- MEASURED, part C 35/0 */   /* relations plan lower power 2, 2026-10-15: +1 predicate, +1 instrument-graded (the power/Tavg `moves` row), not sole -- verify by run */   /* merge of heatup 11 + raise power 4 (2026-10-15): both rows, re-pin expected 78/177/100/17 -- verify by run */   /* relations plan raise power 4, 2026-10-15, MEASURED 78/176/99/18: +1 predicate, +1 instrument-graded (the tavg_tref_dev lag row), not sole */   /* relations plan change 1, 2026-10-14, MEASURED: TMI 9's `moves` row on RCS INVENTORY (true_state, +1 predicate; instrument-graded and sole unchanged) */   /* quality pass 2026-10-14, MEASURED: TMI 10's press row also grades block_valve_open (true_state, +1 predicate), so its tailpipe row is no longer the step's only one (-1 sole) */   /* #670 Fable pass 2026-10-14, MEASURED: TMI 10's PRIMARY PRESSURE row removed (-1 predicate, -1 instrument-graded), which leaves its tailpipe row the step's only one (+1 sole) */   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4229,17 +4232,17 @@ if (!only && RUN_LIVE) {
      * the only acceptance on its step, where no `implied_by` could ever reach it. */
     var STRAND_EXPECTED = {
       /* pwr_heatup [cold_shutdown] */
-      'pwr_heatup:2:pump_flow_pct': 'rcs_flow',              // > 90 [SOLE]   dead 0.000 vs true 3.867 %
-      'pwr_heatup:9:pressure_mpa': 'primary_pressure',       // > 4.585       dead 0.000 vs true 2.500 MPa
-      'pwr_heatup:11:tavg_c': 'tavg',                        // > 283 [SOLE]  dead 30.00 vs true 50.00 degC
-      'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // > 15.1719 (14b, #809; 14a grades the setpoint)   dead 0.000 vs true 2.500 MPa
-      'pwr_heatup:15:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
+      'pwr_heatup:1:pump_flow_pct': 'rcs_flow',              // > 90 (SOLE until #823 folded the cold checks into its step)   dead 0.000 vs true 3.867 %
+      'pwr_heatup:8:pressure_mpa': 'primary_pressure',       // > 4.585       dead 0.000 vs true 2.500 MPa
+      'pwr_heatup:10:tavg_c': 'tavg',                        // > 283 [SOLE]  dead 30.00 vs true 50.00 degC
+      'pwr_heatup:13:pressure_mpa': 'primary_pressure',      // > 15.1719 (14b, #809; 14a grades the setpoint)   dead 0.000 vs true 2.500 MPa
+      'pwr_heatup:14:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
       /* 2026-09-25 (exp/p2-heatup bring-down): the Hot Standby tile checks. A dead gauge reads 0 and a
        * two-sided band cannot be met by it -- the honest answer (a row a player cannot verify). */
-      'pwr_heatup:15:tavg_c': 'tavg',                        // ~ 285.83 +/-1.66 (544-549 degF)
-      'pwr_heatup:15:pressure_mpa': 'primary_pressure',      // ~ 15.41 +/-0.244 (2200-2270 psi)
-      'pwr_heatup:16:sr_counts_cps': 'source_range',         // steady 8 %/90 s since #807 (was 1.2 %/600 s, 2026-09-24, replaced NET REACTIVITY, a true_state row)
-      'pwr_heatup:16:startup_rate_dpm': 'startup_rate',      // ~ 0 +/-0.025 (same change)
+      'pwr_heatup:14:tavg_c': 'tavg',                        // ~ 285.83 +/-1.66 (544-549 degF)
+      'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // ~ 15.41 +/-0.244 (2200-2270 psi)
+      'pwr_heatup:15:sr_counts_cps': 'source_range',         // steady 8 %/90 s since #807 (was 1.2 %/600 s, 2026-09-24, replaced NET REACTIVITY, a true_state row)
+      'pwr_heatup:15:startup_rate_dpm': 'startup_rate',      // ~ 0 +/-0.025 (same change)
       /* pwr_startup [hot_zero_power] */
       /* RE-PINNED 2026-09-23 (the owner's new-format reconcile): old step 9 split into 9 + 10 and
        * old 11 folded, so the climb's power row is 10 and the 0.5 % row is 11 — keys MOVED, not
@@ -4314,18 +4317,18 @@ if (!only && RUN_LIVE) {
       'pwr_tmi2_incident:12:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
       'pwr_tmi2_incident:11:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
       /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
-      'pwr_heatup:11:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
+      'pwr_heatup:10:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
       /* 'pwr_startup:11:saw:startup_rate_dpm' LEFT with old step 11 (2026-09-27-develop-a, OWNER RULING 2026-09-26 "B") */
       'pwr_tmi2_incident:1:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
     };
     /* THE OTHER HALF: a row that reads DOWNWARD is not stranded by a dead gauge, it is TICKED by
      * one — the floor satisfies it. Pinned for the same reason, and it is the larger set. */
     var TICK_EXPECTED = {
-      'pwr_heatup:15:adv_valve_pct': 1, 'pwr_heatup:17:power_pct': 1,
+      'pwr_heatup:14:adv_valve_pct': 1, 'pwr_heatup:16:power_pct': 1,
       /* 2026-09-25 (exp/p2-heatup): step 1's "below" checks and 4b's OUTPUT 0 MW read DOWNWARD, so the
        * dead floor satisfies them -- the same shape as 15's ATMOS DUMP and 17's REACTOR POWER. They sit
        * on verify steps whose true values already meet them at the leg's own IC (122 degF, 363 psi, 0 MW). */
-      'pwr_heatup:1:tavg_c': 1, 'pwr_heatup:1:pressure_mpa': 1, 'pwr_heatup:4:mwe_output': 1,
+      'pwr_heatup:1:tavg_c': 1, 'pwr_heatup:1:pressure_mpa': 1, 'pwr_heatup:3:mwe_output': 1,
       /* 807f: step 12 is "power 1 %, then STARTUP RATE +0.10 or less" — the `<` rate row is the one a dead
        * (zero) rate tile ticks; the old `power < 5` row is gone and the new power row is `>=`, which strands */
       'pwr_startup:12:startup_rate_dpm': 1,
@@ -4485,12 +4488,12 @@ if (!only && RUN_LIVE) {
     }
 
     var LIVE_QUANTITY_EXPECTED = {
-      'pwr_heatup:11': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
-      'pwr_heatup:1': 'tavg_c,pressure_mpa',                  // the cold-state confirm (2026-09-25; was plant_mode, true_state)
-      'pwr_heatup:4': 'mwe_output',                           // 4b OUTPUT 0 MW (2026-09-25)
-      'pwr_heatup:15': 'tavg_c,pressure_mpa,adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm (15a/15b added 2026-09-25)
-      'pwr_heatup:16': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
-      'pwr_heatup:17': 'power_pct',
+      'pwr_heatup:10': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
+      /* 'pwr_heatup:1' LEFT 2026-11-02 (#823): the cold-state confirm is now rows of the pump start, an ACTION step (cmd set_rcp), so it is no longer observation-kind */
+      'pwr_heatup:3': 'mwe_output',                           // 4b OUTPUT 0 MW (2026-09-25)
+      'pwr_heatup:14': 'tavg_c,pressure_mpa,adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm (15a/15b added 2026-09-25)
+      'pwr_heatup:15': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
+      'pwr_heatup:16': 'power_pct',
       'pwr_startup:1': 'tavg_c,pressure_mpa,pump_flow_pct,startup_rate_dpm',   // 1a-1d (2026-09-25)
       /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B"): 10 and 12 now carry a rod `cmd` (not observation-kind);
        * the new 11, the level-off at 1.0e-8 A, has none */
@@ -4509,8 +4512,8 @@ if (!only && RUN_LIVE) {
     };
     var TRUE_STATE_EXPECTED = {
       /* pwr_heatup:1 and :15 left 2026-09-25: their `plant_mode` rows were retired for tile checks */
-      'pwr_heatup:4': 'turbine_tripped',
-      'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
+      'pwr_heatup:3': 'turbine_tripped',
+      'pwr_heatup:5': 'steam_dump_valve_pct', 'pwr_heatup:11': 'rhr_active,letdown_flow_actual',
       'pwr_raise_power:1': 'plant_mode',
       'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',
@@ -4708,7 +4711,7 @@ if (!only && RUN_LIVE) {
    *     step 15's entry off the channel — steps 12 and 16 are what is left)
    *   · delete `'pwr_lower_power:3:tavg_c'` from DRIFT_STRAND -> 2ag.3 red, "UNPINNED:
    *     pwr_lower_power:3:tavg_c. 5 row(s) strand, 8 false-tick, of 17 graded on the channel"
-   *   · delete `'pwr_heatup:11:tavg_c'` from DRIFT_TICK      -> 2ag.3 red, "UNPINNED:
+   *   · delete `'pwr_heatup:10:tavg_c'` from DRIFT_TICK      -> 2ag.3 red, "UNPINNED:
    *     pwr_heatup:11:tavg_c"
    *   · add step 15 to LOW_STRAND                     -> 2ag.4 red, "PINNED BUT NOT SEEN:
    *     pwr_tmi2_incident:15:pzr_level_pct"
@@ -4889,7 +4892,7 @@ if (!only && RUN_LIVE) {
     };
     var DRIFT_TICK = {
       /* the gauge satisfies a criterion the plant has NOT met */
-      'pwr_heatup:11:saw:tavg_c': 1, 'pwr_heatup:11:tavg_c': 1,
+      'pwr_heatup:10:saw:tavg_c': 1, 'pwr_heatup:10:tavg_c': 1,
       'pwr_raise_power:4:tavg_c': 1, 'pwr_raise_power:5:tavg_c': 1,
       'pwr_raise_power:6:tavg_c': 1, 'pwr_raise_power:7:tavg_c': 1,
       /* 'pwr_raise_power:8:tavg_c' left 2026-09-26 (workbench-a, layman pass 6 S-7): its band narrowed
@@ -5476,8 +5479,8 @@ if (!only && RUN_LIVE) {
       var ROW_EXPECTED = {
         /* key                                 [casualty display, the step COMPLETES] */
         'pwr_startup:1:tavg_c':               ['Tavg Sensor Drifting', true],
-        'pwr_heatup:11:tavg_c':               ['Tavg Sensor Drifting', true],
-        'pwr_heatup:11:saw:tavg_c':           ['Tavg Sensor Drifting', true],
+        'pwr_heatup:10:tavg_c':               ['Tavg Sensor Drifting', true],
+        'pwr_heatup:10:saw:tavg_c':           ['Tavg Sensor Drifting', true],
         'pwr_lower_power:3:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_lower_power:4:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_lower_power:5:tavg_c':           ['Tavg Sensor Drifting', false],
@@ -5497,7 +5500,7 @@ if (!only && RUN_LIVE) {
       };
       var LEGS = [
         ['pwr_startup', 'tavg_sensor_failure', [[1, 'tavg_c', 0]]],
-        ['pwr_heatup', 'tavg_sensor_failure', [[11, 'tavg_c', 0], [11, 'tavg_c', 1]]],
+        ['pwr_heatup', 'tavg_sensor_failure', [[10, 'tavg_c', 0], [10, 'tavg_c', 1]]],   // 11 -> 10, #823 fold
         ['pwr_lower_power', 'tavg_sensor_failure', [[3, 'tavg_c', 0], [4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0]]],
         ['pwr_raise_power', 'tavg_sensor_failure', [[4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0], [7, 'tavg_c', 0], [8, 'tavg_c', 0], [9, 'tavg_c', 0]]],
         ['pwr_tmi2_incident', 'tavg_sensor_failure', [[7, 'subcooling_c', 0], [9, 'subcooling_c', 0], [11, 'subcooling_c', 0]]],
@@ -5575,7 +5578,7 @@ if (!only && RUN_LIVE) {
       var svc = mkSvc(proc.from), s = tkv(svc), i, g = 0;
       svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
       s = tkv(svc);
-      while ((s.instructor.checklist.step_index + 1) < 11 && g++ < 200) {
+      while ((s.instructor.checklist.step_index + 1) < 10 && g++ < 200) {   // step 10 (11 before the #823 fold)
         var cur = proc.steps[s.instructor.checklist.step_index];
         if (cur && cur.cmd) send(svc, cur.cmd);
         svc.handleCommand({ action: 'checklist_check' }); s = tkv(svc);
@@ -5593,7 +5596,7 @@ if (!only && RUN_LIVE) {
       var afterV = voidOf(s.instructor.checklist), afterAck = !!s.instructor.checklist.awaiting_ack;
       ck('2ah.5 clear_failure takes the relief BACK — the void is re-derived every tick, never latched (#773/#788)',
          beforeAck === false && !!midV && midAck === true && afterV == null && afterAck === false,
-         'pwr_heatup step 11: healthy ack ' + beforeAck + ' / injected ack ' + midAck +
+         'pwr_heatup step 10: healthy ack ' + beforeAck + ' / injected ack ' + midAck +
          ' voided ' + JSON.stringify(midV) + ' / after clear ack ' + afterAck +
          ' voided ' + JSON.stringify(afterV));
     })();
@@ -6261,7 +6264,7 @@ if (RUN_B) {
      * 600 s. A row graded on Tavg alone ticks 10 plant-min into the step, under the peg, 206 plant-min early: only
      * these fixtures tell it from the relation. Injection-proven (commit message). */
     var HU = POOL.filter(function (p) { return p.id === 'pwr_heatup'; })[0];
-    var S11 = HU && HU.steps[10], R11 = S11 && (S11.accs || []).filter(function (e) { return e.op === 'moves'; })[0];
+    var S11 = HU && HU.steps[9],   /* step 10 since the #823 fold (was steps[10], step 11) */ R11 = S11 && (S11.accs || []).filter(function (e) { return e.op === 'moves'; })[0];
     function huFirst(fn, secs) {
       var b = { s: [] }, first = null;
       for (var t = 0; t <= secs; t += 6) {
@@ -6275,7 +6278,7 @@ if (RUN_B) {
     var hPeg = R11 ? huFirst(function (t) { return [100 + 7.56 * t / 600, 83]; }, 1800) : 'no row';     // margin pegged
     var hSlow = R11 ? huFirst(function (t) { return [240 + 2.22 * t / 600, 70 - 2.22 * t / 600]; }, 1800) : 'no row';  // 4 degF each
     var hFlat = R11 ? huFirst(function (t) { return [280, 40 - 4.44 * t / 600]; }, 1800) : 'no row';    // margin falls, Tavg flat
-    ck('2aq.18 heatup step 11 grades the RELATION: Tavg rising with the margin falling meets at the window; Tavg rising under a pegged margin, a 4 degF pair, or the margin falling at flat Tavg never meet',
+    ck('2aq.18 heatup step 10 grades the RELATION: Tavg rising with the margin falling meets at the window; Tavg rising under a pegged margin, a 4 degF pair, or the margin falling at flat Tavg never meet',
        !!R11 && Array.isArray(S11.pair) && S11.pair.join() === 'tavg,subcool' && S11.wait_speed === 600 &&
        typeof hTail === 'number' && hTail >= 600 && hTail <= 660 && hPeg === null && hSlow === null && hFlat === null,
        'tail first met +' + hTail + ' s | pegged margin ' + hPeg + ' | 4 degF each ' + hSlow + ' | flat Tavg ' + hFlat +

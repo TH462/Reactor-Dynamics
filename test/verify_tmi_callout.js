@@ -457,7 +457,7 @@ var BUB = '#instrCallout';
    * without the step (no graded side) prints the truth, so this page IS tracing truth and the check can fail.
    * INJECTION (2026-10-15): `if (ser.instr && gIns[ser.instr] && ser.get) side = 'ind';` deleted -> this check red. */
   var gh = await G.page.evaluate(function () {
-    var st = RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === 'pwr_heatup'; })[0].steps[10];
+    var st = RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === 'pwr_heatup'; })[0].steps[9];   // step 10 since the #823 fold (was steps[10])
     var sn = { metadata: { sim_time: 5, plant_id: 'pwr2' }, instruments: { tavg: 98.9, subcooling_margin: 83 },
                true_state: { tavg_c: 98.9, subcooling_c: 165 }, control_state: {} };
     return { pair: st.pair, row: RD.CklPairRow(sn, 'g-h11', st.pair, st), ctl: RD.CklPairRow(sn, 'g-h11c', st.pair) };

@@ -1369,7 +1369,7 @@
     }
 
     /* CATCH-UP AT START (#607 item 7). Sequential grading of the first unchecked step
-     * traps a player who already did the early actions: heatup step 1 wants pumps
+     * traps a player who already did the early actions: heatup step 1 wanted pumps
      * secured, and a plant whose pumps are running can never satisfy the prose even
      * when later accs are already true. Walking BACKWARD from "a later acc is met"
      * would skip the whole heatup — the last confirms are `power_pct < 1`, true the
@@ -2581,7 +2581,7 @@
    * THE BLAST RADIUS IS MEASURED, NOT ASSUMED, which is why this is the default rather than an
    * authored opt-in flag: of 203 predicate acceptances across the whole pool, 20 are two-sided
    * and exactly TWO of those sit in this latching `accs[]` path — `pwr_raise_power` step 8
-   * (this defect) and `pwr_heatup` step 14's steam-pressure band, which the dumps HOLD on
+   * (this defect) and `pwr_heatup` step 13's (14 before #823) steam-pressure band, which the dumps HOLD on
    * setpoint rather than pass through. Every `>`/`<` bound and every cmd-kind entry latches
    * exactly as before, so a ticked box still behaves like a ticked box everywhere it did. */
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {

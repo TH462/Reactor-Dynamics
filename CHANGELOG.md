@@ -30,6 +30,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — Startup Part 1 (heatup) opens on the pump start; its cold-state checks are rows of that step (#823)
+
+- `pwr_heatup` 17 → 16 steps *(OWNER RULING, 2026-11-02: "I think folding step 1 into 2 might be the best option so the player can still see the checks of step 1.")*. Step 1 is now "Start the reactor coolant pumps." with rows 1a–1d (AVG COOLANT TEMPERATURE below 200 °F, PRIMARY PRESSURE below 725 psi, OFF lit on the RCP FLOW card, both rod banks 0 of 627) and 1e (press ON, RCP FLOW above 90 %). The old confirm-only step 1 lit Continue within 3 s and 27 % of public starters (48/178) quit on it.
+- Measured, live runtime, seed 42: rows 1a–1d latch 0.3 plant-s after the start; Continue lights 11.8 plant-s after the ON press (RCP FLOW 91.5 %); no row un-ticks while pump heat runs (Tavg 122.0 → 122.3 °F in the step). Row 1c gains a row-level `overtaken` (pumps running): pressed ON inside the first 0.2 plant-s, 1c never latched and the step stranded for 600 plant-s without it.
+- `past` (start-of-leg catch-up) keeps only "RCP FLOW above 90 %": the old step's shutdown-bank and Mode clauses would now skip the pump start itself.
+- New route check `first` in `run_walkthrough_routes`: a leg's first step must not light Continue within 5 plant-s with nothing pressed (no `entry_met` or no-command exemption). Injection `heatup_confirm_first` (the pre-#823 layout rebuilt) turns it red at +0.2 s. `pwr_startup`, `pwr_raise_power` (confirm-only openers, outside this ruling) and `pwr_tmi2_incident` (narrative opener) carry a declared `first_step_confirm` exemption.
+- Every keyed reference to a heatup step index moved down one (route table, `run_checklist_pwr2` maps, `manual_ui_map`, `verify_tmi_callout`, `verify_ckl_relevance`'s fixture now presses ON). Telemetry `walkthrough_step` indices for `pwr_heatup` shift by one from this release.
+
 ## [Alpha 1.8.4-rc8] — 2026-10-16
 
 - CLAUDE.md pruned from 14,998 words to under 5,000 (2026-10-18): every rule kept as a dated one-liner, verbatim owner quotes moved to `Blueprint/RULINGS.md`, procedure moved to skills `gate-layers`, `issue-workflow`, `manual-edit`, `walkthrough-change`, `version-changelog`; standing-list detail to `Blueprint/TRAPS.md`. New `PreToolUse` hook `tools/hook_guard_push_merge.js` asks on any push or develop-moving merge and denies a lane push.

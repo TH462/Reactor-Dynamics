@@ -18,6 +18,7 @@ when they disagree, his quote wins.
 
 | Date | Reacting to | His words (verbatim) | Taste it implies |
 |---|---|---|---|
+| 2026-11-02 | Startup Part 1 (heatup) step 1, a confirm-only step 27 % of starters quit on (#823) | "I think folding step 1 into 2 might be the best option so the player can still see the checks of step 1." | A first step must ask for an action, but the checks stay on screen: fold, don't delete. Information the player can see is kept even when it asks nothing of them. |
 | 2026-10-13 | TMI-2 walkthrough, after the card-text draft | "have a new fable agent analize the TMI2 walkthrough and come up wiath a way to 1 better convey the information and 2 what information it should show. the goal is to teach people what happened to the TMI2 that caused it to melt down." | Trimming words is not enough; the walkthrough is judged by whether a player leaves knowing WHY the core melted. |
 | 2026-10-13 | TMI-2 walkthrough card language | "the language of this walkthrough doesnt work for what itr is  things like \"verify\" dont belong its supposed to ber teaching what happened that night" | Register follows purpose. A history walkthrough narrates the night (what they saw, what they did); checklist verbs belong to procedures only. |
 | 2026-10-13 | Floating instructor card fades to 25 % on hover | "they also shouldnt go clear when m oused over" | Text the player is reading stays solid. Don't add clever hover behaviour to reading surfaces. |

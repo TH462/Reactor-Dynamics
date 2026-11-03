@@ -105,12 +105,15 @@ var STEP_UI = {
    * verify_manual_follow still walks the pwr profile only — these rows are the STATIC
    * gate's coverage, not the browser gate's. */
   'pwr2:pwr_heatup': [
-    { i: 1, view: 'board', control: 'RCP ON/OFF' },
-    { i: 2, view: 'board', control: 'Shutdown Bank' },
-    { i: 3, view: 'board', control: 'Turbine Load' },
+    /* #823 (2026-11-02): steps 1 and 2 folded into one (the cold-state checks became rows of the pump
+     * start), so every row below moved down by one: RCP ON/OFF is i:0 now. The i: numbers quoted in the
+     * dated notes below are the 17-step layout. */
+    { i: 0, view: 'board', control: 'RCP ON/OFF' },
+    { i: 1, view: 'board', control: 'Shutdown Bank' },
+    { i: 2, view: 'board', control: 'Turbine Load' },
     /* i:4 RENAMED IN PLACE (#808, 2026-09-27): Mode 3 now runs on aux feed, so the step presses
      * AUX FEED WATER AUTO and its pill reads AFW. Nothing shifts. */
-    { i: 4, view: 'board', control: 'AFW' },
+    { i: 3, view: 'board', control: 'AFW' },
     /* i:5 (Dump SP) DELETED, not renumbered (#608 item 1, 2026-09-02): that step became an
      * observation — it commanded the setpoint the Mode 5 initial condition already boots at, and
      * the setpoint is inert in this mode anyway. An obs step carries no `control`, so it owns no
@@ -134,18 +137,18 @@ var STEP_UI = {
      * reported *pill "Steam Dump" != STEP_UI "Pressure SP"* at step 13 plus one unmapped tail
      * step at 14, which is the INSERTION signature run_all.js's note describes. RENUMBER, DO NOT
      * RE-DERIVE. */
-    { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
+    { i: 5, view: 'board', control: 'Letdown Orifices (CVCS)' },
     /* i:7 and i:8 RENAMED IN PLACE, not inserted or deleted (#755 item 11, 2026-09-15). The one
      * "place pressure control in service" step became two — i:7 presses SPRAY, i:8 presses
      * HEATER — and the SET PZR PRESSURE dial step is retired, so 'Pressure SP' leaves i:8 while
      * the step COUNT is unchanged and every row below stays where it is. This is the one edit
      * shape the four cascade notes above do NOT warn about: nothing shifts, so do not renumber.
      * The gate names both halves if you get it wrong ("pill X != STEP_UI Y" on 7 and 8). */
-    { i: 7, view: 'board', control: 'Pressurizer Spray (PZR)' },
-    { i: 8, view: 'board', control: 'Pressurizer Heaters (PZR)' },
-    { i: 9, view: 'board', control: 'Accumulator valve' },
-    { i: 12, view: 'board', control: 'Steam Dump' },
-    { i: 13, view: 'board', control: 'Pressure SP' },
+    { i: 6, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    { i: 7, view: 'board', control: 'Pressurizer Heaters (PZR)' },
+    { i: 8, view: 'board', control: 'Accumulator valve' },
+    { i: 11, view: 'board', control: 'Steam Dump' },
+    { i: 12, view: 'board', control: 'Pressure SP' },
   ],
   /* #750 (2026-09-14) DELETED the 2.0e4 1/M plot step, which sat at i:8, so every row below it
    * shifts UP by one and its own row goes with it — the second time this map has shrunk (see the

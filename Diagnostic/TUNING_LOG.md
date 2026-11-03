@@ -29,6 +29,40 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-02-develop-b (#823: heatup step 1 folded into the pump start, 17 → 16 steps)
+
+*(OWNER RULING, 2026-11-02: "I think folding step 1 into 2 might be the best option so the player can
+still see the checks of step 1.")* Step 1 is "Start the reactor coolant pumps." — rows 1a–1d are the
+old cold-state checks (letters kept), 1e is the old 2a press. Unordered; every row `<`/`>`, so each latches.
+
+- **The trap: the step's own action falsifies one of its rows.** 1c "Check OFF is lit on the RCP FLOW
+  card" (`rcp_running < 1`) goes false the moment ON is pressed. MEASURED, live runtime, preset, seed 42,
+  1× (0.1 plant-s broadcasts, 5-broadcast debounce): 1a–1d latch at +0.3 plant-s; a press at +0.1 s left
+  1c unlatched for good and the step stranded 600 plant-s; a press at +0.3 s or later lets 1c latch as
+  itself. Fix: a row-level `overtaken` on 1c (pumps running), which latches it flagged at +0.6 s on the
+  early press. Continue lights 11.8 plant-s after the press (RCP FLOW 91.5 %).
+- **No un-tick, no never-tick once the RCPs run** (MEASURED): Tavg 122.0 → 122.3 °F inside step 1 on the
+  preset; on the round trip (the cooldown's plant, 193.7 °F / 252 psia at entry) 1a latches at 193.3 °F
+  and the plant reaches 204.7 °F by the end of step 2 — the latch is what keeps 1a ticked, not margin.
+  Telemetry implication: none of the rows can come back off.
+- **`past` cut to the pump clause.** The old confirm step's catch-up skipped on shutdown bank ≥ 98 % or
+  Mode < 5; carried onto the merged step those would skip the pump start, and a heatup without pumps never
+  heats. Full power still catches up past it (pumps running).
+- **Route gate** (`run_walkthrough_routes`): the hollow check exempts no-command steps and `entry_met`
+  steps, so a confirm-only FIRST step passed it — which is why nothing caught this. New check `first`
+  binds step 1 only, with no exemption except a declared `first_step_confirm` reason. Injection
+  `heatup_confirm_first` (pre-#823 layout rebuilt from today's rows): red, step 1 lit at +0.2 s.
+  Measured over every leg's typical route before the exemptions: `pwr_startup` (+0.2 s),
+  `pwr_raise_power` (+0.2 s) and `pwr_tmi2_incident` (+0.0 s) open the same way; exempted with the
+  reason written, not fixed (outside the ruling).
+- **Routes, seed 42 (MEASURED):** typical complete 382.8 plant-min; double_rcp, pressure_sp_high,
+  rewind_mid_heaters 382.8; dump_auto_early 384.4; chain heatup 382.8, round trip heatup#2 331.3. No
+  flash, no un-tick, no hollow.
+- **Telemetry:** `walkthrough_step` indices for `pwr_heatup` shift by one from this release (old step N
+  is N−1). The `release` column separates the layouts; #823's success measure reads off it.
+- **Not changed:** `Manuals/` (PWR-N01 carries its own step numbers, not the walkthrough's). Dated code
+  comments that quote a heatup step number keep the 17-step numbering; the pool's header note says so.
+
 ## Session log — 2026-11-02-develop-a (walkthrough completion from live telemetry; two of my own drop-off causes refuted)
 
 Read-only analysis; no sim change. Source: `tools/site_report.js --days=90` plus raw `walkthrough_*`

@@ -284,16 +284,24 @@ function readMenu(page) {
      * banner rendered from LIVE verdicts vanished and reappeared as the plant crossed
      * Mode 5 -> 4 -> 3, changing the panel's height under the reader every time.
      *
-     * DRIVABLE, because the checklist advances itself: pwr_heatup's first step is an observation
-     * (`plant_mode ~ 5`) that is already true on a Mode 5 boot, so it checks off within a couple
-     * of broadcasts and `step_index` leaves 0 with no plant driving at all. That is what made
-     * this assertable when nothing else about a live advance was. */
+     * DRIVABLE: until #823 (2026-11-02) pwr_heatup's first step was an observation already true
+     * on a Mode 5 boot, so `step_index` left 0 with no plant driving at all. It is now the pump
+     * start, so the fixture below presses ON first; one command, then the same advance. */
     await page.click('[data-ckl-stop]').catch(function () {});
     await page.waitForTimeout(400);
     await startFromMenu(page, 'pwr_heatup');   // reloads cold_shutdown, the IC this section is on
     await page.waitForTimeout(3500);
-    /* EVERY STEP WAITS FOR CONTINUE since #660 item 16: the opening confirm satisfies itself on
-     * the cold plant and lights the button; the player's press is part of this fixture now. */
+    /* EVERY STEP WAITS FOR CONTINUE since #660 item 16. SINCE #823 (2026-11-02) THE OPENING STEP
+     * IS THE PUMP START, with the cold-state checks as its rows: it no longer satisfies itself, so
+     * the fixture presses ON the way the player does (the button inside the RCP card's ON tile,
+     * `imrsjy1m9g`, pwr_board_wiring: set_rcp running) and waits for RCP FLOW above 90 % to light
+     * Continue (MEASURED at 1x: about 12 plant-s after the press). This page has no `&dev=1`. */
+    await page.evaluate(function () {
+      var tile = document.querySelector('[data-item="imrsjy1m9g"]');
+      var btn = tile && (tile.matches('button') ? tile : tile.querySelector('button'));
+      if (btn) btn.click();
+    }).catch(function () {});
+    await page.waitForSelector('.wt-continue:not([disabled])', { timeout: 60000 }).catch(function () {});
     await page.click('.wt-continue:not([disabled])').catch(function () {});
     await page.waitForTimeout(800);
     var run = await page.evaluate(function () {

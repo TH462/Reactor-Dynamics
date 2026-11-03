@@ -5614,7 +5614,7 @@
     shutdown_bank_pct:      { label: 'SHUTDOWN ROD POSITION', u: '%' },
     shutdown_bank_steps:    { label: 'SHUTDOWN ROD POSITION', u: 'steps' },
     feed_coupled:           { bool: 'SG FEED is in AUTO' },
-    afw_pump_running:       { bool: 'AUX FEED WATER reads RUNNING' },   // #808: heatup 5, startup 3a/13c (13c grades it off)
+    afw_pump_running:       { bool: 'AUX FEED WATER reads RUNNING' },   // #808: heatup 4 (5 before #823), startup 3a/13c (13c grades it off)
     /* THE TRIP BLOCKS (#731). Resolved out of `rps_state.trip_blocks` by the instructor layer
      * (RPS_BLOCK_PARAMS there) — an operator lineup the board draws as a lit row, not an
      * instrument. The labels are the panel's own row captions, so the done-when line names what
@@ -5625,8 +5625,8 @@
     lo_press_blocked:        { bool: 'PZR PRESS LO-LO is blocked on the TRIP BLOCKS panel' },
     si_trip_blocked:         { bool: 'SI REACTOR TRIP is blocked on the TRIP BLOCKS panel' },
     steam_dump_setpoint:    { label: 'DUMP SETPOINT', dim: 'pressure' },
-    pressure_setpoint:      { label: 'SET PZR PRESSURE', dim: 'pressure' },   // #809: pwr_heatup 14a
-    letdown_orifices_ab:    { bool: 'A+B 7 % is lit on the LETDOWN card' },   // #809: pwr_heatup 7a, derived by the instructor layer
+    pressure_setpoint:      { label: 'SET PZR PRESSURE', dim: 'pressure' },   // #809: pwr_heatup 13a (14a before #823)
+    letdown_orifices_ab:    { bool: 'A+B 7 % is lit on the LETDOWN card' },   // #809: pwr_heatup 6a (7a before #823), derived by the instructor layer
     accumulator_volume_pct: { label: 'ACCUMULATORS', u: '%' },
     steam_dump_valve_pct:   { label: 'STEAM DUMP opening', u: '%' },
     /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3
@@ -5637,7 +5637,7 @@
      * mode") — derived by the instructor layer from `control_state.steam_dump_mode` */
     steam_dump_press_mode:  { bool: 'STEAM DUMP status reads STM PRESS or RAMPING' },
     steam_dump_tavg_mode:   { bool: 'STEAM DUMP status reads TAVG' },
-    /* the BORON card's status word (#807 item 5, pwr_heatup 16d) — derived by the instructor layer
+    /* the BORON card's status word (#807 item 5, pwr_heatup 15d; 16d before #823) — derived by the instructor layer
      * from `control_state.boron_adjust` with the tile's own test */
     boron_status_hold:      { bool: 'BORON STATUS reads HOLD' },
     /* the BORON card's ON lamp and target box (2026-09-25, pwr_startup 2a/2b) — read off the

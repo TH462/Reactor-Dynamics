@@ -77,6 +77,7 @@ var LP_FORBID = ['pzr_pressure_high', 'high_tavg', 'heatup_rate_high', 'sg_press
  * step lights: back into the previous step) and `delay_s` (the player acts no sooner than this). */
 var ROUTES = {
   pwr_startup: {
+    first_step_confirm: 'confirm-only first step, the #823 shape; outside the 2026-11-02 ruling (heatup only), put to the owner 2026-11-02',
     final: true,
     entry_met: ['#1', '#2', '#3', '#18'],   // #808: the feed transfer is new step 13, so 13-17 moved to 14-18   // the card says these read true on arrival (final: the whole list)
     steps: {
@@ -177,18 +178,18 @@ var ROUTES = {
   },
   /* ---- the other legs: typical = default policy on every step unless `steps` names one ---- */
   pwr_heatup: {
-    /* 15b's own recovery (2026-09-25): "If it does not, set SET PZR PRESSURE to 2235 psi." Inert
+    /* 14b's own recovery (15b before #823) (2026-09-25): "If it does not, set SET PZR PRESSURE to 2235 psi." Inert
      * on a route that arrives in the band — the step is met on entry and Continue is pressed at
      * ACK_S, before the player's ENTRY_S read ends. It was the way out for `pressure_sp_high` until
-     * #809 gave 14a its own setpoint row, which catches that typo a step earlier. */
-    steps: { '#15': { policy: 'seq', cmds: [{ action: 'set_pressure_setpoint', mpa: 15.41 }] },
-             // 6a's own recovery, "If AUTO is lit, press CLOSE." -- inert the same way when 6a is met on entry
-             '#6': { policy: 'seq', cmds: [{ action: 'set_steam_dump', mode: 'closed' }] },
-             // 13a then 13b as the card orders them: the box to 1020 psi (a no-op on the preset, 7.03 MPa), then AUTO
-             '#13': { policy: 'seq', cmds: [{ action: 'set_steam_dump_setpoint', mpa: 7.03 }, { action: 'set_steam_dump', mode: 'auto' }] } },
+     * #809 gave 13a (then 14a) its own setpoint row, which catches that typo a step earlier. */
+    steps: { '#14': { policy: 'seq', cmds: [{ action: 'set_pressure_setpoint', mpa: 15.41 }] },   // #823: steps 1-2 folded, 15 -> 14 (and 6 -> 5, 13 -> 12, 5/7 -> 4/6 below)
+             // 5a's own recovery, "If AUTO is lit, press CLOSE." -- inert the same way when 5a is met on entry
+             '#5': { policy: 'seq', cmds: [{ action: 'set_steam_dump', mode: 'closed' }] },
+             // 12a then 12b as the card orders them: the box to 1020 psi (a no-op on the preset, 7.03 MPa), then AUTO
+             '#12': { policy: 'seq', cmds: [{ action: 'set_steam_dump_setpoint', mpa: 7.03 }, { action: 'set_steam_dump', mode: 'auto' }] } },
     // the heatup AGAIN, from the cooldown's end (layman pass 5): SG FEED is still in AUTO and the
-    // orifices still open, as cooldown step 16 leaves them, so 5 and 7 are met on arrival
-    round_entry_met: ['#5', '#7'],
+    // orifices still open, as cooldown step 16 leaves them, so 4 and 6 are met (5 and 7 before #823) on arrival
+    round_entry_met: ['#4', '#6'],
     mistakes: [
       { id: 'double_rcp', kind: 'double press', at: 'cmd:set_rcp', set: { repeat: 2 } },
       /* #809: 14a now grades the box itself, so the typo holds 14a open on the card; the player
@@ -206,6 +207,7 @@ var ROUTES = {
     ],
   },
   pwr_raise_power: {
+    first_step_confirm: 'confirm-only first step, the #823 shape; outside the 2026-11-02 ruling (heatup only), put to the owner 2026-11-02',
     /* LOAD FIRST since 2026-09-24 (b) (owner ruling, option selection "Load first"). Since
      * 2026-09-25 (layman pass 4) each `b` reads "Hold WITHDRAW at MED until AVG COOLANT
      * TEMPERATURE is back in its band, about K steps": the typical player follows the GAUGE —
@@ -396,6 +398,7 @@ var ROUTES = {
    * strand (step 10, PRIMARY PRESSURE plateaus at ~741 psia under a 750 psi row) that no gate saw.
    * Steps 1 and 3 PAUSE the clock (#694): the harness resumes it on Continue, as ui/app.js does. */
   pwr_tmi2_incident: {
+    first_step_confirm: 'narrative opener: its only ask is Continue, which starts the story clock (#823 check; by design)',
     steps: {
       '#6': { policy: 'default', retry_s: 15 },   // the note: "The plant refuses STOP for about a minute" -- the player presses again
       /* "Once SUBCOOLING MARGIN pegs at -50 °F, press OFF": the tile's own channel, read as it goes */
@@ -602,6 +605,20 @@ var MUTATIONS = [
   { id: 'round_trip_no_reset', chain: true, leg: 'pwr_cooldown', check: 'pwr_heatup#2', route: 'chain', expect: 'complete',
     why: "cooldown 16 without its SCRAM reset row (layman pass 5: the scram stayed latched into the next heatup, WITHDRAW refused at step 3)",
     mutate: function (P) { P.steps[15].accs = P.steps[15].accs.filter(function (e) { return !(e.cmd && e.cmd.action === 'reset_rps'); }); } },
+  /* #823 (2026-11-02): the heatup's opening as it shipped before the fold -- a confirm-only step 1
+   * carrying the four cold-state rows, the pump start a step of its own. Rebuilt from today's step 1
+   * (rows 1a-1d out, 1e left), so it tracks the live rows. The new `first` check must go red on it:
+   * the confirm step is met on entry, Continue lights in the first plant-second, nothing pressed. */
+  { id: 'heatup_confirm_first', leg: 'pwr_heatup', route: 'typical', expect: 'first',
+    why: 'heatup step 1 split back into a confirm-only step ahead of the pump start (the pre-#823 layout; 27 % of starters quit on it)',
+    mutate: function (P) {
+      var s1 = P.steps[0];
+      var checks = s1.accs.filter(function (e) { return e.p !== 'pump_flow_pct'; }).map(function (e) {
+        var o = {}; Object.keys(e).forEach(function (k) { if (k !== 'overtaken') o[k] = e[k]; }); return o; });
+      s1.accs = s1.accs.filter(function (e) { return e.p === 'pump_flow_pct'; });
+      P.steps.unshift({ text: 'Confirm the plant is cold and shut down.', acc: null, note: null, hl: null,
+                        wait_speed: 1, speed_text: true, accs: checks });
+    } },
   /* THE RE-PACE'S WITNESS (2026-09-25): the pacing the card carried before the ruling -- 50 psi every
    * 5 plant-minutes, HX SPLIT 12 % typed once (with that card's "lower to 10 %" response) -- raised
    * Cooldown Rate High at both steps (tile -240 degF/hr at step 4, -110 at step 11, measured). */
@@ -935,6 +952,14 @@ function runJob(legId, routeId, mutId, ctx) {
       if (S.ack0 == null) { S.ack0 = t(); S.pauseN = 0; }
       if (el <= ENTRY_S && S.acts === 0 && !entryMet[k] && typicalKind && !S.hollow) {
         S.hollow = true; flags.push({ kind: 'hollow', step: k + 1, at_s: el });
+      }
+      /* THE LEG'S FIRST STEP ASKS FOR SOMETHING (#823). The hollow check above exempts a step with no
+       * command (the provisional default) and any step a table declares `entry_met`, and a confirm-only
+       * FIRST step passes both: heatup step 1 lit 'Step done — press Continue' within 3 s of the start,
+       * and 27 % of public starters quit on that screen. This one ignores both exemptions and binds
+       * step 1 only; a leg opts out by naming a reason in `first_step_confirm`. */
+      if (k === 0 && el <= ENTRY_S && S.acts === 0 && typicalKind && !table.first_step_confirm && !S.firstLit) {
+        S.firstLit = true; flags.push({ kind: 'first_entry', step: 1, at_s: el });
       }
     } else if (S.ack0 != null) {
       flags.push({ kind: 'flash', step: k + 1, lit_s: t() - S.ack0, t_min: (t() - T0) / 60 });
@@ -1707,6 +1732,9 @@ function verdicts(r) {
     if (pom.length) v.pom = { ok: pom.every(function (st) { return st.lit_adv_s <= 1; }),
       name: 'every pause_on_met step holds the clock while its Continue is lit (at most 1 plant-s)',
       note: pom.map(function (st) { return 'step ' + st.n + ' ' + f(st.lit_adv_s) + ' s'; }).join(', ') };
+    var fe = fl('first_entry');
+    v.first = { ok: fe.length === 0, name: 'the first step is not complete on entry: Continue waits for the player\'s first action (#823)',
+      note: fe.length ? 'step 1 lit at +' + f(fe[0].at_s) + ' s with nothing pressed' : ((ROUTES[r.leg.replace(/#2$/, '')] || {}).first_step_confirm ? 'exempt: ' + ROUTES[r.leg.replace(/#2$/, '')].first_step_confirm : 'none') };
     var h = fl('hollow');
     v.hollow = { ok: h.length === 0, name: 'no step checks off on entry before the player acts (hollow)',
       note: h.length ? h.map(function (x) { return 'step ' + x.step + ' lit at +' + f(x.at_s) + ' s'; }).join('; ') : 'none' };
