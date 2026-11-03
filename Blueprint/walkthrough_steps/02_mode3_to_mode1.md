@@ -185,13 +185,13 @@ While STARTUP RATE is still falling the counts are still climbing, and a point p
 
 ()8a. Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.
 
-Note: Expect it near CONTROL ROD POSITION 202.
+Note: Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it. If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 185, wait for SOURCE RANGE under 5.0e3, then do 8a again.
 
 ()8b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.
 
 Suggested time warp: 5× while the rods move, then 10×, set by itself.
 
-Note: After a SLOW hold to about 202 this wait is about 3 to 4 plant-minutes. Plotting before +0.03 puts the prediction too far out.
+Note: The wait for +0.03 is about 3 to 4 plant-minutes.
 
 
 
@@ -281,13 +281,13 @@ At 1.0e-8 A power is too low to warm the water, so only the rods set reactivity:
 
 *From about 1 % the core warms the water, and warmer water holds the climb back.*
 
-()12a. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.
+()12a. Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.
 
-Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.
+Note: Do not tap while you wait for the read: every tap starts the plant-minute over.
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 
-Note: About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs.
+Note: Expect 20 to 26 plant-minutes, most of it with REACTOR POWER at 0.0 %.
 
 Suggested time warp: 60×.
 
@@ -1267,3 +1267,9 @@ Record and every number: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-f.
 ### Concise pass — 2026-10-02 (#819)
 
 2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 237 -> 162 (4257 -> 2918 over 18 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare). develop text carried in (pool wins): step 2 Background keeps the doubling pause and the "roughly triples: expected" reassurance (one sentence each); step 10 10b at 10× with its own warp line, "about 10 to 15 seconds", "12 to 14 steps"; step 17 Background "Above 8 %". Step 18 note removed (draft). Step 3 aim "must" -> "has to" (W16). Step 9 note keeps "about 2 plant-minutes after the rods start moving in the next step": run_walkthrough_routes reads that number off the note (no_sr_block, 1.5x it) and the draft's "into the next step" lost it.
+
+### #824 — 2026-11-02 (exp/824): step 8 recovery sentence, step 12a overtaken, steps 8 and 12 brought to the pool
+
+- **8a note, last sentence — AGENT-DRAFTED** *(OWNER RULING, 2026-11-02: "Yes to adding the recover step to step 8.")*: "If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 185, wait for SOURCE RANGE under 5.0e3, then do 8a again." Read "recover step" as a recovery INSTRUCTION on step 8, not a new graded substep: a conditional check-off would strand the typical player, who never overshoots. The obvious recovery ("insert 10 back after 2 min") MEASURED a plot predicting 205 against a true 207: after any insert the count sits ABOVE its settled value, and a falling count plots on the unsafe side. This one goes deep, lets the count fall, and re-approaches 7.0e3 from below, as 8a does. MEASURED (live checklist runtime, seeds 42 / 7, recovery 30 / 60 / 120 plant-s after SOURCE RANGE first draws 2.0e4): let-go 5, 6, 7 and 10 steps past the 7.0e3 bank, 24 of 24 no trip; re-release at 197-201; prediction 208-209 (seed 42) and 211 (seed 7) against a true critical position of 207 / 208; step 8 takes 8.8-12.5 plant-min (typical 5.1-5.5). The cue never fires on the typical route (SOURCE RANGE peaks 13,949 / 13,221). NOT COVERED: 20 past — the count is already past 2.0e4 at the release and SR HIGH FLUX trips 21 plant-s later. Without the sentence: 6 past trips on seed 7, 7 / 10 / 20 past trip 10.5 / 4.6 / 0.35 plant-min after the release. Gated: `run_walkthrough_routes` overshoot_8_recover (10 past, 60 s) reads the sentence off the card; `must_complete` and `safe_plot` checks.
+- **12a: row-level `overtaken` at REACTOR POWER 1.0 %** (a routine call, stated to the owner 2026-11-02). A player who stops short (+0.12, bank 211) saw REACTOR POWER reach 1.0 % with Continue dark and tripped on SG LO-LO at 62 plant-min (seed 7: 67). Graded at 12b's own render floor. MEASURED: the stop-short route now completes, 12a stood down at 36.8 plant-min into step 12 (seed 7), leg 79.9 / 80.5 plant-min (seeds 42 / 7); the typical route still ticks 12a on its own read at 5.9 plant-min (gated `own_row` 12/1).
+- **Drift: this file was stale, the pool is what ships.** The #819 subtext cut (c29f20ab, 2026-10-03; OWNER RULING 2026-10-02: "i want to get rid of the subtext. check the step off not the subtext.") cut "Plotting before +0.03 puts the prediction too far out." and "Real crews climb gently here, between +0.1 and +0.2." from the pool only; the 2026-10-15 cycle-pass edits (52dd2377, 38558766) changed 8a/8b in the pool only. Steps 8 and 12 now match the pool word for word. NOT DONE: 17 other pool strings in steps 2-17 still differ from this file (same cause); nothing was added back to the pool.

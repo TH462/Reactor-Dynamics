@@ -3232,7 +3232,20 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
                    hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
-                   note: 'Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it.',
+                   /* THE RECOVERY *(OWNER RULING, 2026-11-02, #824: "Yes to adding the recover step to step 8.")* — the last
+                    * sentence, AGENT-DRAFTED. A let-go 7 or more steps past the 7.0e3 bank leaves STARTUP RATE level at +0.06 to
+                    * +0.15 and trips SR HIGH FLUX 10.5 / 4.6 / 0.35 plant-min after the release (7 / 10 / 20 past); 6 past trips
+                    * on seed 7. "Insert 10 back after 2 min" plotted 205 against a true 207: the count is ABOVE its settled
+                    * value after any insert, and a falling count plots on the unsafe side. So the recovery goes deep (185),
+                    * lets the count fall under 5.0e3 there (2.1-3.8 plant-min), and re-approaches 7.0e3 FROM BELOW, as 8a does.
+                    * MEASURED (inbox/m824 harness on the live checklist runtime, seeds 42 / 7, recovery started 30 / 60 / 120
+                    * plant-s after the tile first drew 2.0e4): 5, 6, 7 and 10 past, 24 of 24 no trip, re-release at 197-201,
+                    * prediction 208-209 (seed 42) / 211 (seed 7) against TRUE critical 207 / 208 (first bank at reactivity >= 0);
+                    * step 8 takes 8.8-12.5 plant-min (typical 5.1-5.5). The cue never fires on the typical route (SOURCE RANGE
+                    * peaks 13,949 / 13,221). 20 past is NOT covered: the count is past 2.0e4 at the release and SR HIGH FLUX
+                    * trips 21 plant-s later, before any reaction. 2.1-3.8 plant-min = the measured settle at 185.
+                    * `run_walkthrough_routes` overshoot_8_recover reads this sentence off the card (its numbers are the route). */
+                   note: 'Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it. If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 185, wait for SOURCE RANGE under 5.0e3, then do 8a again.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
                  { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.',
@@ -3840,6 +3853,14 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'slow' }, hold: 1800,
           accs_ordered: true,
           accs: [{ p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 60,
+                   /* THE CARD FOLLOWS THE PLANT (#824, a routine call stated to the owner 2026-11-02). A player who stops 12a
+                    * short (+0.12 on bank 211) never ticks it: REACTOR POWER reaches 1.0 % at 37 plant-min with STARTUP
+                    * RATE under +0.10 since 32, so the board reads 12b and 12c met with Continue dark, and the reactor trips
+                    * on SG LO-LO at 62 (seed 7: 67) because step 13's feed transfer never comes. So 12a stands down once
+                    * REACTOR POWER draws 1.0 % — 12b's own render floor (`digits: 1`, 0.95 draws "0.9"). The typical route
+                    * ticks 12a on its own read 20 plant-min before that (`run_walkthrough_routes` own_row 12/1). */
+                   overtaken: { p: 'power_pct', op: '>=', v: 0.9500000000000001,
+                     label: 'REACTOR POWER already reads 1.0 %, so the climb is under way' },
                    ask: 'Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.',
                    note: 'Do not tap while you wait for the read: every tap starts the plant-minute over.',
                    wait_speed: 10,
