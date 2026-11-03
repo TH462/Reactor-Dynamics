@@ -29,6 +29,21 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-03-develop-a (#824: startup step 8 overshoot recovery, step 12 stop-short, the 1/M plot band)
+
+Built on scratch branch `exp/824` (three builder/critic rounds), merged as 223f2b8b. Owner ruling 2026-11-02: "Yes to adding the recover step to step 8." Step 12's `overtaken` was a routine call.
+
+- **The 1/M error has a dangerous direction, and the first draft had it backwards.** 10a stops 3 short of the prediction, so a HIGH prediction is the danger side (#748). The band is true critical ≤ prediction ≤ true critical + 3 (the top is the coordinator's call, 2026-11-03: at + 3 10a stops on the first critical bank, and 10b pulls on past it anyway). A one-sided "prediction ≥ critical" check had passed a recovery that put seed 7 at + 4.
+- **Typical route margin, MEASURED:** 209 vs 207 on seeds 42 / 123 / 1 (+2), 211 vs 208 on seed 7 (+3, the band top). Gated on seeds 42 and 7.
+- **Which way a recovery plot errs depends on the count's direction.** A point on a falling count reads LOW (205 / 206 against 207); a point on a count still far under its settled value reads HIGH (215 at rod 212). After inserting to 202, waiting for STARTUP RATE to climb back to 0.00 plots the count on its way up: 207 / 209 against 207 / 208. The deep variant (185 / under 5.0e3 / "do 8a again") put seed 7 at 210–212 and was dropped.
+- **A latched cue grabs a transient.** The STARTUP RATE tile swings through +0.017 in the middle of an insert. Two fixes, each needed: no cue while rods move and a move drops the latch; and a band of 0 to +0.035. Each half alone still failed (212, 198). A count AND-condition (SOURCE RANGE ≥ 6,950) hid the cue from players whose re-release settled below it (2 and 13 of 24 stranded).
+- **The route runner never loads `ui/app.js`:** its pulse is a copy. Only `verify_e2e_ui` sees the shipped rule; its glow-probe step 5 now gates both halves, each injection-proven.
+- **A named trip passes the routes gate's invariant**, so a route the card can recover needs `must_complete` (the stop-short strand ended in an SG LO-LO trip at 62 plant-min and read as honest).
+- **Step-file drift:** 17 pool strings in steps 2–17 of `02_mode3_to_mode1.md` still lag the pool (the #819 subtext cut changed the pool only). Steps 8 and 12 now match.
+- **Merge note:** the merge resolved the route runner's service setup by taking `seed` from #824 (a mistake's own seed, for `typical_seed7`) and `from` from #823.
+
+---
+
 ## Session log — 2026-11-02-develop-b (#823: heatup step 1 folded into the pump start, 17 → 16 steps)
 
 *(OWNER RULING, 2026-11-02: "I think folding step 1 into 2 might be the best option so the player can

@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — Startup Part 2 (Mode 3 → Mode 1): step 12 stop-short no longer strands; step 8 overshoot recovery (#824)
+
+- Step 12: 12a stands down once REACTOR POWER reads 1.0 % (row-level `overtaken`, at the tile's 0.95 floor). A player who stopped 12a at +0.12 used to see 1.0 % with Continue dark and trip on SG LO-LO at 62 plant-min; that route now completes (leg 79.9 / 80.5 plant-min, seeds 42 / 7).
+- Step 8 *(OWNER RULING, 2026-11-02: "Yes to adding the recover step to step 8.")*: 8a's note adds, AGENT-DRAFTED, "If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 202, then plot once STARTUP RATE climbs back to 0.00 or more." Measured on late let-gos 5–10 steps past 7.0e3 with 30–120 s reactions, each run to step 10: 48 of 48 had no trip, and the 1/M prediction landed in step 10's band (207 / 209 against a true 207 / 208). A let-go 20 steps past is not recoverable (SR HIGH FLUX trips 21 s after the release).
+- 8b's Plot point cue stays dark while rods move, a move drops its latch, and it lights only on a rate of 0 to +0.035 (`ui/app.js` `cklHlWhenMet`; `hl_when` may be an array, an AND). Before, it pulsed through a recovery insert, and a plot on it predicted 212 against 207.
+- Steps 8 and 12 of `Blueprint/walkthrough_steps/02_mode3_to_mode1.md` brought to the pool word for word (the #819 subtext cut and the 2026-10-15 edits had changed the pool only).
+- Gates: `run_walkthrough_routes` gains routes `stop_short_12`, `overshoot_8_recover` (pulse player), `overshoot_8_recover_text` (text reader) and `typical_seed7`; checks `must_complete` and the two-sided `plot_band` (true critical to + 3), `own_row` 12/1; injections `startup12_no_overtaken`, `startup12_always_overtaken`, `startup8_no_recovery`, `startup8_rate_only_pulse`, `startup8_pulse_early`, `startup8_text_floor`. `verify_e2e_ui` gains the motion/latch check on its glow probe.
+- Counts, MEASURED on the merged tree (223f2b8b): `run_walkthrough_routes` 117 → 155 (#824 +36, #823 +2); `run_walkthrough_routes_c` 61 → 69 (#824 +1, the chained startup leg's `own_row`; the other +7 are #823's); `run_hardrules` 702 → 707 (#824 +2, the step 8 ruling cited in the pool and the routes gate; the other +3 are #823's).
+
 ### Changed — Startup Part 1 (heatup) opens on the pump start; its cold-state checks are rows of that step (#823)
 
 - `pwr_heatup` 17 → 16 steps *(OWNER RULING, 2026-11-02: "I think folding step 1 into 2 might be the best option so the player can still see the checks of step 1.")*. Step 1 is now "Start the reactor coolant pumps." with rows 1a–1d (AVG COOLANT TEMPERATURE below 200 °F, PRIMARY PRESSURE below 725 psi, OFF lit on the RCP FLOW card, both rod banks 0 of 627) and 1e (press ON, RCP FLOW above 90 %). The old confirm-only step 1 lit Continue within 3 s and 27 % of public starters (48/178) quit on it.

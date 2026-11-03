@@ -7010,7 +7010,9 @@
     /* NO CUE WHILE RODS MOVE, AND A MOVE TAKES THE LATCH BACK (#824 critic round 1). Every `hl_when` is a 1/M plot
      * cue, and a point taken with the bank moving is not a point. MEASURED (routes harness, startup 8a recovery,
      * seed 42): the STARTUP RATE tile swings through +0.017 mid-INSERT at bank 210 with SOURCE RANGE 28,626, and a
-     * latch taken there pulsed Plot point for the whole recovery (a plot on it predicted 212 against a true 207). */
+     * latch taken there pulsed Plot point for the whole recovery (a plot on it predicted 212 against a true 207).
+     * Gated by verify_e2e_ui (#824 glow-probe step 5): dark while the bank moves, and still dark after it stops where
+     * the cue reads false — each half of this line, deleted, turns its own assert red. */
     var rg = cklSnap && cklSnap.control_state && cklSnap.control_state.rod_groups;
     if (rg && rg.some(function (g) { return g && g.moving; })) { delete cklWhenLatch[k]; return false; }
     if (cklWhenLatch[k]) return true;
