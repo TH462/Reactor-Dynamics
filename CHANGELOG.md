@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — Main Menu coach tip no longer covers the play and speed buttons (S-4, #653)
+
+- The 6 s "Reopen it here any time" tip now takes no clicks (`pointer-events: none`) and sits below the speed bar (tip y 93 to 133 at 1600x1000, speed bar y 98-128); the arrow still points at Main Menu (1.4 px off centre). `verify_e2e_ui` hit-tests all seven buttons while it shows.
+
 ### Changed — Startup Part 2 (Mode 3 → Mode 1): step 12 stop-short no longer strands; step 8 overshoot recovery (#824)
 
 - Step 12: 12a stands down once REACTOR POWER reads 1.0 % (row-level `overtaken`, at the tile's 0.95 floor). A player who stopped 12a at +0.12 used to see 1.0 % with Continue dark and trip on SG LO-LO at 62 plant-min; that route now completes (leg 79.9 / 80.5 plant-min, seeds 42 / 7).

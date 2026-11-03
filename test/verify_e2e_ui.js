@@ -1710,6 +1710,26 @@ async function testMainMenuButton(page) {
   }
   log.push('coach tip ▲ at x ' + aim.ax + ', inside the Main Menu box ' + aim.bl + '–' + aim.br +
            ' (bubble ' + aim.tipL + '–' + aim.tipR + ')');
+  /* S-4 (#653): THE TIP MUST NOT COVER THE TRANSPORT BAR. Measured 1600x1000: the bubble sat on
+   * ▶ and all six speed buttons for ~5 s and a layman, reading the running 1x clock as stopped,
+   * pressed ▶ and paused the plant. Two assertions, both while the tip is shown: the element at
+   * each button's centre is that button (it takes the click), and the bubble's rect misses it. */
+  var cover = await page.evaluate(function () {
+    var t = document.getElementById('mainMenuTip'), tr = t.getBoundingClientRect(), bad = [];
+    var btns = [document.getElementById('playBtn')].concat([].slice.call(document.querySelectorAll('[data-speed]')));
+    btns.forEach(function (e) {
+      var r = e.getBoundingClientRect(), hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+      var lbl = e.id || ('[data-speed=' + e.getAttribute('data-speed') + ']');
+      if (hit !== e && !e.contains(hit)) bad.push(lbl + ' hit-tests to ' + (hit && (hit.id || hit.className || hit.tagName)));
+      if (!(r.right <= tr.left || r.left >= tr.right || r.bottom <= tr.top || r.top >= tr.bottom)) bad.push(lbl + ' is overlapped by the tip rect');
+    });
+    return { n: btns.length, hidden: t.hidden, bad: bad };
+  });
+  if (cover.hidden || cover.n !== 7) throw new Error('S-4 control: tip hidden=' + cover.hidden + ', buttons=' + cover.n + ' (want shown, 7)');
+  if (cover.bad.length) {
+    throw new Error('S-4 (#653): the Main Menu coach tip covers the transport bar — ' + cover.bad.join('; '));
+  }
+  log.push('coach tip clears ▶ and the six speed buttons (hit-test and rect)');
   await page.evaluate(function () { var t = document.getElementById('mainMenuTip'); if (t) t.hidden = true; });
   if (await page.isVisible('#missionOverlay')) throw new Error('#689: could not get the window shut to start from');
   await page.click('#mainMenuBtn');

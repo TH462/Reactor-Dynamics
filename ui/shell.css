@@ -1105,6 +1105,7 @@ html[data-channel="dev"] .logo-test {
 .mm-tip {
   /* AN OVERLAY, NOT A ROW (#818): in flow it pushed the whole side panel down ~48 px for 6 s. */
   position: absolute; left: 10px; right: 10px; z-index: 40; margin: 2px 0 0; padding: 13px 8px 4px;
+  pointer-events: none;   /* S-4 (#653): a coach tip must never swallow a click meant for the transport bar */
   background: linear-gradient(rgba(91, 179, 196, .12), rgba(91, 179, 196, .12)), var(--bg-elevated); border: 1px solid var(--normal); border-radius: 5px;
   color: var(--text); font-size: 11px; line-height: 1.35; text-align: center;
   animation: mmTipIn .18s ease-out;

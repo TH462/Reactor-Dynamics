@@ -7824,8 +7824,15 @@
     var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
     if (!bb.width || !tb.width) return;
     tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
-    var par = tip.offsetParent;   // the tip is an overlay (#818): sit it right under the button row
-    if (par) tip.style.top = Math.round(bb.bottom - par.getBoundingClientRect().top + 2) + 'px';
+    var par = tip.offsetParent;   // the tip is an overlay (#818): sit it under the button row
+    /* ...AND UNDER THE SPEED BAR (S-4, #653). The speed bar starts ~10 px below the tools row and
+     * Main Menu sits right above its 60x / 600x buttons, so a bubble hugging the tools row covered
+     * ▶ and all six [data-speed] buttons for 6 s (MEASURED 1600x1000: tip 1243,93 338x34 over
+     * y 98-128); a layman read the running 1x clock as stopped, pressed ▶, and paused the plant.
+     * The ▲ keeps the button's column; the bubble clears the transport controls. */
+    var bottom = bb.bottom, sel = '#playBtn,[data-speed]', ctl = document.querySelectorAll(sel);
+    for (var i = 0; i < ctl.length; i++) { var cb = ctl[i].getBoundingClientRect(); if (cb.width && cb.bottom > bottom) bottom = cb.bottom; }
+    if (par) tip.style.top = Math.round(bottom - par.getBoundingClientRect().top + 2) + 'px';
   }
   function closeMissionSelect() {
     closeModal('missionOverlay');
