@@ -250,7 +250,7 @@
  *           disjoint and resolve to distinct elements, and a substep `hl` needs a step that asks for a
  *           press — `run_manual_controls` gates all four. Replaces `accs[].hl_active` (#807 review
  *           item 4, retired 2026-09-27), whose one user, `pwr_cooldown` 11c, is now 11c's own `hl`.
- *   accs[].hl_when  OPTIONAL {p,op,v}, on a HEAD entry with its own `hl` — THE PRESS WAITS FOR ITS CUE
+ *   accs[].hl_when  OPTIONAL {p,op,v} or an array of them (all must hold, #824), on a HEAD entry with its own `hl` — THE PRESS WAITS FOR ITS CUE
  *           (#809 layman pass 14 S-3, 2026-09-28). The substep's `hl` pulse stays dark until the
  *           predicate reads true (graded like a row: the instrument first), then LATCHES for that
  *           substep; its `hl_watch` is lit throughout. Display only: it grades nothing and gates no
@@ -3233,8 +3233,8 @@
            * measured to be worth 0.6 of a bank step against a 2-step seed spread.
            *
            * ⚠ TRUE CRITICALITY IS 207.07 / 207.33 / 207.73 on seeds 42 / 7 / 1 (#761 re-measured it
-           * from "208 of 627"), so the predictions above run ~1 step HIGH — the conservative side,
-           * which is what the trailing-three fit exists to guarantee. The reference is maintained in
+           * from "208 of 627"), so the predictions above run ~1 step HIGH — the DANGER side (#748; corrected #824: a high
+           * prediction puts step 10's "3 short" stop nearer critical), held inside the 3 steps that stop leaves. The reference is maintained in
            * `Diagnostic/ACCURACY_VS_WAIT_2026-09-17.md`, not here.
            *
            * WHY `hold: 600` DOES NOT COME DOWN WITH THE ACCEPTANCE, although #761 §12.7 suggests a
@@ -3259,9 +3259,36 @@
           accs: [{ p: 'sr_counts_cps', op: '>=', v: 6950, mean_s: 30,   // the 7.0e3 band's lower edge — see step 5's RENDER BAND block
                    hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Source Range', 'Control Rod Position'],
                    ask: 'Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.',
-                   note: 'Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it.',
+                   /* THE RECOVERY *(OWNER RULING, 2026-11-02, #824: "Yes to adding the recover step to step 8.")* — the last
+                    * sentence, AGENT-DRAFTED. A let-go 7 or more steps past the 7.0e3 bank leaves STARTUP RATE level at +0.06 to
+                    * +0.15 and trips SR HIGH FLUX 10.5 / 4.6 / 0.35 plant-min after the release (7 / 10 / 20 past); 6 past trips
+                    * on seed 7. THE BAND IT MUST LAND IN is step 10's: 10a stops at the prediction minus 3, so a HIGH prediction
+                    * is the danger side (#748) and the stop must sit at or below the first critical bank (prediction <= critical
+                    * + 3); a LOW one is the slow side, outside the step's own "never below" record (`run_walkthrough_routes`
+                    * plot_band). Inserting back to 8a's own position (202) and plotting AT ONCE reads low, 205 against 207: the
+                    * count is still falling. Waiting for STARTUP RATE to climb back to 0.00 plots it on its way back UP, as 8a's
+                    * own point is. MEASURED (routes harness, seeds 42 / 7, 5 / 6 / 7 / 10 past, recovery 30 / 60 / 120 plant-s
+                    * after the tile first draws 2.0e4, a player who reads the text AND one who plots on 8b's pulse, each to step 10): 48
+                    * of 48 no trip, prediction 207 against a true critical 207 (seed 42) and 209 against 208 (seed 7), all
+                    * in the band (the gate rides 10 past / 60 s on seed 42 to the end of the leg, both readers); step 8 takes 7.9-17.0 plant-min (typical 4.1-5.5). The typical route reads 209 / 211 against
+                    * 207 / 208 (seed 7 at +3, the band's top; seeds 123 and 1 read 209 / 207).
+                    * 20 past is NOT covered: the count is past 2.0e4 at the release and SR HIGH FLUX trips 21 plant-s later.
+                    * Rejected, measured on the pulse reader: 185 / under 5.0e3 / "do 8a again" (seed 7 210-212, one at +4, out);
+                    * 192 / under 5.5e3 and 6.0e3 (strands and -1). The cue never fires on the typical route (SOURCE RANGE peaks
+                    * 13,949 / 13,221). `run_walkthrough_routes` overshoot_8_recover reads this sentence off the card. */
+                   note: 'Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it. If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 202, then plot once STARTUP RATE climbs back to 0.00 or more.',
                    label: 'SOURCE RANGE reads 7.0e3 (7,000 counts per second) or more' },
-                 { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '<', v: 0.035 }, hl_watch: ['Startup Rate', 'Source Range'],
+                 /* THE PULSE STAYS DARK THROUGH THE RECOVERY (#824 critic round 1). A rate-only cue (`< 0.035`) latched the
+                  * moment 8a's recovery INSERT drove STARTUP RATE to -0.5..-0.7, and Plot point pulsed through the insert,
+                  * the settle and the re-approach. MEASURED (critic, then routes harness), a player plotting on that pulse under the
+                  * first recovery draft: at 185 with the rods stopped, 198 / 200 against 207 / 208; during the insert, 212
+                  * against 207 (10a then stops at 209, past critical). Now (ui/app.js cklHlWhenMet):
+                  * no cue while any rod moves, and a move takes the latch back (the tile swings through +0.017 mid-insert);
+                  * and the band is 0 to +0.035, a count RISING to its point, never a falling one (the settle after the
+                  * insert reads negative). An AND with SOURCE RANGE >= 6,950 was tried and dropped: a board-follower whose
+                  * re-release settled under 6,950 never saw the pulse (MEASURED, 192 / 5.5e3 and 6.0e3 variants: 2 and
+                  * 13 strands of 24). On the typical route the pulse lights where it did (the rate falls to 0.035). */
+                 { cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'startup_rate_dpm', op: '~', v: 0.0175, tol: 0.0175 }, hl_watch: ['Startup Rate', 'Source Range'],
                                          ask: 'Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.',
                    label: 'Point plotted' }],
           overtaken: SR_OVERTAKEN,
@@ -3867,6 +3894,14 @@
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'slow' }, hold: 1800,
           accs_ordered: true,
           accs: [{ p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 60,
+                   /* THE CARD FOLLOWS THE PLANT (#824, a routine call stated to the owner 2026-11-02). A player who stops 12a
+                    * short (+0.12 on bank 211) never ticks it: REACTOR POWER reaches 1.0 % at 37 plant-min with STARTUP
+                    * RATE under +0.10 since 32, so the board reads 12b and 12c met with Continue dark, and the reactor trips
+                    * on SG LO-LO at 62 (seed 7: 67) because step 13's feed transfer never comes. So 12a stands down once
+                    * REACTOR POWER draws 1.0 % — 12b's own render floor (`digits: 1`, 0.95 draws "0.9"). The typical route
+                    * ticks 12a on its own read 20 plant-min before that (`run_walkthrough_routes` own_row 12/1). */
+                   overtaken: { p: 'power_pct', op: '>=', v: 0.9500000000000001,
+                     label: 'REACTOR POWER already reads 1.0 %, so the climb is under way' },
                    ask: 'Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.',
                    note: 'Do not tap while you wait for the read: every tap starts the plant-minute over.',
                    wait_speed: 10,

@@ -79,6 +79,10 @@ var ROUTES = {
   pwr_startup: {
     first_step_confirm: 'confirm-only first step, the #823 shape; outside the 2026-11-02 ruling (heatup only), put to the owner 2026-11-02',
     final: true,
+    /* #824: 12a ticks on its own +0.15 read on the card's route; its row-level `overtaken` (REACTOR POWER 1.0 %) is the
+     * stop-short player's relief only (MEASURED: the typical route ticks 12a 15-20 plant-min before power reaches 1 %) */
+    own_row: { step: 12, row: 1 },
+    plot_band_step: 8,   // #824: the 1/M prediction step 10 stops on sits in [true critical, true critical + 3]
     entry_met: ['#1', '#2', '#3', '#18'],   // #808: the feed transfer is new step 13, so 13-17 moved to 14-18   // the card says these read true on arrival (final: the whole list)
     steps: {
       /* THE WINDOW IS WHERE THE COUNT TARGET LIES, NOT A STOP THAT GUARANTEES IT *(OWNER RULING,
@@ -166,6 +170,22 @@ var ROUTES = {
       // has SETTLED at LOAD 10 MWe (layman pass 1's route to the 10.05 % strand, §2al)
       { id: 'late_second_block', kind: 'press late', at: '#17', set: { delay_s: 1200 } },
       { id: 'rewind_mid_12', kind: 'rewind mid-step', at: '#12', set: { rewind_after: 300 } },
+      /* #824 (telemetry 2026-09-16 -> 11-02: step 12 rewound 41 times, step 8 24 times). STOP SHORT: 12a let go at the first
+       * read of +0.10 or more (lands +0.12, bank 211). Before 12a's row-level `overtaken`, REACTOR POWER reached 1.0 % at 37
+       * plant-min with Continue dark, and the reactor tripped on SG LO-LO at 62 (seed 7: 67) -- a NAMED trip, which the
+       * invariant accepts, so `must_complete` is the check that sees it. */
+      { id: 'stop_short_12', kind: 'undershoot', at: '#12', typical_base: true, must_complete: true, set: { stop_at: 0.10 } },
+      /* LET GO 10 PAST 7.0e3 on 8a (no recovery: SR HIGH FLUX trip 4.6 plant-min after the release), and 8a's note's own
+       * recovery a plant-minute after SOURCE RANGE draws its cue (OWNER RULING 2026-11-02: "Yes to adding the recover step
+       * to step 8."). The plot it ends on must sit in step 10's band, true critical to true critical + 3 (`safe_plot` -> `plot_band`;
+       * HIGH is the danger side, #748). MEASURED, "insert 10 back after 2 min" plotted at once on the falling count: 205 against a true 207, the slow side. */
+      { id: 'overshoot_8_recover', kind: 'overshoot', at: '#8', typical_base: true, must_complete: true, safe_plot: true, set: { past: 10, recover_s: 60, plot_on_pulse: true } },   // the player follows the board: plots the broadcast 8b's pulse lights
+      /* #824 critic round 2: the same overshoot for a player who reads the TEXT (plots once STARTUP RATE reads the number the
+       * sentence names, rods still), not the pulse -- so the sentence's "0.00" is gated, not only the board's cue */
+      { id: 'overshoot_8_recover_text', kind: 'overshoot', at: '#8', typical_base: true, must_complete: true, safe_plot: true, set: { past: 10, recover_s: 60 } },
+      /* #824 critic round 2: the typical route on a SECOND seed, so `plot_band` is not pinned to seed 42's one point (seed 7
+       * MEASURED 211 against 208, +3: the band's top). No player mistake: the typical policy, another seed. */
+      { id: 'typical_seed7', kind: 'seed', at: '#8', typical_base: true, seed: 7, must_complete: true, band: true, set: {} },
       /* #808: SG FEED AUTO pressed straight from the aux-feed level, skipping 13a's manual fill -- the
        * card's own warning ("switched on 30 points below that it rushes cold water in"). MEASURED on the
        * harness: Tavg -9.8 degF in a minute, power 0.9 -> 3.9 % with rods still, no trip; the step must
@@ -548,6 +568,26 @@ var MUTATIONS = [
   { id: 'startup8_med_hold', route: 'typical', expect: 'complete',
     why: 'step 8a asking for the hold without SLOW (the rc5 text: the count-led hold at MED released at 209-211)',
     mutate: function (P) { P.steps[7].accs[0].ask = P.steps[7].accs[0].ask.replace('Press SLOW, then hold', 'Hold'); } },
+  /* #824: the three fixes, each re-opened. 12a without its row-level `overtaken`: the stop-short player strands with
+   * REACTOR POWER at 1.0 % and trips on SG LO-LO. */
+  { id: 'startup12_no_overtaken', route: 'stop_short_12', expect: 'must_complete',
+    why: "12a without its row-level overtaken (the pre-#824 card: Continue dark at 1.0 %, SG LO-LO trip at 62 plant-min)",
+    mutate: function (P) { delete P.steps[11].accs[0].overtaken; } },
+  { id: 'startup12_always_overtaken', route: 'typical', expect: 'own_row',
+    why: "12a's overtaken armed from entry (the relief would stand in for the card's own +0.15 read)",
+    mutate: function (P) { P.steps[11].accs[0].overtaken.v = -1; } },
+  { id: 'startup8_rate_only_pulse', route: 'overshoot_8_recover', expect: 'plot_band',
+    why: "8b's pulse back on the pre-#824 cue, the rate alone (< 0.035): it lights on the falling count the moment the recovery INSERT stops, and the board-follower plots there (the LOW side: MEASURED 205 against 207, 'insert 10 back', and 198 at 185)",
+    mutate: function (P) { P.steps[7].accs[1].hl_when = { p: 'startup_rate_dpm', op: '<', v: 0.035 }; } },
+  { id: 'startup8_pulse_early', route: 'overshoot_8_recover', expect: 'plot_band',
+    why: "8b's pulse widened to any rising rate (0 to +1.0): it lights the broadcast the late let-go stops, past critical, before any recovery (the HIGH, danger side: plotting at +0.11 on 202 MEASURED 211 against 207)",
+    mutate: function (P) { P.steps[7].accs[1].hl_when = { p: 'startup_rate_dpm', op: '~', v: 0.5, tol: 0.5 }; } },
+  { id: 'startup8_text_floor', route: 'overshoot_8_recover_text', expect: 'plot_band',
+    why: "8a's recovery reading 'climbs back to -0.50' instead of 0.00: the text reader plots on the falling count the moment the insert stops (the LOW side)",
+    mutate: function (P) { P.steps[7].accs[0].note = P.steps[7].accs[0].note.replace('climbs back to 0.00', 'climbs back to -0.50'); } },
+  { id: 'startup8_no_recovery', route: 'overshoot_8_recover', expect: 'must_complete',
+    why: '8a note without its recovery sentence (the pre-#824 card: 10 past trips on SR HIGH FLUX)',
+    mutate: function (P) { P.steps[7].accs[0].note = P.steps[7].accs[0].note.replace(/ If SOURCE RANGE passes[^]*$/, ''); } },
   { id: 'step17_1005', route: 'late_second_block', expect: 'invariant',
     why: 'step 18 (was 17 before #808) floor back to 10.05 % (unfinishable at LOAD 10 MWe, owner ruling 2026-09-23)',
     mutate: function (P) { P.steps[17].accs[0].v = 10.05; } },
@@ -836,7 +876,8 @@ function runJob(legId, routeId, mutId, ctx) {
   if (process.env.WR_OVERRIDE) { var WO = JSON.parse(process.env.WR_OVERRIDE)[legId] || {};
     Object.keys(WO).forEach(function (k) { var i = resolveKey(proc, k); if (i >= 0) byIdx[i] = WO[k]; }); }
   var typicalKind = routeId === 'typical' || routeId === table.base_route;
-  if (routeId !== 'typical' && table.mistake_base) Object.keys(table.mistake_base).forEach(function (k) {
+  /* #824: a mistake with `typical_base` rides the TYPICAL route (the card-led holds of 7 and 8), not the reviewer's 195 / 203 stops */
+  if (routeId !== 'typical' && table.mistake_base && !(MIS0 && MIS0.typical_base)) Object.keys(table.mistake_base).forEach(function (k) {
     var i = resolveKey(proc, k); if (i >= 0) byIdx[i] = table.mistake_base[k];
   });
   var mistake = null, mIdx = -1;
@@ -862,7 +903,7 @@ function runJob(legId, routeId, mutId, ctx) {
 
   var svc = ctx && ctx.svc;
   if (!svc) {
-    svc = new RD.SimulationService({ seed: +(process.env.WR_SEED || 42) });   // WR_SEED: a measurement knob, never the gate
+    svc = new RD.SimulationService({ seed: +(process.env.WR_SEED || (MIS0 && MIS0.seed) || 42) });   // WR_SEED: a measurement knob, never the gate; a mistake's `seed` (#824 typical_seed7) is
     /* a mistake may start the leg on another IC (`from`) -- the manual's Walkthrough button starts it on the plant as it stands (#823 review) */
     svc.selectPlant('pwr2', (MIS0 && MIS0.from) || proc.from, null, undefined);
     svc.running = true; svc.attentionStops = false; svc.speedHolds = false;
@@ -905,6 +946,7 @@ function runJob(legId, routeId, mutId, ctx) {
     send(typeof c === 'string' ? { action: c } : c); return true;
   }
   var speedNow = null;
+  var critSeen = null;   // #824 plot_band: first bank at true reactivity >= 0
   function setSpeed(v) { v = Math.max(1, Math.min(600, v || 10)); if (v !== speedNow) { send({ action: 'set_speed', value: v }); speedNow = v; } }
 
   for (var w = 0; w < 3; w++) tick();
@@ -1097,6 +1139,12 @@ function runJob(legId, routeId, mutId, ctx) {
     out[k].plo = Math.min(out[k].plo == null ? 1e9 : out[k].plo, pw);
     out[k].phi = Math.max(out[k].phi == null ? -1e9 : out[k].phi, pw);   // peak power / startup rate (#807 item 11)
     if (S.lastReadings.sur_dpm != null) out[k].surhi = Math.max(out[k].surhi == null ? -1e9 : out[k].surhi, S.lastReadings.sur_dpm);
+    /* #824: the 1/M panel's prediction as it stands (the post-plot value at a plot step's end) -- `plot_band` reads it */
+    var o1m8 = s.instructor && s.instructor.one_over_m; if (o1m8 && o1m8.pred_steps != null) out[k].pred_now = +o1m8.pred_steps;
+    /* #824: the TRUE critical rod position for `plot_band` -- the first control-bank position the leg reaches with true
+     * reactivity >= 0 (a measurement of the plant, never shown to the player; Hard Rule 1 is the card's, not the gate's) */
+    var rhoL = (s.true_state || {}).reactivity_pcm;
+    if (critSeen == null && grp() && typeof rhoL === 'number' && rhoL >= 0) { critSeen = bank(); out[k].crit_seen = critSeen; }
     /* WR_TRACE=<step,step>: a measurement knob, never the gate — [min into step, bank, power %,
      * startup rate, source range, true rho pcm, INTER RANGE A, SG level %, PRIMARY PRESSURE psia] every 15 plant-seconds on the named steps */
     if (process.env.WR_TRACE && (',' + process.env.WR_TRACE + ',').indexOf(',' + (k + 1) + ',') >= 0 && t() - (S.trT == null ? -1e9 : S.trT) >= 15) {
@@ -1290,20 +1338,60 @@ function runJob(legId, routeId, mutId, ctx) {
        * the tile first reads the target, i.e. react_s x the clock rate in plant-seconds -- at the step's 5x moving
        * rung 2.5 plant-s. MEASURED by the reviewer at 60x: 0.5 s -> releases 207-209, 1 of 5 tripped; 1 s -> 5 of 5. */
       if (S.memo.seen == null && (htile >= hr0.v || hm0)) { S.memo.seen = t(); out[cur].seen_bank = bank(); out[cur].react_speed = speedNow; }
-      if (!S.memo.rel && S.memo.seen != null && t() - S.memo.seen >= (spec.react_s != null ? spec.react_s : 0.5) * speedNow) { S.memo.rel = true; send({ action: 'rod_stop', group_id: 'control' });
+      /* #824 THE LATE LET-GO: `past` releases WITHDRAW that many steps beyond the bank where the tile first read the
+       * target (MEASURED, no recovery: 5 past completes, 6 past trips on seed 7, 7 / 10 / 20 past trip on SR HIGH FLUX). */
+      if (S.memo.seen != null && S.memo.seenBank == null) S.memo.seenBank = bank();
+      var relNow = spec.past != null ? (S.memo.seen != null && bank() >= S.memo.seenBank + spec.past)
+        : (S.memo.seen != null && t() - S.memo.seen >= (spec.react_s != null ? spec.react_s : 0.5) * speedNow);
+      if (!S.memo.rel && relNow) { S.memo.rel = true; send({ action: 'rod_stop', group_id: 'control' });
         out[cur].rel_bank = bank(); out[cur].rel_sr = Math.round(htile); S.memo.still = t(); }
+      /* the first bank THIS step's pull reaches at true reactivity >= 0 (reported; `plot_band` uses the leg-wide crit_seen) */
+      var rho8 = (s.true_state || {}).reactivity_pcm;
+      if (out[cur].crit_step == null && typeof rho8 === 'number' && rho8 >= 0) out[cur].crit_step = bank();
+      /* #824 THE CARD'S RECOVERY, READ OFF 8a'S NOTE (so the note is its own injection): "If SOURCE RANGE passes <cue>
+       * ... press <speed>, insert to <bank>, then plot once STARTUP RATE climbs back to <rate> or more." `recover_s` is
+       * the player's reaction, plant-s after the tile first draws the cue (graded at the tile's render floor: fmtExp is
+       * toFixed(1), so "2.0e4" draws from 19,500). The plot then waits for the rate to come back UP to <rate> with the
+       * rods still (a text reader) or for 8b's pulse (`plot_on_pulse`). With no such sentence the player has no
+       * recovery and rides the overshoot out. */
+      var rcm = spec.recover_s != null && /passes (\d\.\de\d)[^.]*?press (SLOW|MED|FAST)[^.]*?insert to (\d+)[^.]*?plot once STARTUP RATE climbs back to ([-+]?\d\.\d\d)/.exec(hr0.note || '');
+      if (rcm) {
+        var cue = +rcm[1] - 0.05 * Math.pow(10, Math.floor(Math.log10(+rcm[1])));
+        if (S.memo.rel && S.memo.cueT == null && htile >= cue) { S.memo.cueT = t(); out[cur].cue_after_rel_s = Math.round(t() - (S.memo.tRel || t())); }
+        if (S.memo.cueT != null && !S.memo.phase && !S.memo.plotted && t() - S.memo.cueT >= spec.recover_s) {
+          S.memo.phase = 'insert'; S.acts++; nudge(+rcm[3] - bank(), { SLOW: 'slow', MED: 'normal', FAST: 'fast' }[rcm[2]]);
+          out[cur].recover = { at_min: +((t() - S.t0) / 60).toFixed(2), from: bank(), to: +rcm[3], sr: Math.round(htile) };
+        } else if (S.memo.phase === 'insert' && !moving() && bank() === +rcm[3]) {
+          S.memo.phase = 'done'; S.memo.floor = +rcm[4] - 0.005; S.memo.still = t(); out[cur].recover.rel_bank = bank();   // "0.00" draws from -0.005
+        }
+      }
       if (S.memo.rel) {
         if (S.memo.lb2 !== bank() || moving()) { S.memo.lb2 = bank(); S.memo.still = t(); }
         if (!hm0 && !moving() && t() - S.memo.still >= 60 && pv('startup_rate_dpm') <= 0.03) {
           nudge(1, 'slow'); S.acts++; S.memo.still = t(); out[cur].taps = (out[cur].taps || 0) + 1; }
         var hpRow = -1; (st2.accs || []).forEach(function (e, i) { if (cmdAction(e.cmd) === 'plot_1m_point') hpRow = i; });
-        if (hm0 && !moving() && hpRow >= 0 && !S.memo.plotted && !(rows2[hpRow] && rows2[hpRow].met) && pv('startup_rate_dpm') <= 0.03) {
-          if (plot()) { S.memo.plotted = true; S.acts++; out[cur].plot_bank = bank(); out[cur].plot_sr = Math.round(htile);
+        /* #824 critic round 1: `plot_on_pulse` is the player who FOLLOWS THE BOARD -- presses Plot point the broadcast 8b's
+         * pulse lights (its `hl_when`, latched per substep as ui/app.js cklHlWhenMet does), moving or not, recovery or
+         * not. The default reader plots on the text (+0.03 or less, rods still) and never mid-recovery. */
+        var pulseNow = spec.plot_on_pulse && hm0 && hpRow >= 0 && pulse8(st2.accs[hpRow]);
+        if (spec.plot_on_pulse ? (pulseNow && !S.memo.plotted && !(rows2[hpRow] && rows2[hpRow].met)) :
+            (hm0 && !moving() && hpRow >= 0 && !S.memo.plotted && (!S.memo.phase || S.memo.phase === 'done') && !(rows2[hpRow] && rows2[hpRow].met) && pv('startup_rate_dpm') <= 0.03 &&
+             (S.memo.floor == null || pv('startup_rate_dpm') >= S.memo.floor))) {
+          if (plot()) { S.memo.plotted = true; S.acts++; out[cur].plot_bank = bank(); out[cur].plot_sr = Math.round(htile); out[cur].plot_t = t();
             out[cur].plot_after_rel_s = Math.round(t() - (S.memo.tRel || t())); }
         }
       }
       if (S.memo.rel && S.memo.tRel == null) S.memo.tRel = t();
       return;
+    }
+    /* the board's pulse on a substep with `hl_when` (an array is an AND), LATCHED once met, as ui/app.js draws it */
+    function pulse8(e) {
+      if (!e || !e.hl_when) return true;
+      if (moving()) { S.memo.pulse = false; return false; }   // ui/app.js: no cue while rods move; a move takes the latch back
+      if (S.memo.pulse) return true;
+      var ok = [].concat(e.hl_when).every(function (c) { return !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, s, c).met; });
+      if (ok) { S.memo.pulse = true; out[cur].pulse_at = { bank: bank(), moving: moving(), sr: Math.round(pv('sr_counts_cps')), sur: +pv('startup_rate_dpm').toFixed(3) }; }
+      return ok;
     }
     if (P === 'pull_count') {
       var row0 = (st2.accs || [])[0] || {}, rd = pv(row0.p), m0 = rows2[0] && rows2[0].met;
@@ -1428,6 +1516,9 @@ function runJob(legId, routeId, mutId, ctx) {
         var rt0 = pv('startup_rate_dpm');
         if (S.memo.lastTap != null) out[cur].reads = (out[cur].reads || []).concat([[bank(), +rt0.toFixed(3)]]);
         S.memo.lastTap = t();
+        /* #824: `stop_at` is the player's own (wrong) stop reading -- 12a let go short of +0.15, at the first read of
+         * +0.10 or more (MEASURED: lands +0.12 on bank 211/212, seeds 42/7); the route then leaves the rods alone */
+        if (spec.stop_at != null && S.memo.taps0 != null && rt0 >= spec.stop_at) { if (!out[cur].stop) out[cur].stop = { at_min: +((t() - S.t0) / 60).toFixed(2), sur: +rt0.toFixed(3), bank: bank() }; return; }
         if (S.memo.taps0 == null || rt0 < ((st2.accs || [])[0] || {}).v) { S.memo.taps0 = true; nudge(1, 'slow'); S.acts++; out[cur].taps = (out[cur].taps || 0) + 1; }
       }
       return;
@@ -1804,6 +1895,13 @@ function verdicts(r) {
         name: '[' + r.kind + ']: step ' + MD.min_dur.step + ' waits for the delayed press (' + MD.min_dur.s + ' plant-s) before it checks off',
         note: sd ? 'step ' + sd.n + ' ' + f(sd.dur_min) + ' plant-min, by ' + (sd.by || '-') : 'step never reached' };
     }
+    /* #824: a mistake the card has a recovery for must COMPLETE -- a named trip passes the invariant above */
+    if (MD && MD.must_complete) v.must_complete = { ok: res.kind === 'complete',
+      name: '[' + r.kind + ']: the card recovery completes the leg (no trip, no strand)',
+      note: res.kind + (res.step ? ' at step ' + res.step : '') + (res.why ? ': ' + res.why : '') + ' | ' + f(res.t_min) + ' plant-min' };
+    /* #824: after the overshoot recovery, the 1/M prediction is on the safe side -- at or above the TRUE critical rod position
+     * (the first bank this pull reached with true reactivity >= 0), and the card's recovery actually ran */
+    /* #824: `safe_plot` mistakes are graded by `plot_band` below (two-sided, and the recovery must have run) */
     var ru = fl('rewind_unavailable');   // the button was dark: the mistake never happened, so say so
     if (ru.length) { v.invariant.ok = false; v.invariant.note = 'VACUOUS: Rewind dark on step ' + ru[0].step + ', move the mistake | ' + v.invariant.note; }
   }
@@ -1868,6 +1966,27 @@ function verdicts(r) {
     v.sr_trip = { ok: res.kind === 'trip_named' && /sr_high/.test(res.why || '') && dtm != null && dtm <= s0.sr_trip_max_min,
       name: 'skipping the SR block trips the reactor on SR HIGH FLUX, named, within the minutes the step 9 note states',
       note: res.kind + ' ' + (res.why || '') + ' | ' + f(dtm, 2) + ' plant-min after the first rod motion (stated at most ' + s0.sr_trip_max_min + ')' };
+  }
+  /* #824 THE PLOT BAND, TWO-SIDED (critic rounds 1-2; the band's top is the coordinator's call, 2026-11-03). What step
+   * 10 says: its aim, "The prediction is good to about three steps, so the rods stop short of it" -- "it" is the
+   * PREDICTION -- and 10a, "hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted
+   * position" (`reach_1m`); 10b then holds WITHDRAW at SLOW until STARTUP RATE reads +0.5, past critical by design. So
+   * HIGH is the danger side (#748): the 10a stop, prediction - 3, must be AT OR BELOW the first critical bank, i.e.
+   * prediction <= critical + 3. LOW is the slow side, below the step's own "only its sign is fixed ... never below"
+   * record, so the floor is critical. Critical = the first bank the leg reaches at true reactivity >= 0. MEASURED, the
+   * typical route: 209 vs 207 on seeds 42 / 123 / 1 (+2), 211 vs 208 on seed 7 (+3). Checked on the typical route,
+   * on `typical_seed7` (so the band is not pinned to one seed) and on every `safe_plot` mistake. */
+  var PB = ROUTES[r.leg] && ROUTES[r.leg].plot_band_step;
+  var MD0 = ((ROUTES[r.leg] || {}).mistakes || []).filter(function (m) { return m.id === r.route; })[0];
+  var sp0 = PB ? (r.steps || []).filter(function (st) { return st.n === PB; })[0] : null;
+  var critL = (r.steps || []).map(function (st) { return st.crit_seen; }).filter(function (x) { return x != null; })[0];
+  if (PB && (r.route === 'typical' || (MD0 && (MD0.safe_plot || MD0.band)))) {
+    var pp = sp0 && sp0.pred_now;
+    var recRan = !(MD0 && MD0.safe_plot) || !!(sp0 && sp0.recover && sp0.recover.rel_bank != null);
+    v.plot_band = { ok: recRan && pp != null && critL != null && pp >= critL && pp <= critL + 3,
+      name: 'the step ' + PB + ' 1/M prediction sits in the band step 10 relies on: true critical <= prediction <= true critical + 3 (10a stops at or below the first critical bank)',
+      note: (recRan ? '' : 'THE CARD RECOVERY NEVER RE-RELEASED | ') + 'prediction ' + pp + ' against true critical ' + critL + (sp0 && sp0.pulse_at ? ' | plotted on the pulse ' + JSON.stringify(sp0.pulse_at) : '') +
+        (sp0 && sp0.recover ? ' | recovery ' + JSON.stringify(sp0.recover) : '') + (sp0 && sp0.plot_bank != null ? ' | plot at bank ' + sp0.plot_bank + ', SR ' + sp0.plot_sr : '') };
   }
   /* 10b's band on the route that pulls past +1.0: the step must not complete while STARTUP RATE reads above 1.0 */
   var r10 = (r.steps || []).filter(function (st) { return st.n === 10 && st.at_done && st.by !== 'overtaken' && r.leg === 'pwr_startup'; });

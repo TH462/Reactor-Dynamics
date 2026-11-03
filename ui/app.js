@@ -7007,11 +7007,19 @@
   var cklWhenLatch = Object.create(null);
   function cklHlWhenMet(st, ck, head) {
     var e = st.accs[head], k = ck.procedure_id + '#' + ck.step_index + '/' + head;
+    /* NO CUE WHILE RODS MOVE, AND A MOVE TAKES THE LATCH BACK (#824 critic round 1). Every `hl_when` is a 1/M plot
+     * cue, and a point taken with the bank moving is not a point. MEASURED (routes harness, startup 8a recovery,
+     * seed 42): the STARTUP RATE tile swings through +0.017 mid-INSERT at bank 210 with SOURCE RANGE 28,626, and a
+     * latch taken there pulsed Plot point for the whole recovery (a plot on it predicted 212 against a true 207). */
+    var rg = cklSnap && cklSnap.control_state && cklSnap.control_state.rod_groups;
+    if (rg && rg.some(function (g) { return g && g.moving; })) { delete cklWhenLatch[k]; return false; }
     if (cklWhenLatch[k]) return true;
     var IL = RD.InstructorLayer;
     if (!cklSnap || !IL || !IL.prototype._grade) return true;   // cannot tell: never hide a press
     var met = false;
-    try { met = !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, cklSnap, e.hl_when).met; }
+    /* AN ARRAY IS AN AND (#824): every condition must hold. No pool row uses an array today — startup 8b is the single
+     * band STARTUP RATE 0 to +0.035; the motion rule above is what keeps its pulse dark through 8a's recovery insert. */
+    try { met = [].concat(e.hl_when).every(function (c) { return !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, cklSnap, c).met; }); }
     catch (x) { return true; }
     if (met) cklWhenLatch[k] = true;
     return met;

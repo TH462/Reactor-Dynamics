@@ -185,13 +185,13 @@ While STARTUP RATE is still falling the counts are still climbing, and a point p
 
 ()8a. Press SLOW, then hold CONTROL WITHDRAW until SOURCE RANGE reads 7.0e3 or more.
 
-Note: Expect it near CONTROL ROD POSITION 202.
+Note: Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it. If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 202, then plot once STARTUP RATE climbs back to 0.00 or more.
 
 ()8b. Wait for STARTUP RATE to read +0.03 or less, then press 1/M PLOT, then Plot point, and note the predicted critical rod position.
 
 Suggested time warp: 5× while the rods move, then 10×, set by itself.
 
-Note: After a SLOW hold to about 202 this wait is about 3 to 4 plant-minutes. Plotting before +0.03 puts the prediction too far out.
+Note: The wait for +0.03 is about 3 to 4 plant-minutes.
 
 
 
@@ -281,13 +281,13 @@ At 1.0e-8 A power is too low to warm the water, so only the rods set reactivity:
 
 *From about 1 % the core warms the water, and warmer water holds the climb back.*
 
-()12a. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.
+()12a. Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.
 
-Note: Expect 6 or 7 taps. Real crews climb gently here, between +0.1 and +0.2. Do not tap while you wait for the read: every tap starts the plant-minute over. Close the 1/M PLOT window with its ✕.
+Note: Do not tap while you wait for the read: every tap starts the plant-minute over.
 
 ()12b. Leave the rods alone until REACTOR POWER reads 1.0 % or more.
 
-Note: About 20 to 26 plant-minutes. REACTOR POWER reads 0.0 % for most of it while INTER RANGE climbs.
+Note: Expect 20 to 26 plant-minutes, most of it with REACTOR POWER at 0.0 %.
 
 Suggested time warp: 60×.
 
@@ -1267,3 +1267,10 @@ Record and every number: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-f.
 ### Concise pass — 2026-10-02 (#819)
 
 2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 237 -> 162 (4257 -> 2918 over 18 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare). develop text carried in (pool wins): step 2 Background keeps the doubling pause and the "roughly triples: expected" reassurance (one sentence each); step 10 10b at 10× with its own warp line, "about 10 to 15 seconds", "12 to 14 steps"; step 17 Background "Above 8 %". Step 18 note removed (draft). Step 3 aim "must" -> "has to" (W16). Step 9 note keeps "about 2 plant-minutes after the rods start moving in the next step": run_walkthrough_routes reads that number off the note (no_sr_block, 1.5x it) and the draft's "into the next step" lost it.
+
+### #824 — 2026-11-02 (exp/824): step 8 recovery sentence, step 12a overtaken, steps 8 and 12 brought to the pool
+
+- **8a note, last sentence — AGENT-DRAFTED** *(OWNER RULING, 2026-11-02: "Yes to adding the recover step to step 8.")*: "If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 202, then plot once STARTUP RATE climbs back to 0.00 or more." Read "recover step" as a recovery INSTRUCTION on step 8, not a new graded substep: a conditional check-off would strand the typical player, who never overshoots. **The band (corrected in critic round 1; the first draft had the direction backwards):** 10a stops at the prediction minus 3, so a HIGH prediction is the danger side (#748): the stop must sit at or below the first critical bank, prediction <= critical + 3 (band top set by the coordinator, critic round 2, 2026-11-03; step 10's aim says the rods stop short of the PREDICTION, and 10b pulls on past critical). A LOW one is the slow side, below the step's "never below" record. Inserting to 202 and plotting at once reads low (205 against 207), because the count is still falling; waiting for STARTUP RATE to climb back to 0.00 plots it on its way back up, as 8a's own point is. MEASURED (routes harness, seeds 42 / 7, let-go 5 / 6 / 7 / 10 steps past the 7.0e3 bank, recovery 30 / 60 / 120 plant-s after SOURCE RANGE first draws 2.0e4, a text reader and a player who plots on 8b's pulse): each run to step 10: 48 of 48 no trip; prediction 207 against a true critical 207 (seed 42) and 209 against 208 (seed 7), all in the band; the gate rides 10 past / 60 s on seed 42 to the end of the leg for both readers and completes; step 8 takes 7.9-17.0 plant-min (typical 4.1-5.5). The typical route reads 209 / 207 on seeds 42, 123 and 1 (+2) and 211 / 208 on seed 7 (+3, the band's top); gated on seeds 42 and 7. The cue never fires on the typical route (SOURCE RANGE peaks 13,949 / 13,221). NOT COVERED: 20 past, where SR HIGH FLUX trips 21 plant-s after the release. Without the sentence: 6 past trips on seed 7; 7 / 10 / 20 past trip 10.5 / 4.6 / 0.35 plant-min after the release. Rejected, measured: 185 / under 5.0e3 / "do 8a again" (the first draft: seed 7 210-212, one at +4, out of the band); 192 / under 5.5e3 or 6.0e3 (strands and -1). Gated: `run_walkthrough_routes` overshoot_8_recover (10 past, 60 s, plots on the pulse) reads the sentence off the card; `must_complete` and the two-sided `plot_band`.
+- **8b's pulse (critic round 1).** The rate-only cue (`< 0.035`) latched when a recovery INSERT drove STARTUP RATE negative, and Plot point pulsed through the insert and after it (MEASURED on the first draft: plotting on it at 185 read 198 / 200 against 207 / 208, mid-insert 212 against 207). Now `hl_when` is STARTUP RATE 0 to +0.035, and ui/app.js gives no cue while any rod moves and takes the latch back on a move (the tile swings through +0.017 mid-insert). Both halves are needed: without the motion rule the new band still plots mid-insert (212); with the motion rule and the old band it plots on the falling count (198).
+- **12a: row-level `overtaken` at REACTOR POWER 1.0 %** (a routine call, stated to the owner 2026-11-02). A player who stops short (+0.12, bank 211) saw REACTOR POWER reach 1.0 % with Continue dark and tripped on SG LO-LO at 62 plant-min (seed 7: 67). Graded at 12b's own render floor. MEASURED: the stop-short route now completes, 12a stood down at 36.8 plant-min into step 12 (seed 7), leg 79.9 / 80.5 plant-min (seeds 42 / 7); the typical route still ticks 12a on its own read at 5.9 plant-min (gated `own_row` 12/1).
+- **Drift: this file was stale, the pool is what ships.** The #819 subtext cut (c29f20ab, 2026-10-03; OWNER RULING 2026-10-02: "i want to get rid of the subtext. check the step off not the subtext.") cut "Plotting before +0.03 puts the prediction too far out." and "Real crews climb gently here, between +0.1 and +0.2." from the pool only; the 2026-10-15 cycle-pass edits (52dd2377, 38558766) changed 8a/8b in the pool only. Steps 8 and 12 now match the pool word for word. NOT DONE: 17 other pool strings in steps 2-17 still differ from this file (same cause); nothing was added back to the pool.

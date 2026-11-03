@@ -3210,7 +3210,11 @@ async function testHeldAndOpenerGlow(page) {
                                 ask: 'Wait for a cue that never comes, then plot.', label: 'Point plotted' }] },
                      { text: 'Pull.', control: 'Control Bank', cmd: { action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'normal' },
                        hl: ['Withdraw'], hold: 600, wait_speed: 10, moving_speed: 5,
-                       accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Never met.', label: 'Never met' }] }] });
+                       accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Never met.', label: 'Never met' }] },
+                     /* #824: a plot row whose cue is ALWAYS met -- only rod motion may darken it */
+                     { text: 'Plot on its cue.', control: '1/M Plot', hl: ['Plot point'],
+                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'power_pct', op: '>', v: -1 },
+                                ask: 'Plot when the cue comes.', label: 'Point plotted' }] }] });
     var w = document.querySelector('#oomWin [data-oom="close"]');
     if (w && w.getClientRects().length) w.click();
   });
@@ -3346,6 +3350,41 @@ async function testHeldAndOpenerGlow(page) {
   if (mv.acc !== 5) throw new Error('OWNER RULING 2026-09-28 (D): with the bank moving the walkthrough must play 5x — read ' + mv.acc + 'x (rods ' + mv.rod + ', still ' + still + 'x, running ' + mv.run + ', t ' + mv.t + ')');
   if (after !== 10) throw new Error('OWNER RULING 2026-09-28 (D): once the bank stops the step rung (10x) must return — read ' + after + 'x');
   log.push('moving_speed: still ' + still + 'x, moving ' + mv.acc + 'x, stopped ' + after + 'x');
+  /* #824 critic round 2: NO PLOT CUE WHILE RODS MOVE, AND A MOVE TAKES THE LATCH BACK (ui/app.js cklHlWhenMet). Startup
+   * 8b's rate cue latched mid-INSERT (the STARTUP RATE tile swings through +0.017 at rod 210) and pulsed Plot point for
+   * the whole overshoot recovery; a plot on it predicted 212 against a true 207. The probe row's cue is always met, so
+   * the cue is LATCHED before the rods move: dark while they move, back once they stop. */
+  function rodsMoving() {
+    return page.evaluate(function () {
+      var e = globalThis.RD.__dev.service().engine, eng = e && e.eng;
+      return !!eng && eng.rodSteps !== eng.rodTarget;
+    });
+  }
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'rod_stop', group_id: 'control' }); });
+  await page.waitForFunction(function () { var e = globalThis.RD.__dev.service().engine.eng; return e.rodSteps === e.rodTarget; },
+    { timeout: 30000, polling: 200 }).catch(function () {});
+  await jump(5);
+  await page.waitForTimeout(600);
+  var cue0 = await read();
+  var lit = function (x) { return x.op === 'pulse' || x.pp === 'pulse'; };
+  if (!lit(cue0)) throw new Error('#824 fixture: the always-met plot cue is not pulsing with the rods still — ' + JSON.stringify(cue0));
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 30, speed: 'slow' });
+  });
+  await page.waitForTimeout(900);
+  var cueMv = await read(), mvNow = await rodsMoving();
+  if (!mvNow) throw new Error('#824 fixture: the bank is not moving, the motion case cannot be read');
+  if (lit(cueMv)) {
+    throw new Error('#824: Plot point is cued while the control bank moves (1/M PLOT ' + cueMv.op + ', Plot point ' + cueMv.pp +
+      ') — a latched `hl_when` must go dark during rod motion');
+  }
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'rod_stop', group_id: 'control' }); });
+  await page.waitForFunction(function () { var e = globalThis.RD.__dev.service().engine.eng; return e.rodSteps === e.rodTarget; },
+    { timeout: 30000, polling: 200 }).catch(function () {});
+  await page.waitForTimeout(900);
+  var cue1 = await read();
+  if (!lit(cue1)) throw new Error('#824: the bank stopped and the always-met plot cue did not come back — ' + JSON.stringify(cue1));
+  log.push('hl_when vs rod motion: still ' + (lit(cue0) ? 'cued' : 'dark') + ', moving ' + (lit(cueMv) ? 'cued' : 'dark') + ', stopped ' + (lit(cue1) ? 'cued' : 'dark'));
   await page.evaluate(function () {
     globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 });
     globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' });
