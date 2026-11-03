@@ -633,6 +633,16 @@ var MUTATIONS = [
   { id: 'heatup_first_no_cmd', leg: 'pwr_heatup', route: 'typical', expect: 'first',
     why: 'heatup step 1 with its set_rcp command removed (a confirm-shaped first step that never lights early)',
     mutate: function (P) { delete P.steps[0].cmd; P.steps[0].accs.forEach(function (e) { delete e.cmd; }); } },
+  /* ...and the TIMING half on its own (#823 critic round 2): step 1 keeps a command, so the structural half stays
+   * green, but every acceptance is true on arrival -- 1e graded `> 0` (natural circulation reads about 4 %). The
+   * command moves from the step onto 1e as a row `cmd`: with the step-level `cmd` kept, the start-of-leg catch-up
+   * (an action step whose rows are already met) skips step 1 unseen, which is a different shape (MEASURED: the
+   * first draft never showed step 1). The player reads for 10 plant-s before pressing (override), so Continue
+   * lights with nothing pressed. Proved by deleting the `first_entry` flag block: green; restored: red. */
+  { id: 'heatup_first_met_on_entry', leg: 'pwr_heatup', route: 'typical', expect: 'first',
+    why: 'heatup step 1 keeps its command but 1e is graded > 0 (true on entry): only the timing half can see it',
+    override: { '#1': { policy: 'default', delay_s: 10 } },
+    mutate: function (P) { var c = P.steps[0].cmd; delete P.steps[0].cmd; P.steps[0].accs.forEach(function (e) { if (e.p === 'pump_flow_pct') { e.v = 0; e.cmd = c; } }); } },
   { id: 'heatup_confirm_first', leg: 'pwr_heatup', route: 'typical', expect: 'first',
     why: 'heatup step 1 split back into a confirm-only step ahead of the pump start (the pre-#823 layout; 27 % of starters quit on it)',
     mutate: function (P) {
