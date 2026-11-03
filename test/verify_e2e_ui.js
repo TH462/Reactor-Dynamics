@@ -1697,19 +1697,13 @@ async function testMainMenuButton(page) {
     throw new Error('#689 control: the coach tip did not appear on the first close of the Plant & ' +
       'Mission window, so its aim cannot be measured — missionTipArmed never fired');
   }
-  if (!(aim.ax >= aim.bl && aim.ax <= aim.br)) {
-    throw new Error('#689: #mainMenuTip\'s ▲ points ' + Math.round(Math.min(Math.abs(aim.ax - aim.bl),
-      Math.abs(aim.ax - aim.br))) + ' px away from the Main Menu button it names — arrow centre x ' +
-      aim.ax + ', button box ' + aim.bl + '–' + aim.br + ', bubble ' + aim.tipL + '–' + aim.tipR +
-      '. The bubble spans the whole tools row and the button sits at its right end, so a CENTRED ' +
-      'arrow lands over the speed bar; aimMainMenuTip() has to set --mm-arrow-x from the button.');
-  }
-  if (aim.ay < aim.bb) {
-    throw new Error('#689: the tip\'s ▲ (y ' + aim.ay + ') is drawn ABOVE the button\'s bottom edge (' +
-      aim.bb + ') — the bubble is not below the row it points at');
-  }
-  log.push('coach tip ▲ at x ' + aim.ax + ', inside the Main Menu box ' + aim.bl + '–' + aim.br +
-           ' (bubble ' + aim.tipL + '–' + aim.tipR + ')');
+  /* RETIRED, RE-POINTED AT THE RING (S-4 follow-up, #653). This block asserted the #689 aim: the
+   * ▲'s painted centre inside the Main Menu box and below its bottom edge, because a centred ▲
+   * once pointed at the middle of the speed bar. Moving the bubble BELOW the speed bar (so it
+   * stops covering the transport buttons) put that ▲ under 600x, where it reads as naming 600x —
+   * so the ▲ is hidden and the aim assertion now contradicts the design. Passing it would have
+   * certified the misleading arrow. What it protected (the player can tell WHICH button the tip
+   * names) is asserted below on the replacement cue: Main Menu wears .mm-ring, no ▲ is visible. */
   /* S-4 (#653): THE TIP MUST NOT COVER THE TRANSPORT BAR. Measured 1600x1000: the bubble sat on
    * ▶ and all six speed buttons for ~5 s and a layman, reading the running 1x clock as stopped,
    * pressed ▶ and paused the plant. Two assertions, both while the tip is shown: the element at
@@ -1730,6 +1724,18 @@ async function testMainMenuButton(page) {
     throw new Error('S-4 (#653): the Main Menu coach tip covers the transport bar — ' + cover.bad.join('; '));
   }
   log.push('coach tip clears ▶ and the six speed buttons (hit-test and rect)');
+  var cue = await page.evaluate(function () {
+    var t = document.getElementById('mainMenuTip'), a = t.querySelector('.mm-arrow'), b = document.getElementById('mainMenuBtn');
+    var ar = a ? a.getBoundingClientRect() : null, cs = a ? getComputedStyle(a) : null;
+    return { ring: b.classList.contains('mm-ring'), shadow: getComputedStyle(b).animationName,
+             arrowVisible: !!(a && cs.display !== 'none' && cs.visibility !== 'hidden' && ar.width > 0) };
+  });
+  if (!cue.ring) throw new Error('S-4: #mainMenuBtn carries no .mm-ring while its tip shows (animation ' + cue.shadow + ')');
+  if (cue.arrowVisible) throw new Error('S-4: the tip shows a visible ▲ below the speed bar — it reads as pointing at the speed buttons, not Main Menu');
+  await page.waitForFunction(function () { return document.getElementById('mainMenuTip').hidden; }, null, { timeout: 9000 });
+  var ringAfter = await page.evaluate(function () { return document.getElementById('mainMenuBtn').classList.contains('mm-ring'); });
+  if (ringAfter) throw new Error('S-4: .mm-ring is still on #mainMenuBtn after the tip hid');
+  log.push('Main Menu rings while the tip shows, no visible ▲, ring gone when the tip hides');
   await page.evaluate(function () { var t = document.getElementById('mainMenuTip'); if (t) t.hidden = true; });
   if (await page.isVisible('#missionOverlay')) throw new Error('#689: could not get the window shut to start from');
   await page.click('#mainMenuBtn');

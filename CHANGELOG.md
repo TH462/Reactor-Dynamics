@@ -32,7 +32,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Fixed — Main Menu coach tip no longer covers the play and speed buttons (S-4, #653)
 
-- The 6 s "Reopen it here any time" tip now takes no clicks (`pointer-events: none`) and sits below the speed bar (tip y 93 to 133 at 1600x1000, speed bar y 98-128); the arrow still points at Main Menu (1.4 px off centre). `verify_e2e_ui` hit-tests all seven buttons while it shows.
+- The 6 s "Reopen it here any time" tip now takes no clicks (`pointer-events: none`) and sits below the speed bar (tip y 93 to 133 at 1600x1000, speed bar y 98-128); the the ▲ is hidden (it read as naming 600x) and Main Menu pulses a ring for the same 6 s instead. `verify_e2e_ui` hit-tests all seven buttons while it shows.
 
 ### Changed — Startup Part 2 (Mode 3 → Mode 1): step 12 stop-short no longer strands; step 8 overshoot recovery (#824)
 

@@ -7823,7 +7823,7 @@
     var b = $('mainMenuBtn'); if (!b || !tip) return;
     var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
     if (!bb.width || !tb.width) return;
-    tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
+    /* The ▲ is hidden (CSS): below the speed bar it sat under 600x and read as pointing at it. Main Menu wears a ring instead. */
     var par = tip.offsetParent;   // the tip is an overlay (#818): sit it under the button row
     /* ...AND UNDER THE SPEED BAR (S-4, #653). The speed bar starts ~10 px below the tools row and
      * Main Menu sits right above its 60x / 600x buttons, so a bubble hugging the tools row covered
@@ -7841,8 +7841,9 @@
     var tip = $('mainMenuTip'); if (!tip) return;
     tip.hidden = false;
     aimMainMenuTip(tip);
+    var mmb = $('mainMenuBtn'); if (mmb) mmb.classList.add('mm-ring');
     clearTimeout(missionTipT);
-    missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
+    missionTipT = setTimeout(function () { tip.hidden = true; if (mmb) mmb.classList.remove('mm-ring'); }, 6000);
     markSeen('session');
   }
   // Called whenever something that the mission window displays has changed
