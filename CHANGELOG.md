@@ -30,6 +30,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.4-rc9] — 2026-11-03
+
 ### Fixed — Main Menu coach tip no longer covers the play and speed buttons (S-4, #653)
 
 - The 6 s "Reopen it here any time" tip now takes no clicks (`pointer-events: none`) and sits below the speed bar (tip y 93 to 133 at 1600x1000, speed bar y 98-128); the the ▲ is hidden (it read as naming 600x) and Main Menu pulses a ring for the same 6 s instead. `verify_e2e_ui` hit-tests all seven buttons while it shows.
@@ -51,8 +53,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - New route check `first` in `run_walkthrough_routes`: a leg's first step must not light Continue within 5 plant-s with nothing pressed (no `entry_met` or no-command exemption). Injection `heatup_confirm_first` (the pre-#823 layout rebuilt) turns it red at +0.2 s. `pwr_startup`, `pwr_raise_power` (confirm-only openers, outside this ruling) and `pwr_tmi2_incident` (narrative opener) carry a declared `first_step_confirm` exemption.
 - Critic round 1: rows 1a, 1b and the shutdown-bank row of 1d stand down (row-level `overtaken`, AGENT-DRAFTED labels) when the plant is already past them. Before the fix, a walkthrough started in place on `hot_shutdown` or with the shutdown bank out stranded at step 1 for 30 plant-min (MEASURED on b7897bd1). After it, step 1 checks off at +21.0 / +20.9 plant-s. New heatup routes `hot_start` and `bank_out_start`; the `first` check also requires step 1 to carry a command. Proved by three injections.
 - Every keyed reference to a heatup step index moved down one (route table, `run_checklist_pwr2` maps, `manual_ui_map`, `verify_tmi_callout`, `verify_ckl_relevance`'s fixture now presses ON). Telemetry `walkthrough_step` indices for `pwr_heatup` shift by one from this release.
-
-## [Alpha 1.8.4-rc8] — 2026-10-16
 
 - CLAUDE.md pruned from 14,998 words to under 5,000 (2026-10-18): every rule kept as a dated one-liner, verbatim owner quotes moved to `Blueprint/RULINGS.md`, procedure moved to skills `gate-layers`, `issue-workflow`, `manual-edit`, `walkthrough-change`, `version-changelog`; standing-list detail to `Blueprint/TRAPS.md`. New `PreToolUse` hook `tools/hook_guard_push_merge.js` asks on any push or develop-moving merge and denies a lane push.
 - Polish review fixes (2026-10-15). Walkthrough auto-speed key: on a step with a per-row rung, only the row that carries its own `wait_speed` gets its own key; the other rows share a segment key (`|step`, `|step@k`), so a row ticking at the same wanted speed no longer re-forces the step's rung over the player's choice (TMI-2 step 9: RCS INVENTORY latching re-forced 60x). Narrow layouts (1200 px and under): the bottom row is 176 px in both alarm states, 3 chart lanes when quiet (was 2 after the fold change), board stage 0 px movement at 1180x820, 1100x800, 1024x768, 900x700. Text: raise power 5b note names the next line's real condition (AVG COOLANT TEMPERATURE below 558 °F) and drops the game talk; SR spelled out on first use in startup and TMI-2; heatup 11 "stays lit"; startup 10a "3 steps short of the 1/M prediction"; PORV Open chart-lane hint describes the true valve position it plots. verify_flags_ui 101 -> 102 (injection-proven).
