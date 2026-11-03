@@ -7017,8 +7017,8 @@
     var IL = RD.InstructorLayer;
     if (!cklSnap || !IL || !IL.prototype._grade) return true;   // cannot tell: never hide a press
     var met = false;
-    /* AN ARRAY IS AN AND (#824): startup 8b pulses only while STARTUP RATE is near zero AND SOURCE RANGE is at the
-     * 7.0e3 point — a rate-only cue lit Plot point through 8a's overshoot recovery (insert, settle, re-approach). */
+    /* AN ARRAY IS AN AND (#824): every condition must hold. No pool row uses an array today — startup 8b is the single
+     * band STARTUP RATE 0 to +0.035; the motion rule above is what keeps its pulse dark through 8a's recovery insert. */
     try { met = [].concat(e.hl_when).every(function (c) { return !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, cklSnap, c).met; }); }
     catch (x) { return true; }
     if (met) cklWhenLatch[k] = true;

@@ -3236,17 +3236,17 @@
                     * sentence, AGENT-DRAFTED. A let-go 7 or more steps past the 7.0e3 bank leaves STARTUP RATE level at +0.06 to
                     * +0.15 and trips SR HIGH FLUX 10.5 / 4.6 / 0.35 plant-min after the release (7 / 10 / 20 past); 6 past trips
                     * on seed 7. THE BAND IT MUST LAND IN is step 10's: 10a stops at the prediction minus 3, so a HIGH prediction
-                    * is the danger side (#748) and the stop must sit below the true critical position (prediction <= critical
-                    * + 2); a LOW one is the slow side, outside the step's own "never below" record (`run_walkthrough_routes`
+                    * is the danger side (#748) and the stop must sit at or below the first critical bank (prediction <= critical
+                    * + 3); a LOW one is the slow side, outside the step's own "never below" record (`run_walkthrough_routes`
                     * plot_band). Inserting back to 8a's own position (202) and plotting AT ONCE reads low, 205 against 207: the
                     * count is still falling. Waiting for STARTUP RATE to climb back to 0.00 plots it on its way back UP, as 8a's
                     * own point is. MEASURED (routes harness, seeds 42 / 7, 5 / 6 / 7 / 10 past, recovery 30 / 60 / 120 plant-s
-                    * after the tile first draws 2.0e4, a player who reads the text AND one who plots on 8b's pulse): 48 of 48
-                    * complete, no trip, prediction 207 against a true critical 207 (seed 42) and 209 against 208 (seed 7), all
-                    * in the band; step 8 takes 7.9-17.0 plant-min (typical 4.1-5.5). The typical route reads 209 / 211 against
-                    * 207 / 208, so seed 7's typical sits at +3, OUTSIDE the band, before any recovery (flagged, not changed).
+                    * after the tile first draws 2.0e4, a player who reads the text AND one who plots on 8b's pulse, each to step 10): 48
+                    * of 48 no trip, prediction 207 against a true critical 207 (seed 42) and 209 against 208 (seed 7), all
+                    * in the band (the gate rides 10 past / 60 s on seed 42 to the end of the leg, both readers); step 8 takes 7.9-17.0 plant-min (typical 4.1-5.5). The typical route reads 209 / 211 against
+                    * 207 / 208 (seed 7 at +3, the band's top; seeds 123 and 1 read 209 / 207).
                     * 20 past is NOT covered: the count is past 2.0e4 at the release and SR HIGH FLUX trips 21 plant-s later.
-                    * Rejected, measured on the pulse reader: 185 / under 5.0e3 / "do 8a again" (seed 7 210-212, 11 of 12 out);
+                    * Rejected, measured on the pulse reader: 185 / under 5.0e3 / "do 8a again" (seed 7 210-212, one at +4, out);
                     * 192 / under 5.5e3 and 6.0e3 (strands and -1). The cue never fires on the typical route (SOURCE RANGE peaks
                     * 13,949 / 13,221). `run_walkthrough_routes` overshoot_8_recover reads this sentence off the card. */
                    note: 'Expect it near CONTROL ROD POSITION 202. Keep the clock at 5× while you hold: faster, and the rods overshoot before the count shows it. If SOURCE RANGE passes 2.0e4, the rods went too far: press MED, insert to 202, then plot once STARTUP RATE climbs back to 0.00 or more.',

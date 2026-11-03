@@ -81,7 +81,7 @@ var ROUTES = {
     /* #824: 12a ticks on its own +0.15 read on the card's route; its row-level `overtaken` (REACTOR POWER 1.0 %) is the
      * stop-short player's relief only (MEASURED: the typical route ticks 12a 15-20 plant-min before power reaches 1 %) */
     own_row: { step: 12, row: 1 },
-    plot_band_step: 8,   // #824: the 1/M prediction step 10 stops on sits in [true critical, true critical + 2]
+    plot_band_step: 8,   // #824: the 1/M prediction step 10 stops on sits in [true critical, true critical + 3]
     entry_met: ['#1', '#2', '#3', '#18'],   // #808: the feed transfer is new step 13, so 13-17 moved to 14-18   // the card says these read true on arrival (final: the whole list)
     steps: {
       /* THE WINDOW IS WHERE THE COUNT TARGET LIES, NOT A STOP THAT GUARANTEES IT *(OWNER RULING,
@@ -176,9 +176,15 @@ var ROUTES = {
       { id: 'stop_short_12', kind: 'undershoot', at: '#12', typical_base: true, must_complete: true, set: { stop_at: 0.10 } },
       /* LET GO 10 PAST 7.0e3 on 8a (no recovery: SR HIGH FLUX trip 4.6 plant-min after the release), and 8a's note's own
        * recovery a plant-minute after SOURCE RANGE draws its cue (OWNER RULING 2026-11-02: "Yes to adding the recover step
-       * to step 8."). The plot it ends on must sit in step 10's band, true critical to true critical + 2 (`safe_plot` -> `plot_band`;
+       * to step 8."). The plot it ends on must sit in step 10's band, true critical to true critical + 3 (`safe_plot` -> `plot_band`;
        * HIGH is the danger side, #748). MEASURED, "insert 10 back after 2 min" plotted at once on the falling count: 205 against a true 207, the slow side. */
       { id: 'overshoot_8_recover', kind: 'overshoot', at: '#8', typical_base: true, must_complete: true, safe_plot: true, set: { past: 10, recover_s: 60, plot_on_pulse: true } },   // the player follows the board: plots the broadcast 8b's pulse lights
+      /* #824 critic round 2: the same overshoot for a player who reads the TEXT (plots once STARTUP RATE reads the number the
+       * sentence names, rods still), not the pulse -- so the sentence's "0.00" is gated, not only the board's cue */
+      { id: 'overshoot_8_recover_text', kind: 'overshoot', at: '#8', typical_base: true, must_complete: true, safe_plot: true, set: { past: 10, recover_s: 60 } },
+      /* #824 critic round 2: the typical route on a SECOND seed, so `plot_band` is not pinned to seed 42's one point (seed 7
+       * MEASURED 211 against 208, +3: the band's top). No player mistake: the typical policy, another seed. */
+      { id: 'typical_seed7', kind: 'seed', at: '#8', typical_base: true, seed: 7, must_complete: true, band: true, set: {} },
       /* #808: SG FEED AUTO pressed straight from the aux-feed level, skipping 13a's manual fill -- the
        * card's own warning ("switched on 30 points below that it rushes cold water in"). MEASURED on the
        * harness: Tavg -9.8 degF in a minute, power 0.9 -> 3.9 % with rods still, no trip; the step must
@@ -562,6 +568,9 @@ var MUTATIONS = [
   { id: 'startup8_pulse_early', route: 'overshoot_8_recover', expect: 'plot_band',
     why: "8b's pulse widened to any rising rate (0 to +1.0): it lights the broadcast the late let-go stops, past critical, before any recovery (the HIGH, danger side: plotting at +0.11 on 202 MEASURED 211 against 207)",
     mutate: function (P) { P.steps[7].accs[1].hl_when = { p: 'startup_rate_dpm', op: '~', v: 0.5, tol: 0.5 }; } },
+  { id: 'startup8_text_floor', route: 'overshoot_8_recover_text', expect: 'plot_band',
+    why: "8a's recovery reading 'climbs back to -0.50' instead of 0.00: the text reader plots on the falling count the moment the insert stops (the LOW side)",
+    mutate: function (P) { P.steps[7].accs[0].note = P.steps[7].accs[0].note.replace('climbs back to 0.00', 'climbs back to -0.50'); } },
   { id: 'startup8_no_recovery', route: 'overshoot_8_recover', expect: 'must_complete',
     why: '8a note without its recovery sentence (the pre-#824 card: 10 past trips on SR HIGH FLUX)',
     mutate: function (P) { P.steps[7].accs[0].note = P.steps[7].accs[0].note.replace(/ If SOURCE RANGE passes[^]*$/, ''); } },
@@ -843,7 +852,7 @@ function runJob(legId, routeId, mutId, ctx) {
 
   var svc = ctx && ctx.svc;
   if (!svc) {
-    svc = new RD.SimulationService({ seed: +(process.env.WR_SEED || 42) });   // WR_SEED: a measurement knob, never the gate
+    svc = new RD.SimulationService({ seed: +(process.env.WR_SEED || (MIS0 && MIS0.seed) || 42) });   // WR_SEED: a measurement knob, never the gate; a mistake's `seed` (#824 typical_seed7) is
     svc.selectPlant('pwr2', proc.from, null, undefined);
     svc.running = true; svc.attentionStops = false; svc.speedHolds = false;
     svc.configurePacing({ warp: true });
@@ -1879,22 +1888,24 @@ function verdicts(r) {
       name: 'skipping the SR block trips the reactor on SR HIGH FLUX, named, within the minutes the step 9 note states',
       note: res.kind + ' ' + (res.why || '') + ' | ' + f(dtm, 2) + ' plant-min after the first rod motion (stated at most ' + s0.sr_trip_max_min + ')' };
   }
-  /* #824 THE PLOT BAND, TWO-SIDED (critic round 1 corrected the direction). 10a holds SLOW to the prediction minus 3
-   * (`reach_1m`), and the step's own record (#748, the 600 s settle note on step 10) rests on the prediction reading
-   * HIGH by 0-1 step, so "3 short" lands about 3 below critical. So: HIGH is the danger side -- the 10a stop must sit
-   * BELOW the true critical position, prediction - 3 < critical, i.e. prediction <= critical + 2 -- and LOW is the slow
-   * side, which breaks the step's "never below" record and 10b's "12 to 14 steps past the 10a position", so the floor is
-   * critical. Checked on the typical route and on every `safe_plot` mistake; critical is the first bank the leg reaches
-   * at true reactivity >= 0. */
+  /* #824 THE PLOT BAND, TWO-SIDED (critic rounds 1-2; the band's top is the coordinator's call, 2026-11-03). What step
+   * 10 says: its aim, "The prediction is good to about three steps, so the rods stop short of it" -- "it" is the
+   * PREDICTION -- and 10a, "hold CONTROL WITHDRAW until CONTROL ROD POSITION is 3 steps short of the predicted
+   * position" (`reach_1m`); 10b then holds WITHDRAW at SLOW until STARTUP RATE reads +0.5, past critical by design. So
+   * HIGH is the danger side (#748): the 10a stop, prediction - 3, must be AT OR BELOW the first critical bank, i.e.
+   * prediction <= critical + 3. LOW is the slow side, below the step's own "only its sign is fixed ... never below"
+   * record, so the floor is critical. Critical = the first bank the leg reaches at true reactivity >= 0. MEASURED, the
+   * typical route: 209 vs 207 on seeds 42 / 123 / 1 (+2), 211 vs 208 on seed 7 (+3). Checked on the typical route,
+   * on `typical_seed7` (so the band is not pinned to one seed) and on every `safe_plot` mistake. */
   var PB = ROUTES[r.leg] && ROUTES[r.leg].plot_band_step;
   var MD0 = ((ROUTES[r.leg] || {}).mistakes || []).filter(function (m) { return m.id === r.route; })[0];
   var sp0 = PB ? (r.steps || []).filter(function (st) { return st.n === PB; })[0] : null;
   var critL = (r.steps || []).map(function (st) { return st.crit_seen; }).filter(function (x) { return x != null; })[0];
-  if (PB && (r.route === 'typical' || (MD0 && MD0.safe_plot))) {
+  if (PB && (r.route === 'typical' || (MD0 && (MD0.safe_plot || MD0.band)))) {
     var pp = sp0 && sp0.pred_now;
     var recRan = !(MD0 && MD0.safe_plot) || !!(sp0 && sp0.recover && sp0.recover.rel_bank != null);
-    v.plot_band = { ok: recRan && pp != null && critL != null && pp >= critL && pp <= critL + 2,
-      name: 'the step ' + PB + ' 1/M prediction sits in the band step 10 relies on: true critical <= prediction <= true critical + 2 (10a stops below critical)',
+    v.plot_band = { ok: recRan && pp != null && critL != null && pp >= critL && pp <= critL + 3,
+      name: 'the step ' + PB + ' 1/M prediction sits in the band step 10 relies on: true critical <= prediction <= true critical + 3 (10a stops at or below the first critical bank)',
       note: (recRan ? '' : 'THE CARD RECOVERY NEVER RE-RELEASED | ') + 'prediction ' + pp + ' against true critical ' + critL + (sp0 && sp0.pulse_at ? ' | plotted on the pulse ' + JSON.stringify(sp0.pulse_at) : '') +
         (sp0 && sp0.recover ? ' | recovery ' + JSON.stringify(sp0.recover) : '') + (sp0 && sp0.plot_bank != null ? ' | plot at bank ' + sp0.plot_bank + ', SR ' + sp0.plot_sr : '') };
   }
