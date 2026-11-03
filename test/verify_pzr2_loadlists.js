@@ -65,7 +65,13 @@ var ENGINE = /['"][^'"]*pwr_engine\.js['"]/;
 var carriers = [], missing = [], misordered = [];
 
 files.forEach(function (rel) {
-  var txt = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  /* A FILE THAT VANISHES BETWEEN THE LISTING AND THE READ IS SKIPPED (2026-11-03): under the
+   * parallel `run_all`, run_ci_shards.js creates and deletes test/run_zz_ci_shards_probe_delete_me.js,
+   * and this scan listed it then hit ENOENT -- an aggregate DRIFT with no defect behind it. A file
+   * that no longer exists cannot be a carrier in the shipped tree; any other read error still throws. */
+  var txt;
+  try { txt = fs.readFileSync(path.join(ROOT, rel), 'utf8'); }
+  catch (e) { if (e && e.code === 'ENOENT') return; throw e; }
   if (!V1.test(txt)) return;
   // Two files NAME the pressurizer sources without loading them, and both are excluded by
   // path rather than by cleverness: the v2 module (its header quotes the v1 filename) and
