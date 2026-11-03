@@ -29,6 +29,33 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-02-develop-a (walkthrough completion from live telemetry; two of my own drop-off causes refuted)
+
+Read-only analysis; no sim change. Source: `tools/site_report.js --days=90` plus raw `walkthrough_*`
+rows (public channel, 2026-09-16 → 2026-11-02; session counts are floors). Scratch scripts were not kept.
+
+- **Completion by leg (sessions):** heatup 87/178 (49 %), startup 35/95 (37 %), raise 28/39 (72 %),
+  lower 16/28 (57 %), shutdown 15/19 (79 %), cooldown 10/21 (48 %). Only 4 sessions ran all six legs.
+  Leg-to-next handoffs in the same session run 61–100 %.
+- **Heatup step 1 is the biggest single loss: 48/178 sessions (27 %) never finish it.** Measured in
+  headless Edge (Main Menu → Walkthroughs → heatup Start): all four rows tick within 3 s and the panel
+  reads "Step done — press Continue." The 41 who ended the leg there spent a median of 47 s in it. So the
+  step asks nothing of them; they leave on a screen whose only action is Continue.
+- **REFUTED (mine): "a launcher starts the heatup on the hot plant and step 1 can never pass."** The one
+  `data-ckl-start` button is the post-leg Next handoff (`ui/app.js` near line 6742; the "Checklists tab"
+  comment near line 11380 is stale). The manual's Procedures (live) 📋 Walkthrough button does run on the
+  plant as it sits (by design, #660). Measured at 580 °F (304 °C): the leg jumps to step 4 within 6 s, so
+  it does not stall on step 1. The 56 % vs 25 % gap I first reported was an artifact: in-sim leg buttons
+  fire a click event only when the button is "Next up", so a session with no click logged still loaded
+  cold shutdown.
+- **REFUTED (mine): "lower power step 1 stalls on the boron ON-resets-target trap."** None of the 8
+  sessions stalled there sent any boron command; 5 of them left within 1.5 min.
+- **Open:** startup step 8 (the final 1/M plot point) was rewound 24 times by 15 sessions, always after
+  rod moves; step 12 (raise power to about 1 %) 41 times by 6 sessions. Telemetry carries action names
+  but not values, so it cannot say whether these were overshoots or early plots.
+- **Oddity, unverified as a defect:** heatup started from the manual at full power marks steps 1–3 done.
+  That includes step 1, which grades AVG COOLANT TEMPERATURE below 200 °F (93 °C) while it reads 580 °F.
+
 ## Session log — 2026-10-18-develop-a (CLAUDE.md pruned 14,998 → under 5,000 words; push/merge guard hook)
 
 Owner approved two changes from the Claude Code best-practices guide: keep CLAUDE.md short (ask of
