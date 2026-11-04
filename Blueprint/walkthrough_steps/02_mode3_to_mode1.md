@@ -263,7 +263,7 @@ Note: About 2 plant-minutes after the rods stopped in step 10.
 
 Suggested time warp: 1×. While you wait for a read you can press 10× yourself; a tap is still one step.
 
-Note: STARTUP RATE reads negative while the rods go in and settles over two plant-minutes. INTER RANGE levels near 7e-9 A. The check-off comes two plant-minutes after your last rod motion.
+Note: STARTUP RATE reads negative while the rods go in and settles over two plant-minutes. INTER RANGE levels near 1.0e-8 A; the later the insert starts, the higher it levels: about 2.0e-8 A a plant-minute late. The check-off comes two plant-minutes after your last rod motion.
 
 ()11c. Write down CONTROL ROD POSITION, the critical rod position, and compare it with the 1/M prediction.
 

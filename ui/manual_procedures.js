@@ -3871,7 +3871,7 @@
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
                    ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 3 seconds at 5× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
-                   note: 'Expect INTER RANGE to level near 1.0e-8 A, higher if the insert starts late: up to about 2.0e-8 A.',   /* #825 layman S-8, MEASURED: typical 8.7e-9; 10 back on time 1.2e-8; 60 s late 12 back 1.4e-8, 10 back 2.0e-8 (layman 1.5e-8) */
+                   note: 'Expect INTER RANGE to level near 1.0e-8 A; the later the insert starts, the higher it levels: about 2.0e-8 A a plant-minute late.',   /* #825 layman S-8, MEASURED: typical 8.7e-9; 10 back on time 1.2e-8; 60 s late 12 back 1.4e-8, 10 back 2.0e-8 (layman 1.5e-8); critic L-2, every startup mistake route: 7.9e-9 to 9.1e-9 on time, rewind_mid_10 1.9e-8, clear_1m_10 5.0e-8 (arrives late) */
                    /* 1 -> 5 (OWNER, 2026-11-03, #825: "mode 3-1 step 11b should be 5x warp."). MED is 0.8 steps a
                     * plant-second, so the 12-step insert is 15 plant-s: 3 s of wall at 5x, 15 s at 1x. */
                    wait_speed: 5,
@@ -4656,10 +4656,10 @@
            * the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG
            * COOLANT TEMPERATURE is back in its band" — and `hl` offered no INSERT target. */
           hl: ['Load Setpoint', 'Withdraw', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output'] },
-        { text: 'Take the last stage to full load and settle the temperature on 578 °F.',
+        { text: 'Take the last stage to full load and settle the temperature near 580 °F.',
         why: 'REACTOR POWER settles near 101 %. The control bank ends part-way out, because boron carried most of the reactivity the climb cost.',
-          aim: '578 °F is this plant\'s full-power temperature.',
-          control: 'Control Bank', target: 'OUTPUT 100 MWe; AVG COOLANT TEMPERATURE 578 °F',
+          aim: '580 °F is this plant\'s full-power program temperature.',   /* critic M-1 (e4949322): tavg_full_c 304.5 = 580.1 degF, pwr2_dumpctl.js; no ruling on 578 */
+          control: 'Control Bank', target: 'OUTPUT 100 MWe; AVG COOLANT TEMPERATURE near 580 °F',
           cmd: { action: 'set_load_target', mwe: 100 }, hold: 900, wait_hint: false,
           /* 10 -> 5 STEPS SINCE LAYMAN PASS 7 (2026-09-26): the old cmd-kind 8b was satisfied by a bare
            * press the replay issued on its own, and without it the 10-step pull ended the hold at 583.4 degF,
@@ -4685,7 +4685,7 @@
                    hl: ['Withdraw'], hl_watch: ['Tavg'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 573 °F or more, 10 to 20 steps. Otherwise leave the rods.',
                    note: 'Stop at 573 °F: the boron still arriving takes it to about 580 °F. After a slow climb the boron has already arrived, and it stays near 573 °F. If CONTROL ROD POSITION stops during a pull, wait for REACTOR POWER under 103 %, then pull again.',
-                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 578)' },
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 580)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, label: 'AVG COOLANT TEMPERATURE still between 573 and 583 °F' },
                  { p: 'control_bank_steps', op: '<', v: 600,
                    hl_watch: ['Control Rod Position'],
@@ -4732,7 +4732,7 @@
                   * told the player the number should already be there; it never is on any measured route. */
                  { p: 'boron_ppm', op: '<', v: 663,
                    hl_watch: ['Boron Concentration'],
-                   ask: 'Wait for BORON CHEM to fall to 663 ppm or below. The dilution you set in step 3 gets there about 45 plant-minutes after step 3: about 23 more after a brisk climb, none after a slow one.',   /* #825 layman S-5, MEASURED 663 ppm at 44.2 / 45.1 / 45.0 plant-min after step 3 (typical / chain / slow chain): 22.4, 23.3, 0.1 min into this step; ends 580.1 / 580.7 / 573.4 degF */
+                   ask: 'Wait for BORON CHEM to fall to 663 ppm or below.', note: 'The dilution you set in step 3 gets there about 45 plant-minutes after step 3: up to about 26 more here after a brisk climb, none after a slow one.',   /* the timing moved to a note: the ask is capped at 30 words (run_checklist_pwr2_b) */   /* #825 layman S-5, MEASURED 663 ppm at 44.2 / 45.1 / 45.0 plant-min after step 3 (typical / chain / slow chain): 22.4, 23.3, 0.1 min into this step; ends 580.1 / 580.7 / 573.4 degF; critic L-2, all raise mistake routes: 663 ppm 43.8-46.3 plant-min after step 3, 17.3-25.8 into this step (band_floor 21.9, hot_stage4 19.9), ends 579.8-580.5 degF */
                    label: 'BORON CHEM 663 ppm or below' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8,
                    hl: ['Insert'], hl_watch: ['Tavg'],
@@ -4939,7 +4939,7 @@
                  { p: 'tavg_c', op: '<', v: 302.49,
                    hl_watch: ['Tavg'],
                    ask: 'After the last cut, keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 577 °F, the top of its green band.',
-                   note: 'About 30 taps in all from 580 °F, the ones after each cut included; about 15 if it starts near 573 °F. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.',   /* #825 layman S-7, MEASURED inserts in step 2: 30 from the hot_full_power preset and the fast chain (580 degF), 15 on the slow-climb chain (573 degF; the layman 12) */
+                   note: 'About 30 taps in all, the ones after each cut included, cutting a plant-minute apart from 580 °F; slower cuts or a cooler start need fewer, down to about 15. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.',   /* #825 layman S-7, MEASURED inserts in step 2: 30 from the hot_full_power preset and the fast chain (580 degF), 15 on the slow-climb chain (573 degF; the layman 12); critic L-2 mistake routes: slow_cut 21, slow_cut_180 18 (insert_x2 / rods_lead_2 are one 80-step insert, no taps) */
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 577 °F' },
                  { p: 'power_pct', op: '<', v: 80,

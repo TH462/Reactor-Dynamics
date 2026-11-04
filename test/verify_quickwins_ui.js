@@ -425,7 +425,52 @@ function ck(name, ok, detail) {
   var lpCut = await lpState();
   ck('QW9 Shutdown Part 1 step 2 opens at 1x and the walkthrough sets 10x once the first LOAD cut lands', lpIn.step === 1 && lpIn.speed === 1 && lpCut.step === 1 && lpCut.speed === 10, JSON.stringify([lpIn, lpCut]));
   ck('QW9 ...and #warpInfo says the walkthrough set it, never "nothing to do" while the card still asks for cuts', /^The walkthrough set the speed to 10/.test(lpCut.info) && !/nothing to do/.test(lpCut.info), JSON.stringify(lpCut));
+  /* critic L-1 (e4949322): the hand-back line, and the plain raise line on a step WITHOUT `pair` (the layman's S-2 form). The route
+   * is the critic's probe: LOAD 75 in one command and 40 single INSERT taps finish step 2 in about 48 s of wall. */
+  await lp2.page.evaluate(function () { RD.__dev.cmd({ action: 'set_load_target', mwe: 75 }); });
+  for (var lpn = 0; lpn < 40; lpn++) {
+    await lp2.page.evaluate(function () { RD.__dev.cmd({ action: 'rod_nudge', group_id: 'control_rods', steps: -1, speed: 'med' }); });
+    await lp2.page.waitForTimeout(150);
+  }
+  var lpDone = null;
+  for (var lpt = 0; lpt < 150 && !lpDone; lpt++) {
+    var lpx = await lpState();
+    if (/Step done/.test(lpx.info)) { await lp2.page.waitForTimeout(1500); lpDone = await lpState(); }
+    else await lp2.page.waitForTimeout(1000);
+  }
+  ck('QW9 when step 2\'s rows are met the walkthrough hands the clock back to 1x and #warpInfo says why', !!lpDone && lpDone.step === 1 && lpDone.speed === 1 && /^Step done/.test(lpDone.info), JSON.stringify(lpDone));
+  await lp2.page.evaluate(function () { var b = document.querySelector('.wt-continue.ready'); if (b) b.click(); });
+  await lp2.page.waitForTimeout(2000);
+  await lp2.page.evaluate(function () { RD.__dev.cmd({ action: 'set_load_target', mwe: 70 }); });
+  await lp2.page.waitForTimeout(2500);
+  var lp3 = await lpState();
+  ck('QW9 step 3 (no chart pair): the plain line "The walkthrough set the speed to 10x." after the first cut', lp3.step === 2 && lp3.speed === 10 && lp3.info === 'The walkthrough set the speed to 10\u00d7.', JSON.stringify(lp3));
   await lp2.ctx.close();
+
+  /* critic L-4 (e4949322): a failed `outcome_guard` (#715) is said IN the completion line, amber, not below the fold. Lower power
+   * finished on the full-power preset, then the turbine tripped: `turbine_tripped < 1` fails, `outcome_verified` goes false. */
+  var og = await session({ width: 1366, height: 768 });
+  await og.page.evaluate(function (l) { var b = document.createElement('button'); b.setAttribute('data-ckl-start', l); document.body.appendChild(b); b.click(); }, 'pwr_lower_power');
+  await og.page.waitForTimeout(800);
+  for (var ogk = 0; ogk < 20; ogk++) {
+    var ogc = await og.page.evaluate(function () { var c = RD.__dev.service().instructor.checklist; return c ? { c: c.complete, i: c.step_index } : null; });
+    if (!ogc || ogc.c) break;
+    await og.page.evaluate(function (i) { RD.__dev.cmd({ action: 'checklist_check', index: i }); }, ogc.i);
+    await og.page.waitForTimeout(250);
+  }
+  await og.page.waitForTimeout(1500);
+  function ogHead() { return og.page.evaluate(function () { var h = document.querySelector('#cklRun .ckl-complete-head'), l = document.getElementById('cklLog');
+    var r = h && h.getBoundingClientRect(), lr = l && l.getBoundingClientRect();
+    return { text: h ? h.textContent : null, warn: !!(h && h.classList.contains('ckl-complete-warn')), inView: !!(r && lr && r.height > 0 && r.top >= lr.top - 1 && r.bottom <= lr.bottom + 1),
+             recap: !!document.querySelector('#cklRun .ckl-complete') }; }); }
+  var ogOk = await ogHead();
+  await og.page.evaluate(function () { RD.__dev.cmd({ action: 'trip_turbine' }); });
+  await og.page.waitForTimeout(2500);
+  var ogBad = await ogHead();
+  ck('QW10 a finished leg whose board matches its finish draws the green line and the recap', !ogOk.warn && /^\u2713 Walkthrough complete$/.test(ogOk.text || '') && ogOk.recap, JSON.stringify(ogOk));
+  ck('QW10 ...and once the board stops matching (turbine tripped) the line turns amber, says so, and stays in view', ogBad.warn && /does not match/.test(ogBad.text || '') && ogBad.inView && !ogBad.recap, JSON.stringify(ogBad));
+  await og.ctx.close();
+
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));

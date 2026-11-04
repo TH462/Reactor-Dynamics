@@ -6231,7 +6231,11 @@
      * at 1366x768 (title top 516 / 472 px into a 467 px log) and sat on the floor at 1600x1000 on the layman's own
      * route (box top 930 px = log bottom). The title moves here, one line, in view whenever the head is; the recap
      * (`.ckl-complete`, below the step) keeps the outcome. */
-    if (ck.complete) h += '<div class="ckl-complete-head">✓ Walkthrough complete</div>';
+    /* ...and the #715 mismatch rides IN this line (critic L-4, e4949322): below the kept step it fell under the fold, under a
+     * green tick. `outcome_verified === false` = the leg's `outcome_guard` fails on the live plant: the line turns amber and says so. */
+    if (ck.complete) h += ck.outcome_verified === false
+      ? '<div class="ckl-complete-head ckl-complete-warn">⚠ Walkthrough complete, but the board does not match this leg\'s expected finish. Read the board.</div>'
+      : '<div class="ckl-complete-head">✓ Walkthrough complete</div>';
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
@@ -6736,10 +6740,9 @@
        * before, so every leg without one is unaffected. */
       var outcomeOk = ck.outcome_verified !== false;
       var outTxt = cklRouteField(pr, ck, 'outcome');   // the recap of the route this run took (#670)
-      if (outTxt) h += '<div class="ckl-complete">' +   /* the recap; titled by `.ckl-complete-head` above the kept step (#825 S-3) */
-        ((outcomeOk ?'<div class="m-note' + (outTxt.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(outTxt) + '</div>'   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
-                       : '<div class="m-note">Steps checked off, but the board does not match ' +
-                         'this leg\'s expected finish. Read the board, not this note.</div>')) + '</div>';
+      /* the recap; titled by `.ckl-complete-head` above the kept step (#825 S-3). On a failed guard the recap's claim is
+       * withheld here and the warning is the head line's (critic L-4). */
+      if (outTxt && outcomeOk) h += '<div class="ckl-complete"><div class="m-note' + (outTxt.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(outTxt) + '</div></div>';   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
     }
     h += '</div>';
     // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg

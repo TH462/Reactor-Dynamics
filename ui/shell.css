@@ -2773,6 +2773,7 @@ select.num-input { width: auto; }
    scroll shows it with the step head at every viewport; the recap box above stays below the step. */
 .ckl-complete-head { text-align: center; border: 1px solid var(--running); border-radius: 8px; padding: 4px 8px;
   color: var(--running); font-weight: 600; margin-bottom: 6px; }
+.ckl-complete-head.ckl-complete-warn { border-color: #d8a657; color: #d8a657; text-align: left; }   /* the #715 mismatch: the board's caution amber (critic L-4) */
 .ckl-btns { display: flex; gap: 6px; }
 .ckl-btns .btn { flex: 1; }
 

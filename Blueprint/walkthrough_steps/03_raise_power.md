@@ -150,6 +150,8 @@ Suggested time warp: 1×.
 
 ()6b. Wait for OUTPUT to reach 75 MW. AVG COOLANT TEMPERATURE sags meanwhile; the next line answers it.
 
+Note: Pressurizer Pressure Low can light here too: expected. It clears as the pulls warm the water.
+
 Suggested time warp: 10×, while OUTPUT climbs.
 
 ()6c. If AVG COOLANT TEMPERATURE reads below 566 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 566 °F or more, about 30 steps. Otherwise leave the rods.
@@ -196,9 +198,9 @@ Above 103 % power the plant stops the rods; at 115 % it trips the reactor. 100 M
 
 
 
-8. Take the last stage to full load and settle the temperature on 578 °F.
+8. Take the last stage to full load and settle the temperature near 580 °F.
 
-*578 °F is this plant's full-power temperature.*
+*580 °F is this plant's full-power program temperature.*
 
 ()8a. Set LOAD to 100 MW.
 
@@ -271,7 +273,7 @@ each step's `a` action, word for word):
 5. Take the second stage to 50 MWe the same way.
 6. Take the third stage to 75 MWe the same way.
 7. Take the fourth stage to 90 MWe with a smaller pull.
-8. Take the last stage to full load and settle the temperature on 578 °F.
+8. Take the last stage to full load and settle the temperature near 580 °F.
 9. Confirm full power, with the boron dilution done.
 10. Start giving back the reactivity xenon takes, rods first.
 11. Give boron its first small dose as xenon builds.

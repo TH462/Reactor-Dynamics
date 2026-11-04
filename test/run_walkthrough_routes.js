@@ -1043,8 +1043,15 @@ function runJob(legId, routeId, mutId, ctx) {
                  est_s: typeof estR === 'number' ? estR : null, est_from: estF || null, t0_min: (t() - T0) / 60,
                  est_alt: routeField(st, c.done_by, '__alt_wait_est') === true };
       /* pass 6: "settle(s) on N degF" (settle_check) and the alarms a step must not raise (forbid_raise) */
-      var stx = [st.text].concat((st.accs || []).map(function (e) { return e.ask || ''; })).join(' '), sm = /settles? (?:the temperature )?on (\d{3}) °F/.exec(stx);
-      if (table.settle_check && sm) out[k].settle = +sm[1];
+      var stx = [st.text].concat((st.accs || []).map(function (e) { return e.ask || ''; })).join(' '), sm = /settles? (?:the temperature )?(?:on|near) (\d{3}) °F/.exec(stx);   /* + 'near' (critic M-1, 2026-11-04): raise 8 now says 'near 580' */
+      if (table.settle_check && sm) {
+        out[k].settle = +sm[1];
+        /* the card's OWN stop, read from its text: a step whose note says "Stop at N degF" and lets the boron still arriving finish
+         * the settle (raise 8, "near 580", critic M-1 2026-11-04) completes there. From the TEXT, not the graded row: the injection
+         * raise_old_settle_band widens the row to 563-592, and a floor taken from the row went hollow with it (MEASURED: "all inside"). */
+        var sStop = /Stop at (\d{3}) °F/.exec([st.note || ''].concat((st.accs || []).map(function (e) { return (e && e.note) || ''; })).join(' '));
+        if (sStop) out[k].settle_floor = +sStop[1];
+      }
       /* 2026-09-26 (lower-power 4-6 walked, owner ruling "Walk them too"): a note that says the tile
        * stays "under about N °F" is a peak claim, graded on the player route (`peak_check`) */
       var ntx = [st.note || ''].concat((st.accs || []).map(function (e) { return e.note || ''; })).join(' '), pk = /under about (\d{3}) °F/.exec(ntx);
@@ -2013,10 +2020,19 @@ function verdicts(r) {
   /* pass 6 (2026-09-26): "settle on N degF" means N, not the band floor (S-7); an alarm a step's card
    * must not raise on the player's route (S-5); the SI blocks a cooldown sets are gone again when
    * the round trip's heatup reaches normal pressure (the ECCS seam). */
-  var st8 = (r.steps || []).filter(function (st) { return st.settle != null && st.at_done && Math.abs(st.at_done.tavg_F - st.settle) > 5.4; });
+  /* TWO HALVES since "settle near N" (critic M-1, 2026-11-04: raise 8 says near 580, the plant's 580.1 degF program; its note says stop
+   * at 573 and the boron still arriving finishes it). (1) The step completes within 5.4 degF of N, or no further below N than its own
+   * graded band's floor (the injection raise_old_settle_band's 568.7 against 573 stays red). (2) The LEG ends within 5.4 degF of N:
+   * the settle the card promises actually arrives. MEASURED: step 8 done 574.4 (chain) to 578.0; legs end 579.8-580.7 degF. */
+  var legEnd = (r.steps || []).filter(function (st) { return st.at_done; }).slice(-1)[0];
+  var st8 = (r.steps || []).filter(function (st) {
+    if (st.settle == null || !st.at_done) return false;
+    var tolS = Math.max(5.4, st.settle_floor != null ? st.settle - st.settle_floor + 0.05 : 0);
+    return Math.abs(st.at_done.tavg_F - st.settle) > tolS || !(legEnd && Math.abs(legEnd.at_done.tavg_F - st.settle) <= 5.4);
+  });
   if ((r.steps || []).some(function (st) { return st.settle != null; }))
-    v.settle = { ok: st8.length === 0, name: 'a step that says "settle on N degF" completes within 5.4 degF of N',
-      note: st8.length ? st8.map(function (st) { return 'step ' + st.n + ' done at ' + f(st.at_done.tavg_F) + ' degF against ' + st.settle; }).join('; ') : 'all inside' };
+    v.settle = { ok: st8.length === 0, name: 'a step that says "settle on/near N degF" completes within 5.4 degF of N (or inside its own band, above its floor) and the leg ends within 5.4 degF of N',
+      note: st8.length ? st8.map(function (st) { return 'step ' + st.n + ' done at ' + f(st.at_done.tavg_F) + ' degF, leg ends at ' + (legEnd ? f(legEnd.at_done.tavg_F) : '?') + ' degF, against ' + st.settle; }).join('; ') : 'all inside' };
   var pkx = (r.steps || []).filter(function (st) { return st.peak_max != null && st.thi != null && st.thi > st.peak_max; });
   /* `no_peak` on a mistake (#825 slow_cut): a route that deliberately leaves out the card's inserts during the cuts is not the
    * route the "under about N" note describes; its peak is still in the step table. */

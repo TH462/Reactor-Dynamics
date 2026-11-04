@@ -52,7 +52,7 @@ Note: The inserts hold AVG COOLANT TEMPERATURE under about 587 °F.
 
 ()2b. After the last cut, keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 577 °F, the top of its green band.
 
-Note: About 30 taps in all from 580 °F, the ones after each cut included; about 15 if it starts near 573 °F. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.
+Note: About 30 taps in all, the ones after each cut included, cutting a plant-minute apart from 580 °F; slower cuts or a cooler start need fewer, down to about 15. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.
 
 ()2c. Check REACTOR POWER has followed down below 80 % and OUTPUT still reads about 75 MW.
 

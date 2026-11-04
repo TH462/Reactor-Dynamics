@@ -238,3 +238,13 @@ After the Shutdown Part 1 finish I pressed "⏪ Rewind step". It took the plant 
   - The last step stays readable.
   - Rewind is reachable.
   - "Next: <leg> ▸" carries the plant over without a reload.
+
+## Critic round on e4949322 (2026-11-04): numbers re-measured on the routes table's own mistake routes
+
+- **Raise 8 (M-1):** the plant's full-power program is 580.1 °F (`tavg_full_c` 304.5, `pwr2_dumpctl.js`), and no ruling names 578. The heading now reads "settle the temperature near 580 °F" and the aim "580 °F is this plant's full-power program temperature". The 573-583 °F band is unchanged. The routes gate's settle regex now accepts "near" as well as "on", so the check still applies. Step 8 ends at 575.0-578.0 °F and the leg at 579.8-580.5 °F on every raise route. The slow-climb chain ends at 573.4 °F, which the step 8 note covers.
+- **Raise 9c (L-2):** 663 ppm arrives 43.8-46.3 plant-min after step 3 on all eight raise routes (typical, double_boron, rods_before_load, overpull_60, rewind_mid_stage3, hot_stage4, band_floor), which is 17.3-25.8 plant-min into step 9. The text now reads "up to about 26 more here after a brisk climb, none after a slow one" (it was "about 23").
+- **Lower 2 taps (L-2):** typical 30, double_load75 30, rewind_mid_load50 30, slow_cut 21, slow_cut_180 18, slow-climb chain 15, layman 12. insert_x2 and rods_lead_2 are one 80-step insert, so no taps. The text now reads "About 30 taps …, cutting a plant-minute apart from 580 °F; slower cuts or a cooler start need fewer, down to about 15."
+- **Startup 11 INTER RANGE (L-2):** on-time routes level at 7.9e-9 to 9.1e-9 A. On late arrivals: level_short_11 1.2e-8, rewind_mid_10 1.9e-8, late 10-back 2.0e-8, clear_1m_10 5.0e-8. The overtaken routes reach 5e-5 and skip the step. The text now reads "the later the insert starts, the higher it levels: about 2.0e-8 A a plant-minute late" (the old "up to about 2.0e-8" failed clear_1m_10).
+- **Step done (L-1) and the outcome warning (L-4)** are now gated: QW9 rows 3-4 and QW10 in `verify_quickwins_ui`.
+- **Settle gate (follow-on of M-1):** the routes gate now requires two things. The step must complete within 5.4 °F of N, or no lower than the card's own "Stop at N °F" floor. The leg must then end within 5.4 °F of N. The chain completes step 8 at 574.4 °F and ends the leg at 580.7 °F: it passes. The injection raise_old_settle_band still fails it (step 8 at 568.7 °F). A floor taken from the graded row instead went hollow under that injection ("all inside"), which is why the floor is read from the card's text.
+- **Raise 9c's ask** was 41 words against the 30-word cap (`run_checklist_pwr2_b`). The timing moved to the row's note.
