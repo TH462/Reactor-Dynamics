@@ -6237,7 +6237,7 @@
        * at the top of every step. */
       var waitLineShown = false;
       var ackRow = '';   /* same reason — #687 item 3 builds it above and emits it below the why */
-      h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      h += '<div class="ckl-step ' + cls + hoverable + (lastShown ? ' ckl-last-kept' : '') + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
        * #628: "move the numbered step to always be the first part of the stack. then the rest of
        * the step that appears when its active goes below it.")*.
@@ -6355,6 +6355,9 @@
           var pendTail = '';
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
+            /* the finished leg's kept last step: the instructor has already cleared its per-entry state at completion, so every row
+             * would read 'not met'. The step IS complete -- draw each row met (#825). */
+            if (lastShown) av = { met: true };
             /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
              * the button) whose twin predicate entry already draws the lamp; drawing both put
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
@@ -6363,7 +6366,7 @@
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
             var tag = '';
             if (!en.cont) { tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : ''; visSeen++; }
-            var ordWait = st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
+            var ordWait = !lastShown && st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
             /* THE SUBSTEP'S OWN NOTE AND SPEED, ON ITS HEAD ENTRY (the walkthrough-step-format
              * project — the owner's per-substep Note + "Suggested time warp" line). Neither is
              * drawn on a `cont` row: it is the same substep as its head, so the head already
@@ -6494,8 +6497,8 @@
               (bTag ? mesc(bTag) + ' comes first: ' : 'this comes first: ') + mesc(bTxt) + '</div>';
           }
         } else if (st.acc) {
-          h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
+          h += '<div class="ckl-crit' + ((ck.acc_met || lastShown) ? ' ckl-crit-met' : '') + '">' +
+            ((ck.acc_met || lastShown) ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
             /* THE SOLE-ROW VOID (#773/#788) — the case the ruling accepted WITH THIS
              * SENTENCE AS THE CONDITION. There is no sibling here, so the step completes
              * with nothing at all asserting it; the card must not let that pass unsaid. */
@@ -6561,7 +6564,7 @@
         /* `wait_hint: false` SUPPRESSES the generated line (#653 S9, layman playtest 2026-09-07):
          * the startup's criticality steps carry 240-900 s dwells, so the hint offered 60x, and
          * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
-        if (holdS >= 180 && st.wait_hint !== false) {
+        if (holdS >= 180 && st.wait_hint !== false && !lastShown) {   /* a finished step has nothing left to wait for (#825) */
           /* `hold` IS THE REPLAY'S DWELL, NOT A MEASUREMENT OF THE PLAYER'S STEP (#670 operator
            * pass 2, S-1). It is how long `procedures_harness` sits on the step so the plant has
            * settled before the next command, and it has been printed to the player as "About N

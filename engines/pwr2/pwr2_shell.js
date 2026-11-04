@@ -2272,7 +2272,11 @@
       /* flow_pct is what the board's pump animation SPINS on (pumpProps speed) — without it
        * the driver computed NaN and the RCP impeller froze with its pipe ports dark
        * (#506.5, measured). pump_flow_pct is the true-state's own loop-flow fraction. */
+      /* speed_pct is the ROTOR's own speed (omega / rated, the inertia coastdown in pwr2_sources), what the pump art spins on
+       * (#825). flow_pct is TOTAL loop flow and never reaches zero (natural circulation: 3.9 % in cold shutdown with the pump
+       * off), so an animation driven by it kept turning a stopped pump. */
       pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,
+                speed_pct: (e.sys.omega !== undefined && RD.sources.PUMP.w_rated) ? 100 * e.sys.omega / RD.sources.PUMP.w_rated : undefined,
                 flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct
                           : (e.sys.pumpTripped ? 0 : 100) }]
     };

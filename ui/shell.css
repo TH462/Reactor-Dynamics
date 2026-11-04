@@ -3576,7 +3576,7 @@ select.num-input { width: auto; }
 .instructor.callout-on .instr-current::before { content: 'The instructor is talking on the board. History is in the bubble.'; display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 /* THE WALKTHROUGH CALLOUT (2026-10-10, TMI-2 leg: `callout: true`). The step is on the board; the
    column keeps a step-progress list, and the step card (the engine of record) is hidden. */
-#cklRun.ckl-co .ckl-step { display: none; }
+#cklRun.ckl-co .ckl-step:not(.ckl-last-kept) { display: none; }   /* the finished leg's kept last step stays, so Rewind is reachable (#825) */
 .ckl-prog-list { list-style: none; margin: 6px 0 4px; padding: 0; font-size: 12px; line-height: 1.35; }
 .ckl-prog-list li { display: flex; gap: 6px; padding: 2px 6px; border-radius: 4px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
 .ckl-prog-list li.done { color: var(--muted); }

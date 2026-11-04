@@ -484,7 +484,10 @@
       var lab = h('div', null, it.label);
       // letter-spacing 0.06em, not 0.14em: at fontSize 14 the wide tracking alone put the
       // DUMP SETPOINT hint "29-1350 psi" ~7 px past its authored box (#235 finding 5)
-      lab.style.cssText = 'color:#6b8598;font-family:' + MONO + ';font-size:' + (it.fontSize || 10) + 'px;letter-spacing:0.06em;margin-bottom:3px;white-space:nowrap';
+      lab.style.cssText = 'color:#6b8598;font-family:' + MONO + ';font-size:' + (it.labelSize || it.fontSize || 10) + 'px;letter-spacing:0.06em;margin-bottom:3px;white-space:nowrap';
+      /* #825: a box may author its caption brighter/larger (the BORON range, which the owner could not see at 7 px in #6b8598) */
+      if (it.labelColor) lab.style.color = it.labelColor;
+      if (it.labelWeight) lab.style.fontWeight = it.labelWeight;
       el.appendChild(lab);
       labEl = lab;
     }

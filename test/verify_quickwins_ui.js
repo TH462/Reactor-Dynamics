@@ -288,6 +288,75 @@ function ck(name, ok, detail) {
   ck('QW7 ...and the step still runs (o1_help fires)', fired1);
   await o.ctx.close();
 
+  // ---- QW8 (#825 rc9 playtest): PORV colour, RCP coast, finished walkthrough ------------------
+  var q = await session({ width: 1600, height: 1000 });
+  function porvTile(page) {
+    return page.evaluate(function () {
+      var e = document.querySelector('[data-item="ims2jf7fv7m"]'), t = e.textContent.trim();
+      var best = null; e.querySelectorAll('*').forEach(function (x) { if (x.children.length === 0 && x.textContent.trim() === t) best = x; });
+      return { text: t, color: getComputedStyle(best || e).color };
+    });
+  }
+  await q.page.evaluate(function () { RD.__dev.cmd({ action: 'open_porv_manual' }); });
+  await q.page.waitForTimeout(1500);
+  var po = await porvTile(q.page);
+  ck('QW8 PORV STATUS reads OPEN in the caution yellow', po.text === 'OPEN' && po.color === 'rgb(216, 166, 87)', JSON.stringify(po));
+  await q.page.evaluate(function () { RD.__dev.cmd({ action: 'close_porv' }); });
+  await q.page.waitForTimeout(1500);
+  var pc = await porvTile(q.page);
+  ck('QW8 ...and returns to the authored green once the valve recloses', pc.text === 'CLOSED' && pc.color === 'rgb(90, 173, 124)', JSON.stringify(pc));
+  function spin(page) {
+    return page.evaluate(function () {
+      var v = document.querySelector('[data-item="imrobpq4a70"] [style*="rcpSpin"]');
+      return { dur: v ? v.style.animationDuration : 'none', flow: document.querySelector('[data-item="imsgteavgid"]').textContent.trim() };
+    });
+  }
+  await q.page.evaluate(function () { RD.__dev.cmd({ action: 'set_rcp', running: false }); });
+  await q.page.evaluate(function () { RD.__dev.service().advanceCycles(300); });
+  await q.page.waitForTimeout(400);
+  var s20 = await spin(q.page);
+  ck('QW8 a tripped RCP rotor is still turning while it coasts (flow still falling)', s20.dur !== 'none', JSON.stringify(s20));
+  await q.page.evaluate(function () { RD.__dev.service().advanceCycles(9000); });
+  await q.page.waitForTimeout(400);
+  var s900 = await spin(q.page);
+  ck('QW8 ...and has stopped long after, while natural-circulation flow is still on the readout', s900.dur === 'none' && parseInt(s900.flow, 10) >= 2, JSON.stringify(s900));
+  await q.ctx.close();
+
+  var cp = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  var cpg = await cp.newPage();
+  await cpg.goto(BASE.replace('init=hot_full_power', 'init=cold_shutdown'));
+  await cpg.waitForSelector('#mainMenuBtn');
+  if (await cpg.isVisible('#missionOverlay')) await cpg.click('#missionClose');
+  await cpg.waitForTimeout(1500);
+  await cpg.evaluate(function () { RD.__dev.service().advanceCycles(600); });
+  await cpg.waitForTimeout(400);
+  var cold = await spin(cpg);
+  ck('QW8 a stopped RCP in cold shutdown does not spin on natural-circulation flow', cold.dur === 'none' && parseInt(cold.flow, 10) >= 1, JSON.stringify(cold));
+  await cp.close();
+
+
+  var w2 = await session({ width: 1600, height: 1000 });
+  await w2.page.evaluate(function () { RD.__dev.cmd({ action: 'start_checklist', procedure_id: 'pwr_lower_power' }); });
+  await w2.page.waitForTimeout(800);
+  for (var kk = 0; kk < 40; kk++) {
+    var cst = await w2.page.evaluate(function () { var c = RD.__dev.service().instructor.checklist; return c ? { c: c.complete, i: c.step_index } : null; });
+    if (!cst || cst.c) break;
+    await w2.page.evaluate(function (i) { RD.__dev.cmd({ action: 'checklist_check', index: i }); }, cst.i);
+    await w2.page.waitForTimeout(250);
+  }
+  await w2.page.waitForTimeout(1200);
+  var fin = await w2.page.evaluate(function () {
+    var run = document.getElementById('cklRun'), k = run.querySelector('.ckl-last-kept');
+    return { kept: !!k, banner: !!run.querySelector('.ckl-complete'), rewind: !!run.querySelector('[data-wt-rewind]'),
+             wait: !!(k && k.querySelector('.ckl-wait')),
+             ticked: k ? k.querySelectorAll('.ckl-crit.ckl-crit-met').length : 0,
+             unticked: k ? [].filter.call(k.querySelectorAll('.ckl-crit'), function (n) { return !n.classList.contains('ckl-crit-met'); }).length : -1 };
+  });
+  ck('QW8 a finished walkthrough keeps its last step beside the complete banner, with Rewind', fin.kept && fin.banner && fin.rewind, JSON.stringify(fin));
+  ck('QW8 ...every row of the kept step is drawn met, and no wait advice', fin.ticked > 0 && fin.unticked === 0 && !fin.wait, JSON.stringify(fin));
+  await shot(w2.page, 'qw8_finished');
+  await w2.ctx.close();
+
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
   process.exit(fail ? 1 : 0);

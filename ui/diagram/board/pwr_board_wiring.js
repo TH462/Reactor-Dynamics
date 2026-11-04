@@ -1369,7 +1369,7 @@
     // the only honest tell. The schematic PORV shows true disc position; this does not.
     ims2jf7fv7m: function (s) {   // OPEN reads yellow (#825, owner 2026-11-03), CLOSED keeps the authored green
       var t = String(IN(s).porv_indicator || 'closed').toUpperCase();
-      return t === 'OPEN' ? { text: t, color: BD_WARN } : t;
+      return { text: t, color: t === 'OPEN' ? BD_WARN : BD_OK };   // CLOSED must return to the authored green (TMI-2: closed looks normal)
     },
     // PZR temperature + live heater power (EXTRA_ITEMS pair, #237). Heater reads the
     // engine's ACTUAL output (heater_power_frac) — under AUTO this is the proportional
@@ -1929,11 +1929,13 @@
     },   // eccs pump (RWST — cold; also the RHR train)
     imrobph7xrq: function (s) { var f = IN(s).fw_flow || 0; return pumpProps(f > 1e-3, f, fwTemp(s)); },      // feed pump (feedwater — tracks load)
     imrobpq4a70: function (s) {
-    var p = pumpRec(s, 'rcp'), f = p ? p.flow_pct : 100;
-    /* THE ROTOR COASTS WITH THE FLOW % (#825, owner 2026-11-03: "the visual stops instantly but the number coasts"). The pump art sets its
-     * speed to ZERO when `running` is false, so tripping the pump froze the rotor while the RCP FLOW % ran down. Keep it turning
-     * (and its ports active) for as long as there is flow to coast on; the speed already follows pump_flow_pct. */
-    return pumpProps(!!IN(s).rcp_running || f > 1, f / 100, IN(s).tcold);
+    var p = pumpRec(s, 'rcp');
+    /* THE ROTOR COASTS WITH THE PUMP, NOT WITH THE LOOP (#825, owner 2026-11-03: "the visual stops instantly but the number coasts").
+     * The art zeroes its speed when `running` is false, so a trip froze the rotor while RCP FLOW ran down. It is driven by the
+     * rotor's own speed (`speed_pct`, omega/rated, the inertia coastdown) and stays turning while that is above 2 %. NOT flow_pct:
+     * that is total loop flow and sits at ~4 % on natural circulation with the pump off, which spun a stopped pump. */
+    var sp = p && p.speed_pct != null ? p.speed_pct : (p ? p.flow_pct : 100);
+    return pumpProps(!!IN(s).rcp_running || sp > 2, sp / 100, IN(s).tcold);
   },  // rcp (cold-leg coolant — live)
     // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so
     // the impeller keys on running-and-powered rather than on flow magnitude. `charging_flow`
@@ -4457,10 +4459,11 @@
       pmsgu7y5cn4: { props: { phase: 'steam' } }
     },
     items: {
-      // BORON target box caption (#825, owner 2026-11-03: "should have a title above it that shows the range"):
-      // the authored dim '0-2500 ppm' read as decoration. 'SET 0-2500 ppm' names the box and the range the
-      // walkthrough cites; it sits above the 95 px box inside the 195 px BORON card (fit measured in the shot).
-      imrpq29jo7t: { props: { label: 'SET 0-2500 ppm' } },
+      // BORON target box caption (#825, owner 2026-11-03: "I could not see the 0-2500 ppm at all. This is there so people know the
+      // bounds of the values."). MEASURED: it was drawn, unoccluded, but at 12 px x 0.605 board scale = 7 px of #6b8598 slate on near-black
+      // (1366x768) -- the same size and tone as the card titles, which read as chrome. Now 14 px, the BORON STATUS caption's #9fb3c4, bold.
+      // 10 chars at 14 px mono is ~88 px, inside the 95 px box and the 195 px card.
+      imrpq29jo7t: { props: { label: '0-2500 ppm', labelSize: 14, labelColor: '#9fb3c4', labelWeight: 600 } },
       // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
       // PORV outlet above it, so the drop leans instead of falling straight in.
       imrsi2svtgn: { ports: { ptmrsi3kjfr5: { off: 17 } } },
