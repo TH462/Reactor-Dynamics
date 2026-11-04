@@ -1367,7 +1367,10 @@
     // PORV position light — the COMMANDED state, not the disc. This is the TMI-2 lie: it
     // reads CLOSED while a stuck valve keeps venting, and the tailpipe temperature below is
     // the only honest tell. The schematic PORV shows true disc position; this does not.
-    ims2jf7fv7m: function (s) { return String(IN(s).porv_indicator || 'closed').toUpperCase(); },
+    ims2jf7fv7m: function (s) {   // OPEN reads yellow (#825, owner 2026-11-03), CLOSED keeps the authored green
+      var t = String(IN(s).porv_indicator || 'closed').toUpperCase();
+      return t === 'OPEN' ? { text: t, color: BD_WARN } : t;
+    },
     // PZR temperature + live heater power (EXTRA_ITEMS pair, #237). Heater reads the
     // engine's ACTUAL output (heater_power_frac) — under AUTO this is the proportional
     // controller's live demand, which the panel's editable % box shows greyed.
@@ -1925,7 +1928,13 @@
       return pumpProps(f > 1e-4 || rhr, f > 1e-4 ? f : (rhr ? 0.6 : 0), 50);
     },   // eccs pump (RWST — cold; also the RHR train)
     imrobph7xrq: function (s) { var f = IN(s).fw_flow || 0; return pumpProps(f > 1e-3, f, fwTemp(s)); },      // feed pump (feedwater — tracks load)
-    imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, IN(s).tcold); },  // rcp (cold-leg coolant — live)
+    imrobpq4a70: function (s) {
+    var p = pumpRec(s, 'rcp'), f = p ? p.flow_pct : 100;
+    /* THE ROTOR COASTS WITH THE FLOW % (#825, owner 2026-11-03: "the visual stops instantly but the number coasts"). The pump art sets its
+     * speed to ZERO when `running` is false, so tripping the pump froze the rotor while the RCP FLOW % ran down. Keep it turning
+     * (and its ports active) for as long as there is flow to coast on; the speed already follows pump_flow_pct. */
+    return pumpProps(!!IN(s).rcp_running || f > 1, f / 100, IN(s).tcold);
+  },  // rcp (cold-leg coolant — live)
     // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so
     // the impeller keys on running-and-powered rather than on flow magnitude. `charging_flow`
     // is the powered evidence — it is zero on a dead bus and non-zero whenever the pump is
@@ -4448,6 +4457,10 @@
       pmsgu7y5cn4: { props: { phase: 'steam' } }
     },
     items: {
+      // BORON target box caption (#825, owner 2026-11-03: "should have a title above it that shows the range"):
+      // the authored dim '0-2500 ppm' read as decoration. 'SET 0-2500 ppm' names the box and the range the
+      // walkthrough cites; it sits above the 95 px box inside the 195 px BORON card (fit measured in the shot).
+      imrpq29jo7t: { props: { label: 'SET 0-2500 ppm' } },
       // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
       // PORV outlet above it, so the drop leans instead of falling straight in.
       imrsi2svtgn: { ports: { ptmrsi3kjfr5: { off: 17 } } },

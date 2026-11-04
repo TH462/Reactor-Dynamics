@@ -5,9 +5,8 @@
  *   QW1  Quiet board: with no alarm up the alarm panel folds to a one-line strip and the chart takes the
  *        row's width; the first alarm expands it at once. The board never moves or rescales across a
  *        quiet -> alarm -> quiet cycle (0.0 px at three viewports, layman S-1 2026-10-15). Layout only.
- *   QW2  Hover help at the cursor: resting on a described board item for ~0.4 s shows the Scanner's
- *        one-line brief beside the pointer (same text); a press or leaving dismisses it; never over
- *        the instructor callout card.
+ *   QW2  (REMOVED 2026-11-03, #825) Hover help at the cursor blocked vital instruments; the bottom
+ *        Scanner is the help channel. Pinned absent: no popup after a rest on a described item.
  *   QW3  The chart window fits the data: a fresh run opens on 1 min and widens with the time since
  *        the player's last command (never past the speed rule's rung); a clicked rung is authoritative.
  *   QW4  PAUSED veil: a plainly stopped clock (Escape out of the Quick tour, the player's pause) puts a
@@ -126,56 +125,21 @@ function ck(name, ok, detail) {
   ck('QW1 a dragged (pinned) strip height is honoured while folded', pin.quiet && pin.rowH === 260, JSON.stringify({ quiet: pin.quiet, rowH: pin.rowH }));
   await p.ctx.close();
 
-  // ---- QW2 ---------------------------------------------------------------------------------
-  var h = await session({ width: 1366, height: 768 }, '&callout=1');
-  await h.page.click('#tabbar [data-tab="instructor"]').catch(function () {});
-  await h.page.waitForTimeout(1500);   // let the board settle: a relayout under a measured point moves the target
+  // ---- QW2 (REMOVED, owner 2026-11-03, #825: the at-cursor popup blocked vital instruments; the bottom
+  // Scanner is the help channel). Now pinned ABSENT: resting on a described item draws no popup, the Scanner still fills.
+  var h = await session({ width: 1366, height: 768 });
+  await h.page.waitForTimeout(1500);
   var pt = await h.page.evaluate(function () {
     var e = document.querySelector('.pwr-board-stage [data-item]'), r = e.getBoundingClientRect();
     return [r.x + r.width / 2, r.y + r.height / 2];
   });
-  function tip(page) {
-    return page.evaluate(function () {
-      var t = document.getElementById('hoverTip');
-      return { on: !!(t && t.classList.contains('on')), text: t ? t.textContent : '',
-               scanner: document.getElementById('scanner').textContent,
-               rect: t ? t.getBoundingClientRect().toJSON() : null };
-    });
-  }
   await h.page.mouse.move(pt[0], pt[1]);
-  await h.page.waitForTimeout(200);
-  var early = await tip(h.page);
-  ck('QW2 no tooltip before the ~0.4 s dwell', !early.on, JSON.stringify({ on: early.on }));
-  await h.page.waitForFunction(function () { var t = document.getElementById('hoverTip'); return t && t.classList.contains('on'); }, null, { timeout: 5000 }).catch(function () {});
-  var late = await tip(h.page);
-  ck('QW2 after the dwell the tooltip shows the Scanner brief, beside the cursor',
-     late.on && late.rect && late.text.length > 10 && late.text === late.scanner && late.rect.left >= pt[0] && late.rect.top >= pt[1],
-     late.text.slice(0, 50) + (late.rect ? ' @' + Math.round(late.rect.left) + ',' + Math.round(late.rect.top) : ' (no tip drawn)'));
-  await shot(h.page, 'qw2_tip');
-  await h.page.mouse.down(); await h.page.mouse.up();
-  await h.page.waitForTimeout(150);
-  ck('QW2 a press dismisses it', !(await tip(h.page)).on);
-  await h.page.mouse.move(pt[0] + 1, pt[1] + 1);
-  await h.page.waitForTimeout(700);
-  await h.page.mouse.move(3, 3);
-  await h.page.waitForTimeout(250);
-  ck('QW2 moving onto nothing described dismisses it', !(await tip(h.page)).on);
-  // The instructor callout card: start the opener and rest on the card's own hinted button.
-  await h.page.waitForSelector('#instrCurrent [data-opener-start]', { timeout: 10000 });
-  await h.page.click('#instrCurrent [data-opener-start]');
-  await h.page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o0_hello'); }, null, { timeout: 30000 });
-  await h.page.waitForSelector('#instrCallout [data-scanner-hint]', { state: 'visible', timeout: 15000 });
-  var cb = await h.page.evaluate(function () {
-    var e = document.querySelector('#instrCallout [data-scanner-hint]'), r = e.getBoundingClientRect();
-    return [r.x + r.width / 2, r.y + r.height / 2];
+  await h.page.waitForTimeout(1200);
+  var rest = await h.page.evaluate(function () {
+    var t = document.getElementById('hoverTip');
+    return { tip: !!t, any: !!document.querySelector('.hover-tip'), scanner: document.getElementById('scanner').textContent.length };
   });
-  await h.page.mouse.move(cb[0], cb[1]);
-  await h.page.waitForTimeout(900);
-  var onCard = await tip(h.page);
-  ck('QW2 no tooltip over the instructor callout card (its button carries a hint)', !onCard.on, JSON.stringify({ on: onCard.on }));
-  await h.page.mouse.move(pt[0], pt[1]);
-  await h.page.waitForTimeout(900);
-  ck('QW2 ...and it still shows on the board with the callout up', (await tip(h.page)).on);
+  ck('QW2 no popup at the cursor after a 1.2 s rest on a described item; the Scanner still fills', !rest.tip && !rest.any && rest.scanner > 10, JSON.stringify(rest));
   await h.ctx.close();
 
   // ---- QW3 ---------------------------------------------------------------------------------
