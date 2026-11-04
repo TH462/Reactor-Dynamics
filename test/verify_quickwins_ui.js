@@ -359,7 +359,8 @@ function ck(name, ok, detail) {
                ticked: k ? k.querySelectorAll('.ckl-crit.ckl-crit-met').length : 0,
                unticked: k ? [].filter.call(k.querySelectorAll('.ckl-crit'), function (n) { return !n.classList.contains('ckl-crit-met'); }).length : -1,
                keptHeadInView: !!(kr && lr && kr.height > 0 && kr.top >= lr.top - 1 && kr.top < lr.bottom - 20),
-               rewindInView: inside(rr), scrollTop: log ? Math.round(log.scrollTop) : null };
+               rewindInView: inside(rr), scrollTop: log ? Math.round(log.scrollTop) : null,
+               logH: lr ? Math.round(lr.height) : null, keptH: kr ? Math.round(kr.height) : null, rewindBottomFromHead: (rr && kr) ? Math.round(rr.bottom - kr.top) : null, scrollH: log ? log.scrollHeight : null };
     });
     await shot(w2.page, 'qw8_finished_' + leg + '_' + vp.width);
     await w2.ctx.close();
@@ -370,7 +371,7 @@ function ck(name, ok, detail) {
     for (var li = 0; li < legs.length; li++) {
       var fin = await finishLeg(VPS[vi2], legs[li]), tag = legs[li] + ' @' + VPS[vi2].width;
       ck('QW8 ' + tag + ': finished card keeps the last step, the banner and Rewind', fin.kept && fin.banner && fin.rewind, JSON.stringify(fin));
-      ck('QW8 ' + tag + ': the kept head and its Rewind are visible in the log viewport (not scrolled past)', fin.keptHeadInView && fin.rewindInView, JSON.stringify(fin));
+      ck('QW8 ' + tag + ': the kept head is in the log viewport, and its Rewind too whenever head-to-Rewind fits the viewport (head wins when it does not)', fin.keptHeadInView && (fin.rewindInView || fin.rewindBottomFromHead > fin.logH - 5), JSON.stringify(fin));
       ck('QW8 ' + tag + ': every row drawn met, no wait advice', fin.unticked === 0 && !fin.wait, JSON.stringify(fin));
     }
   }
