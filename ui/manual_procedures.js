@@ -4924,11 +4924,13 @@
                  /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
                   * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
                   * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
-                  * peak lands ~84 s after a cut). OUTPUT steady over a 120 s window (half-means within 2 %) holds the trim
-                  * row behind it until about two plant-minutes after the last cut; it re-grades, so a further cut re-opens
-                  * the wait. Measured ticks: TUNING_LOG 2026-11-03-develop-b. */
-                 { cont: true, p: 'mwe_output', op: 'steady', v: 0.02, window: 120,
-                   label: 'OUTPUT steady for 2 plant-minutes since the last cut' },
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
                  /* LAYMAN PASS 8 (2026-09-26, workbench-d) S-7, kept from the old step 3: graded at the RENDER FLOOR of 577,
                   * 302.49 degC (576.48 degF), so the tile reads 576 or less when the row ticks. */
                  { p: 'tavg_c', op: '<', v: 302.49,
@@ -4994,11 +4996,13 @@
                  /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
                   * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
                   * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
-                  * peak lands ~84 s after a cut). OUTPUT steady over a 120 s window (half-means within 2 %) holds the trim
-                  * row behind it until about two plant-minutes after the last cut; it re-grades, so a further cut re-opens
-                  * the wait. Measured ticks: TUNING_LOG 2026-11-03-develop-b. */
-                 { cont: true, p: 'mwe_output', op: 'steady', v: 0.02, window: 120,
-                   label: 'OUTPUT steady for 2 plant-minutes since the last cut' },
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
                    note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts.',
                    wait_speed: 10,
@@ -5033,11 +5037,13 @@
                  /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
                   * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
                   * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
-                  * peak lands ~84 s after a cut). OUTPUT steady over a 120 s window (half-means within 2 %) holds the trim
-                  * row behind it until about two plant-minutes after the last cut; it re-grades, so a further cut re-opens
-                  * the wait. Measured ticks: TUNING_LOG 2026-11-03-develop-b. */
-                 { cont: true, p: 'mwe_output', op: 'steady', v: 0.02, window: 120,
-                   label: 'OUTPUT steady for 2 plant-minutes since the last cut' },
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 294.16, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
                    note: 'About 20 taps in all, the ones after each cut included.',
                    wait_speed: 10,
@@ -5105,11 +5111,13 @@
                  /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
                   * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
                   * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
-                  * peak lands ~84 s after a cut). OUTPUT steady over a 120 s window (half-means within 2 %) holds the trim
-                  * row behind it until about two plant-minutes after the last cut; it re-grades, so a further cut re-opens
-                  * the wait. Measured ticks: TUNING_LOG 2026-11-03-develop-b. */
-                 { cont: true, p: 'mwe_output', op: 'steady', v: 0.02, window: 120,
-                   label: 'OUTPUT steady for 2 plant-minutes since the last cut' },
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 291.38, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
                    note: 'About 12 to 15 taps in all, the ones after each cut included.',
                    wait_speed: 10,
@@ -5386,6 +5394,14 @@
           wait_hint: false,
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }, hold: 3900,
           wait_speed: 600, speed_text: true,
+          /* THE SHUTDOWN'S SCRAM TRANSIENT CAN LAND HERE (#825 critic round 1, 2026-11-03). MEASURED, routes harness chain,
+           * seed 42: the trip from ~12 % power drives COOLDOWN RATE to about 100 degF/hr (the alarm) as the steam dump takes
+           * the stored heat. Before #825 it rose in pwr_shutdown step 3 (tile -101.5 degF/hr), which declares it; with the
+           * lower-power merge the trip lands 0.4 degF cooler (554.8 vs 555.2 degF at the trip, 12.07 vs 11.77 % power),
+           * shutdown 3 peaks only -93.4, and the alarm rises in THIS step at -99.1 (boration only, no cooling asked yet).
+           * The plant sits ~1 degF/hr from the alarm after every low-power trip, so which step it lands in is the route's,
+           * not this card's; declared so it does not drop the 600x boration wait. */
+          expect_alarms: ['cooldown_rate_high'],
           note: 'Do not start cooling until BORON CHEM reads 880 ppm.',
           accs: [{ p: 'boron_auto_on', op: '>', v: 0,
                    hl: ['Boron ON'],

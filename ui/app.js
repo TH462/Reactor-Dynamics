@@ -5598,6 +5598,7 @@
     reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
     boron_ppm:              { label: 'Boron in the loop (BORON CHEM after a sample)', u: 'ppm' },
     mwe_output:             { label: 'OUTPUT', u: 'MWe' },
+    load_target_mwe:        { label: 'LOAD', u: 'MWe' },   /* #825: the machine's LOAD reference, graded `stopped` in pwr_lower_power 2-5 */
     core_inventory_pct:     { label: 'Core coolant inventory', u: '%' },
     decay_heat_pct:         { label: 'Decay heat', u: '%' },
     sg_level_pct:           { label: 'STEAM GENERATOR LEVEL', u: '%' },

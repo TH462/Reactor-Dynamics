@@ -42,6 +42,11 @@
  *   node test/run_walkthrough_routes.js --leg=chain     the six legs as ONE plant (layman pass 4, 2026-09-25)
  *   node test/run_walkthrough_routes.js --jobs=1        sequential
  *   WR_SEED=<n> on a --job run: a measurement knob (the gate is seed 42)
+ *
+ * `latch` (#825) covers one-sided latching rows (`<`, `<=`, `>`, `>=`) on a leg's `latch_check` params only: a row that ticks
+ * while an earlier row of its step is open, or that the plant crosses back over (in the step, or for 120 plant-s after
+ * Continue). NOT COVERED: `~` rows with `latch: true` (raise power 4-8's temperature rows) -- a band latch is a milestone the
+ * later `cont` band re-asserts, and nothing here watches it after the tick.
  *   (--job=<leg>:<route> is the child-process entry; not for hand use)
  */
 'use strict';
@@ -313,6 +318,9 @@ var ROUTES = {
     own_row: { step: 2, row: 1 },   /* the relation row is 2a's HEAD since #825 (was the third row, a cont of 2b) */
     peak_check: true,   // 2026-09-26: "under about N °F" in a step's note is graded (verdict `peak`)
     latch_check: ['tavg_c'],   // #825: a latching one-sided row on these params must not be crossed back after it ticks (verdict `latch`)
+    /* #825 critic round 1: ...nor tick inside the heat-arrival window of a LOAD cut (#736: a cut's Tavg peak lands ~84 plant-s
+     * after it). The 96fbe70f OUTPUT-steady wait ticked the trim 10-12 s after a 180 s cutter's last cut. */
+    latch_heat_s: 90,
     /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
      * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
      * COOLANT TEMPERATURE is back in its band" — the player stops at the first
@@ -349,6 +357,15 @@ var ROUTES = {
           '#3': { policy: 'load_stair', from: 75, to: 50, step: 5, wait_s: 60, ins_above: 569, pull: 3, dwell: 60, trim_after_s: 60 },
           '#4': { policy: 'load_stair', from: 50, to: 30, step: 5, wait_s: 60, ins_above: 562, pull: 3, dwell: 60, trim_after_s: 60 },
           '#5': { policy: 'load_stair', from: 30, to: 15, step: 5, wait_s: 60, ins_above: 557, pull: 3, dwell: 60, trim_after_s: 60 } } },
+      /* #825 critic round 1: the SLOW CUTTER -- cuts 180 plant-s apart, the card's taps after each cut. The `mwe_output steady`
+       * rows of 96fbe70f ticked the trim 10-11 s after such a cut; `stopped` on the LOAD target holds it 120 s. */
+      { id: 'slow_cut_180', kind: 'slow cuts', at: '#2', set: { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 180, ins_above: 577, pull: 3, dwell: 60 },
+        override: {
+          /* `delay_s`: this player reads the new card a plant-minute before the first cut, so the carried watch sees the
+           * previous step's last-cut heat arrive on its own */
+          '#3': { policy: 'load_stair', from: 75, to: 50, step: 5, wait_s: 180, ins_above: 569, pull: 3, dwell: 60, delay_s: 60 },
+          '#4': { policy: 'load_stair', from: 50, to: 30, step: 5, wait_s: 180, ins_above: 562, pull: 3, dwell: 60, delay_s: 60 },
+          '#5': { policy: 'load_stair', from: 30, to: 15, step: 5, wait_s: 180, ins_above: 557, pull: 3, dwell: 60, delay_s: 60 } } },
       { id: 'rods_lead_2', kind: 'wrong order', at: '#2', set: { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 570, pull: 10, dwell: 30 } },
     ],
   },
@@ -822,6 +839,12 @@ var MUTATIONS = [
   { id: 'lower_latch_old_form', leg: 'pwr_lower_power', route: 'rods_lead_2', expect: 'latch',
     why: 'lower-power trim rows in the old form (unordered, no OUTPUT-steady wait): a trim row latches before the rise it guards',
     mutate: function (P) { P.steps.slice(1, 5).forEach(function (st) { delete st.accs_ordered; st.accs = st.accs.filter(function (e) { return e.op !== 'steady'; }); }); } },
+  /* #825 critic round 1: the 96fbe70f form -- a half-means `mwe_output steady` wait in place of `stopped` on the LOAD target --
+   * on the 180 s cutter: the trim row ticks ~10 s after the last cut and the heat arrives after Continue (the carried watch). */
+  { id: 'lower_latch_steady_form', leg: 'pwr_lower_power', route: 'slow_cut_180', expect: 'latch',
+    why: 'lower-power trim rows behind an OUTPUT-steady window instead of "no LOAD cut for 120 s": the trim ticks before the last cut\'s heat arrives',
+    mutate: function (P) { P.steps.slice(1, 5).forEach(function (st) { st.accs.forEach(function (e) {
+      if (e.p === 'load_target_mwe' && e.op === 'stopped') { e.p = 'mwe_output'; e.op = 'steady'; e.v = 0.02; e.window = 120; } }); }); } },
   { id: 'lower_no_inserts_2', chain: true, leg: 'pwr_lower_power', route: 'chain', expect: 'peak',
     why: 'lower-power 2 walked 5 MW a plant-minute with the 3-step inserts left out (589 degF against "under about 587")',
     override: { '#2': { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 999, pull: 3, dwell: 60 } } },
@@ -878,6 +901,7 @@ function runJob(legId, routeId, mutId, ctx) {
   var MUT = mutId ? MUTATIONS.filter(function (m) { return m.id === mutId; })[0] : null;
   if (MUT && MUT.mutate) MUT.mutate(proc);
   var table = ROUTES[legId];
+  var LCARRY = [], LCUT = { t: null, v: null };   /* #825: latch-through watches carried past Continue; the last LOAD cut */
   var byIdx = {};
   Object.keys(table.steps || {}).forEach(function (k) { var i = resolveKey(proc, k); if (i >= 0) byIdx[i] = table.steps[k]; });
   if (ctx && ctx.chain && table.chain_steps) Object.keys(table.chain_steps).forEach(function (k) {   // the literal player on the CHAINED plant
@@ -1024,6 +1048,7 @@ function runJob(legId, routeId, mutId, ctx) {
       var ntx = [st.note || ''].concat((st.accs || []).map(function (e) { return e.note || ''; })).join(' '), pk = /under about (\d{3}) °F/.exec(ntx);
       if (table.peak_check && pk) out[k].peak_max = +pk[1];
       Object.keys(table.forbid_raise || {}).forEach(function (fk) { if (resolveKey(proc, fk) === k) out[k].forbid = table.forbid_raise[fk]; });
+      if (st.expect_alarms) out[k].expect = st.expect_alarms.slice();   /* #825: the rate verdict counts an alarm unless its step declares it */
       S.alarm0 = activeAlarms();
     }
     /* the step's pressure / subcooling floor and the alarms it RAISED (layman pass 5, S-4/S-5/S-6:
@@ -1052,6 +1077,20 @@ function runJob(legId, routeId, mutId, ctx) {
       if (!live) { (out[k].cleared = out[k].cleared || []).push(id + ' after ' + f(t() - ALON[id], 0) + ' s'); delete ALON[id]; }
     });
     var el = t() - S.t0, rows = c.accs || [];
+    if (table.latch_heat_s) {   /* the last LOAD cut, off the machine's reference (a cut lands whole) */
+      var lt0 = pv('load_target_mwe');
+      if (typeof lt0 === 'number' && LCUT.v != null && lt0 < LCUT.v - 0.5) LCUT.t = t();
+      if (typeof lt0 === 'number') LCUT.v = lt0;
+    }
+    LCARRY = LCARRY.filter(function (w) {   /* the carried crossed-back watch (#825 LOW 1) */
+      /* ...until the next step's first player action: from then on a rise is that step's own cut, not this row's */
+      if (t() > w.until || w.done || (w.step !== k + 1 && S.acts > 0)) return false;
+      var lv = pv(w.e.p), ov = (w.e.op.charAt(0) === '<') ? lv - w.e.v : w.e.v - lv;
+      if (ov > 0.3) { if (w.since == null) w.since = t(); if (t() - w.since >= PASS_S) {
+        flags.push({ kind: 'latch_through', step: w.step, row: w.row, label: w.e.label, t_min: (t() - T0) / 60, over: ov, ticked_s: w.ticked_s, after_continue: true }); return false; } }
+      else w.since = null;
+      return true;
+    });
     /* --- flags: hollow / flash / row un-tick ---------------------------------------- */
     if (c.awaiting_ack) {
       if (S.ack0 == null) { S.ack0 = t(); S.pauseN = 0; }
@@ -1087,6 +1126,9 @@ function runJob(legId, routeId, mutId, ctx) {
           for (var jj = 0; jj < i; jj++) { var ej = (st.accs || [])[jj] || {}; if (!ej.hidden && !(rows[jj] && rows[jj].met)) { openJ = jj; break; } }
           if (openJ >= 0) flags.push({ kind: 'latch_through', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60, over: 0,
             ticked_s: t() - S.t0, early_of: openJ + 1 });
+          else if (table.latch_heat_s && LCUT.t != null && t() - LCUT.t < table.latch_heat_s)
+            flags.push({ kind: 'latch_through', step: k + 1, row: i + 1, label: e.label, t_min: (t() - T0) / 60, over: 0,
+              ticked_s: t() - S.t0, after_cut_s: t() - LCUT.t });
         }
       }
       /* LATCH-THROUGH (#825): a latching one-sided row on a `latch_check` param that the plant crosses back over by more
@@ -1212,6 +1254,11 @@ function runJob(legId, routeId, mutId, ctx) {
         cur = -2;
         continue;
       }
+      /* #825 critic LOW 1: a latched latch_check row's crossed-back watch outlives Continue by one heat-arrival window */
+      if (table.latch_check) (st.accs || []).forEach(function (e, ri) {
+        if (S.rowsMet[ri] && table.latch_check.indexOf(e.p) >= 0 && /^(<|<=|>|>=)$/.test(e.op) && !e.hidden)
+          LCARRY.push({ e: e, step: k + 1, row: ri + 1, until: t() + 120, since: null, ticked_s: (S.rowsMetAt[ri] || t()) - S.t0 });
+      });
       S.ack0 = null; send({ action: 'checklist_check', index: k });
       if (!svc.running) svc.running = true;   // a `pause` step stopped the clock (#694); ui/app.js releases it on Continue
       continue;
@@ -1949,13 +1996,10 @@ function verdicts(r) {
       var worst = null, rz = [];
       (r.steps || []).forEach(function (st) {
         if (st.ratelo != null && st.n >= (ROUTES[r.leg].rate_from_step || 1) && (worst == null || st.ratelo < worst.v)) worst = { v: st.ratelo, n: st.n };
-        /* ON THE CHAIN, the steps before `rate_from_step` carry the SHUTDOWN'S SCRAM TRANSIENT, for the raised alarm as for the
-         * tile (#825, 2026-11-03). MEASURED, chain seed 42: before #825 the post-trip `cooldown_rate_high` rose in pwr_shutdown
-         * step 3 (tile -101.5 degF/hr) and cooldown step 1 opened at -99.8 with it already standing; after the lower-power
-         * merge the trip lands 1 degF cooler (554.5 vs 555.6 degF) and the same transient peaks -93.4 in shutdown 3 and rises
-         * in cooldown step 1 at -99.1 (boration only, no card pacing yet). Standalone legs still fail a raise at any step. */
-        var preTrip = r.route === 'chain' && st.n < (ROUTES[r.leg].rate_from_step || 1);
-        (st.raised || []).forEach(function (a) { if (!preTrip && /^(cooldown|heatup)_rate_high@/.test(a)) rz.push('step ' + st.n + ' ' + a); });
+        /* A raised rate alarm fails at any step UNLESS THAT STEP DECLARES IT (#825 critic round 1): `pwr_cooldown` 1 declares
+         * the shutdown's scram transient, measured landing there on the chain since #825 (see its expect_alarms note). */
+        (st.raised || []).forEach(function (a) { var id = a.split('@')[0];
+          if (/^(cooldown|heatup)_rate_high$/.test(id) && (st.expect || []).indexOf(id) < 0) rz.push('step ' + st.n + ' ' + a); });
       });
       v.rate = { ok: !rz.length && !!worst && worst.v >= -lim,
         name: 'the card\'s own pacing never raises the rate alarm (COOLDOWN RATE tile within ' + lim + ' degF/hr)',
@@ -1990,7 +2034,7 @@ function verdicts(r) {
   if (ROUTES[r.leg] && ROUTES[r.leg].latch_check) {
     var lt = fl('latch_through');
     v.latch = { ok: lt.length === 0, name: 'no latching one-sided row ticks while an earlier row of its step is open, or is crossed back after it ticks (#825)',
-      note: lt.map(function (x) { return 'step ' + x.step + ' row ' + x.row + ' (' + x.label + ') ticked ' + f(x.ticked_s) + ' plant-s in, ' + (x.early_of ? 'while row ' + x.early_of + ' was still open' : 'crossed back by ' + f(x.over)) + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
+      note: lt.map(function (x) { return 'step ' + x.step + ' row ' + x.row + ' (' + x.label + ') ticked ' + f(x.ticked_s) + ' plant-s in, ' + (x.early_of ? 'while row ' + x.early_of + ' was still open' : x.after_cut_s != null ? f(x.after_cut_s) + ' plant-s after a LOAD cut' : 'crossed back by ' + f(x.over) + (x.after_continue ? ' after Continue' : '')) + ' @ ' + f(x.t_min) + ' min'; }).join('; ') || 'none' };
   }
   var fz = fl('flash').concat(fl('untick')).concat(fl('cmdwait'));
   v.flash = { ok: fz.length === 0, name: 'Continue never lights and goes out again (flash), no drawn row un-ticks, no step waits on a rod press the gauge does not call for',

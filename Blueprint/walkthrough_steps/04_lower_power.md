@@ -46,7 +46,7 @@ Coming down is the climb in reverse. Each percent of power shed hands reactivity
 ()2a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 75 MW: 95, 90, 85, 80, 75. After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, tap INSERT 3 times.
 ()   On the chart, REACTOR POWER falls 3 points within 1 plant-minute while AVG COOLANT TEMPERATURE rises.
 ()   OUTPUT settled near 75 MW.
-()   OUTPUT steady for 2 plant-minutes since the last cut.
+()   No LOAD cut for 2 plant-minutes.
 
 Note: The inserts hold AVG COOLANT TEMPERATURE under about 587 °F.
 
@@ -73,7 +73,7 @@ Less steam drawn leaves the heat nowhere to go: the water warms, and warmer wate
 *Each drop is the same pair of moves: turbine first, rods second.*
 
 ()3a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 50 MW: 70, 65, 60, 55, 50. After each cut, if AVG COOLANT TEMPERATURE reads above 569 °F, tap INSERT 3 times.
-()   OUTPUT steady for 2 plant-minutes since the last cut.
+()   No LOAD cut for 2 plant-minutes.
 
 Note: The inserts hold AVG COOLANT TEMPERATURE under about 580 °F.
 
@@ -100,7 +100,7 @@ STEAM GENERATOR LEVEL dips and recovers on each drop; that is normal, and SG FEE
 *Lower power needs smaller rod moves as the band walks down.*
 
 ()4a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 30 MW: 45, 40, 35, 30. After each cut, if AVG COOLANT TEMPERATURE reads above 562 °F, tap INSERT 3 times.
-()   OUTPUT steady for 2 plant-minutes since the last cut.
+()   No LOAD cut for 2 plant-minutes.
 
 Note: The inserts hold AVG COOLANT TEMPERATURE under about 572 °F.
 
@@ -127,7 +127,7 @@ The band is walking back down toward 547 °F. A plant left hot at low load sends
 *15 MWe, about 12 % power, is where the shutdown walkthrough trips the reactor.*
 
 ()5a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 15 MW: 25, 20, 15. After each cut, if AVG COOLANT TEMPERATURE reads above 557 °F, tap INSERT 3 times.
-()   OUTPUT steady for 2 plant-minutes since the last cut.
+()   No LOAD cut for 2 plant-minutes.
 
 Note: The inserts hold AVG COOLANT TEMPERATURE under about 565 °F.
 
@@ -409,5 +409,5 @@ holds: the walk with its 3-step inserts off peaks 589.3 °F at step 2 against "u
 ### #825 record — 2026-11-03, `exp/825wt` (owner playtest of 1.8.4-rc9)
 
 - **Step 3 folded into step 2; steps 4-6 renumbered 3-5.** Owner: "is step 3 redundant because it says to insert rods in step 2 or is step 2b redundant?" — step 3 was the tail of 2b's inserts, and steps 4-6 already carried the pair as one step. Old 2b graded REACTOR POWER < 95 % and ticked 0.77 plant-min in, after the first of five cuts.
-- **Every load step is ordered and waits for OUTPUT steady 2 plant-minutes** (owner: "it saw the temperature was below 577 and check it off before it raised above 577"): the trim row cannot tick before the cuts are done and the last cut's heat has arrived; the power check comes after the trim. MEASURED trim ticks (typical seed 42 / slow-cut): step 2 at 10.15 / 12.18 plant-min, 576.2 / 576.0 °F; 3 at 9.50 / 11.10, 568.0 / 568.4 °F; 4 at 6.50 / 8.05, 560.7 / 561.1 °F; 5 at 4.33 / 5.40, 555.9 / 556.5 °F; LOAD at its target in every case.
+- **Every load step is ordered and waits for no LOAD cut for 2 plant-minutes** (`stopped` on the LOAD target; an OUTPUT-steady window was tried first and ticked 4-12 s after a slow cutter's last cut) (owner: "it saw the temperature was below 577 and check it off before it raised above 577"): the trim row cannot tick before the cuts are done and the last cut's heat has arrived; the power check comes after the trim. MEASURED trim ticks (typical seed 42 / slow-cut): step 2 at 10.15 / 12.18 plant-min, 576.2 / 576.0 °F; 3 at 9.50 / 11.10, 568.0 / 568.4 °F; 4 at 6.50 / 8.05, 560.7 / 561.1 °F; 5 at 4.33 / 5.40, 555.9 / 556.5 °F; LOAD at its target in every case.
 - **10× (owner: "steps 2, , 5, 6 should be 10x warp", read as old 2, 4, 5, 6) with taps, not held MED pulls** — a held 3-step insert is 0.4 s of wall at 10×.

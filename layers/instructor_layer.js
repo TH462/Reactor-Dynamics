@@ -1901,7 +1901,11 @@
                       * operator's setpoint, published as `control_state.pressure_setpoint` (MPa,
                       * pwr2_shell.js) and read by the box itself (pwr_board_wiring `imrsg8b7b9o`).
                       * Same shape as `steam_dump_setpoint` above. */
-                     pressure_setpoint: 1 };
+                     pressure_setpoint: 1,
+                     /* THE LOAD TARGET (#825 critic round 1): `control_state.load_target_mwe`, the machine's reference. A cut
+                      * lands whole (pwr2_shell `stepLoadDial`, raises only are rate-limited), so `stopped` on it reads "no
+                      * LOAD cut for N s" -- `pwr_lower_power` 2-5 hold their temperature trim behind it. */
+                     load_target_mwe: 1 };
   /* STEAM DUMP IN PRESSURE MODE — the card's status word PRESS, as a number the grader can read
    * *(OWNER RULING, 2026-09-24, selected "Grade the mode": "Give the grader a numeric 'dump in
    * pressure mode' value so PRESS is actually required. This is a small shared change and

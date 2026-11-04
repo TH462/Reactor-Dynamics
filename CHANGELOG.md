@@ -35,7 +35,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - Startup Part 1 step 10 lights SUBCOOLING MARGIN (10a) and AVG COOLANT TEMPERATURE, no longer PRIMARY PRESSURE and STEAM PRESS.
 - Startup Part 2: 10a and 11b play at 5× (11b's insert text now reads "about 3 seconds at 5×"); step 12 goes to 10× on entry instead of waiting for the first rod tap.
 - Startup Part 3 (power ascension): stages 1-4 (steps 4-7) pull to the MIDDLE of the green band (557 / 563 / 571 / 576 °F), not its floor; step 5 and 6 no longer drop warp on Pressurizer Pressure Low, which their own load increase causes; 9c says to WAIT for BORON CHEM (14 to 26 plant-minutes), not check it.
-- Shutdown Part 1 (load rampdown): the old step 3 (trim into the band) is 2b/2c of the load-drop step; every load step is ordered and waits for OUTPUT to hold steady 2 plant-minutes after the last cut, so the temperature trim cannot tick before the cuts' heat has arrived; the power check follows the trim; 10×, counting INSERT taps (5 steps, was 6).
+- Shutdown Part 1 (load rampdown): the old step 3 (trim into the band) is 2b/2c of the load-drop step; every load step is ordered and holds the temperature trim until no LOAD cut for 2 plant-minutes, so it cannot tick before the last cut's heat has arrived; the power check follows the trim; 10×, counting INSERT taps (5 steps, was 6).
 
 ## [Alpha 1.8.4-rc9] — 2026-11-03
 
