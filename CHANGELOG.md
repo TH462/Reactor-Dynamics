@@ -30,6 +30,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Fixed — board and walkthrough polish from the rc9 playtest (#825, UI half)
+
+- The at-cursor hover popup (QW2) is removed; it covered vital instruments. The bottom Scanner stays as the help channel.
+- BORON card: the `0-2500 ppm` range caption is now 14 px bold in the BORON STATUS caption tone (it was 7 px of dim slate on the board and went unseen).
+- Reactor vessel: the moving core water now passes through flow holes in the upper core plate to meet the hot plenum water.
+- PORV STATUS reads OPEN in the board's caution yellow and returns to green when the valve recloses.
+- The RCP rotor coasts down on the pump's own speed (not total loop flow): stops about 7 min after a trip from power, never spins in cold shutdown on natural circulation.
+- A completed walkthrough keeps its last step on screen (with Rewind step) and shows the Walkthrough complete banner below it.
+
 ## [Alpha 1.8.4-rc9] — 2026-11-03
 
 ### Fixed — Main Menu coach tip no longer covers the play and speed buttons (S-4, #653)

@@ -29,7 +29,11 @@
    * floorTop/floorBot below — rather than the authored y 455, height 17 this was written
    * against), so the column runs from the top of the fuel to the bottom of the blocks beneath
    * it, which is what the owner asked for and what the drawn internals actually show. */
-  var poolTop = coreTop, poolBot = 472, poolH = poolBot - poolTop;   /* 276..472, 196 */
+  /* #825 (owner playtest 2026-11-03: "the water flowing up between the rods never quite reaches the upper hot side
+   * water ... the moving water should extend up to this water above it"): the column now runs up through the upper
+   * plate's flow holes (plateTop = coreTop - 7) to the plenum fluid, instead of stopping 7 px under a solid plate. */
+  var plateTop = coreTop - 7;
+  var poolTop = plateTop, poolBot = 472, poolH = poolBot - poolTop;   /* 269..472, 203 */
   var coreW = coreR - coreL, coreH = coreBot - coreTop, cx = 280;
   var barrelL = 180, barrelR = 380;
   var stripBottom = 216, stripH = 216, tubeTop = -20, tubeW = 26;
@@ -264,7 +268,7 @@
       h('rect', { x: 149, y: 239, width: 35, height: 6, rx: 2.5, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.9 }),
       h('rect', { x: 377, y: 239, width: 35, height: 6, rx: 2.5, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.9 })));
     // core plates: upper plate + lower support plate
-    svgKids.push(h('rect', { x: barrelL + 4, y: coreTop - 7, width: barrelR - barrelL - 8, height: 7, rx: 2, fill: '#2b3d4a' }));
+    /* the upper plate is drawn AFTER the core water (see the flow holes below), so the upflow can reach the plenum */
     svgKids.push(h('rect', { x: 177, y: 456, width: 206, height: 15, rx: 4, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.9 }));
     svgKids.push(h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH, fill: '#07121a' }));
     // core steam space (visible as inventory drains below 50%)
@@ -294,6 +298,17 @@
         return h('rect', { x: x - 7, y: floorTop, width: 14, height: floorH, rx: 2, fill: '#2c3f4c', stroke: '#46596a', strokeWidth: 0.8 });
       })));
     svgKids.push(h('g', { clipPath: 'url(#' + ids.poolClip + ')' }, R.wideflow));
+    /* UPPER CORE PLATE WITH FLOW HOLES (#825): solid over each rod's footprint and at the barrel edges, open in the 7 px
+     * gap between neighbouring rods, so the animated upflow visibly passes through into the hot plenum water above. */
+    (function () {
+      var xs = fuelXs.concat(ctrlXs).sort(function (a, b) { return a - b; }), x0 = barrelL + 4, x1 = barrelR - 4;
+      var plate = [[x0, xs[0] - 7]];
+      xs.forEach(function (x) { plate.push([x - 7, x + 7]); });
+      plate.push([xs[xs.length - 1] + 7, x1]);
+      svgKids.push(h('g', null, plate.map(function (r, i) {
+        return h('rect', { key: 'plate' + i, x: r[0], y: plateTop, width: Math.max(0, r[1] - r[0]), height: 7, rx: 2, fill: '#2b3d4a' });
+      })));
+    }());
     // fuel rods (fuelXs is the module-level array, above)
     svgKids.push(R.fuelglow = h('rect', { x: coreL - 24, y: coreTop - 26, width: coreW + 48, height: coreH + 52, rx: 28, fill: gFuel.paint }));
     R.fuelRods = fuelXs.map(function (x) {

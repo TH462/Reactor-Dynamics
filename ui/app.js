@@ -6223,7 +6223,13 @@
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
       var active = !ck.complete && i === ck.step_index;
-      if (!active) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
+      /* ON COMPLETION THE LAST STEP STAYS (#825, owner playtest 2026-11-03: "no time to read the last step. It should still
+       * show the last step when the walkthrough has been completed ... still show the walkthrough complete banner"). It is
+       * drawn as the active card would be -- instruction, ticked rows, why -- but marked done, with the banner BELOW it
+       * rather than replacing it. Only the final step: one step at a time still holds. */
+      var lastShown = ck.complete && i === pr.steps.length - 1;
+      if (!active && !lastShown) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
+      if (lastShown) { active = true; done = true; }
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
       var hoverable = (stepHlLabels(st) || stepWatchLabels(st)) ? ' ckl-hoverable' : '';   /* #685 */
       /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
@@ -6231,7 +6237,7 @@
        * at the top of every step. */
       var waitLineShown = false;
       var ackRow = '';   /* same reason — #687 item 3 builds it above and emits it below the why */
-      h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      h += '<div class="ckl-step ' + cls + hoverable + (lastShown ? ' ckl-last-kept' : '') + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
        * #628: "move the numbered step to always be the first part of the stack. then the rest of
        * the step that appears when its active goes below it.")*.
@@ -6349,6 +6355,9 @@
           var pendTail = '';
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
+            /* the finished leg's kept last step: the instructor has already cleared its per-entry state at completion, so every row
+             * would read 'not met'. The step IS complete -- draw each row met (#825). */
+            if (lastShown) av = { met: true };
             /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
              * the button) whose twin predicate entry already draws the lamp; drawing both put
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
@@ -6357,7 +6366,7 @@
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
             var tag = '';
             if (!en.cont) { tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : ''; visSeen++; }
-            var ordWait = st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
+            var ordWait = !lastShown && st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
             /* THE SUBSTEP'S OWN NOTE AND SPEED, ON ITS HEAD ENTRY (the walkthrough-step-format
              * project — the owner's per-substep Note + "Suggested time warp" line). Neither is
              * drawn on a `cont` row: it is the same substep as its head, so the head already
@@ -6488,8 +6497,8 @@
               (bTag ? mesc(bTag) + ' comes first: ' : 'this comes first: ') + mesc(bTxt) + '</div>';
           }
         } else if (st.acc) {
-          h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
+          h += '<div class="ckl-crit' + ((ck.acc_met || lastShown) ? ' ckl-crit-met' : '') + '">' +
+            ((ck.acc_met || lastShown) ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
             /* THE SOLE-ROW VOID (#773/#788) — the case the ruling accepted WITH THIS
              * SENTENCE AS THE CONDITION. There is no sibling here, so the step completes
              * with nothing at all asserting it; the card must not let that pass unsaid. */
@@ -6555,7 +6564,7 @@
         /* `wait_hint: false` SUPPRESSES the generated line (#653 S9, layman playtest 2026-09-07):
          * the startup's criticality steps carry 240-900 s dwells, so the hint offered 60x, and
          * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
-        if (holdS >= 180 && st.wait_hint !== false) {
+        if (holdS >= 180 && st.wait_hint !== false && !lastShown) {   /* a finished step has nothing left to wait for (#825) */
           /* `hold` IS THE REPLAY'S DWELL, NOT A MEASUREMENT OF THE PLAYER'S STEP (#670 operator
            * pass 2, S-1). It is how long `procedures_harness` sits on the step so the plant has
            * settled before the next command, and it has been printed to the player as "About N
@@ -6627,8 +6636,9 @@
                 ? 'Rewind is not available here — this step\'s saved plant state is not in memory (loading a saved game clears it)'
                 : 'This is the first step — there is nothing to go back to') +
             '">⏪ Rewind step</button>' +
-          '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
-            (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>' +
+          (ck.complete ? '' :   /* the finished leg's last step keeps Rewind (go back a step) but has nothing to continue to (#825) */
+            '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
+              (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>') +
           (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') +
           /* the "more above" cue (#818): drawn always, shown by CSS only while #cklLog has text
            * hidden behind this pinned row (`.ckl-more`, set by cklMoreCue) */
@@ -6843,8 +6853,19 @@
        * the report that made the panel "unusable". */
       var advanced = cklState.step !== ck.step_index;
       cklState.step = ck.step_index;
+      if (!ck.complete) cklState.completeScrolled = false;
       if (!pointerInside(log)) {
-        if (ck.complete) log.scrollTop = log.scrollHeight;
+        if (ck.complete) {
+          /* ONCE, ON THE COMPLETION EVENT, NEVER ON A REPAINT (#605; critic round 3): the render key still moves after completion (speed bar, rewind_ready,
+           * plant mode), and a rebuild that re-scrolled snapped a reader back from the banner to the step head. `completeScrolled` latches until the run un-completes. */
+          if (!cklState.completeScrolled) {
+          cklState.completeScrolled = true;
+          /* ON COMPLETION SHOW THE KEPT LAST STEP FROM ITS HEAD (#825, critic M-A): scrolling to the bottom put a tall banner (the TMI-2 recap,
+           * ~760 px) in view and the kept step with its Rewind above the fold. The banner is below the step, so it still scrolls into reach. */
+          var keptEl = log.querySelector('.ckl-last-kept');
+          log.scrollTop = keptEl ? Math.max(0, keptEl.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 4) : log.scrollHeight;
+          }
+        }
         else if (!firstBuild && advanced && !cklState.userScrolled) {
           /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
            * scrollable ancestor, so with the checklist hosted in a content-sized pane it moved
@@ -11923,56 +11944,6 @@
     // hover; a click on any hinted element also explains it, alongside whatever
     // the click does). See the inspect* helpers below for the two tiers.
     document.body.addEventListener('mouseover', function (e) { inspectAt(e); });
-    /* HOVER HELP AT THE CURSOR (quick win 2, owner 2026-10-10: "more intuitive"). The Scanner line
-     * sits under the board, a long way from the thing the eye is on. After HOVER_TIP_MS of
-     * resting on a described thing, its one-line brief -- the SAME text the Scanner shows,
-     * resolved by the same inspectResolve -- appears beside the cursor. The Scanner stays the
-     * expanded view. Never over the instructor callout card, the Scanner panel itself, or a
-     * dialog; any press, key, wheel or leaving the window dismisses it. Mouse only. */
-    (function () {
-      var HOVER_TIP_MS = 400, tip = null, timer = null, tipKey = null, shown = false, mx = 0, my = 0, lastMove = 0;
-      function hide() {
-        if (timer) { clearTimeout(timer); timer = null; }
-        tipKey = null; shown = false;
-        if (tip) tip.classList.remove('on');
-      }
-      function place() {
-        if (!tip) return;
-        var w = tip.offsetWidth, h = tip.offsetHeight, x = mx + 14, y = my + 20;
-        if (x + w > window.innerWidth - 6) x = Math.max(6, mx - w - 10);
-        if (y + h > window.innerHeight - 6) y = Math.max(6, my - h - 12);
-        tip.style.left = x + 'px'; tip.style.top = y + 'px';
-      }
-      function show(res) {
-        if (!tip) {
-          tip = document.createElement('div');
-          tip.id = 'hoverTip'; tip.className = 'hover-tip'; tip.setAttribute('role', 'tooltip');
-          document.body.appendChild(tip);
-        }
-        tip.innerHTML = (res.title ? '<strong>' + mesc(res.title) + '</strong> — ' : '') + mesc(res.brief);
-        place();
-        tip.classList.add('on');
-        shown = true;
-      }
-      document.addEventListener('mousemove', function (e) {
-        mx = e.clientX; my = e.clientY;
-        if (shown) place();
-        var now = Date.now();
-        if (now - lastMove < 60) return;         // resolving walks the board's geometry; do not do it every pixel
-        lastMove = now;
-        var t = e.target;
-        if (!t || !t.closest || t.closest('#instrCallout, .instr-callout, #scannerPanel, .mission-overlay, .oom-win, #tourRoot, .hover-tip')) { hide(); return; }
-        var res = inspectResolve(e);
-        if (!res || !res.brief) { hide(); return; }
-        if (res.key === tipKey) return;          // still resting on the same thing
-        hide();
-        tipKey = res.key;
-        timer = setTimeout(function () { timer = null; show(res); }, HOVER_TIP_MS);
-      }, true);
-      ['mousedown', 'keydown', 'wheel'].forEach(function (n) { window.addEventListener(n, hide, true); });
-      window.addEventListener('blur', function (e) { if (e.target === window) hide(); });   /* capture would catch every element's blur */
-      document.documentElement.addEventListener('mouseleave', hide);
-    }());
     /* THE CLICK PATH IS FLASH-AWARE (#558) — see inspectAt. A press that raises a refusal
      * writes it here and this listener, running later in the SAME dispatch, used to
      * overwrite it with the button's own help text before a single frame was painted. */

@@ -5,9 +5,8 @@
  *   QW1  Quiet board: with no alarm up the alarm panel folds to a one-line strip and the chart takes the
  *        row's width; the first alarm expands it at once. The board never moves or rescales across a
  *        quiet -> alarm -> quiet cycle (0.0 px at three viewports, layman S-1 2026-10-15). Layout only.
- *   QW2  Hover help at the cursor: resting on a described board item for ~0.4 s shows the Scanner's
- *        one-line brief beside the pointer (same text); a press or leaving dismisses it; never over
- *        the instructor callout card.
+ *   QW2  (REMOVED 2026-11-03, #825) Hover help at the cursor blocked vital instruments; the bottom
+ *        Scanner is the help channel. Pinned absent: no popup after a rest on a described item.
  *   QW3  The chart window fits the data: a fresh run opens on 1 min and widens with the time since
  *        the player's last command (never past the speed rule's rung); a clicked rung is authoritative.
  *   QW4  PAUSED veil: a plainly stopped clock (Escape out of the Quick tour, the player's pause) puts a
@@ -126,56 +125,21 @@ function ck(name, ok, detail) {
   ck('QW1 a dragged (pinned) strip height is honoured while folded', pin.quiet && pin.rowH === 260, JSON.stringify({ quiet: pin.quiet, rowH: pin.rowH }));
   await p.ctx.close();
 
-  // ---- QW2 ---------------------------------------------------------------------------------
-  var h = await session({ width: 1366, height: 768 }, '&callout=1');
-  await h.page.click('#tabbar [data-tab="instructor"]').catch(function () {});
-  await h.page.waitForTimeout(1500);   // let the board settle: a relayout under a measured point moves the target
+  // ---- QW2 (REMOVED, owner 2026-11-03, #825: the at-cursor popup blocked vital instruments; the bottom
+  // Scanner is the help channel). Now pinned ABSENT: resting on a described item draws no popup, the Scanner still fills.
+  var h = await session({ width: 1366, height: 768 });
+  await h.page.waitForTimeout(1500);
   var pt = await h.page.evaluate(function () {
     var e = document.querySelector('.pwr-board-stage [data-item]'), r = e.getBoundingClientRect();
     return [r.x + r.width / 2, r.y + r.height / 2];
   });
-  function tip(page) {
-    return page.evaluate(function () {
-      var t = document.getElementById('hoverTip');
-      return { on: !!(t && t.classList.contains('on')), text: t ? t.textContent : '',
-               scanner: document.getElementById('scanner').textContent,
-               rect: t ? t.getBoundingClientRect().toJSON() : null };
-    });
-  }
   await h.page.mouse.move(pt[0], pt[1]);
-  await h.page.waitForTimeout(200);
-  var early = await tip(h.page);
-  ck('QW2 no tooltip before the ~0.4 s dwell', !early.on, JSON.stringify({ on: early.on }));
-  await h.page.waitForFunction(function () { var t = document.getElementById('hoverTip'); return t && t.classList.contains('on'); }, null, { timeout: 5000 }).catch(function () {});
-  var late = await tip(h.page);
-  ck('QW2 after the dwell the tooltip shows the Scanner brief, beside the cursor',
-     late.on && late.rect && late.text.length > 10 && late.text === late.scanner && late.rect.left >= pt[0] && late.rect.top >= pt[1],
-     late.text.slice(0, 50) + (late.rect ? ' @' + Math.round(late.rect.left) + ',' + Math.round(late.rect.top) : ' (no tip drawn)'));
-  await shot(h.page, 'qw2_tip');
-  await h.page.mouse.down(); await h.page.mouse.up();
-  await h.page.waitForTimeout(150);
-  ck('QW2 a press dismisses it', !(await tip(h.page)).on);
-  await h.page.mouse.move(pt[0] + 1, pt[1] + 1);
-  await h.page.waitForTimeout(700);
-  await h.page.mouse.move(3, 3);
-  await h.page.waitForTimeout(250);
-  ck('QW2 moving onto nothing described dismisses it', !(await tip(h.page)).on);
-  // The instructor callout card: start the opener and rest on the card's own hinted button.
-  await h.page.waitForSelector('#instrCurrent [data-opener-start]', { timeout: 10000 });
-  await h.page.click('#instrCurrent [data-opener-start]');
-  await h.page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o0_hello'); }, null, { timeout: 30000 });
-  await h.page.waitForSelector('#instrCallout [data-scanner-hint]', { state: 'visible', timeout: 15000 });
-  var cb = await h.page.evaluate(function () {
-    var e = document.querySelector('#instrCallout [data-scanner-hint]'), r = e.getBoundingClientRect();
-    return [r.x + r.width / 2, r.y + r.height / 2];
+  await h.page.waitForTimeout(1200);
+  var rest = await h.page.evaluate(function () {
+    var t = document.getElementById('hoverTip');
+    return { tip: !!t, any: !!document.querySelector('.hover-tip'), scanner: document.getElementById('scanner').textContent.length };
   });
-  await h.page.mouse.move(cb[0], cb[1]);
-  await h.page.waitForTimeout(900);
-  var onCard = await tip(h.page);
-  ck('QW2 no tooltip over the instructor callout card (its button carries a hint)', !onCard.on, JSON.stringify({ on: onCard.on }));
-  await h.page.mouse.move(pt[0], pt[1]);
-  await h.page.waitForTimeout(900);
-  ck('QW2 ...and it still shows on the board with the callout up', (await tip(h.page)).on);
+  ck('QW2 no popup at the cursor after a 1.2 s rest on a described item; the Scanner still fills', !rest.tip && !rest.any && rest.scanner > 10, JSON.stringify(rest));
   await h.ctx.close();
 
   // ---- QW3 ---------------------------------------------------------------------------------
@@ -323,6 +287,117 @@ function ck(name, ok, detail) {
   var fired1 = await o.page.waitForFunction(function () { return RD.__dev.service().instructor.firedBeats.has('o1_help'); }, null, { timeout: 20000 }).then(function () { return true; }).catch(function () { return false; });
   ck('QW7 ...and the step still runs (o1_help fires)', fired1);
   await o.ctx.close();
+
+  // ---- QW8 (#825 rc9 playtest): PORV colour, RCP coast, finished walkthrough ------------------
+  var q = await session({ width: 1600, height: 1000 });
+  function porvTile(page) {
+    return page.evaluate(function () {
+      var e = document.querySelector('[data-item="ims2jf7fv7m"]'), t = e.textContent.trim();
+      var best = null; e.querySelectorAll('*').forEach(function (x) { if (x.children.length === 0 && x.textContent.trim() === t) best = x; });
+      return { text: t, color: getComputedStyle(best || e).color };
+    });
+  }
+  await q.page.evaluate(function () { RD.__dev.cmd({ action: 'open_porv_manual' }); });
+  await q.page.waitForTimeout(1500);
+  var po = await porvTile(q.page);
+  ck('QW8 PORV STATUS reads OPEN in the caution yellow', po.text === 'OPEN' && po.color === 'rgb(216, 166, 87)', JSON.stringify(po));
+  await q.page.evaluate(function () { RD.__dev.cmd({ action: 'close_porv' }); });
+  await q.page.waitForTimeout(1500);
+  var pc = await porvTile(q.page);
+  ck('QW8 ...and returns to the authored green once the valve recloses', pc.text === 'CLOSED' && pc.color === 'rgb(90, 173, 124)', JSON.stringify(pc));
+  function spin(page) {
+    return page.evaluate(function () {
+      var v = document.querySelector('[data-item="imrobpq4a70"] [style*="rcpSpin"]');
+      return { dur: v ? v.style.animationDuration : 'none', flow: document.querySelector('[data-item="imsgteavgid"]').textContent.trim() };
+    });
+  }
+  await q.page.evaluate(function () { RD.__dev.cmd({ action: 'set_rcp', running: false }); });
+  await q.page.evaluate(function () { RD.__dev.service().advanceCycles(300); });
+  await q.page.waitForTimeout(400);
+  var s20 = await spin(q.page);
+  ck('QW8 a tripped RCP rotor is still turning while it coasts (flow still falling)', s20.dur !== 'none', JSON.stringify(s20));
+  await q.page.evaluate(function () { RD.__dev.service().advanceCycles(9000); });
+  await q.page.waitForTimeout(400);
+  var s900 = await spin(q.page);
+  ck('QW8 ...and has stopped long after, while natural-circulation flow is still on the readout', s900.dur === 'none' && parseInt(s900.flow, 10) >= 2, JSON.stringify(s900));
+  await q.ctx.close();
+
+  var cp = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  var cpg = await cp.newPage();
+  await cpg.goto(BASE.replace('init=hot_full_power', 'init=cold_shutdown'));
+  await cpg.waitForSelector('#mainMenuBtn');
+  if (await cpg.isVisible('#missionOverlay')) await cpg.click('#missionClose');
+  await cpg.waitForTimeout(1500);
+  await cpg.evaluate(function () { RD.__dev.service().advanceCycles(600); });
+  await cpg.waitForTimeout(400);
+  var cold = await spin(cpg);
+  ck('QW8 a stopped RCP in cold shutdown does not spin on natural-circulation flow', cold.dur === 'none' && parseInt(cold.flow, 10) >= 1, JSON.stringify(cold));
+  await cp.close();
+
+
+  // A finished walkthrough, started the way the UI starts it (a [data-ckl-start] press -- RD.__dev.cmd leaves #cklRun display:none, 0 px tall),
+  // on three legs (the TMI-2 callout leg hides every .ckl-step by CSS) at two viewports. The kept step and its Rewind must be VISIBLE
+  // inside the #cklLog viewport, not merely present in the HTML.
+  async function finishLeg(vp, leg) {
+    var w2 = await session(vp);
+    await w2.page.evaluate(function (l) { var b = document.createElement('button'); b.setAttribute('data-ckl-start', l); document.body.appendChild(b); b.click(); }, leg);
+    await w2.page.waitForTimeout(800);
+    for (var kk = 0; kk < 60; kk++) {
+      var cst = await w2.page.evaluate(function () { var c = RD.__dev.service().instructor.checklist; return c ? { c: c.complete, i: c.step_index } : null; });
+      if (!cst || cst.c) break;
+      await w2.page.evaluate(function (i) { RD.__dev.cmd({ action: 'checklist_check', index: i }); }, cst.i);
+      await w2.page.waitForTimeout(250);
+    }
+    await w2.page.waitForTimeout(1500);
+    var fin = await w2.page.evaluate(function () {
+      var run = document.getElementById('cklRun'), log = document.getElementById('cklLog'), k = run.querySelector('.ckl-last-kept');
+      var rw = k && k.parentElement.querySelector('[data-wt-rewind]') || run.querySelector('[data-wt-rewind]');
+      var lr = log ? log.getBoundingClientRect() : null, kr = k ? k.getBoundingClientRect() : null, rr = rw ? rw.getBoundingClientRect() : null;
+      function inside(r) { return !!(r && lr && r.width > 0 && r.height > 0 && r.top >= lr.top - 1 && r.bottom <= lr.bottom + 1); }
+      return { kept: !!k, banner: !!run.querySelector('.ckl-complete'), rewind: !!rw,
+               wait: !!(k && k.querySelector('.ckl-wait')),
+               ticked: k ? k.querySelectorAll('.ckl-crit.ckl-crit-met').length : 0,
+               unticked: k ? [].filter.call(k.querySelectorAll('.ckl-crit'), function (n) { return !n.classList.contains('ckl-crit-met'); }).length : -1,
+               keptHeadInView: !!(kr && lr && kr.height > 0 && kr.top >= lr.top - 1 && kr.top < lr.bottom - 20),
+               rewindInView: inside(rr), scrollTop: log ? Math.round(log.scrollTop) : null };
+    });
+    await shot(w2.page, 'qw8_finished_' + leg + '_' + vp.width);
+    await w2.ctx.close();
+    return fin;
+  }
+  var legs = ['pwr_lower_power', 'pwr_raise_power', 'pwr_tmi2_incident'];
+  for (var vi2 = 0; vi2 < VPS.length - 1; vi2++) {   // 1366x768 and 1600x1000
+    for (var li = 0; li < legs.length; li++) {
+      var fin = await finishLeg(VPS[vi2], legs[li]), tag = legs[li] + ' @' + VPS[vi2].width;
+      ck('QW8 ' + tag + ': finished card keeps the last step, the banner and Rewind', fin.kept && fin.banner && fin.rewind, JSON.stringify(fin));
+      ck('QW8 ' + tag + ': the kept head and its Rewind are visible in the log viewport (not scrolled past)', fin.keptHeadInView && fin.rewindInView, JSON.stringify(fin));
+      ck('QW8 ' + tag + ': every row drawn met, no wait advice', fin.unticked === 0 && !fin.wait, JSON.stringify(fin));
+    }
+  }
+
+  // The completion scroll happens ONCE (#605: scroll on an event, never on a repaint). A reader who wheels down to the TMI-2 recap and
+  // then presses a speed button (which changes the render key) must not be snapped back to the step head.
+  var rs = await session({ width: 1366, height: 768 });
+  await rs.page.evaluate(function (l) { var b = document.createElement('button'); b.setAttribute('data-ckl-start', l); document.body.appendChild(b); b.click(); }, 'pwr_tmi2_incident');
+  await rs.page.waitForTimeout(800);
+  for (var rk = 0; rk < 60; rk++) {
+    var rst = await rs.page.evaluate(function () { var c = RD.__dev.service().instructor.checklist; return c ? { c: c.complete, i: c.step_index } : null; });
+    if (!rst || rst.c) break;
+    await rs.page.evaluate(function (i) { RD.__dev.cmd({ action: 'checklist_check', index: i }); }, rst.i);
+    await rs.page.waitForTimeout(250);
+  }
+  await rs.page.waitForTimeout(1500);
+  var lp = await rs.page.evaluate(function () { var l = document.getElementById('cklLog'), r = l.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2, l.scrollTop]; });
+  await rs.page.mouse.move(lp[0], lp[1]);
+  await rs.page.mouse.wheel(0, 3000);
+  await rs.page.waitForTimeout(500);
+  var bot = await rs.page.evaluate(function () { return document.getElementById('cklLog').scrollTop; });
+  await rs.page.mouse.move(5, 5);
+  await rs.page.evaluate(function () { var b = document.querySelector('#speed [data-speed="5"]'); if (b) b.click(); });
+  await rs.page.waitForTimeout(2500);
+  var aft = await rs.page.evaluate(function () { return document.getElementById('cklLog').scrollTop; });
+  ck('QW8 the completion scroll is once: a reader at the bottom of the finished TMI-2 log is not snapped back by a speed press', bot > lp[2] + 50 && Math.abs(aft - bot) <= 2, JSON.stringify({ atCompletion: Math.round(lp[2]), afterWheel: Math.round(bot), afterSpeedPress: Math.round(aft) }));
+  await rs.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
