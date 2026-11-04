@@ -4684,7 +4684,7 @@
                  { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, latch: true,
                    hl: ['Withdraw'], hl_watch: ['Tavg'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 573 °F or more, 10 to 20 steps. Otherwise leave the rods.',
-                   note: 'Stop at 573 °F: the boron still arriving takes it to about 580 °F. After a slow climb the boron has already arrived, and it stays near 573 °F. If CONTROL ROD POSITION stops during a pull, wait for REACTOR POWER under 103 %, then pull again.',
+                   note: 'Stop at 573 °F: the boron still arriving takes it to about 580 °F. After a slow climb the boron has already arrived, and step 9 has you withdraw to 577 °F. If CONTROL ROD POSITION stops during a pull, wait for REACTOR POWER under 103 %, then pull again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 580)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, label: 'AVG COOLANT TEMPERATURE still between 573 and 583 °F' },
                  { p: 'control_bank_steps', op: '<', v: 600,
@@ -4734,6 +4734,17 @@
                    hl_watch: ['Boron Concentration'],
                    ask: 'Wait for BORON CHEM to fall to 663 ppm or below.', note: 'The dilution you set in step 3 gets there about 45 plant-minutes after step 3: up to about 26 more here after a brisk climb, none after a slow one.',   /* the timing moved to a note: the ask is capped at 30 words (run_checklist_pwr2_b) */   /* #825 layman S-5, MEASURED 663 ppm at 44.2 / 45.1 / 45.0 plant-min after step 3 (typical / chain / slow chain): 22.4, 23.3, 0.1 min into this step; ends 580.1 / 580.7 / 573.4 degF; critic L-2, all raise mistake routes: 663 ppm 43.8-46.3 plant-min after step 3, 17.3-25.8 into this step (band_floor 21.9, hot_stage4 19.9), ends 579.8-580.5 degF */
                    label: 'BORON CHEM 663 ppm or below' },
+                 /* THE TRIM FOR A SLOW CLIMB (critic M-2 on c39b21cc, 2026-11-04). A climb that took about 45 plant-min reaches step 9 with
+                  * the dilution already in and AVG COOLANT TEMPERATURE parked at step 8's 573 degF stop, 6.6 degF under the 580 program
+                  * (MEASURED, slow chain 573.4). A crew trims Tavg onto its program: this row. A brisk climb meets it without a press, as the
+                  * boron still arriving carries the plant past 577 (conditional by design, the way 8c is). Measured numbers: run_walkthrough_routes
+                  * route slow_climb (574.3 -> 577.9 degF in 10 steps, leg end 577.9; OTdT margin min 0.318 against 0.22-0.25 on the brisk
+                  * routes), and the step-9 policy, which reads its threshold, pull and target off this ask. Graded at 577, so the ask stops
+                  * at 577: an ask saying 580 over a row that lights Continue at 577 would be the #749 shape. */
+                 { p: 'tavg_c', op: '>=', v: 302.778,   /* 577.0 degF */
+                   hl: ['Withdraw', 'Rod Speed — Normal'], hl_watch: ['Tavg', 'Boron Concentration'],
+                   ask: 'If BORON CHEM reads 663 ppm or below and AVG COOLANT TEMPERATURE under 577 °F, withdraw 5 steps at MED a plant-minute apart until it reads 577 °F.',
+                   label: 'AVG COOLANT TEMPERATURE 577 °F or above' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8,
                    hl: ['Insert'], hl_watch: ['Tavg'],
                    ask: 'Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.',

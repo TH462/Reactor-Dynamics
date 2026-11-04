@@ -259,7 +259,7 @@ var ROUTES = {
       'cmd:set_load_target:4': { policy: 'to_band', tref: 576, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
       'cmd:set_load_target:5': { policy: 'to_band', tref: 578, dead: 0.5, dead_hi: 5, pull: 5, dwell: 60 },
       // 9a's note: "hold INSERT a few steps whenever it rises above its band" (the chained plant's dilution tail)
-      '#9': { policy: 'to_band', tref: 578, dir: 'insert', dead: 3, pull: 3, dwell: 60 },
+      '#9': { policy: 'to_band', tref: 578, dir: 'insert', dead: 3, pull: 3, dwell: 60, trim_text: true },   // + 9c's trim, read off the card (critic M-2)
     },
     // "Make sure the turbine is on line and taking steam": a CONFIRM step — the ask is "Check the
     // TURBINE-GENERATOR card is on line", LATCH only "if it reads TRIP" — and the low_power start
@@ -303,6 +303,17 @@ var ROUTES = {
         { action: 'set_load_target', mwe: 30 }, { action: 'rod_nudge', group_id: 'control', steps: 32, speed: 'normal' }] },
         override: { 'cmd:set_load_target:2': { policy: 'to_band', tref: 562, dead: 5, dead_hi: 5, pull: 5, dwell: 60 } } },
       /* 2026-09-26: step 10 (the `cond_pull` half) left with the xenon steps; the band-floor stages stay. */
+      /* critic M-2 on c39b21cc (2026-11-04): the SLOW CLIMB, the layman's route -- each LOAD stage taken 300 plant-s after the step
+       * opens (about 45 plant-min from step 3 to step 9 against the typical 22). The dilution has arrived by step 9 and step 8 stops at
+       * 573 degF, so the leg ends 6.6 degF under its 580 program unless 9c's trim is followed. The stages are read as the chain's
+       * literal player reads them (the band floor the card names, `chain_steps`): at the typical route's mid-band stops the plant
+       * reached step 9 at 577.0 degF and the route could not tell the card with 9c from the card without it. */
+      { id: 'slow_climb', kind: 'slow', at: 'cmd:set_load_target:1', set: { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60, delay_s: 300 },
+        override: {
+          'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60, delay_s: 300 },
+          'cmd:set_load_target:3': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60, delay_s: 300 },
+          'cmd:set_load_target:4': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60, delay_s: 300 },
+          'cmd:set_load_target:5': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60, delay_s: 300 } } },
       { id: 'band_floor', kind: 'literal reading', at: 'cmd:set_load_target:1', set: { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
         override: {
           'cmd:set_load_target:2': { policy: 'to_band', tref_from_text: 'floor', dead: 0, dead_hi: 5, pull: 5, dwell: 60 },
@@ -755,6 +766,10 @@ var MUTATIONS = [
       st.accs = [st.accs[0], { p: 'spray_flow_pct', op: '<', v: 1, ask: 'Watch SUBCOOLING MARGIN, and when it reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.',
         note: 'The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit.', wait_speed: 60, label: 'OFF lit under SPRAY' }, st.accs[3]];
     } },
+  /* critic M-2: raise power 9 WITHOUT its trim row -- the slow climb then ends at the 573 degF stop, 6.6 degF under 580 */
+  { id: 'raise_no_trim_9', leg: 'pwr_raise_power', route: 'slow_climb', expect: 'settle',
+    why: 'raise-power 9 without the slow-climb trim row (the card before critic M-2)',
+    mutate: function (P) { P.steps[8].accs = P.steps[8].accs.filter(function (e) { return !(e.p === 'tavg_c' && e.op === '>='); }); } },
   { id: 'raise_old_settle_band', chain: true, leg: 'pwr_raise_power', route: 'chain', expect: 'settle',
     why: 'raise-power 8 graded 563-592 degF again (pass 6: step 8 ticked at 567 degF)',
     mutate: function (P) {
@@ -1229,6 +1244,9 @@ function runJob(legId, routeId, mutId, ctx) {
     var tF = S.lastReadings.tavg_F, pw = S.lastReadings.power_pct;   // the step's Tavg / power span (stepTable prints it)
     out[k].tlo = Math.min(out[k].tlo == null ? 1e9 : out[k].tlo, tF); out[k].thi = Math.max(out[k].thi == null ? -1e9 : out[k].thi, tF);
     out[k].plo = Math.min(out[k].plo == null ? 1e9 : out[k].plo, pw);
+    /* the OVERTEMPERATURE delta-T margin, setpoint minus reading (fraction of rated delta-T), its minimum over the step (critic M-2) */
+    var rpsR = svc.engine && svc.engine.eng && svc.engine.eng.rpsReport, otf = rpsR && (rpsR.functions || []).filter(function (x) { return x.id === 'ot_delta_t'; })[0];
+    if (otf && otf.available && isFinite(otf.setpoint) && isFinite(otf.value)) out[k].otdt_min = Math.min(out[k].otdt_min == null ? 1e9 : out[k].otdt_min, otf.setpoint - otf.value);
     out[k].phi = Math.max(out[k].phi == null ? -1e9 : out[k].phi, pw);   // peak power / startup rate (#807 item 11)
     if (S.lastReadings.sur_dpm != null) out[k].surhi = Math.max(out[k].surhi == null ? -1e9 : out[k].surhi, S.lastReadings.sur_dpm);
     /* #824: the 1/M panel's prediction as it stands (the post-plot value at a plot step's end) -- `plot_band` reads it */
@@ -1641,6 +1659,29 @@ function runJob(legId, routeId, mutId, ctx) {
        * 2067/1972/1915/1915 psia on the chain at the card's pace against 2001/1938/1936/1941 without it
        * (steps 3-6). A LOAD command (steps 4-6, raise power) is still the player's and is still sent. */
       if (!(spec.no_cmd)) { if (!(st2.cmd && cmdAction(st2.cmd) === 'rod_nudge')) issueStepCmd(st2, el2); pressRows(st2, c2, null, true); }
+      /* 9c's TRIM, READ OFF THE CARD (critic M-2): "If BORON CHEM reads P ppm or below and AVG COOLANT TEMPERATURE under A degF,
+       * withdraw K steps at MED a plant-minute apart until it reads B degF". Started once both conditions hold, followed to B, then the
+       * step's own insert rule. No row, no trim -- which is what the injection raise_no_trim_9 removes. */
+      if (spec.trim_text) {
+        if (S.memo.trimSpec === undefined) {
+          S.memo.trimSpec = null;
+          (st2.accs || []).forEach(function (e) {
+            var tm = /BORON CHEM reads (\d{3}) ppm or below and AVG COOLANT TEMPERATURE under (\d{3}) °F, withdraw (\d+) steps at MED a plant-minute apart until it reads (\d{3}) °F/.exec((e && e.ask) || '');
+            if (tm) S.memo.trimSpec = { ppm: +tm[1], below: +tm[2], pull: +tm[3], to: +tm[4] };
+          });
+        }
+        var tsp = S.memo.trimSpec, tfT = pv('tavg_c') * 9 / 5 + 32;
+        if (tsp && !S.memo.trimOn && !S.memo.trimDone && pv('boron_ppm') <= tsp.ppm && tfT < tsp.below) { S.memo.trimOn = true; out[cur].trim_from_F = tfT; }
+        if (S.memo.trimOn) {
+          if (tfT >= tsp.to) { S.memo.trimOn = false; S.memo.trimDone = true; out[cur].trim_to_F = tfT; }
+          else {
+            if (!moving() && t() - (S.memo.lastPull || -1e9) >= (spec.dwell || 60)) {
+              nudge(tsp.pull, 'normal'); S.acts++; S.memo.lastPull = t(); out[cur].withdrawn = (out[cur].withdrawn || 0) + tsp.pull;
+            }
+            return;
+          }
+        }
+      }
       if (spec.tref_from_text && S.memo.tref == null) {   // pass 6: the floor of the band the card names, +1 degF
         var btx = (st2.accs || []).map(function (e) { return (e.ask || '') + ' ' + (e.label || ''); }).join(' '), bm, blo = null, bre = /(\d{3}) (?:to|and) (\d{3}) °F/g;
         while ((bm = bre.exec(btx))) if (blo == null) blo = +bm[1];
@@ -2027,8 +2068,9 @@ function verdicts(r) {
   var legEnd = (r.steps || []).filter(function (st) { return st.at_done; }).slice(-1)[0];
   var st8 = (r.steps || []).filter(function (st) {
     if (st.settle == null || !st.at_done) return false;
-    var tolS = Math.max(5.4, st.settle_floor != null ? st.settle - st.settle_floor + 0.05 : 0);
-    return Math.abs(st.at_done.tavg_F - st.settle) > tolS || !(legEnd && Math.abs(legEnd.at_done.tavg_F - st.settle) <= 5.4);
+    /* ASYMMETRIC (critic L-6): the card's own stop widens the allowance BELOW N only; above N it stays 5.4 degF */
+    var below = Math.max(5.4, st.settle_floor != null ? st.settle - st.settle_floor + 0.05 : 0), dT = st.at_done.tavg_F - st.settle;
+    return dT > 5.4 || -dT > below || !(legEnd && Math.abs(legEnd.at_done.tavg_F - st.settle) <= 5.4);
   });
   if ((r.steps || []).some(function (st) { return st.settle != null; }))
     v.settle = { ok: st8.length === 0, name: 'a step that says "settle on/near N degF" completes within 5.4 degF of N (or inside its own band, above its floor) and the leg ends within 5.4 degF of N',
@@ -2125,7 +2167,7 @@ function stepTable(r, head) {
       (st.dur_min != null ? f(st.dur_min) + ' min, done_by ' + st.by + ' @ ' + f(st.t_done_min) + ' | ' + rd(st.at_done) : 'NOT DONE | ' + rd(st.at_end)) +
       (st.pred != null ? ' | pred ' + st.pred + ' goal ' + st.goal : '') + (st.reads ? ' | reads ' + JSON.stringify(st.reads) : '') +
       (st.a_tick ? ' | 1/M row ticked ' + JSON.stringify(st.a_tick) + ' (reach bank ' + st.reach_bank + ', pred ' + st.reach_pred + ')' : '') + (st.unlock ? ' | unlock lag ' + JSON.stringify(st.unlock) + ' s' : '') + (st.relocks ? ' | RE-LOCKS ' + st.relocks : '') + (st.hidden_lock_s ? ' | hidden-locked ' + st.hidden_lock_s + ' s' : '') + (st.b_still_s != null ? ' | rate row ticked ' + st.b_still_s + ' s after the last rod motion' : '') + (st.ticks ? ' | ticks ' + JSON.stringify(st.ticks) : '') +
-      (st.taps ? ' | taps ' + st.taps : '') + (st.inserted ? ' | inserted' : '') + (st.withdrawn ? ' | withdrew ' + st.withdrawn : '') + (st.inserted_n ? ' | inserted ' + st.inserted_n : '') + (st.tlo != null ? ' | Tavg ' + f(st.tlo) + '-' + f(st.thi) + ' °F, power low ' + f(st.plo) + ' %' : '') + (st.entries ? ' | entries ' + st.entries + ', peak rate ' + st.peak_cool_F_hr + ' degF/hr' : '') +
+      (st.otdt_min != null ? ' | OTdT margin min ' + st.otdt_min.toFixed(3) : '') + (st.trim_from_F != null ? ' | trim ' + f(st.trim_from_F) + '->' + (st.trim_to_F != null ? f(st.trim_to_F) : '?') + ' degF' : '') + (st.taps ? ' | taps ' + st.taps : '') + (st.inserted ? ' | inserted' : '') + (st.withdrawn ? ' | withdrew ' + st.withdrawn : '') + (st.inserted_n ? ' | inserted ' + st.inserted_n : '') + (st.tlo != null ? ' | Tavg ' + f(st.tlo) + '-' + f(st.thi) + ' °F, power low ' + f(st.plo) + ' %' : '') + (st.entries ? ' | entries ' + st.entries + ', peak rate ' + st.peak_cool_F_hr + ' degF/hr' : '') +
       (st.prlo != null ? ' | P low ' + f(st.prlo, 0) + ' psia, subcool low ' + f(st.sclo) + ' degF' : '') + (st.ratelo != null && st.ratelo < -20 ? ' | rate tile ' + f(st.ratelo, 0) + ' (true ' + f(st.truelo, 0) + ') degF/hr' : '') + (st.raised ? ' | RAISED ' + st.raised.join(', ') : '') + (st.fired ? ' | fired ' + st.fired.join(', ') : '') + (st.errs ? ' | REFUSED ' + st.errs.length + 'x ' + st.errs[0] : '') + X);
   });
 }

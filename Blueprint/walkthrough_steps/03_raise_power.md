@@ -214,7 +214,7 @@ Suggested time warp: 10×, while OUTPUT climbs.
 
 Suggested time warp: 5×.
 
-Note: Stop at 573 °F: the boron still arriving takes it to about 580 °F in step 9. After a slow climb the boron has already arrived, and it stays near 573 °F. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
+Note: Stop at 573 °F: the boron still arriving takes it to about 580 °F in step 9. After a slow climb the boron has already arrived, and step 9 has you withdraw to 577 °F. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
 
 ()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
 
@@ -236,7 +236,9 @@ REACTOR POWER settles near 101 %. The control bank ends part-way out, because bo
 
 ()9b. Check BORON CHEM reads 663 ppm or below.
 
-()9c. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
+()9c. If BORON CHEM reads 663 ppm or below and AVG COOLANT TEMPERATURE under 577 °F, withdraw 5 steps at MED a plant-minute apart until it reads 577 °F.
+
+()9d. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
 
 Suggested time warp: 5×.
 
