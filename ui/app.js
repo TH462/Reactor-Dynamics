@@ -6854,7 +6854,12 @@
       var advanced = cklState.step !== ck.step_index;
       cklState.step = ck.step_index;
       if (!pointerInside(log)) {
-        if (ck.complete) log.scrollTop = log.scrollHeight;
+        if (ck.complete) {
+          /* ON COMPLETION SHOW THE KEPT LAST STEP FROM ITS HEAD (#825, critic M-A): scrolling to the bottom put a tall banner (the TMI-2 recap,
+           * ~760 px) in view and the kept step with its Rewind above the fold. The banner is below the step, so it still scrolls into reach. */
+          var keptEl = log.querySelector('.ckl-last-kept');
+          log.scrollTop = keptEl ? Math.max(0, keptEl.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 4) : log.scrollHeight;
+        }
         else if (!firstBuild && advanced && !cklState.userScrolled) {
           /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
            * scrollable ancestor, so with the checklist hosted in a content-sized pane it moved

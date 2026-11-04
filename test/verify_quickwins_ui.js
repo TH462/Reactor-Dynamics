@@ -335,27 +335,45 @@ function ck(name, ok, detail) {
   await cp.close();
 
 
-  var w2 = await session({ width: 1600, height: 1000 });
-  await w2.page.evaluate(function () { RD.__dev.cmd({ action: 'start_checklist', procedure_id: 'pwr_lower_power' }); });
-  await w2.page.waitForTimeout(800);
-  for (var kk = 0; kk < 40; kk++) {
-    var cst = await w2.page.evaluate(function () { var c = RD.__dev.service().instructor.checklist; return c ? { c: c.complete, i: c.step_index } : null; });
-    if (!cst || cst.c) break;
-    await w2.page.evaluate(function (i) { RD.__dev.cmd({ action: 'checklist_check', index: i }); }, cst.i);
-    await w2.page.waitForTimeout(250);
+  // A finished walkthrough, started the way the UI starts it (a [data-ckl-start] press -- RD.__dev.cmd leaves #cklRun display:none, 0 px tall),
+  // on three legs (the TMI-2 callout leg hides every .ckl-step by CSS) at two viewports. The kept step and its Rewind must be VISIBLE
+  // inside the #cklLog viewport, not merely present in the HTML.
+  async function finishLeg(vp, leg) {
+    var w2 = await session(vp);
+    await w2.page.evaluate(function (l) { var b = document.createElement('button'); b.setAttribute('data-ckl-start', l); document.body.appendChild(b); b.click(); }, leg);
+    await w2.page.waitForTimeout(800);
+    for (var kk = 0; kk < 60; kk++) {
+      var cst = await w2.page.evaluate(function () { var c = RD.__dev.service().instructor.checklist; return c ? { c: c.complete, i: c.step_index } : null; });
+      if (!cst || cst.c) break;
+      await w2.page.evaluate(function (i) { RD.__dev.cmd({ action: 'checklist_check', index: i }); }, cst.i);
+      await w2.page.waitForTimeout(250);
+    }
+    await w2.page.waitForTimeout(1500);
+    var fin = await w2.page.evaluate(function () {
+      var run = document.getElementById('cklRun'), log = document.getElementById('cklLog'), k = run.querySelector('.ckl-last-kept');
+      var rw = k && k.parentElement.querySelector('[data-wt-rewind]') || run.querySelector('[data-wt-rewind]');
+      var lr = log ? log.getBoundingClientRect() : null, kr = k ? k.getBoundingClientRect() : null, rr = rw ? rw.getBoundingClientRect() : null;
+      function inside(r) { return !!(r && lr && r.width > 0 && r.height > 0 && r.top >= lr.top - 1 && r.bottom <= lr.bottom + 1); }
+      return { kept: !!k, banner: !!run.querySelector('.ckl-complete'), rewind: !!rw,
+               wait: !!(k && k.querySelector('.ckl-wait')),
+               ticked: k ? k.querySelectorAll('.ckl-crit.ckl-crit-met').length : 0,
+               unticked: k ? [].filter.call(k.querySelectorAll('.ckl-crit'), function (n) { return !n.classList.contains('ckl-crit-met'); }).length : -1,
+               keptHeadInView: !!(kr && lr && kr.height > 0 && kr.top >= lr.top - 1 && kr.top < lr.bottom - 20),
+               rewindInView: inside(rr), scrollTop: log ? Math.round(log.scrollTop) : null };
+    });
+    await shot(w2.page, 'qw8_finished_' + leg + '_' + vp.width);
+    await w2.ctx.close();
+    return fin;
   }
-  await w2.page.waitForTimeout(1200);
-  var fin = await w2.page.evaluate(function () {
-    var run = document.getElementById('cklRun'), k = run.querySelector('.ckl-last-kept');
-    return { kept: !!k, banner: !!run.querySelector('.ckl-complete'), rewind: !!run.querySelector('[data-wt-rewind]'),
-             wait: !!(k && k.querySelector('.ckl-wait')),
-             ticked: k ? k.querySelectorAll('.ckl-crit.ckl-crit-met').length : 0,
-             unticked: k ? [].filter.call(k.querySelectorAll('.ckl-crit'), function (n) { return !n.classList.contains('ckl-crit-met'); }).length : -1 };
-  });
-  ck('QW8 a finished walkthrough keeps its last step beside the complete banner, with Rewind', fin.kept && fin.banner && fin.rewind, JSON.stringify(fin));
-  ck('QW8 ...every row of the kept step is drawn met, and no wait advice', fin.ticked > 0 && fin.unticked === 0 && !fin.wait, JSON.stringify(fin));
-  await shot(w2.page, 'qw8_finished');
-  await w2.ctx.close();
+  var legs = ['pwr_lower_power', 'pwr_raise_power', 'pwr_tmi2_incident'];
+  for (var vi2 = 0; vi2 < VPS.length - 1; vi2++) {   // 1366x768 and 1600x1000
+    for (var li = 0; li < legs.length; li++) {
+      var fin = await finishLeg(VPS[vi2], legs[li]), tag = legs[li] + ' @' + VPS[vi2].width;
+      ck('QW8 ' + tag + ': finished card keeps the last step, the banner and Rewind', fin.kept && fin.banner && fin.rewind, JSON.stringify(fin));
+      ck('QW8 ' + tag + ': the kept head and its Rewind are visible in the log viewport (not scrolled past)', fin.keptHeadInView && fin.rewindInView, JSON.stringify(fin));
+      ck('QW8 ' + tag + ': every row drawn met, no wait advice', fin.unticked === 0 && !fin.wait, JSON.stringify(fin));
+    }
+  }
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
