@@ -2701,15 +2701,18 @@ select.num-input { width: auto; }
    (#687 item 3: under the text) but is pinned to the floor of the scrolling #cklLog, so a long step
    scrolls its TEXT behind the row instead of scrolling the button out of sight. Opaque, on the
    step card's own ground, so text passing under it does not show through. */
-.ckl-step.ckl-active .ckl-ack-row {
+.ckl-step.ckl-active .ckl-ack-row,
+.ckl-step.ckl-last-kept .ckl-ack-row {   /* ...and the finished leg's kept step: its Rewind stays on screen (#825 S-3) */
   position: sticky; bottom: 0; z-index: 2;
   background: var(--bg-elevated); margin: 5px 0 0; padding: 4px 0 2px;
 }
 /* ...and the scroll cue: a fade above the pinned row plus a "scroll for more" label, shown only
    while text is hidden below the fold (`.ckl-more`, set by cklMoreCue in ui/app.js). */
 .ckl-more-cue { display: none; margin-left: auto; font-size: 11px; color: var(--muted); }
-.ckl-log.ckl-more .ckl-active .ckl-more-cue { display: inline; }
-.ckl-log.ckl-more .ckl-active .ckl-ack-row::before {
+.ckl-log.ckl-more .ckl-active .ckl-more-cue,
+.ckl-log.ckl-more .ckl-last-kept .ckl-more-cue { display: inline; }   /* the recap below a finished leg's step (#825 S-3) */
+.ckl-log.ckl-more .ckl-active .ckl-ack-row::before,
+.ckl-log.ckl-more .ckl-last-kept .ckl-ack-row::before {
   content: ''; position: absolute; left: 0; right: 0; top: -22px; height: 22px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--bg-elevated));
 }
@@ -2766,6 +2769,10 @@ select.num-input { width: auto; }
 .ckl-pend { opacity: 0.45; }
 .ckl-mark { margin-top: 6px; font-size: 12px; padding: 3px 8px; }
 .ckl-complete { text-align: center; border: 1px solid var(--running); border-radius: 8px; padding: 8px; color: var(--running); }
+/* THE COMPLETION LINE (#825 layman pass S-3): the banner's title, one line ABOVE the kept last step, so the finish
+   scroll shows it with the step head at every viewport; the recap box above stays below the step. */
+.ckl-complete-head { text-align: center; border: 1px solid var(--running); border-radius: 8px; padding: 4px 8px;
+  color: var(--running); font-weight: 600; margin-bottom: 6px; }
 .ckl-btns { display: flex; gap: 6px; }
 .ckl-btns .btn { flex: 1; }
 

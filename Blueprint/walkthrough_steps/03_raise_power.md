@@ -212,7 +212,7 @@ Suggested time warp: 10×, while OUTPUT climbs.
 
 Suggested time warp: 5×.
 
-Note: Stop at 573 °F: the boron still arriving takes it to about 578 °F in step 9. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
+Note: Stop at 573 °F: the boron still arriving takes it to about 580 °F in step 9. After a slow climb the boron has already arrived, and it stays near 573 °F. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
 
 ()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
 

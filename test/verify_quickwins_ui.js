@@ -353,8 +353,10 @@ function ck(name, ok, detail) {
       var run = document.getElementById('cklRun'), log = document.getElementById('cklLog'), k = run.querySelector('.ckl-last-kept');
       var rw = k && k.parentElement.querySelector('[data-wt-rewind]') || run.querySelector('[data-wt-rewind]');
       var lr = log ? log.getBoundingClientRect() : null, kr = k ? k.getBoundingClientRect() : null, rr = rw ? rw.getBoundingClientRect() : null;
+      var hd = run.querySelector('.ckl-complete-head'), hr = hd ? hd.getBoundingClientRect() : null;   // the completion line (#825 layman S-3)
       function inside(r) { return !!(r && lr && r.width > 0 && r.height > 0 && r.top >= lr.top - 1 && r.bottom <= lr.bottom + 1); }
       return { kept: !!k, banner: !!run.querySelector('.ckl-complete'), rewind: !!rw,
+               headLine: hd ? hd.textContent : null, headLineInView: inside(hr),
                wait: !!(k && k.querySelector('.ckl-wait')),
                ticked: k ? k.querySelectorAll('.ckl-crit.ckl-crit-met').length : 0,
                unticked: k ? [].filter.call(k.querySelectorAll('.ckl-crit'), function (n) { return !n.classList.contains('ckl-crit-met'); }).length : -1,
@@ -366,12 +368,15 @@ function ck(name, ok, detail) {
     await w2.ctx.close();
     return fin;
   }
-  var legs = ['pwr_lower_power', 'pwr_raise_power', 'pwr_tmi2_incident'];
+  var legs = ['pwr_lower_power', 'pwr_raise_power', 'pwr_startup', 'pwr_tmi2_incident'];   // + pwr_startup: the third leg of the #825 layman chain
   for (var vi2 = 0; vi2 < VPS.length - 1; vi2++) {   // 1366x768 and 1600x1000
     for (var li = 0; li < legs.length; li++) {
       var fin = await finishLeg(VPS[vi2], legs[li]), tag = legs[li] + ' @' + VPS[vi2].width;
       ck('QW8 ' + tag + ': finished card keeps the last step, the banner and Rewind', fin.kept && fin.banner && fin.rewind, JSON.stringify(fin));
-      ck('QW8 ' + tag + ': the kept head is in the log viewport, and its Rewind too whenever head-to-Rewind fits the viewport (head wins when it does not)', fin.keptHeadInView && (fin.rewindInView || fin.rewindBottomFromHead > fin.logH - 5), JSON.stringify(fin));
+      /* #825 layman pass S-3: MEASURED before the fix, the banner title fell outside the log on lower and raise power at 1366x768
+       * (title top 516 / 472 px into a 467 px log) and sat on the floor at 1600x1000 on the layman's route. The completion line now sits
+       * above the kept step and the kept step's Rewind row is pinned to the log floor, so all three are in view on every leg. */
+      ck('QW8 ' + tag + ': the "Walkthrough complete" line, the kept step head and its Rewind are all inside the log viewport', fin.headLineInView && /Walkthrough complete/.test(fin.headLine || '') && fin.keptHeadInView && fin.rewindInView, JSON.stringify(fin));
       ck('QW8 ' + tag + ': every row drawn met, no wait advice', fin.unticked === 0 && !fin.wait, JSON.stringify(fin));
     }
   }
@@ -399,6 +404,28 @@ function ck(name, ok, detail) {
   var aft = await rs.page.evaluate(function () { return document.getElementById('cklLog').scrollTop; });
   ck('QW8 the completion scroll is once: a reader at the bottom of the finished TMI-2 log is not snapped back by a speed press', bot > lp[2] + 50 && Math.abs(aft - bot) <= 2, JSON.stringify({ atCompletion: Math.round(lp[2]), afterWheel: Math.round(bot), afterSpeedPress: Math.round(aft) }));
   await rs.ctx.close();
+
+  /* ---- QW9 (#825 layman pass): the walkthrough's own speed on Shutdown Part 1, and what #warpInfo says about it -------------
+   * The owner asked for steps 2-5 of this leg at 10x. MEASURED in this page: step 2 opens at 1x (`cklActionPending` holds real
+   * time until the step's own LOAD cut lands, #796 "speed the wait, not the action") and goes to 10x on the first cut; the layman,
+   * who pressed 10x before cutting, never saw it rise. The line used to read "nothing to do for a while" at that moment, while the
+   * card still asked for four more cuts and the inserts (S-2). */
+  var lp2 = await session({ width: 1600, height: 1000 });
+  await lp2.page.evaluate(function (l) { var b = document.createElement('button'); b.setAttribute('data-ckl-start', l); document.body.appendChild(b); b.click(); }, 'pwr_lower_power');
+  await lp2.page.waitForTimeout(800);
+  function lpState() { return lp2.page.evaluate(function () { var s = RD.__dev.service(), w = document.getElementById('warpInfo');
+    return { step: s.instructor.checklist.idx, speed: s.timeAcceleration, info: w && !w.hidden ? w.textContent : '' }; }); }
+  await lp2.page.evaluate(function () { RD.__dev.cmd({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 719 }); });
+  await lp2.page.waitForTimeout(2500);
+  await lp2.page.evaluate(function () { var b = document.querySelector('.wt-continue.ready'); if (b) b.click(); });
+  await lp2.page.waitForTimeout(2500);
+  var lpIn = await lpState();
+  await lp2.page.evaluate(function () { RD.__dev.cmd({ action: 'set_load_target', mwe: 95 }); });
+  await lp2.page.waitForTimeout(2500);
+  var lpCut = await lpState();
+  ck('QW9 Shutdown Part 1 step 2 opens at 1x and the walkthrough sets 10x once the first LOAD cut lands', lpIn.step === 1 && lpIn.speed === 1 && lpCut.step === 1 && lpCut.speed === 10, JSON.stringify([lpIn, lpCut]));
+  ck('QW9 ...and #warpInfo says the walkthrough set it, never "nothing to do" while the card still asks for cuts', /^The walkthrough set the speed to 10/.test(lpCut.info) && !/nothing to do/.test(lpCut.info), JSON.stringify(lpCut));
+  await lp2.ctx.close();
 
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));

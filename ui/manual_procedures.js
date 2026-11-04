@@ -2768,7 +2768,7 @@
         { text: 'Dilute boron to the estimated critical concentration, 719 ppm.',
         why: 'Boron absorbs neutrons. Diluting it weakens its hold so the rods can take the reactor critical about a third of the way out (step 208 of 627). Boron is slow and sets the starting point; rods are fast and do the fine work. Real crews never add reactivity two ways at once: the rods stay still while boron is diluted. They also pause a dilution each time it doubles the SOURCE RANGE count, a pause this walkthrough leaves out. Coming from the Mode 5 to Mode 3 walkthrough the count roughly triples: expected, because the core is being brought near critical on purpose.',
           aim: 'Less boron lets the reactor go critical with the rods low in their travel.',
-          note: 'From the Mode 5 to Mode 3 walkthrough, expect about 2 plant-hours.',
+          note: 'From the Mode 5 to Mode 3 walkthrough, expect about 2 plant-hours. Started from the menu, the plant is already at 719 ppm and these rows tick on arrival.',   /* #825 layman S-4: hot_zero_power boots at 718.9 ppm, target 719.2, ON, HOLD -- all four rows met at entry (MEASURED) */
           control: 'Boron control', target: 'BORON box 719; BORON STATUS counting down, then MIXING, then HOLD; BORON CHEM tracking live',
           /* 90, not 65 (#749). MEASURED end to end on the full stack: 917.6 → 718.7 ppm takes
            * 88.4 plant-minutes (850 at +28.4, 800 at +50.0, 760 at +68.4, 740 at +78.4, 725 at
@@ -3871,7 +3871,7 @@
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
                    ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 3 seconds at 5× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
-                   note: 'Expect INTER RANGE to level a little under 1.0e-8 A.',
+                   note: 'Expect INTER RANGE to level near 1.0e-8 A, higher if the insert starts late: up to about 2.0e-8 A.',   /* #825 layman S-8, MEASURED: typical 8.7e-9; 10 back on time 1.2e-8; 60 s late 12 back 1.4e-8, 10 back 2.0e-8 (layman 1.5e-8) */
                    /* 1 -> 5 (OWNER, 2026-11-03, #825: "mode 3-1 step 11b should be 5x warp."). MED is 0.8 steps a
                     * plant-second, so the 12-step insert is 15 plant-s: 3 s of wall at 5x, 15 s at 1x. */
                    wait_speed: 5,
@@ -4548,7 +4548,7 @@
                  { cont: true, p: 'tavg_tref_dev_c', op: '<=', v: -2.222,
                    overtaken: { p: 'tavg_tref_dev_c', op: '>=', v: 1.111,
                      label: 'the rods led the load, so AVG COOLANT TEMPERATURE ran above TREF instead of lagging it' },
-                   label: 'AVG COOLANT TEMPERATURE 4 °F or more below TREF, the program, as OUTPUT reaches 30 MW' },
+                   label: 'ΔREF on ROD CONTROL reads −4 °F or lower as OUTPUT reaches 30 MW: AVG COOLANT TEMPERATURE below its program' },   /* #825 layman S-9: TREF is no board label; the card draws ΔREF */
                  /* THE MIDDLE OF THE BAND, NOT ITS FLOOR (OWNER, 2026-11-03, #825: "when raising the temperature when
                   * pulling rods shouldnt the target temp be in the middle of the green zone not the edge of it?"). The
                   * tile's green band is TREF +/- 5.04 degF (3.5 x the rod controller's 0.8 degC deadband,
@@ -4602,7 +4602,7 @@
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the third stage to 75 MWe the same way.',
         why: 'If the temperature is still below the band once the pull is done, the pull was short: withdraw a few more steps before adding megawatts.',
-          predicts_alarms: ['rod_limit_approach', 'rod_limit'], aim: 'The band climbs with load, so each pull aims a little higher.',
+          predicts_alarms: ['rod_limit_approach', 'rod_limit', 'pzr_pressure_low'], aim: 'The band climbs with load, so each pull aims a little higher.',
           control: 'Control Bank', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE in the middle of its band, 571 °F',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 480, wait_hint: false,
           /* rc8f layman pass 10 S-1 (2026-09-27): MEASURED raised inside this leg's stages -- the layman's route at the end of step 5 (warpInfo 'Dropped to real time -- new alarm: Control Rods -- Approaching Insertion Limit', bank 238-253, the power-dependent limit catching the boron-held bank), the typical and chained routes in step 6 (rod_limit_approach + rod_limit at 564.3 / 554.4 degF). The note explains it; the clock no longer drops on it. */
@@ -4619,6 +4619,9 @@
                  { p: 'mwe_output', op: '>=', v: 74.5,
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 75 MW.',
+                   /* #825 layman S-1, MEASURED: the slow-climb chain carries the alarm in from step 5 and it clears 2.5 plant-min in at 566.5 degF;
+                    * the layman's lit at 72 MW and cleared on the pulls; the typical route never lights it here (low 2185 psia against 2149.5) */
+                   note: 'Pressurizer Pressure Low can light here too: expected. It clears as the pulls warm the water.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 75 MW' },
                  { p: 'tavg_c', op: '~', v: 303.333, tol: 4.167, latch: true,   /* 570.5-585.5 degF: mid-band, TREF 571 at 75 MW (#825, see stage 4) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
@@ -4681,7 +4684,7 @@
                  { p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, latch: true,
                    hl: ['Withdraw'], hl_watch: ['Tavg'],
                    ask: 'If AVG COOLANT TEMPERATURE reads below 573 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 573 °F or more, 10 to 20 steps. Otherwise leave the rods.',
-                   note: 'Stop at 573 °F: the boron still arriving takes it to about 578 °F. If CONTROL ROD POSITION stops during a pull, wait for REACTOR POWER under 103 %, then pull again.',
+                   note: 'Stop at 573 °F: the boron still arriving takes it to about 580 °F. After a slow climb the boron has already arrived, and it stays near 573 °F. If CONTROL ROD POSITION stops during a pull, wait for REACTOR POWER under 103 %, then pull again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 573 and 583 °F (near 578)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 303.33, tol: 2.78, label: 'AVG COOLANT TEMPERATURE still between 573 and 583 °F' },
                  { p: 'control_bank_steps', op: '<', v: 600,
@@ -4729,7 +4732,7 @@
                   * told the player the number should already be there; it never is on any measured route. */
                  { p: 'boron_ppm', op: '<', v: 663,
                    hl_watch: ['Boron Concentration'],
-                   ask: 'Wait for BORON CHEM to fall to 663 ppm or below. The dilution you set in step 3 is still arriving: 14 to 26 plant-minutes from the start of this step.',
+                   ask: 'Wait for BORON CHEM to fall to 663 ppm or below. The dilution you set in step 3 gets there about 45 plant-minutes after step 3: about 23 more after a brisk climb, none after a slow one.',   /* #825 layman S-5, MEASURED 663 ppm at 44.2 / 45.1 / 45.0 plant-min after step 3 (typical / chain / slow chain): 22.4, 23.3, 0.1 min into this step; ends 580.1 / 580.7 / 573.4 degF */
                    label: 'BORON CHEM 663 ppm or below' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8,
                    hl: ['Insert'], hl_watch: ['Tavg'],
@@ -4936,7 +4939,7 @@
                  { p: 'tavg_c', op: '<', v: 302.49,
                    hl_watch: ['Tavg'],
                    ask: 'After the last cut, keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 577 °F, the top of its green band.',
-                   note: 'About 30 taps in all, the ones after each cut included. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.',
+                   note: 'About 30 taps in all from 580 °F, the ones after each cut included; about 15 if it starts near 573 °F. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.',   /* #825 layman S-7, MEASURED inserts in step 2: 30 from the hot_full_power preset and the fast chain (580 degF), 15 on the slow-climb chain (573 degF; the layman 12) */
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 577 °F' },
                  { p: 'power_pct', op: '<', v: 80,
@@ -5009,7 +5012,7 @@
                  { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
                    label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
-                   note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
+                   note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts. If AVG COOLANT TEMPERATURE reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 569 °F' },
                  { p: 'power_pct', op: '<', v: 70, ask: 'Check REACTOR POWER has followed the load down below 70 %.',
@@ -5050,7 +5053,7 @@
                  { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
                    label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 294.16, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
-                   note: 'About 20 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
+                   note: 'About 20 taps in all, the ones after each cut included. If AVG COOLANT TEMPERATURE reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 562 °F' },
                  { p: 'power_pct', op: '<', v: 45, ask: 'Check REACTOR POWER has followed the load down below 45 %.',
@@ -5124,7 +5127,7 @@
                  { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
                    label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 291.38, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
-                   note: 'About 12 to 15 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water.',
+                   note: 'About 12 to 15 taps in all, the ones after each cut included. If AVG COOLANT TEMPERATURE reads below its green band, leave the rods: the boron is still cooling the water.',
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 557 °F' },
                  /* ROD TRIM GRADED (#739) — see step 4 for the derivation and the three-way

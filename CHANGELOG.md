@@ -39,6 +39,14 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 - The RCP rotor coasts down on the pump's own speed (not total loop flow): stops about 7 min after a trip from power, never spins in cold shutdown on natural circulation.
 - A completed walkthrough keeps its last step on screen (with Rewind step) and shows the Walkthrough complete banner below it.
 
+### Fixed — the 2026-11-04 layman pass on the rc9 fixes (#825)
+
+- A finished walkthrough opens on a one-line "✓ Walkthrough complete" above the kept last step, with that step's Rewind pinned to the floor of the panel and the recap below; at 1366x768 the banner title had sat outside the panel on Startup Part 3 and Shutdown Part 1.
+- The speed line no longer says "nothing to do for a while" when the walkthrough raises the clock (it lands while the step is still asking for an action); it reads "The walkthrough set the speed to N×", and "Step done — the walkthrough set the speed back to 1×" when a step's rows are met.
+- Startup Part 3 step 6 predicts Pressurizer Pressure Low and says it clears as the pulls warm the water; step 4's row names ΔREF on ROD CONTROL instead of TREF; step 9's boron wait is stated from step 3 (about 45 plant-minutes), so a slow climb is no longer promised 14 to 26 more; step 8 says a slow climb stays near 573 °F.
+- Startup Part 2: step 2 says a menu start is already at 719 ppm; step 11 expects INTER RANGE near 1.0e-8 A, up to about 2.0e-8 A on a late insert.
+- Shutdown Part 1: step 2's tap count holds from 573 °F as well as 580 °F; steps 3-5 name AVG COOLANT TEMPERATURE instead of "it".
+
 ### Changed — walkthrough fixes from the 2026-11-03 playtest (#825)
 
 - Startup Part 1 step 10 lights SUBCOOLING MARGIN (10a) and AVG COOLANT TEMPERATURE, no longer PRIMARY PRESSURE and STEAM PRESS.

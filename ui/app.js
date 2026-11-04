@@ -3343,8 +3343,13 @@
         /* A CHART-LED STEP IS NOT "NOTHING TO DO" (cooldown 4 review, 2026-10-15): a step carrying `pair` asks the
          * player to WATCH its two channels move (cooldown 4c "Watch STEAM PRESS and AVG COOLANT TEMPERATURE fall
          * together"), and the line under the speed buttons said the opposite. */
-        else if (!text) text = 'Speeding up to ' + curRate + '× — ' +
-          (actv && actv.st && actv.st.pair ? 'watch the chart.' : 'nothing to do for a while.');
+        /* NOT "NOTHING TO DO" EITHER (#825 layman pass, S-2): the raise fires the moment the step's own action lands
+         * (`cklActionPending`), so it lands WHILE the player is still acting -- startup 5 mid-hold on WITHDRAW, raise power
+         * 5 with the pressure-low rule asking for pulls. The line says only what happened: the walkthrough moved the clock.
+         * `done` (S-10): the walkthrough's own hand-back to 1x when a step's rows are met (`cklStepSpeed`), which drew
+         * nothing before -- the #619 service step snap it is mistaken for was released 2026-09-17. */
+        else if (!text) text = autoSpeedNote.done ? 'Step done — the walkthrough set the speed back to 1×.'
+          : 'The walkthrough set the speed to ' + curRate + '×' + (actv && actv.st && actv.st.pair ? ' — watch the chart.' : '.');
       }
     }
     /* THE COMPUTER'S CEILING, SAID IN WORDS (TMI-2 layman pass 3, V-3, 2026-10-15). MEASURED on step 9:
@@ -5449,6 +5454,7 @@
     try { service.handleCommand({ action: 'set_speed', value: want }); }
     catch (e) { return; }                                 // a refusal is not a crash (#505/#506)
     if (want > cur) autoSpeedNote = { rate: want, step: cklNoteStepKey(s) };   // announce it in #warpInfo (#818)
+    else if (a.ck && (a.ck.acc_met || a.ck.awaiting_ack)) autoSpeedNote = { rate: want, step: cklNoteStepKey(s), done: true };   // ...and the hand-back on a met step (#825 S-10)
     /* …and this snapshot was assembled before the change, so restamp it — the speed segment,
      * the ⚡ badge and the chart windows all read `metadata.time_acceleration` off the snapshot
      * being drawn. Same shape as the `metadata.running` restamp the walkthrough pause needs. */
@@ -6220,6 +6226,12 @@
           '</span><span class="ckl-pl-n">' + (k + 1) + '</span><span class="ckl-pl-t">' + mesc(sx.text) + '</span></li>';
       }).join('') + '</ol>';
     }
+    /* THE COMPLETION LINE SITS ABOVE THE KEPT STEP (#825 layman pass, S-3). With the banner only BELOW the kept last
+     * step, MEASURED (verify_quickwins_ui finishLeg idiom): its title fell outside the log on lower power and raise power
+     * at 1366x768 (title top 516 / 472 px into a 467 px log) and sat on the floor at 1600x1000 on the layman's own
+     * route (box top 930 px = log bottom). The title moves here, one line, in view whenever the head is; the recap
+     * (`.ckl-complete`, below the step) keeps the outcome. */
+    if (ck.complete) h += '<div class="ckl-complete-head">✓ Walkthrough complete</div>';
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
@@ -6724,12 +6736,10 @@
        * before, so every leg without one is unaffected. */
       var outcomeOk = ck.outcome_verified !== false;
       var outTxt = cklRouteField(pr, ck, 'outcome');   // the recap of the route this run took (#670)
-      h += '<div class="ckl-complete"><b>Walkthrough complete</b>' +
-        (outTxt
-          ? (outcomeOk ? '<div class="m-note' + (outTxt.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(outTxt) + '</div>'   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
+      if (outTxt) h += '<div class="ckl-complete">' +   /* the recap; titled by `.ckl-complete-head` above the kept step (#825 S-3) */
+        ((outcomeOk ?'<div class="m-note' + (outTxt.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(outTxt) + '</div>'   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
                        : '<div class="m-note">Steps checked off, but the board does not match ' +
-                         'this leg\'s expected finish. Read the board, not this note.</div>')
-          : '') + '</div>';
+                         'this leg\'s expected finish. Read the board, not this note.</div>')) + '</div>';
     }
     h += '</div>';
     // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg
@@ -6863,7 +6873,7 @@
           cklState.completeScrolled = true;
           /* ON COMPLETION SHOW THE KEPT LAST STEP FROM ITS HEAD (#825, critic M-A): scrolling to the bottom put a tall banner (the TMI-2 recap,
            * ~760 px) in view and the kept step with its Rewind above the fold. The banner is below the step, so it still scrolls into reach. */
-          var keptEl = log.querySelector('.ckl-last-kept');
+          var keptEl = log.querySelector('.ckl-complete-head') || log.querySelector('.ckl-last-kept');   // the completion line, then the step head under it (#825 S-3)
           log.scrollTop = keptEl ? Math.max(0, keptEl.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 4) : log.scrollHeight;
           }
         }
