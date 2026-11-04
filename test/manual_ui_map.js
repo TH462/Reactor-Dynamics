@@ -208,13 +208,14 @@ var STEP_UI = {
    * index shifted by one. This table is `verify_manual_follow`'s COVERAGE LIST and it iterates
    * the table, not the pool: an entry left behind does not merely go stale, it silently moves
    * the gate's attention onto a step it was never written for. */
+  /* #825 (2026-11-03): the rod trim is 2b of the load-drop step again (owner: "is step 3 redundant"), so its row went and
+   * the three below it were RENUMBERED by hand, -1 each: 3->2, 4->3, 5->4. */
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },
     { i: 1, view: 'board', control: 'Turbine Load' },
-    { i: 2, view: 'board', control: 'Rod Speed' },      // #736 — the rod trim, split off from the load drop
+    { i: 2, view: 'board', control: 'Turbine Load' },
     { i: 3, view: 'board', control: 'Turbine Load' },
     { i: 4, view: 'board', control: 'Turbine Load' },
-    { i: 5, view: 'board', control: 'Turbine Load' },
   ],
   'pwr2:pwr_shutdown': [
     { i: 0, view: 'board', control: 'Turbine Load' },

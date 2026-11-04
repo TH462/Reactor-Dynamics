@@ -12,7 +12,7 @@
  *   narrative:true  → an accident walkthrough; not run by the harness (the engine
  *                     flagship suite owns its physics, CONTEXT §9).
  * Step: { text, control, target, cmd, hold, acc, saw, note, ramp, why, accs, accs_ordered,
- *          wait_hint, wait_speed, overtaken, pair, trend, window, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
+ *          wait_hint, wait_speed, wait_first, overtaken, pair, trend, window, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
  *          inject, clear,
  *          pause, pause_on_met, wrong,
  *          wait_est_s, aim, speed_text }
@@ -312,6 +312,10 @@
  *           glance at each rung — over the window auto actually accelerates, plus the wall
  *           clock of any rod pull the step asks for. Picking a rung by eye is the HR12
  *           failure, and #653 S-9 is the record of what it costs.
+ *   wait_first OPTIONAL boolean — PACE THE STEP FROM ENTRY. A step with a `cmd` is held at 1x until the
+ *           instructor sees that command's family (`cklActionPending`, ui/app.js: "speed the wait, not the
+ *           action"); this opts a step out, for one whose wait comes before its press (`pwr_tmi2_incident` 9)
+ *           or whose action is a tap that is one step at any rung on a steady plant (`pwr_startup` 12, #825).
  *   moving_speed OPTIONAL number, `pwr_startup` 8 ONLY — THE RUNG WHILE THE CONTROL BANK IS MOVING
  *           *(OWNER RULING, 2026-09-28, option D: "In step 8 5x while the rods move.")*. Auto plays
  *           this rung while the control rod group reports `moving` NOW, and the step's own rung
@@ -2165,9 +2169,11 @@
            *     Seed 7 217.0. Continue 120 s late 203.0 (step 283.0). double_rcp, pressure_sp_high, rewind_mid_heaters:
            *     identical to typical; dump_auto_early 217.0 (step 295.0). */
           accs: [{ p: 'tavg_c', op: 'moves', dir: 'up', v: 2.778, window: 600, with: { p: 'subcooling_c', dir: 'down', v: 2.778 },
+                   hl_watch: ['Subcooling Margin', 'Tavg'],
                    ask: 'Watch SUBCOOLING MARGIN come off its 149 °F top and start to fall.',   /* review 2026-10-15: the tile pegs at 149 °F (83 degC, its scale top) until 205.5 plant-min in, every heatup route measured */
                    label: 'On the chart, AVG COOLANT TEMPERATURE climbs 5 °F within 10 plant-minutes while SUBCOOLING MARGIN falls 5 °F' },
                  { p: 'tavg_c', op: '>', v: 283,
+                   hl_watch: ['Tavg'],
                    ask: 'Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.',
                    /* 2026-09-25, AGENT-DRAFTED (layman pass 5): MEASURED on the route gate's chain, seed
                     * 42, both heatups -- `pzr_pressure_lolo` (1800 psia, critical outside Modes 4-5)
@@ -2239,7 +2245,13 @@
            * lever he is told to move, and this heatup's rate is what pump heat does whether he
            * likes it or not. `Manuals/` is unchanged and still carries the limit; a walkthrough
            * is not the manual. Same record in `Blueprint/WALKTHROUGH_STEPS_OWNER.md`. */
-          hl_watch: ['Tavg', 'Primary Pressure', 'SG Pressure'] },
+          /* SUBCOOLING MARGIN, NOT PRIMARY PRESSURE OR STEAM PRESS *(OWNER, 2026-11-03, #825: "step 10 has PRIMARY
+           * PRESSURE highlighted when it should have SUBCOOLING MARGIN highlighted. primary pressure is never mentioned
+           * in the step.")*. The step authors no `hl`, and neither substep authored its own lists, so the board fell back
+           * to this step-level `hl_watch`, which named PRIMARY PRESSURE and SG PRESSURE (the chart's reason-why series)
+           * and not the tile 10a asks the player to watch. 10a now lights SUBCOOLING MARGIN and AVG COOLANT TEMPERATURE,
+           * 10b AVG COOLANT TEMPERATURE alone. */
+          hl_watch: ['Tavg', 'Subcooling Margin'] },
         /* THE EFFECT ACCEPTANCE FOR THE LETDOWN STEP (#624 item 25). The orifice step's own tick
          * reads the SELECTOR; this reads the PLANT, after the transfer has actually happened —
          * RHR gone (the 585 psig autoclose fired during the ride) and letdown still flowing,
@@ -3711,7 +3723,11 @@
                     * step before says to close, and the player had to subtract 3 from memory. With a prediction printed, the card
                     * draws this instead of `ask`: {stop} = prediction minus 3, {pred} = the prediction (ui/app.js cklAskText). */
                    ask_1m: 'Press SLOW, then hold CONTROL WITHDRAW until CONTROL ROD POSITION reads {stop}, 3 steps short of the 1/M prediction, {pred}. If 10a is already ticked, leave the rods and go to 10b.',
-                   wait_speed: 1,
+                   /* 1 -> 5 (OWNER, 2026-11-03, #825: "mode 3-1 step 10a should be 5x warp."). The step-level
+                    * "speed the wait, not the action" rule still holds 1x until the first rod press lands, so the
+                    * hold starts at real time and runs on at 5x: one SLOW step is 1.50 s of wall at 5x (7.49 s at
+                    * 1x, tools/glance_rung.js on startup 13's SLOW pull). */
+                   wait_speed: 5,
                    label: 'CONTROL ROD POSITION 3 steps short of the 1/M prediction' },
                  /* 9b: ONE TARGET RATE, READ FIVE MINUTES AFTER A TAP *(OWNER, #807 item 10, 1.8.0-rc6
                   * playtest: "step 9a checked off but 9b remained dark and never lit up or checked off. It
@@ -3854,10 +3870,12 @@
                    hl_watch: ['Intermediate Range'],
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
-                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 15 seconds at 1× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
+                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 3 seconds at 5× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
                    note: 'Expect INTER RANGE to level a little under 1.0e-8 A.',
-                   wait_speed: 1,
-                   speed_text: '1×. While you wait for a read you can press 10× yourself; a tap is still one step.',
+                   /* 1 -> 5 (OWNER, 2026-11-03, #825: "mode 3-1 step 11b should be 5x warp."). MED is 0.8 steps a
+                    * plant-second, so the 12-step insert is 15 plant-s: 3 s of wall at 5x, 15 s at 1x. */
+                   wait_speed: 5,
+                   speed_text: '5×. While you wait for a read you can press 10× yourself; a tap is still one step.',
                    hl: ['Insert', 'Rod Speed — Normal'], hl_watch: ['Startup Rate', 'Control Rod Position'],
                    label: 'STARTUP RATE −0.02 to +0.02, rods still two plant-minutes' },
                  { p: 'control_bank_steps', op: 'stopped', v: 120,
@@ -3891,6 +3909,14 @@
           aim: 'From about 1 % the core warms the water, and warmer water holds the climb back.',
           control: 'Control Bank', target: 'REACTOR POWER 1 % or more; STARTUP RATE +0.10 or less',
           wait_hint: false, wait_speed: 10, wait_est_s: false,
+          /* PACED FROM ENTRY (OWNER, 2026-11-03, #825: "step 12a didnt automatically set warp to 10x."). Under the
+           * step-level "speed the wait, not the action" rule 12a sat at 1x until a rod press landed ON THIS STEP;
+           * MEASURED in the browser (dev shell, step 12 entered through 11's Continue): 1x on entry, 10x 2.5 s after
+           * a tap. A tap made before Continue, or a player reading 12a's "read STARTUP RATE about 70 plant-seconds
+           * after each tap" and waiting first, left the whole substep at real time. Nothing here needs real time:
+           * step 11 hands over a plant held exactly critical (STARTUP RATE -0.02 to +0.02, rods still two
+           * plant-minutes) and a tap is one step at any rung, so the wait owns the clock from entry. */
+          wait_first: true,
           cmd: { action: 'rod_nudge', group_id: 'control', steps: 6, speed: 'slow' }, hold: 1800,
           accs_ordered: true,
           accs: [{ p: 'startup_rate_dpm', op: '>=', v: 0.145, still_s: 60,
@@ -4379,7 +4405,9 @@
            * second stage.
            * SINCE 2026-09-25 `low_power` IS XENON-FREE and boots at 718.5 ppm, the startup's own
            * handover (owner ruling "Rebuild the preset"): the move is 59 ppm, 663 ppm at 24.1
-           * plant-min and 660.5 at 25.2 after the press (MEASURED, seed 42, 10x). */
+           * plant-min and 660.5 at 25.2 after the press (MEASURED, seed 42, 10x).
+           * ⚠ 2026-11-03 (#825): ON THE ROUTES HARNESS'S PLAYER, 663 ppm LANDS 44 TO 48 PLANT-MIN AFTER THE PRESS
+           * (step 9's 9c row), not 24 -- the 24.1 above was the replay's pace and is not the player's. */
           control: 'Boron control', target: 'BORON target reads 660 ppm, ON lit',
           /* `wait_hint` ("The dilution keeps working between stages. Start it now.") dropped
            * 2026-09-24: 3a's note already says it in his words, and a string hint would print a
@@ -4479,11 +4507,11 @@
         { text: 'Take the first stage to 30 MWe, load leading and rods following.',
         why: 'Raising LOAD draws steam and cools the water; colder water adds reactivity, so power follows the turbine up while the temperature sags. Pulling rods then warms the water back into its band. PERIOD on the NIS card is the time power takes to change by a factor of about 2.7; thousands of seconds means power is nearly steady.\n\nReal plants switch rod control to automatic near 15 %; this simulator keeps rods manual by design.',
           aim: 'The turbine asks for power first; rods then restore the temperature for that load.',
-          control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE inside its band, near 556 °F',
+          control: 'Control Bank', target: 'OUTPUT 30 MWe; AVG COOLANT TEMPERATURE in the middle of its band, 557 °F',
           /* the chart for this leg's relation (relations plan, raise power 4): LOAD and power, the water and its program */
           trend: ['tavg', 'tref', 'mwe', 'power'], window: 900, pair: ['tavg', 'tref'],   /* the pair FIRST (lower power 2 review, 2026-10-15): two lanes fit at the default height, so the old order drew Tavg/TREF as numeric rows */
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
-          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 28, speed: 'normal' } },   /* 20 -> 28 (#825, mid-band): MEASURED replay (inbox/825/replay_probe.js), stage ends 558.7 / 566.1 / 574.0 / 577.5 / 581.3 degF with step 7 at 12; 20 ended stage 4 at 552.7 degF, under the new 556.5 floor */
           /* LAYMAN PASS 9 (2026-09-26, #653 S-2): THE OUTPUT ROW NOW COMES BEFORE THE CONDITIONAL, on all
            * five stages. The paragraph above ("met at entry on no stage") went stale when pass 7 moved the
            * temperature row to `b`, straight after LOAD: MEASURED, `low_power`, seed 42, no pull — the
@@ -4521,11 +4549,18 @@
                    overtaken: { p: 'tavg_tref_dev_c', op: '>=', v: 1.111,
                      label: 'the rods led the load, so AVG COOLANT TEMPERATURE ran above TREF instead of lagging it' },
                    label: 'AVG COOLANT TEMPERATURE 4 °F or more below TREF, the program, as OUTPUT reaches 30 MW' },
-                 { p: 'tavg_c', op: '~', v: 295.306, tol: 6.694, latch: true,   /* 551.5-575.6 degF: the floor is the tile's green-segment floor, rendered (rc8f layman pass 10 S-2) */
+                 /* THE MIDDLE OF THE BAND, NOT ITS FLOOR (OWNER, 2026-11-03, #825: "when raising the temperature when
+                  * pulling rods shouldnt the target temp be in the middle of the green zone not the edge of it?"). The
+                  * tile's green band is TREF +/- 5.04 degF (3.5 x the rod controller's 0.8 degC deadband,
+                  * pwr_board_wiring.js tavgBand), and TREF at 30 MW is 557 degF; the old 552 was the band's FLOOR
+                  * (rc8f pass 10 S-2), so a player who pulled to the number left the plant on the edge. Graded at the
+                  * whole-degree render floor of the new number, 556.5 degF (#749); the top stays 575.6 degF.
+                  * Measured numbers for all four stages: Diagnostic/TUNING_LOG.md 2026-11-03-develop-b. */
+                 { p: 'tavg_c', op: '~', v: 296.694, tol: 5.306, latch: true,   /* 556.5-575.6 degF */
                    hl: ['Rod Speed — Normal', 'Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 552 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 552 °F or more, 20 to 25 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 557 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 557 °F, the middle of its green band, 25 to 30 steps. Otherwise leave the rods.',
                    note: 'Keep it under 590 °F on every stage: the plant trips on temperature before power.',
-                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 552 and 576 °F (green from 552)' },
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 557 and 576 °F (mid-green 557)' },
                  { cont: true, p: 'power_pct', op: '>', v: 28, label: 'REACTOR POWER near 30 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 294.75, tol: 7.25, label: 'AVG COOLANT TEMPERATURE still between 550 and 576 °F' }],
           /* + `Rod Speed — Normal` (#735, develop's item 5 sweep): the text says "at MED" and this
@@ -4536,10 +4571,16 @@
           hl: ['Load Setpoint', 'Rod Speed — Normal', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the second stage to 50 MWe the same way.',
         why: 'The insertion limit rises with power; boron carries the climb, so the bank sits low and the limit catches it. Xenon starts building now: boron handles it over hours, rods over minutes.',
-          predicts_alarms: ['rod_limit_approach', 'pzr_pressure_low'],           control: 'Control Bank', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE inside its band, near 562 °F',
+          predicts_alarms: ['rod_limit_approach', 'pzr_pressure_low'],           control: 'Control Bank', target: 'OUTPUT 50 MWe; AVG COOLANT TEMPERATURE in the middle of its band, 563 °F',
           cmd: { action: 'set_load_target', mwe: 50 }, hold: 480, wait_hint: false,
           /* rc8f layman pass 10 S-1 (2026-09-27): MEASURED raised inside this leg's stages -- the layman's route at the end of step 5 (warpInfo 'Dropped to real time -- new alarm: Control Rods -- Approaching Insertion Limit', bank 238-253, the power-dependent limit catching the boron-held bank), the typical and chained routes in step 6 (rod_limit_approach + rod_limit at 564.3 / 554.4 degF). The note explains it; the clock no longer drops on it. */
-          expect_alarms: ['rod_limit_approach', 'rod_limit'],
+          /* + pzr_pressure_low (OWNER, 2026-11-03, #825: "mode 3-1 steps 5, 6 it keeps dropping out of warp from alarms").
+           * MEASURED, routes harness, low_power seed 42, the literal ordered player (no pull until 5b is live, i.e. OUTPUT
+           * at 50 MW): `pzr_pressure_low` clear -> active at 2148 psia / 547.7 degF inside this step, with
+           * rod_limit_approach -- LOAD draws the coolant down, the water shrinks and pressurizer pressure follows
+           * (setpoint 14.82 MPa, 2149.5 psia). It is this step's own evolution, the 5b note names it, and it clears
+           * when the pull brings the temperature back. */
+          expect_alarms: ['rod_limit_approach', 'rod_limit', 'pzr_pressure_low'],
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },   /* 15 -> 20 (rc8f pass 10): 15 ended the hold at 557.2 degF, under the new 557.5 green floor */
           accs_ordered: true,
           accs: [{ cmd: { action: 'set_load_target', mwe: 50 },
@@ -4549,23 +4590,26 @@
                  { p: 'mwe_output', op: '>=', v: 49.5,
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 50 MW.',
-                   note: 'If the Pressurizer Pressure Low alarm lights before OUTPUT reaches 50 MW and AVG COOLANT TEMPERATURE reads below 558 °F, start the next line now: withdraw 5 steps at MED, a plant-minute apart.',   // layman chain pass 2 S-2 (2026-10-15): the next line is dark on this ordered step, so the old note read as "wait for it"; 136 wall-s lost at 1x. Pulls before 5b ticks were the authored intent (38558766's parent: "without waiting for OUTPUT")
+                   note: 'If the Pressurizer Pressure Low alarm lights before OUTPUT reaches 50 MW and AVG COOLANT TEMPERATURE reads below 563 °F, start the next line now: withdraw 5 steps at MED, a plant-minute apart.',   // layman chain pass 2 S-2 (2026-10-15): the next line is dark on this ordered step, so the old note read as "wait for it"; 136 wall-s lost at 1x. Pulls before 5b ticks were the authored intent (38558766's parent: "without waiting for OUTPUT")
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 50 MW' },
-                 { p: 'tavg_c', op: '~', v: 298.972, tol: 7.028, latch: true,   /* 557.5-582.8 degF, green-segment floor (rc8f pass 10 S-2) */
+                 { p: 'tavg_c', op: '~', v: 300.361, tol: 5.639, latch: true,   /* 562.5-582.8 degF: mid-band, TREF 563 at 50 MW (#825, see stage 4) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 558 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 558 °F or more, 20 to 25 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 563 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 563 °F, the middle of its green band, 15 to 25 steps. Otherwise leave the rods.',
                    note: 'Control Rods — Approaching Insertion Limit can come in from this stage, even while you withdraw: expected.',
-                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 558 and 583 °F (green from 558)' },
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 563 and 583 °F (mid-green 563)' },
                  { cont: true, p: 'power_pct', op: '>', v: 47, label: 'REACTOR POWER near 50 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 297, tol: 9, label: 'AVG COOLANT TEMPERATURE still between 550 and 583 °F' }],
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the third stage to 75 MWe the same way.',
         why: 'If the temperature is still below the band once the pull is done, the pull was short: withdraw a few more steps before adding megawatts.',
           predicts_alarms: ['rod_limit_approach', 'rod_limit'], aim: 'The band climbs with load, so each pull aims a little higher.',
-          control: 'Control Bank', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE inside its band, near 570 °F',
+          control: 'Control Bank', target: 'OUTPUT 75 MWe; AVG COOLANT TEMPERATURE in the middle of its band, 571 °F',
           cmd: { action: 'set_load_target', mwe: 75 }, hold: 480, wait_hint: false,
           /* rc8f layman pass 10 S-1 (2026-09-27): MEASURED raised inside this leg's stages -- the layman's route at the end of step 5 (warpInfo 'Dropped to real time -- new alarm: Control Rods -- Approaching Insertion Limit', bank 238-253, the power-dependent limit catching the boron-held bank), the typical and chained routes in step 6 (rod_limit_approach + rod_limit at 564.3 / 554.4 degF). The note explains it; the clock no longer drops on it. */
-          expect_alarms: ['rod_limit_approach', 'rod_limit'],
+          /* + pzr_pressure_low (#825, as step 5). MEASURED, routes harness seed 42, `overpull_60` (the 60-step stage-4 pull
+           * the card warns against): clear -> active at 2150 psia / 565.5 degF inside this step, with both rod-limit alarms;
+           * the same LOAD-driven shrink as step 5, and it clears as the pull restores the temperature. */
+          expect_alarms: ['rod_limit_approach', 'rod_limit', 'pzr_pressure_low'],
           replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 25, speed: 'normal' } },
           accs_ordered: true,
           accs: [{ cmd: { action: 'set_load_target', mwe: 75 },
@@ -4576,20 +4620,20 @@
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 75 MW.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 75 MW' },
-                 { p: 'tavg_c', op: '~', v: 301.944, tol: 5.556, latch: true,   /* 565.5-585.5 degF, green-segment floor (rc8f pass 10 S-2) */
+                 { p: 'tavg_c', op: '~', v: 303.333, tol: 4.167, latch: true,   /* 570.5-585.5 degF: mid-band, TREF 571 at 75 MW (#825, see stage 4) */
                    hl: ['Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 566 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 566 °F or more, about 30 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 571 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 571 °F, the middle of its green band, 20 to 35 steps. Otherwise leave the rods.',
                    note: 'Control Rods — Approaching Insertion Limit, then Control Rods — Insertion Limit, come in this stage: expected.',
-                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 566 and 585 °F (green from 566)' },
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 571 and 585 °F (mid-green 571)' },
                  { cont: true, p: 'power_pct', op: '>', v: 70, label: 'REACTOR POWER near 75 %' },
                  { cont: true, p: 'tavg_c', op: '~', v: 300, tol: 7.5, label: 'AVG COOLANT TEMPERATURE still between 558 and 585 °F' }],
           hl: ['Load Setpoint', 'Withdraw'], hl_watch: ['Turbine Load', 'Tavg', 'Generator Output', 'Reactor Power'] },
         { text: 'Take the fourth stage to 90 MWe with a smaller pull.',
         why: 'Above 103 % power the plant stops the rods; at 115 % it trips the reactor. 100 MWe of LOAD lands REACTOR POWER near 101 %, so small pulls keep you clear.',
           aim: 'Near full power the 103 % rod stop is close, so pulls get smaller.',
-          control: 'Control Bank', target: 'OUTPUT 90 MWe; AVG COOLANT TEMPERATURE inside its band, near 575 °F',
+          control: 'Control Bank', target: 'OUTPUT 90 MWe; AVG COOLANT TEMPERATURE in the middle of its band, 576 °F',
           cmd: { action: 'set_load_target', mwe: 90 }, hold: 480, wait_hint: false,
-          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 20, speed: 'normal' } },
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 12, speed: 'normal' } },   /* 20 -> 12 (#825): gives back stage 4's +8 so the replay's full-power end stays where it was -- MEASURED, peak 582.3 degF both ways, min OTdT margin 0.253 vs 0.251 (setpoint minus delta-T fraction), no trip; [38,28,32,20] tripped on OTdT at step 8 */
           accs_ordered: true,
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 },
                    hl: ['Load Setpoint'],
@@ -4599,11 +4643,11 @@
                    hl_watch: ['Generator Output', 'Tavg'],
                    ask: 'Wait for OUTPUT to reach 90 MW.',
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 90 MW' },
-                 { p: 'tavg_c', op: '~', v: 303.056, tol: 4.444, latch: true,   /* 569.5-585.5 degF, green-segment floor (rc8f pass 10 S-2) */
+                 { p: 'tavg_c', op: '~', v: 304.722, tol: 2.778, latch: true,   /* 575.5-585.5 degF: mid-band, TREF 576 at 90 MW (#825, see stage 4) */
                    hl: ['Withdraw', 'Insert'], hl_watch: ['Tavg'],
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 570 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 570 °F or more, 15 to 20 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 576 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 576 °F, the middle of its green band, 15 to 20 steps. Otherwise leave the rods.',
                    note: 'If LOAD changes by itself, the turbine ran back on high temperature: hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
-                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 570 and 585 °F (green from 570)' },
+                   wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 576 and 585 °F (mid-green 576)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE still between 564 and 585 °F' }],
           /* + `Insert` (#735): this step's note carries a contingency — "If LOAD changes by itself,
            * the plant ran the turbine back because the coolant was too hot. Hold INSERT until AVG
@@ -4678,9 +4722,14 @@
                    ask: 'Check REACTOR POWER reads about 100 % and OUTPUT 100 MW.',
                    label: 'REACTOR POWER near 100 %' },
                  { cont: true, p: 'mwe_output', op: '>=', v: 99.5, label: 'OUTPUT 100 MW' },
+                 /* A WAIT, NOT A CHECK (OWNER, 2026-11-03, #825: "mode 3-1 step 9 it wasnt below 663 ppm from before").
+                  * The dilution set in step 3 (target 660) is still arriving when stage 8 ends: MEASURED, routes
+                  * harness, this row ticks 13.9 to 25.7 plant-min into step 9 over seven routes (typical 22.4, seed 7 23.8), 44 to 48 plant-min
+                  * after the step 3 press. "Check"
+                  * told the player the number should already be there; it never is on any measured route. */
                  { p: 'boron_ppm', op: '<', v: 663,
                    hl_watch: ['Boron Concentration'],
-                   ask: 'Check BORON CHEM reads 663 ppm or below.',
+                   ask: 'Wait for BORON CHEM to fall to 663 ppm or below. The dilution you set in step 3 is still arriving: 14 to 26 plant-minutes from the start of this step.',
                    label: 'BORON CHEM 663 ppm or below' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8,
                    hl: ['Insert'], hl_watch: ['Tavg'],
@@ -4807,7 +4856,7 @@
           /* the chart for this leg's relation (relations plan, lower power 2): LOAD, power, the water, and the dump that
            * takes over the load once the water runs hot. 15 min holds the whole stair at the 5x rung. */
           trend: ['power', 'tavg', 'mwe', 'dump_valve'], window: 900, pair: ['power', 'tavg'],   /* the pair FIRST: at the default chart height only two lanes fit, later series demote to numeric rows (review 2026-10-15) */
-          cmd: { action: 'set_load_target', mwe: 75 }, hold: 300, wait_hint: false,
+          cmd: { action: 'set_load_target', mwe: 75 }, hold: 600, wait_hint: false,   /* 300 -> 600: the old step 3's 300 s trim rides here (#825) */
           /* LAYMAN PASS 7 (2026-09-26, AGENT-DRAFTED) S-5: a LOAD cut lands at once on PWR2 (raises
            * only are rate-limited, pwr2_shell), so "about five plant-minutes" was the card's claim,
            * not the plant's. MEASURED on the chain: 100 -> 75 MW at once peaked the tile at 595.3 degF
@@ -4817,29 +4866,26 @@
            * peaks 584.8 degF with NO alarm (C-7 arms the loss-of-load dump on a >10 % step; the 5 MW walk
            * does not arm it), so the notes' "taken in one cut ... alarms" sentences on 2b/4b/5b were cut.
            * The walk WITHOUT its 3-step inserts peaks 589.3 degF: the inserts are what hold "under 587". */
-          ramp: [{ action: 'set_load_target', arg: 'mwe', points: [100, 95, 90, 85, 80, 75] }],
-          /* THE SHARED 10× AND THE NOTE SIT ON 2b, NOT THE STEP (2026-09-25 bring-down): same draw
-           * (2a, 2b, warp, Note) and 2a falls back to the step's rung. Authored as the step `note`,
-           * `run_style` W12 read "as soon as" as the vague quantifier "soon" and reddened — the
-           * step-level scan reaches `note`, the per-entry one does not scan W12 at all. */
-          wait_speed: 5,
-          /* MEASURED at the end of this hold: OUTPUT 75.00 MWe, REACTOR POWER 85.79 %. Both
-           * entries are FALSE at the step's own entry (100.00 MWe, 98.91 %), so neither can be
-           * had for free, and the OUTPUT band is two-sided so it cannot latch.
-           * 2026-09-24 port, MEASURED on the live runtime (a player who sets LOAD the moment the
-           * step opens, seed 42): entry 00, OUTPUT met +5 s, power met +14 s. */
-          accs: [{ p: 'mwe_output', op: '~', v: 75, tol: 2,
-                   ask: 'Lower LOAD 5 MW at a time, one plant-minute apart, to 75 MW: 95, 90, 85, 80, 75.',
-                   label: 'OUTPUT settled near 75 MW' },
-                 { p: 'power_pct', op: '<', v: 95,
-                   ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down, below 95 %.',
-                   wait_speed: 5,
-                   note: 'The inserts hold AVG COOLANT TEMPERATURE under about 587 °F.',
-                   label: 'REACTOR POWER below 95 %' },
-                 /* THE RELATIONSHIP THIS LEG TEACHES (OWNER RULING, 2026-10-14: "Change as you recommend" -- chart-led, one
+          ramp: [{ action: 'set_load_target', arg: 'mwe', points: [100, 95, 90, 85, 80, 75, 75, 75, 75, 75, 75] }],   /* padded to 60 s a point over the 600 s hold (#825), as steps 3-5 */
+          /* ONE STEP AGAIN, 10x (OWNER, 2026-11-03, #825: "mode 3-1 step 2b checked off before i finished lowering the
+           * load. is step 3 redundant because it says to insert rods in step 2 or is step 2b redundant? steps 2, , 5, 6
+           * should be 10x warp."). STEP 3 WAS THE REDUNDANT ONE: since layman pass 7 put "after each cut, insert 3 steps"
+           * on 2b, steps 2 and 3 were one rod action split across two cards, and steps 4-6 already carry the same pair
+           * (load with inserts, then keep inserting into the band) as one step. Its rows are 2b/2c here; the step count
+           * is 5. The ORDER #736 split the step for (OWNER, #724 item 18: "could we add timing controls to the checkoffs
+           * so that it wont check off temperature until turbine load is down?") is now `accs_ordered`: 2b and 2c cannot
+           * latch before OUTPUT has settled at 75 MW. 2b's old row (REACTOR POWER below 95 %) is gone -- MEASURED, it
+           * ticked 0.77 plant-min in, after the FIRST of five cuts (routes harness, seed 42), which is the report.
+           * 10x WITH TAPS, NOT HOLDS: at 10x one plant-minute is 6 s of wall, and a held 3-step MED insert is 0.4 s
+           * (MED 0.8 steps a plant-second) -- the old step 3's own measurement put the band at 43 MED steps, 5.4 s of wall
+           * at 10x. A tap is one step at any rung, so the card counts taps. Numbers: TUNING_LOG 2026-11-03-develop-b. */
+          wait_speed: 10,
+          replay_then: { after_acc: 1, cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' } },   /* the old step 3's replay insert, once OUTPUT has settled */
+          accs_ordered: true,
+          accs: [/* THE RELATIONSHIP THIS LEG TEACHES (OWNER RULING, 2026-10-14: "Change as you recommend" -- chart-led, one
                   * graded relation per leg; inbox/670_redesign/relations_plan.md): power follows load (Tier A, A1). The turbine
                   * leads: less steam drawn, the water warms, and the moderator coefficient walks REACTOR POWER down. Graded on the
-                  * board INSTRUMENTS (Hard Rule 1: `power_range`, `tavg`). A `cont` on an unordered step: `moves` owes its whole
+                  * board INSTRUMENTS (Hard Rule 1: `power_range`, `tavg`). The HEAD of 2a since #825 (was a `cont` of 2b): `moves` owes its whole
                   * 60 s window, so it cannot tick on entry, and the dump is SHUT through that first minute on every route below.
                   * MEASURED 2026-10-15, routes harness, live runtime, per-grading trace, seeds 42 / 7 (gain over the window at the
                   * tick; the step's own end in brackets):
@@ -4866,53 +4912,46 @@
                   * REVIEW MARGINS (2026-10-15, reviewer scripts, 17 late-cut runs): the +0.5 degF floor sits between the rods-lead
                   * routes' best Tavg gain, +0.485 degF, and the real routes' minimum at latch, +0.574 degF; the 85 % overtaken sits
                   * under power at latch 87.5-89.5 % (late single 25 MW cut) and 94.2 % (typical). Thresholds kept (coordinator's call). */
-                 { cont: true, p: 'power_pct', op: 'moves', dir: 'down', v: 3, window: 60, with: { p: 'tavg_c', dir: 'up', v: 0.278 },
+                 { p: 'power_pct', op: 'moves', dir: 'down', v: 3, window: 60, with: { p: 'tavg_c', dir: 'up', v: 0.278 },
                    overtaken: { p: 'power_pct', op: '<', v: 85,
                      label: 'the rods took REACTOR POWER down ahead of the load, so AVG COOLANT TEMPERATURE fell instead of rising' },
-                   label: 'On the chart, REACTOR POWER falls 3 points within 1 plant-minute while AVG COOLANT TEMPERATURE rises' }],   /* graded at +0.5 degF; the label states no decimal the tiles cannot draw (whole degF; review 2026-10-15, guide U3) */
-          hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
-        { text: 'Bring AVG COOLANT TEMPERATURE back into its band with the rods.',
-        why: 'The green band is the temperature the plant should hold at its power: 578 °F at 100 %, 547 °F at no load. After a load drop the reactor sits above it until rods take reactivity out.',
-          aim: 'The load drop left the reactor hot, and the plant cannot fix that alone.',
-          control: 'Rod Speed', target: 'AVG COOLANT TEMPERATURE back inside the band; OUTPUT still 75 MWe',
-          cmd: { action: 'rod_nudge', group_id: 'control', steps: -40, speed: 'normal' }, hold: 300, wait_hint: false,
-          wait_speed: 5, speed_text: true,
-          note: 'Stop once in the band, about 10 to 20 steps: faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.',
-          /* MEASURED at the end of this hold (40 steps in, 300 s): Tavg 570.7 degF (299.28 degC)
-           * against a 571.8 degF programme — 1.1 degF inside a band whose half width is
-           * 5.0 degF (`tavg_c < 302.7` is the band's own top edge: pwr_board_wiring `tavgBand`
-           * draws ref +/- 3.5 x the 0.8 degC rod lockup band). At this step's ENTRY Tavg is
-           * 305.11 degC and power 85.79 %, so both one-sided entries are FALSE until the trim is
-           * actually made. The OUTPUT band is the anti-latch pair: a scram during the trim (the
-           * measured failure mode) breaks it. The upper bound is one-sided ON PURPOSE — the
-           * boration keeps cooling and a two-sided band would fall out from under a player
-           * reading at 1x about 130 s after it went green. */
-          /* 2026-09-24 port — "ABOUT 40 TO 75 STEPS", MEASURED on both routes: the
-           * authored replay inserts 40 five plant-minutes after the load drop, the boration having
-           * done part of the job (seed 42); a player who inserts the moment the step opens needs 72 to 74 (seeds 42, 7, 99) to bring
-           * the tile into the band. 3a's 5x: the tile's band top to band floor is 43 rod steps at
-           * MED (54 plant-seconds) — 11 s of wall clock at 5x, 5.4 s at 10x — and the USABLE
-           * window is shorter than that span, because the tile lags the rods: a stop at the floor
-           * crossing went on to read 551.9 °F, 14.9 °F under the band floor. 5x is the rung that
-           * leaves more than about 5 s. Same measurement for 4b/5b/6b: 38/37/50 steps. */
-          /* LAYMAN PASS 8 (2026-09-26, workbench-d, AGENT-DRAFTED) S-7: the four "below X °F" Tavg rows
-           * (steps 3-6) grade the RENDER FLOOR of X, as cooldown 4b does: 302.7/298.1/294.4/291.6 degC
-           * (576.9/568.6/561.9/556.9 degF) ticked while the tile, toFixed(0), still read X — the reviewer
-           * saw Continue lit at "562" against "below 562". Now 302.49/298.05/294.16/291.38 degC
-           * (576.48/568.49/561.49/556.48 degF): the tile reads X-1 or less when the row ticks. */
-          accs: [{ p: 'tavg_c', op: '<', v: 302.49,
-                   hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Tavg'],
-                   ask: 'Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.',
+                   ask: 'Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 75 MW: 95, 90, 85, 80, 75. After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, tap INSERT 3 times.',
+                   note: 'The inserts hold AVG COOLANT TEMPERATURE under about 587 °F.',
+                   wait_speed: 10,
+                   label: 'On the chart, REACTOR POWER falls 3 points within 1 plant-minute while AVG COOLANT TEMPERATURE rises' },   /* graded at +0.5 degF; the label states no decimal the tiles cannot draw (whole degF; review 2026-10-15, guide U3) */
+                 { cont: true, p: 'mwe_output', op: '~', v: 75, tol: 2,
+                   label: 'OUTPUT settled near 75 MW' },
+                 /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
+                  * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
+                  * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
+                 /* LAYMAN PASS 8 (2026-09-26, workbench-d) S-7, kept from the old step 3: graded at the RENDER FLOOR of 577,
+                  * 302.49 degC (576.48 degF), so the tile reads 576 or less when the row ticks. */
+                 { p: 'tavg_c', op: '<', v: 302.49,
+                   hl_watch: ['Tavg'],
+                   ask: 'After the last cut, keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 577 °F, the top of its green band.',
+                   note: 'About 30 taps in all, the ones after each cut included. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.',
+                   wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 577 °F' },
                  { p: 'power_pct', op: '<', v: 80,
-                   hl_watch: ['Reactor Power'],
-                   ask: 'Check REACTOR POWER has followed down to about 73 %, below 80 %.',
+                   hl_watch: ['Reactor Power', 'Generator Output'],
+                   ask: 'Check REACTOR POWER has followed down below 80 % and OUTPUT still reads about 75 MW.',
+                   wait_speed: 10,
                    label: 'REACTOR POWER below 80 %' },
-                 { p: 'mwe_output', op: '~', v: 75, tol: 5,
-                   hl_watch: ['Generator Output'],
-                   ask: 'Check OUTPUT still reads about 75 MW.',
+                 { cont: true, p: 'mwe_output', op: '~', v: 75, tol: 5,
                    label: 'OUTPUT still near 75 MW' }],
-          hl: ['Rod Speed — Normal', 'Insert'], hl_watch: ['Tavg', 'Reactor Power', 'Generator Output'] },
+          hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power', 'Generator Output'] },
+          /* BELOW THE BAND (#825 critic round 2): the slow cutter (cuts 180 plant-s apart) ends this step's trim at 557.2 /
+           * 544.5 / 552.4 degF for steps 3 / 4 / 5 against bands of about 558-568 / 550-560 / 547-557 -- step 4 with NO taps at
+           * all: the boration cools a plant left 12 plant-min a stage. The next cut warms it (step 5 peaks 553.1 degF). The
+           * typical route ends in band (568.0 / 560.7 / 555.9 degF). Hence the b note: leave the rods, do not insert into a
+           * cold plant. */
         { text: 'Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
         why: 'STEAM GENERATOR LEVEL dips and recovers on each drop; that is normal, and SG FEED in AUTO handles it.',
           predicts_alarms: ['rod_limit_approach'],
@@ -4952,19 +4991,30 @@
            * count range, MEASURED: 0 (the replay's full-length wait — the boration does it) to 60-64
            * (a player who inserts as soon as 4a ticks, seeds 42/7/99); the note keeps his 20 as its low end.
            * SUPERSEDED 2026-09-26 (walked card): 21-27 steps, 04_lower_power.md Notes. */
-          wait_speed: 5,
+          wait_speed: 10, accs_ordered: true,   /* 5 -> 10x and ORDERED (OWNER, 2026-11-03, #825, see step 2): the insert rule rides on a with the cuts; b keeps inserting into the band once OUTPUT has settled; c checks REACTOR POWER followed, and cannot tick before the cuts AND the trim are done (owner, 2026-11-03, #825: 'it checked it off before I finished lowering load to the point temp raised above 577'). Taps, not held MED pulls, at 10x. */
           /* OUTPUT +/-2 (was +/-5), as step 2: at +/-5 the 55 MW stair tread (54.8 on the gauge) met
            * the row and the next reading (55.07) un-ticked it, MEASURED on the walked route. */
-          accs: [{ p: 'mwe_output', op: '~', v: 50, tol: 2, ask: 'Lower LOAD 5 MW at a time, one plant-minute apart, to 50 MW: 70, 65, 60, 55, 50.',
-                   label: 'OUTPUT settled near 50 MW' },
-                 { p: 'power_pct', op: '<', v: 70, ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 569 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 70 %.',
-                   wait_speed: 5,
+          accs: [{ p: 'mwe_output', op: '~', v: 50, tol: 2, ask: 'Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 50 MW: 70, 65, 60, 55, 50. After each cut, if AVG COOLANT TEMPERATURE reads above 569 °F, tap INSERT 3 times.',
                    note: 'The inserts hold AVG COOLANT TEMPERATURE under about 580 °F.',
-                   label: 'REACTOR POWER below 70 %' },
-                 { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
-                   note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-step inserts.',
-                   wait_speed: 5,
-                   label: 'AVG COOLANT TEMPERATURE below 569 °F' }],
+                   wait_speed: 10,
+                   label: 'OUTPUT settled near 50 MW' },
+                 /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
+                  * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
+                  * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
+                 { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
+                   note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
+                   wait_speed: 10,
+                   label: 'AVG COOLANT TEMPERATURE below 569 °F' },
+                 { p: 'power_pct', op: '<', v: 70, ask: 'Check REACTOR POWER has followed the load down below 70 %.',
+                   wait_speed: 10,
+                   label: 'REACTOR POWER below 70 %' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
         why: 'The band is walking back down toward 547 °F. A plant left hot at low load sends the difference to the condenser through the steam dump.',
@@ -4984,17 +5034,28 @@
           /* 2026-09-24 port — regrouped, not re-valued (see step 4). Rod count range, MEASURED:
            * 0 (the replay's full wait) to 45-46 (a player who inserts as soon as 5a ticks, seeds 42/7/99).
            * SUPERSEDED 2026-09-26 (walked card): 15-21 steps, 04_lower_power.md Notes. */
-          wait_speed: 5,
-          accs: [{ p: 'mwe_output', op: '~', v: 30, tol: 2, ask: 'Lower LOAD 5 MW at a time, one plant-minute apart, to 30 MW: 45, 40, 35, 30.',
-                   label: 'OUTPUT settled near 30 MW' },
-                 { p: 'power_pct', op: '<', v: 45, ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 562 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 45 %.',
-                   wait_speed: 5,
+          wait_speed: 10, accs_ordered: true,   /* 5 -> 10x and ORDERED (OWNER, 2026-11-03, #825, see step 2): the insert rule rides on a with the cuts; b keeps inserting into the band once OUTPUT has settled; c checks REACTOR POWER followed, and cannot tick before the cuts AND the trim are done (owner, 2026-11-03, #825: 'it checked it off before I finished lowering load to the point temp raised above 577'). Taps, not held MED pulls, at 10x. */
+          accs: [{ p: 'mwe_output', op: '~', v: 30, tol: 2, ask: 'Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 30 MW: 45, 40, 35, 30. After each cut, if AVG COOLANT TEMPERATURE reads above 562 °F, tap INSERT 3 times.',
                    note: 'The inserts hold AVG COOLANT TEMPERATURE under about 572 °F.',
-                   label: 'REACTOR POWER below 45 %' },
-                 { p: 'tavg_c', op: '<', v: 294.16, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
-                   note: 'About 20 steps at MED in all, the inserts after each cut included.',
-                   wait_speed: 5,
-                   label: 'AVG COOLANT TEMPERATURE below 562 °F' }],
+                   wait_speed: 10,
+                   label: 'OUTPUT settled near 30 MW' },
+                 /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
+                  * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
+                  * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
+                 { p: 'tavg_c', op: '<', v: 294.16, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
+                   note: 'About 20 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
+                   wait_speed: 10,
+                   label: 'AVG COOLANT TEMPERATURE below 562 °F' },
+                 { p: 'power_pct', op: '<', v: 45, ask: 'Check REACTOR POWER has followed the load down below 45 %.',
+                   wait_speed: 10,
+                   label: 'REACTOR POWER below 45 %' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
         { text: 'Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
         why: 'A scram from full power is a thermal shock. At about 12 % the trip is gentle, and the steam generator still has steam to dump afterwards.',
@@ -5003,7 +5064,7 @@
           cmd: { action: 'set_load_target', mwe: 15 }, hold: 900, wait_hint: false,
           /* OWNER RULING 2026-09-26 ("Walk them too"), as step 4: 5 MW a plant-minute, then 15. */
           ramp: [{ action: 'set_load_target', arg: 'mwe', points: [30, 25, 20, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15] }],
-          wait_speed: 5,
+          wait_speed: 10, accs_ordered: true,   /* 5 -> 10x and ORDERED (OWNER, 2026-11-03, #825, see step 2): the insert rule rides on a with the cuts; b keeps inserting into the band once OUTPUT has settled; c checks REACTOR POWER followed, and cannot tick before the cuts AND the trim are done (owner, 2026-11-03, #825: 'it checked it off before I finished lowering load to the point temp raised above 577'). Taps, not held MED pulls, at 10x. */
           /* BAND RE-DERIVED (#508, 2026-09-06). It read v: 30 and the 547 degF re-anchor puts the
            * plant at 33.94 %. NOT a regression -- the old number was calibrated on the plant #508
            * fixed. MEASURED at the end of this step, one fixture, three trees:
@@ -5048,12 +5109,24 @@
           accs: [/* TWO-SIDED (#736): 15.00 at the end of this hold, 30.00 at its entry, 0 on a
                   * scram — and this is the leg's LAST step, the one whose latched floor let the
                   * completion banner fire on a dead plant. */
-                 { p: 'mwe_output', op: '~', v: 15, tol: 2, ask: 'Lower LOAD 5 MW at a time, one plant-minute apart, to 15 MW: 25, 20, 15.',
-                   label: 'OUTPUT settled near 15 MW' },
-                 { p: 'power_pct', op: '<', v: 40, ask: 'After each cut, if AVG COOLANT TEMPERATURE reads above 557 °F, insert 3 steps at MED. Check REACTOR POWER reads below 40 %.',
-                   wait_speed: 5,
+                 { p: 'mwe_output', op: '~', v: 15, tol: 2, ask: 'Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 15 MW: 25, 20, 15. After each cut, if AVG COOLANT TEMPERATURE reads above 557 °F, tap INSERT 3 times.',
                    note: 'The inserts hold AVG COOLANT TEMPERATURE under about 565 °F.',
-                   label: 'REACTOR POWER below 40 %' },
+                   wait_speed: 10,
+                   label: 'OUTPUT settled near 15 MW' },
+                 /* THE CUTS ARE DONE AND THE RISE HAS HAPPENED (OWNER, 2026-11-03, #825: "I think the issue is that it saw
+                  * the temperature was below 577 and check it off before it raised above 577"). A latching `<` trim row
+                  * graded the moment OUTPUT reached the target caught Tavg BEFORE the last cut's heat arrived (#736: the
+                  * peak lands ~84 s after a cut). `stopped` on the operator's LOAD target (`control_state.load_target_mwe`;
+                  * a cut lands whole, so the target moves only when the player cuts) is "no cut for 120 plant-s", exactly.
+                  * It re-grades, so a further cut re-opens the wait. NOT `mwe_output steady` (critic round 1, 96fbe70f): a
+                  * half-means window reads steady ~20 s after the final cut when the previous level was held 120 s or more,
+                  * so a player cutting every 180 s had the trim tick 10-11 s after the cut, at 573.0 degF. */
+                 { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
+                   label: 'No LOAD cut for 2 plant-minutes' },
+                 { p: 'tavg_c', op: '<', v: 291.38, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
+                   note: 'About 12 to 15 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water.',
+                   wait_speed: 10,
+                   label: 'AVG COOLANT TEMPERATURE below 557 °F' },
                  /* ROD TRIM GRADED (#739) — see step 4 for the derivation and the three-way
                   * discrimination run. Band top at the measured 0.1495 steam flow is 291.60 degC;
                   * authored 291.6, 557 degF. MEASURED at the end of this hold: authored route
@@ -5066,10 +5139,9 @@
                   * of the two is the one that matters, and a two-sided band would still red the
                   * shipping leg. Said as "below the band" in an earlier draft, which overstated the
                   * margin fourfold (#741 quality pass). */
-                 { p: 'tavg_c', op: '<', v: 291.38, ask: 'Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
-                   note: 'About 10 to 15 steps at MED in all.',
-                   wait_speed: 5,
-                   label: 'AVG COOLANT TEMPERATURE below 557 °F' }],
+                 { p: 'power_pct', op: '<', v: 40, ask: 'Check REACTOR POWER reads below 40 %.',
+                   wait_speed: 10,
+                   label: 'REACTOR POWER below 40 %' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power'] },
       ],
       guard: { never_melted: true, never: [{ p: 'fuel_temp_c', op: '>=', v: 1200 }] },
@@ -5327,6 +5399,14 @@
           wait_hint: false,
           cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }, hold: 3900,
           wait_speed: 600, speed_text: true,
+          /* THE SHUTDOWN'S SCRAM TRANSIENT CAN LAND HERE (#825 critic round 1, 2026-11-03). MEASURED, routes harness chain,
+           * seed 42: the trip from ~12 % power drives COOLDOWN RATE to about 100 degF/hr (the alarm) as the steam dump takes
+           * the stored heat. Before #825 it rose in pwr_shutdown step 3 (tile -101.5 degF/hr), which declares it; with the
+           * lower-power merge the trip lands 0.4 degF cooler (554.8 vs 555.2 degF at the trip, 12.07 vs 11.77 % power),
+           * shutdown 3 peaks only -93.4, and the alarm rises in THIS step at -99.1 (boration only, no cooling asked yet).
+           * The plant sits ~1 degF/hr from the alarm after every low-power trip, so which step it lands in is the route's,
+           * not this card's; declared so it does not drop the 600x boration wait. */
+          expect_alarms: ['cooldown_rate_high'],
           note: 'Do not start cooling until BORON CHEM reads 880 ppm.',
           accs: [{ p: 'boron_auto_on', op: '>', v: 0,
                    hl: ['Boron ON'],
