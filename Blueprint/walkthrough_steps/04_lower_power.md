@@ -79,7 +79,7 @@ Note: The inserts hold AVG COOLANT TEMPERATURE under about 580 °F.
 
 ()3b. Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
 
-Note: Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts.
+Note: Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.
 
 ()3c. Check REACTOR POWER has followed the load down below 70 %.
 
@@ -106,7 +106,7 @@ Note: The inserts hold AVG COOLANT TEMPERATURE under about 572 °F.
 
 ()4b. Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
 
-Note: About 20 taps in all, the ones after each cut included.
+Note: About 20 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.
 
 ()4c. Check REACTOR POWER has followed the load down below 45 %.
 
@@ -133,7 +133,7 @@ Note: The inserts hold AVG COOLANT TEMPERATURE under about 565 °F.
 
 ()5b. Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
 
-Note: About 12 to 15 taps in all, the ones after each cut included.
+Note: About 12 to 15 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water.
 
 ()5c. Check REACTOR POWER reads below 40 %.
 

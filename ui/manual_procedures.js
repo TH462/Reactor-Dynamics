@@ -4947,6 +4947,11 @@
                  { cont: true, p: 'mwe_output', op: '~', v: 75, tol: 5,
                    label: 'OUTPUT still near 75 MW' }],
           hl: ['Load Setpoint', 'Insert'], hl_watch: ['Turbine Load', 'Tavg', 'Reactor Power', 'Generator Output'] },
+          /* BELOW THE BAND (#825 critic round 2): the slow cutter (cuts 180 plant-s apart) ends this step's trim at 557.2 /
+           * 544.5 / 552.4 degF for steps 3 / 4 / 5 against bands of about 558-568 / 550-560 / 547-557 -- step 4 with NO taps at
+           * all: the boration cools a plant left 12 plant-min a stage. The next cut warms it (step 5 peaks 553.1 degF). The
+           * typical route ends in band (568.0 / 560.7 / 555.9 degF). Hence the b note: leave the rods, do not insert into a
+           * cold plant. */
         { text: 'Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.',
         why: 'STEAM GENERATOR LEVEL dips and recovers on each drop; that is normal, and SG FEED in AUTO handles it.',
           predicts_alarms: ['rod_limit_approach'],
@@ -5004,7 +5009,7 @@
                  { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
                    label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 298.05, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.',
-                   note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts.',
+                   note: 'Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 569 °F' },
                  { p: 'power_pct', op: '<', v: 70, ask: 'Check REACTOR POWER has followed the load down below 70 %.',
@@ -5045,7 +5050,7 @@
                  { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
                    label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 294.16, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.',
-                   note: 'About 20 taps in all, the ones after each cut included.',
+                   note: 'About 20 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.',
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 562 °F' },
                  { p: 'power_pct', op: '<', v: 45, ask: 'Check REACTOR POWER has followed the load down below 45 %.',
@@ -5119,7 +5124,7 @@
                  { cont: true, p: 'load_target_mwe', op: 'stopped', v: 120,
                    label: 'No LOAD cut for 2 plant-minutes' },
                  { p: 'tavg_c', op: '<', v: 291.38, ask: 'Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.',
-                   note: 'About 12 to 15 taps in all, the ones after each cut included.',
+                   note: 'About 12 to 15 taps in all, the ones after each cut included. If it reads below its green band, leave the rods: the boron is still cooling the water.',
                    wait_speed: 10,
                    label: 'AVG COOLANT TEMPERATURE below 557 °F' },
                  /* ROD TRIM GRADED (#739) — see step 4 for the derivation and the three-way

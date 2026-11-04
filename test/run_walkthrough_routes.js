@@ -318,9 +318,11 @@ var ROUTES = {
     own_row: { step: 2, row: 1 },   /* the relation row is 2a's HEAD since #825 (was the third row, a cont of 2b) */
     peak_check: true,   // 2026-09-26: "under about N °F" in a step's note is graded (verdict `peak`)
     latch_check: ['tavg_c'],   // #825: a latching one-sided row on these params must not be crossed back after it ticks (verdict `latch`)
-    /* #825 critic round 1: ...nor tick inside the heat-arrival window of a LOAD cut (#736: a cut's Tavg peak lands ~84 plant-s
-     * after it). The 96fbe70f OUTPUT-steady wait ticked the trim 10-12 s after a 180 s cutter's last cut. */
-    latch_heat_s: 90,
+    /* #825 critic rounds 1-2: ...nor tick inside the heat-arrival window of a LOAD cut. MEASURED by the critic, Tavg peak delay
+     * after each 5 MWe cut, cuts 300 plant-s apart, no inserts: step 2 63/38/51/53/35 s; step 3 46/38/37/35/98 s (the 98 is
+     * 55 -> 50 MWe); step 4 80/82/78/74 s; step 5 75/74/64 s. 110 covers the 98 with margin and stays under the card's own
+     * 120 s `stopped` wait (the harness sees a cut up to a broadcast late, so 120 itself could flag the shipped form). */
+    latch_heat_s: 110,
     /* 2026-09-25 (layman pass 4; pace ruled "about 3 steps, one plant-minute apart" the same day,
      * workbench-h): "insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG
      * COOLANT TEMPERATURE is back in its band" — the player stops at the first
@@ -1082,7 +1084,10 @@ function runJob(legId, routeId, mutId, ctx) {
       if (typeof lt0 === 'number' && LCUT.v != null && lt0 < LCUT.v - 0.5) LCUT.t = t();
       if (typeof lt0 === 'number') LCUT.v = lt0;
     }
-    LCARRY = LCARRY.filter(function (w) {   /* the carried crossed-back watch (#825 LOW 1) */
+    /* the carried crossed-back watch (#825 LOW 1). ⚠ UNPROVEN: it has never gone red. No measured route crosses back after
+     * Continue before the next action, and with the after-cut branch zeroed the critic got no red on three routes (round 2).
+     * Kept as a watch; do not cite it as coverage. */
+    LCARRY = LCARRY.filter(function (w) {
       /* ...until the next step's first player action: from then on a rise is that step's own cut, not this row's */
       if (t() > w.until || w.done || (w.step !== k + 1 && S.acts > 0)) return false;
       var lv = pv(w.e.p), ov = (w.e.op.charAt(0) === '<') ? lv - w.e.v : w.e.v - lv;
