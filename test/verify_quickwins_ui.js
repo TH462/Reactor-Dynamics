@@ -375,6 +375,30 @@ function ck(name, ok, detail) {
     }
   }
 
+  // The completion scroll happens ONCE (#605: scroll on an event, never on a repaint). A reader who wheels down to the TMI-2 recap and
+  // then presses a speed button (which changes the render key) must not be snapped back to the step head.
+  var rs = await session({ width: 1366, height: 768 });
+  await rs.page.evaluate(function (l) { var b = document.createElement('button'); b.setAttribute('data-ckl-start', l); document.body.appendChild(b); b.click(); }, 'pwr_tmi2_incident');
+  await rs.page.waitForTimeout(800);
+  for (var rk = 0; rk < 60; rk++) {
+    var rst = await rs.page.evaluate(function () { var c = RD.__dev.service().instructor.checklist; return c ? { c: c.complete, i: c.step_index } : null; });
+    if (!rst || rst.c) break;
+    await rs.page.evaluate(function (i) { RD.__dev.cmd({ action: 'checklist_check', index: i }); }, rst.i);
+    await rs.page.waitForTimeout(250);
+  }
+  await rs.page.waitForTimeout(1500);
+  var lp = await rs.page.evaluate(function () { var l = document.getElementById('cklLog'), r = l.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2, l.scrollTop]; });
+  await rs.page.mouse.move(lp[0], lp[1]);
+  await rs.page.mouse.wheel(0, 3000);
+  await rs.page.waitForTimeout(500);
+  var bot = await rs.page.evaluate(function () { return document.getElementById('cklLog').scrollTop; });
+  await rs.page.mouse.move(5, 5);
+  await rs.page.evaluate(function () { var b = document.querySelector('#speed [data-speed="5"]'); if (b) b.click(); });
+  await rs.page.waitForTimeout(2500);
+  var aft = await rs.page.evaluate(function () { return document.getElementById('cklLog').scrollTop; });
+  ck('QW8 the completion scroll is once: a reader at the bottom of the finished TMI-2 log is not snapped back by a speed press', bot > lp[2] + 50 && Math.abs(aft - bot) <= 2, JSON.stringify({ atCompletion: Math.round(lp[2]), afterWheel: Math.round(bot), afterSpeedPress: Math.round(aft) }));
+  await rs.ctx.close();
+
   await browser.close();
   console.log('\n' + pass + '/' + (pass + fail));
   process.exit(fail ? 1 : 0);

@@ -6853,12 +6853,18 @@
        * the report that made the panel "unusable". */
       var advanced = cklState.step !== ck.step_index;
       cklState.step = ck.step_index;
+      if (!ck.complete) cklState.completeScrolled = false;
       if (!pointerInside(log)) {
         if (ck.complete) {
+          /* ONCE, ON THE COMPLETION EVENT, NEVER ON A REPAINT (#605; critic round 3): the render key still moves after completion (speed bar, rewind_ready,
+           * plant mode), and a rebuild that re-scrolled snapped a reader back from the banner to the step head. `completeScrolled` latches until the run un-completes. */
+          if (!cklState.completeScrolled) {
+          cklState.completeScrolled = true;
           /* ON COMPLETION SHOW THE KEPT LAST STEP FROM ITS HEAD (#825, critic M-A): scrolling to the bottom put a tall banner (the TMI-2 recap,
            * ~760 px) in view and the kept step with its Rewind above the fold. The banner is below the step, so it still scrolls into reach. */
           var keptEl = log.querySelector('.ckl-last-kept');
           log.scrollTop = keptEl ? Math.max(0, keptEl.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 4) : log.scrollHeight;
+          }
         }
         else if (!firstBuild && advanced && !cklState.userScrolled) {
           /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
