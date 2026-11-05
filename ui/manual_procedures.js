@@ -4730,7 +4730,7 @@
                   * harness, this row ticks 13.9 to 25.7 plant-min into step 9 over seven routes (typical 22.4, seed 7 23.8), 44 to 48 plant-min
                   * after the step 3 press. "Check"
                   * told the player the number should already be there; it never is on any measured route. */
-                 { p: 'boron_ppm', op: '<', v: 663,
+                 { p: 'boron_ppm', op: '<', v: 663.5,   /* critic L-9: BORON CHEM draws whole ppm (String(r0(v)), pwr_board_wiring ims2jva1ff5), so "663" is [662.5, 663.5); `< 663` refused half of it */
                    hl_watch: ['Boron Concentration'],
                    ask: 'Wait for BORON CHEM to fall to 663 ppm or below.', note: 'The dilution you set in step 3 gets there about 45 plant-minutes after step 3: up to about 26 more here after a brisk climb, none after a slow one.',   /* the timing moved to a note: the ask is capped at 30 words (run_checklist_pwr2_b) */   /* #825 layman S-5, MEASURED 663 ppm at 44.2 / 45.1 / 45.0 plant-min after step 3 (typical / chain / slow chain): 22.4, 23.3, 0.1 min into this step; ends 580.1 / 580.7 / 573.4 degF; critic L-2, all raise mistake routes: 663 ppm 43.8-46.3 plant-min after step 3, 17.3-25.8 into this step (band_floor 21.9, hot_stage4 19.9), ends 579.8-580.5 degF */
                    label: 'BORON CHEM 663 ppm or below' },
@@ -4741,9 +4741,10 @@
                   * route slow_climb (574.3 -> 577.9 degF in 10 steps, leg end 577.9; OTdT margin min 0.318 against 0.22-0.25 on the brisk
                   * routes), and the step-9 policy, which reads its threshold, pull and target off this ask. Graded at 577, so the ask stops
                   * at 577: an ask saying 580 over a row that lights Continue at 577 would be the #749 shape. */
-                 { p: 'tavg_c', op: '>=', v: 302.778,   /* 577.0 degF */
+                 { p: 'tavg_c', op: '>=', v: 302.5,   /* 576.5 degF: the FLOOR of what the whole-degree tile draws as 577 (critic L-8, the #749 trap; 302.778 = 577.0 refused half of "577") */
                    hl: ['Withdraw', 'Rod Speed — Normal'], hl_watch: ['Tavg', 'Boron Concentration'],
                    ask: 'If BORON CHEM reads 663 ppm or below and AVG COOLANT TEMPERATURE under 577 °F, withdraw 5 steps at MED a plant-minute apart until it reads 577 °F.',
+                   note: 'If CONTROL ROD POSITION stops moving during a pull, wait for REACTOR POWER under 103 %, then pull again.',   /* critic L-7: slow_climb's pulls reach 103.5 %, the rod stop refuses a step (bank 9 of 10) */
                    label: 'AVG COOLANT TEMPERATURE 577 °F or above' },
                  { p: 'tavg_c', op: '~', v: 303.2, tol: 8,
                    hl: ['Insert'], hl_watch: ['Tavg'],

@@ -1671,7 +1671,7 @@ function runJob(legId, routeId, mutId, ctx) {
           });
         }
         var tsp = S.memo.trimSpec, tfT = pv('tavg_c') * 9 / 5 + 32;
-        if (tsp && !S.memo.trimOn && !S.memo.trimDone && pv('boron_ppm') <= tsp.ppm && tfT < tsp.below) { S.memo.trimOn = true; out[cur].trim_from_F = tfT; }
+        if (tsp && !S.memo.trimOn && !S.memo.trimDone && pv('boron_ppm') < tsp.ppm + 0.5 && tfT < tsp.below) { S.memo.trimOn = true; out[cur].trim_from_F = tfT; }
         if (S.memo.trimOn) {
           if (tfT >= tsp.to) { S.memo.trimOn = false; S.memo.trimDone = true; out[cur].trim_to_F = tfT; }
           else {
