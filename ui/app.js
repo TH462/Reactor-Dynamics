@@ -5934,11 +5934,13 @@
   /* A ROW'S ACTION LINE. `ask_1m` (pwr_startup 10a, layman chain pass 2 S-3, 2026-10-15) is the ask with the
    * 1/M stop written in as a number: drawn when the runtime has a prediction for the row (`pred_1m`, never
    * re-derived here), with {stop} = prediction minus the row's `reach_1m` margin rounded down and {pred} = the
-   * prediction. No prediction: the plain `ask`, which says to work it out. */
+   * prediction. No prediction: the plain `ask`, which says to work it out. A `show_1m` row (pwr_startup 11b,
+   * 2026-11-06-develop-a) has no margin and so no {stop}: its `ask_1m` names {pred} only. Every placeholder is
+   * replaced, not the first (a line may name the prediction twice). */
   function cklAskText(en, av) {
-    if (en && en.ask_1m && av && typeof av.pred_1m === 'number' && en.reach_1m != null) {
-      var pr = av.pred_1m, stop = pr - Math.floor(en.reach_1m);
-      return en.ask_1m.replace('{stop}', String(stop)).replace('{pred}', String(pr));
+    if (en && en.ask_1m && av && typeof av.pred_1m === 'number' && (en.reach_1m != null || en.show_1m)) {
+      var pr = av.pred_1m, s = en.ask_1m.split('{pred}').join(String(pr));
+      return en.reach_1m != null ? s.split('{stop}').join(String(pr - Math.floor(en.reach_1m))) : s;
     }
     return en ? en.ask : '';
   }

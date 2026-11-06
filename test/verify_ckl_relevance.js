@@ -1204,6 +1204,76 @@ function readMenu(page) {
          noP.prog === true && noP.text.indexOf('Holding still') !== -1, 'no_1m ' + (noP.acc && noP.acc.no_1m) + ', prog ' + noP.prog);
     })();
 
+    /* 11b NAMES THE 1/M CRITICAL POINT AS A NUMBER (2026-11-06-develop-a; OWNER, 2026-11-05: "step 11b should suggest to
+     * lower steps to the critical point indicated on the 1/m startup plot instead of suggesting about 12 steps"). A
+     * `show_1m` row is DISPLAY ONLY: the runtime publishes the printed prediction as `pred_1m` so `ask_1m` can draw it
+     * (every {pred}, not the first), the row grades on its own op, and it never flags `no_1m` (that fallback line says
+     * "ticks once the rods have been still", which is a 1/M-GRADED row's, not this one's). SYNTHETIC row with the real
+     * 11b's grading fields; the table planted as above, prediction = bank - 10. CONTROL: the table cleared -> the plain
+     * ask, no number, no fallback line. Plus the shipped 11b row's own flags, so the fixture cannot drift from it. */
+    await (async function () {
+      await page.goto(url + '&dev=1', { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      var real = await page.evaluate(function () {
+        var st = (window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id === 'pwr_startup'; })[0] || {}).steps || [];
+        var row = ((st[10] || {}).accs || [])[1] || {};
+        return { show: row.show_1m === true, op: row.op, reach: row.reach_1m, below: row.below_1m, n: (String(row.ask_1m || '').match(/\{pred\}/g) || []).length };
+      });
+      ck('#11b: the shipped row is display-only show_1m on its own STARTUP RATE band, its ask_1m names {pred}',
+         real.show && real.op === '~' && real.reach == null && real.below == null && real.n >= 1, JSON.stringify(real));
+      await page.evaluate(function () {
+        var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_show_probe'; });
+        window.RD.MANUAL_PROCEDURES.pwr2 = P;
+        P.push({ id: 'zz_show_probe', category: 'control', manual_ref: 'ZZ-07', title: '1/M show probe',
+                 purpose: 'Render fixture.', from: 'hot_full_power',
+                 steps: [{ text: 'Insert to the mark.', control: '(observe)',
+                           accs: [{ p: 'power_pct', op: '<', v: -1, still_s: 120, show_1m: true,
+                                    ask: 'Insert near the critical point on the plot.',
+                                    ask_1m: 'Insert near the critical point on the plot, step {pred}: hold until it reads {pred}.',
+                                    label: 'never' },
+                                  { p: 'power_pct', op: '<', v: -1, ask: 'Never.', label: 'never 2' }] }] });
+      });
+      await page.click('[data-mmode="free"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await page.click('[data-minit="hot_full_power"]', { timeout: 4000 }).catch(function () {});
+      await page.waitForTimeout(200);
+      await startFreePlay(page).catch(function () {});
+      await page.waitForTimeout(2600);
+      await startFromMenu(page, 'zz_show_probe');
+      await page.waitForTimeout(1500);
+      async function read(d) {
+        var bank = await page.evaluate(function (d) {
+          var C = RD.OneOverMCore, svc = RD.__dev.service(), s = svc.assembleSnapshot();
+          var M = C.fullScale(s), b = C.controlGroup(s).steps, tb = svc.instructor.oneOverM;
+          C.clear(tb);
+          if (d != null) {
+            var xp = (b + d) / M;
+            C.add(tb, 0, 1000, s.metadata.sim_time);
+            C.add(tb, 0.5, 1000 / (1 - 0.5 / xp), s.metadata.sim_time);
+          }
+          return b;
+        }, d);
+        await page.waitForTimeout(3000);
+        return Object.assign(await page.evaluate(function () {
+          var card = document.querySelector('.ckl-step.ckl-active');
+          var row = card ? card.querySelector('.ckl-crit') : null;
+          var c = RD.__dev.service().instructor.getSnapshotBlock().checklist || {};
+          return { text: row ? row.textContent : '', acc: (c.accs || [])[0] || null };
+        }), { bank: bank });
+      }
+      var withP = await read(-10), noP = await read(null);
+      var want = withP.bank - 10;
+      ck('#11b: a show_1m row publishes the planted prediction and stays ungraded by it (no no_1m flag)',
+         !!withP.acc && withP.acc.pred_1m === want && withP.acc.no_1m === false && !withP.acc.met,
+         'pred ' + (withP.acc && withP.acc.pred_1m) + ' want ' + want + ', no_1m ' + (withP.acc && withP.acc.no_1m));
+      ck('#11b: ...and its ask draws the prediction as a number at EVERY {pred}, with no fallback line',
+         withP.text.indexOf('step ' + want + ': hold until it reads ' + want + '.') !== -1 && withP.text.indexOf('{pred}') === -1 &&
+         withP.text.indexOf('shows no prediction') === -1, JSON.stringify(withP.text.slice(0, 160)));
+      ck('#11b CONTROL: no prediction -> the plain ask, no number, no "shows no prediction" line',
+         !!noP.acc && noP.acc.pred_1m == null && noP.acc.no_1m === false && noP.text.indexOf('Insert near the critical point on the plot.') !== -1 &&
+         noP.text.indexOf('shows no prediction') === -1, 'pred ' + (noP.acc && noP.acc.pred_1m) + ' ' + JSON.stringify(noP.text.slice(0, 120)));
+    })();
+
     /* A WAIT-FIRST STEP HANDS THE CLOCK BACK WHEN ITS WAIT IS MET (layman TMI pass 5, S-1, 2026-10-15). TMI-2 step 9
      * ("Once SUBCOOLING MARGIN pegs at -50 °F, press OFF") ran 60x until OFF: the press row had no rung of its own
      * and inherited the step's, so a player who looked away when the margin pegged lost RCS INVENTORY 24 -> 20 %. The

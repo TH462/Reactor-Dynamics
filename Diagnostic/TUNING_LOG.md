@@ -29,6 +29,18 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-06-develop-a (owner in-sim reports 2026-11-05: startup 11b inserts to the 1/M critical point, 12a "holds above +0.15")
+
+Built on scratch branch `exp/rpt1105wt` (= develop 3334b8d6). All numbers MEASURED on `run_walkthrough_routes` jobs (live checklist runtime, full stack, seed 42 unless named), every `pwr_startup` route, 2026-11-06. Owner's words verbatim in `Blueprint/TASTE_LOG.md` (reports mw3hghrs / mw3hnwr6 / mw3hpst7).
+
+- **The 1/M prediction sits 2 to 3 steps above where 11b ends — near, and HIGH.** Prediction minus the bank 11b ticks on, old 12-step count: +2 typical / base / 12 of 18 mistake routes (209 vs 207), +3 typical_seed7 (211 vs 208) / flicker_release_5 / rewind_mid_10, +5 plot_early (212 vs 207), −1 both overshoot_8_recover routes (207 vs 208). No route over 5, so "near the critical point" holds; the plot's high bias (its safe side, #748) means a player stopping on the number is still supercritical.
+- **The owner's "much more accurate" does not measure on this plant: the count was closer.** 10b's release at +0.5 leaves the bank 12 steps past critical on every typical route, so "about 12 steps" landed 207 on the first read (2.7 plant-min, INTER RANGE 8.7e-9 A). Inserting to the printed number lands 209 and needs two more INSERT taps on two-minute reads: 6.9 plant-min, INTER RANGE 1.4e-8 A (seed 7: 211 → 208, three taps, 9.0 min, 1.9e-8 A; plot_early 13.4 min, 5.4e-8 A). Shipped as he worded it: the plot is the instrument the leg teaches, and the reads finish the job on every route. The note now says the rods usually end two or three steps below the number and INTER RANGE levels between 1.0e-8 and 2.0e-8 A.
+- **A display-only 1/M number needed a new field.** `ask_1m` drew only on `reach_1m` rows (`cklAskText` required the margin), and the runtime published `pred_1m` only on 1/M-GRADED rows. `show_1m: true` publishes the printed prediction on a row that grades on its own op and never flags `no_1m` (that flag draws "ticks once the rods have been still a plant-minute" — wrong for 11b). `cklAskText` now replaces every `{pred}` (`String.replace` did the first only; the first draft named it twice). 11b's asks sit at the 40-word owner-format cap (`run_checklist_pwr2_b` askSweep reddened the 49-word draft), so "read it two plant-minutes later" moved to the note's first sentence. No prediction (Clear): the plain ask keeps "about 12 steps".
+- **12a** reads "stop when it holds above +0.15"; the grade stays `>=` 0.145 with the rods still 60 s (the tile's "+0.15" floor, #749), so an exact "+0.15" held a minute ticks it.
+- **Routes.** `#11` typical policy inserts to the card's `pred_1m` (`to_pred`); `level_short_11` re-aimed (2 short of the number: 211, four taps, 11.0 min, 2.8e-8 A), `level_past_11` added (3 past: 206, settles −0.019, 2.8 min). Every route that reached step 11 before still completes the leg.
+
+---
+
 ## Session log — 2026-11-03-develop-b (#825 walkthrough half: heatup 10 ring, startup 10a/11b/12 pacing, raise-power mid-band, lower-power merge)
 
 Built on scratch branch `exp/825wt` (builder only; board/UI items of #825 are the other lane's). All numbers MEASURED on the routes harness (live checklist runtime, full stack, seed 42 unless named) or in the dev shell under headless Chromium, 2026-11-03.

@@ -537,7 +537,9 @@ var INOPERABLE_PHRASES = [
   var BTN = { SLOW: 'Rod Speed — Slow', MED: 'Rod Speed — Normal', FAST: 'Rod Speed — Fast' }, n = 0;
   (RD.MANUAL_PROCEDURES.pwr2 || []).forEach(function (proc) {
     (proc.steps || []).forEach(function (st, i) {
+      /* + each row's `ask_1m` (2026-11-06-develop-a): the line the card draws INSTEAD of `ask` once a 1/M prediction is printed */
       [{ t: st.text, hl: st.hl, w: 'step' }].concat((st.accs || []).map(function (a, j) { return { t: a.ask, hl: a.hl || st.hl, w: String.fromCharCode(97 + j) }; }))
+        .concat((st.accs || []).filter(function (a) { return a.ask_1m; }).map(function (a) { return { t: a.ask_1m, hl: a.hl || st.hl, w: String.fromCharCode(97 + st.accs.indexOf(a)) + ' (ask_1m)' }; }))
         .forEach(function (it) {
           var re = /\bPress (SLOW|MED|FAST)\b/g, m;
           while ((m = re.exec(it.t || ''))) {

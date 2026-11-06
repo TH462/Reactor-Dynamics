@@ -115,7 +115,7 @@ var ROUTES = {
        * INTER RANGE 1.0e-8 A and puts 12 steps back, trimming on two-minute reads, 12 taps a plant-minute
        * apart to +0.15 then leaves the rods alone to the point of adding heat. */
       '#10': { policy: 'approach', short: 3, hold_to: 0.5, min_rate: 0.3, max_rate: 1.0, dwell: 60, tap: 1, stated_max_min: 6 },   // note: "about 2 plant-minutes of rod motion" + the minute's read
-      '#11': { policy: 'level', back: 12, read_s: 120, dead: 0.02 },
+      '#11': { policy: 'level', to_pred: true, back: 12, read_s: 120, dead: 0.02 },   // 2026-11-06-develop-a: to the card's 1/M number; `back` is the no-prediction fallback
       '#12': { policy: 'tap_until', dwell: 60, stated_max_min: 35 },   // 12b note: "About 25 plant-minutes"
       /* #13 (#808) the feed transfer runs the DEFAULT policy: the step's own entry press (50 gpm in SG
        * FEED RATE), then each row's press as it goes live — AUTO once level reads 60 %, then aux feed STOP */
@@ -143,7 +143,10 @@ var ROUTES = {
       { id: 'no_sr_block', kind: 'skip', at: '#9', set: { policy: 'approach', short: 3, hold_to: 0.5, min_rate: 0.3, max_rate: 1.0, dwell: 60, tap: 1, sr_trip_max_min: true } },
       { id: 'overpull_10', kind: 'overshoot', at: '#10', set: { hold_to: 1.5 } },     // released past 1.0: the card's "if higher, tap INSERT once" (MEASURED: too slow at ~1.3 DPM; step 10 and 11 are overtaken at 0.5 %)
       { id: 'overpull_notrim', kind: 'overshoot', at: '#10', set: { hold_to: 1.5, max_rate: 99 } },   // ...and the INSERT never tapped: nothing may tick step 10 on its band
-      { id: 'level_short_11', kind: 'undershoot', at: '#11', set: { back: 10 } },    // 10 of 12 back in: the reads and taps finish it
+      /* 2026-11-06-develop-a: 11b inserts to the card's 1/M number, so the undershoot stops 2 short of it (was 10 of 12
+       * back) and the overshoot goes 3 past it (subcritical: the WITHDRAW trims finish it); the reads and taps finish both */
+      { id: 'level_short_11', kind: 'undershoot', at: '#11', set: { pred_off: 2 } },
+      { id: 'level_past_11', kind: 'overshoot', at: '#11', set: { pred_off: -3 } },
       // lets go of WITHDRAW at bank 69 on a noisy 7.0e2 flicker, at 1x (0.1 s gradings): the settled count
       // there is ~680, so 5a must NOT tick (807f). RECOVERY = 5a's note since #807 review item 1: "if it
       // only touches 7.0e2 now and then ... tap WITHDRAW one step and wait half a plant-minute"
@@ -1606,10 +1609,19 @@ function runJob(legId, routeId, mutId, ctx) {
       return;
     }
     /* `level` (2026-09-27-develop-a, 11b): once INTER RANGE reads 1.0e-8 A, INSERT `back` steps at MED, then
-     * every `read_s` plant-seconds with the rods still: above +dead tap INSERT, below -dead tap WITHDRAW */
+     * every `read_s` plant-seconds with the rods still: above +dead tap INSERT, below -dead tap WITHDRAW.
+     * `to_pred` (2026-11-06-develop-a, OWNER 2026-11-05: insert to "the critical point indicated on the 1/m startup
+     * plot"): INSERT to the prediction the CARD prints on the 11b row (`pred_1m`, the number its ask draws), plus
+     * `pred_off` (a player who stops short of it, or past it); no prediction on the card -> the ask's fallback, `back`. */
     if (P === 'level') {
       if (!S.memo.go) {
-        if (rows2[0] && rows2[0].met) { S.memo.go = true;   /* the card: wait for 11a's check-off, then INSERT */ S.acts++; nudge(-spec.back, 'normal'); S.memo.lm = t(); out[cur].ins_at_ir = pv('ir_amps'); }
+        if (rows2[0] && rows2[0].met) {
+          S.memo.go = true;   /* the card: wait for 11a's check-off, then INSERT */ S.acts++;
+          var pr11 = rows2[1] && rows2[1].pred_1m, n11 = spec.back;
+          if (spec.to_pred && typeof pr11 === 'number') { n11 = bank() - (pr11 + (spec.pred_off || 0)); out[cur].ins_to_pred = pr11; }
+          out[cur].ins_n = n11; out[cur].ins_from = bank();
+          if (n11 > 0) nudge(-n11, 'normal'); S.memo.lm = t(); out[cur].ins_at_ir = pv('ir_amps');
+        }
         return;
       }
       if (bank() !== S.memo.lb) { S.memo.lb = bank(); S.memo.lm = t(); }
