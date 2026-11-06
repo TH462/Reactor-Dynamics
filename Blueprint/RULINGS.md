@@ -203,3 +203,11 @@ and a quote.
 
 - **`C:\grok_build\RD_Ops\` holds the site's operating record.** *(owner, 2026-08-08: "Set up the
   folder as store secrets as you recommend.")*
+- **The Fission Sandbox lab ships on `develop`, public before its source.** *(OWNER, 2026-11-05,
+  relayed by the Project_Gadget session: "When you have the more solid build I want you to have the
+  reactor_dynamics agent add the sim to reactor dynamics develop branch so I can test it online.";
+  confirmed 2026-11-06 with "1" to the option "Add the lab, then push it together with #825 as
+  rc10, after the full test run", asked with the caveat that the R⚛D repo and tester URL are
+  public while the lab's source repo is private, so the AGPL source offer is not settled.)* The
+  bundle is Project_Gadget d059763 under `lab/`. Its Main Menu door sits behind the preview-stage
+  `lab` flag, so offering it on the public site is still his call.
