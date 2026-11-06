@@ -8001,7 +8001,6 @@
       !msel.mode                ? '' :
       msel.mode === 'free'      ? mpFree() :
       msel.mode === 'lessons'   ? mpLessons() :
-      msel.mode === 'lab'       ? mpLab() :
       msel.mode === 'campaign'  ? mpCampaign() :
       msel.mode === 'scenarios' ? mpScenarios() : mpWalkthroughs();
     // Step 4 — the session footer. OUTSIDE #mpContent deliberately: that element is "the
@@ -8134,12 +8133,6 @@
    * badge has always used), Lessons on the `openers` area flag — its pane says "more coming" when
    * the flag is on and this plant has no opener yet. Campaign and Scenarios are not offered
    * (#660 item 19) and appear only through the `?mmode=` door, as before. */
-  // The lab needs http(s). Under ?dev=1 a harness may pre-set RD.__labProtocol, so verify_flags_ui,
-  // which loads over file://, can prove the flag half of the door.
-  function labServable() {
-    var dev = /[?&]dev=1/.test(location.search || '') && RD.__labProtocol;
-    return (dev || location.protocol) !== 'file:';
-  }
   function menuCategories() {
     var c = [];
     /* LESSONS FIRST, FREE PLAY LAST *(OWNER, 2026-10-01: "On the main menu I want you to flip the
@@ -8147,10 +8140,6 @@
     if (flagOn('openers')) c.push({ id: 'lessons', name: LESSONS_NAME, desc: 'Short guided sessions with the Instructor.' });
     if (walkthroughsOffered()) c.push({ id: 'walkthroughs', name: 'Walkthroughs', desc: 'A guided startup and shutdown, one step at a time.', isNew: true });
     if (flagOn('free_play')) c.push({ id: 'free', name: 'Free Play', desc: 'Pick a starting condition and run the plant your own way.' });
-    /* THE FISSION SANDBOX door (lab/, a separately built page). It is an ES-module bundle, which
-     * browsers will not load from file://, so the door exists only when served over http(s): the
-     * portable download is file:// and never shows it. Last, after Free Play. */
-    if (flagOn('lab') && labServable()) c.push({ id: 'lab', name: 'Fission Sandbox', desc: 'An experimental neutron lab. Opens in a new tab.' });
     if (/[?&]mmode=/.test(location.search || '')) {
       c.push({ id: 'campaign', name: 'Campaign', desc: 'The retired guided path (dev door).' },
              { id: 'scenarios', name: 'Scenarios', desc: 'Instructor-led situations (dev door).' });
@@ -8215,12 +8204,6 @@
       (cp.mins ? '<span class="wt-modes"> · ' + mesc(cp.mins) + '</span>' : '') + '</div>' +
       '<div class="wt-desc">' + mesc(cp.desc) + '</div></div>' +
       '<button class="btn" data-mopener="' + mesc(op.id) + '">▶ Start</button></div>';
-  }
-  // The Fission Sandbox pane: a link, not a mission. An <a>, so it is not a thing to START in
-  // #mpContent (verify_flags_ui counts buttons there). ../lab/ because this page is /ui/shell.
-  function mpLab() {
-    return '<div class="m-note">An early experiment, separate from the plant: watch neutrons in a block of fuel. It opens in a new tab; the plant keeps its place here.</div>' +
-      '<a class="btn" href="../lab/" target="_blank" rel="noopener">▶ Open the Fission Sandbox</a>';
   }
   function mpWalkthroughs() {
     /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
@@ -11013,16 +10996,15 @@
       document.querySelector('.plant-area').appendChild(t);
     }
     t.textContent = msg;
-    /* ABOVE THE SCANNER, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
+    /* INSIDE THE BOTTOM ROW, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
      * the average-temperature, pressurizer-level, pressure and subcooling tiles (measured at
-     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It
-     * now sits just above the scanner bar, over the lower end of the alarm list; measured, it
-     * overlaps no board item at those three sizes. Re-read on every show: the scanner can grow. */
+     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It sat
+     * just above the scanner bar when the scanner was the plant area's last child; the scanner moved
+     * above .bottom-row on 2026-11-05 (owner), so the toast now rides the plant area's floor, over the
+     * lower end of the chart / alarm list, and above the (expanded) scanner it overlays. */
     try {
-      var pa = t.parentNode.getBoundingClientRect(), sc = $('scannerPanel');
-      var scTop = sc && sc.offsetParent ? sc.getBoundingClientRect().top : pa.bottom;
       t.style.top = 'auto';
-      t.style.bottom = Math.max(8, Math.round(pa.bottom - scTop + 8)) + 'px';
+      t.style.bottom = '8px';
     } catch (e) { /* layout unavailable: the stylesheet's top placement stands */ }
     t.className = 'app-toast show' + (kind === 'error' ? ' error' : '');
     if (toastTimer) clearTimeout(toastTimer);

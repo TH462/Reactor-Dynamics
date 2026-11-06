@@ -118,6 +118,53 @@ function ck(name, ok, detail) {
     await s.ctx.close();
   }
 
+  // ---- QW1b: THE SCANNER SITS UNDER THE DIAGRAM (owner, in-sim report 2026-11-05: "Move the scanner bar up to be
+  // tween the diagram and the strip chart/alarms panel so it sits right under the diagram."). Geometry, not source:
+  // its top is at or below the board area's bottom and its bottom at or above the bottom row's top; expanded, it
+  // takes its height in flow (the board rescales, by design) and covers nothing in the chart / alarm row.
+  for (var si = 0; si < 2; si++) {
+    var svp = VPS[si === 0 ? 1 : 0], stag = svp.width + 'x' + svp.height;
+    var sq = await session(svp);
+    var sg = function () {
+      return sq.page.evaluate(function () {
+        function bb(el) { var r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }
+        var sc = document.getElementById('scannerPanel').getBoundingClientRect();
+        var main = document.querySelector('.main-area').getBoundingClientRect();
+        var row = document.querySelector('.bottom-row').getBoundingClientRect();
+        var st = document.querySelector('.pwr-board-stage');
+        return { scTop: sc.top, scBottom: sc.bottom, boardBottom: main.bottom, rowTop: row.top,
+                 plant: bb(document.querySelector('.plant-area')), stage: bb(st), item: bb(document.querySelector('.pwr-board-stage [data-item]')),
+                 tiles: document.querySelectorAll('#alarmStack .alarm-tile').length, scale: getComputedStyle(st).transform, exp: document.getElementById('scannerPanel').classList.contains('expanded') };
+      });
+    };
+    await sq.page.evaluate(function () { RD.__dev.cmd({ action: 'set_instrument_failure', instrument_id: 'pzr_level', mode: 'stuck', value: 80 }); });
+    await sq.page.waitForFunction(function () { return document.querySelectorAll('#alarmStack .alarm-tile').length > 0; }, null, { timeout: 20000 }).catch(function () {});
+    await sq.page.waitForTimeout(600);
+    var s0 = await sg();
+    await shot(sq.page, 'qw1b_scanner_idle_' + stag);
+    await sq.page.click('#scannerToggle');
+    await sq.page.waitForTimeout(600);
+    var s1 = await sg();
+    await shot(sq.page, 'qw1b_scanner_expanded_' + stag);
+    // Reachability, by what the browser would hit at each control's centre (critic round 1, 2026-11-06: a -114 px overlay
+    // covered all of these, and the expanded state persists across sessions).
+    var reach = await sq.page.evaluate(function () {
+      function hit(sel) {
+        var el = document.querySelector(sel); if (!el) return sel + ': missing';
+        var r = el.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return t && (t === el || el.contains(t)) ? null : sel + ': covered by ' + (t ? (t.id || t.className || t.tagName) : 'nothing');
+      }
+      return ['#chartRewindBtn', '#graphWindow button', '[data-act=ack-all]', '#alarmStack .alarm-tile'].map(hit).filter(Boolean);
+    });
+    ck('QW1b ' + stag + ' the Scanner sits between the diagram and the bottom row (top >= board bottom, bottom <= row top)',
+       s0.scTop >= s0.boardBottom - 0.5 && s0.scBottom <= s0.rowTop + 0.5 && s1.scTop >= s1.boardBottom - 0.5 && s1.scBottom <= s1.rowTop + 0.5,
+       'idle: board bottom ' + s0.boardBottom.toFixed(1) + ', scanner ' + s0.scTop.toFixed(1) + '-' + s0.scBottom.toFixed(1) + ', row top ' + s0.rowTop.toFixed(1) +
+       '; expanded: scanner ' + s1.scTop.toFixed(1) + '-' + s1.scBottom.toFixed(1) + ', row top ' + s1.rowTop.toFixed(1));
+    ck('QW1b ' + stag + ' a really-clicked expanded Scanner covers nothing: Rewind, a window button, Ack All and the first alarm tile are reachable',
+       s1.exp && s0.tiles > 0 && reach.length === 0, 'expanded ' + s1.exp + ', tiles ' + s0.tiles + ', ' + (reach.length ? reach.join('; ') : 'all reachable') + ', board scale ' + s0.scale + ' -> ' + s1.scale);
+    await sq.ctx.close();
+  }
+
   var p = await session({ width: 1366, height: 768 });
   await p.page.evaluate(function () { document.querySelector('.app.pwr-synoptic').style.setProperty('--bottomrow-h', '260px'); });
   await p.page.waitForTimeout(600);

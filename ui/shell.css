@@ -1618,6 +1618,10 @@ html[data-channel="dev"] .logo-test {
    ever appears, the right fix is to re-run the measurement, not to raise this number. */
 .scanline.expanded {
   height: 140px; align-items: flex-start; padding: 5px 8px; line-height: 1.45;
+  /* EXPANDED, THE SCANNER TAKES ITS HEIGHT IN FLOW (critic round 1, 2026-11-06). An overlay over the
+     chart row (negative margin) covered the Rewind button, window buttons, CSV, the Alarms title, Ack All
+     and the first alarm tile, and the expanded state persists across sessions. The board rescales instead,
+     on an explicit click only; the alarm-fold 0.0 px rule is about the alarm strip. */
 }
 .scanline.expanded .scanline-tag { padding-top: 1px; }
 .scanline.expanded .scanline-body {
@@ -3612,3 +3616,4 @@ select.num-input { width: auto; }
    the crew tag, the criteria and the buttons stay. CI fonts, run 38652572708: step 9's compact card was
    394 px on a wider-than-Windows font, too tall for the gap it had. */
 .instr-callout.ico-compact.ico-tight .ico-tip:not(.ico-over) { display: none; }
+

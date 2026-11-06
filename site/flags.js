@@ -102,13 +102,14 @@
       desc: 'The passive 📋 walkthrough: a procedure ticked off against the plant as it sits.',
       soon: 'Live walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
-    /* The Main Menu DOOR to lab/ (the Fission Sandbox page, separately built). Only the door is
-     * gated: /lab/ itself is served on every channel. Preview until the owner has played it. */
+    /* The HOME-PAGE link to lab/ (the Atomic Sandbox, separately built; owner 2026-11-06: on the home page,
+     * not in the simulator's Main Menu). Only the link is gated: /lab/ itself is served on every channel.
+     * Preview until the owner has played it. */
     lab: {
-      label: 'Fission Sandbox',
+      label: 'Atomic Sandbox',
       stage: 'preview',
-      desc: 'The Main Menu door to the experimental neutron lab at /lab/ (opens in a new tab).',
-      soon: 'The Fission Sandbox, an experimental neutron lab, is in review and is not yet offered from the menu.',
+      desc: 'The home-page link (index.html) to the experimental neutron lab at /lab/.',
+      soon: 'The Atomic Sandbox, an experimental neutron lab, is in review and is not yet linked from the home page.',
     },
   };
 
