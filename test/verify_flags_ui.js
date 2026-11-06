@@ -960,9 +960,12 @@ function pinChannel(ch) {
     return r;
   }
   var pwP = await watchLine(true), pwN = await watchLine(false);
-  ck('dev (pwr2): auto speeding up on a chart-led step (`pair`) says "watch the chart"; without `pair` it still says "nothing to do"',
-    pwP.accel === 60 && /Speeding up to 60× — watch the chart\./.test(pwP.info) && !/nothing to do/.test(pwP.info) &&
-    pwN.accel === 60 && /Speeding up to 60× — nothing to do for a while\./.test(pwN.info),
+  /* RE-WORDED 2026-11-06 (#825 layman pass S-2, e4949322): the raise lands while the player may still be
+   * acting, so neither form says "nothing to do" any more; the line says the walkthrough moved the clock,
+   * and a `pair` step adds "watch the chart". The pair/no-pair split is still what this asserts. */
+  ck('dev (pwr2): auto speeding up on a chart-led step (`pair`) says "watch the chart"; without `pair` it says only that the walkthrough set the speed',
+    pwP.accel === 60 && /The walkthrough set the speed to 60× — watch the chart\./.test(pwP.info) && !/nothing to do/.test(pwP.info) &&
+    pwN.accel === 60 && /The walkthrough set the speed to 60×\./.test(pwN.info) && !/watch the chart|nothing to do/.test(pwN.info),
     'pair: ' + pwP.accel + '× "' + pwP.info + '" | no pair: ' + pwN.accel + '× "' + pwN.info + '"');
 
   /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
