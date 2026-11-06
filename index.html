@@ -172,6 +172,14 @@
 <script src="site/nav.js"></script>
 <script>
   if (window.RD && RD.Flags) RD.Flags.applyDom(document);
+  /* The Atomic Sandbox (lab/) is an ES-module bundle; browsers will not load it from file://, so the link
+     is hidden there whatever the flag says (the offline download is file://). ?dev=1 plus RD.__labProtocol
+     stands in for a served page in test/verify_flags_ui.js. */
+  (function () {
+    var row = document.querySelector('[data-flag="lab"]');
+    var proto = (/[?&]dev=1/.test(location.search) && window.RD && RD.__labProtocol) || location.protocol;
+    if (row && proto === 'file:') row.hidden = true;
+  })();
 </script>
 </body>
 </html>

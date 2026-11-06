@@ -1527,6 +1527,22 @@ function pinChannel(ch) {
         ' — a visitor to the released site reads the data-flag-off alternate here, not the ' +
         'sentence that was written');
 
+  /* HIDDEN MUST MEAN UNPAINTED (critic round 2, 2026-11-06). applyDom hides an element with the `hidden` attribute,
+   * and an author display rule beats it (`.lp .row{display:grid}` did, for the Atomic Sandbox row). So EVERY
+   * [data-flag] element with no alternate whose flag is off on public must compute display:none with a zero rect. */
+  var hiddenPaint = await page.evaluate(function () {
+    var bad = [], n = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-flag]'), function (el) {
+      if (el.hasAttribute('data-flag-off') || RD.Flags.on(el.getAttribute('data-flag'))) return;
+      n++;
+      var r = el.getBoundingClientRect();
+      if (getComputedStyle(el).display !== 'none' || r.width || r.height) bad.push(el.getAttribute('data-flag') + ' ' + getComputedStyle(el).display + ' ' + Math.round(r.height) + 'px');
+    });
+    return { n: n, bad: bad };
+  });
+  ck('landing public: every flag-hidden element (no alternate) computes display:none with a zero rect',
+    hiddenPaint.n > 0 && hiddenPaint.bad.length === 0, 'hidden elements ' + hiddenPaint.n + (hiddenPaint.bad.length ? ', PAINTED: ' + hiddenPaint.bad.join('; ') : ''));
+
   /* THE SWAP ITSELF, PROVEN ON THE PAGE. Without this the check above is satisfied by an
    * `applyDom` that does nothing at all: every flag reads on, no element is ever rewritten, and
    * a landing page that over-promises on the public channel looks identical to a correct one.
@@ -1837,7 +1853,7 @@ function pinChannel(ch) {
   await s4.ctx.close();
 
   async function labCatsMenu() {
-    var pgs = await menuPage('preview', 'globalThis.RD = globalThis.RD || {}; globalThis.RD.__labProtocol = "http:"', '?dev=1');
+    var pgs = await menuPage('preview', null, '?dev=1');
     var cats = await pgs.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
     await pgs.ctx.close();
     return cats;
@@ -1846,11 +1862,12 @@ function pinChannel(ch) {
    * simulator selection page."): a `data-flag="lab"` row on index.html, preview stage. Asserted on the PAINTED
    * row (computed display, rect) and on its href, never the attribute: `.lp .row` sets display:grid, which
    * beats the UA [hidden], so a hidden row that still paints is the failure to catch. */
-  async function labRow(channel, q) {
+  async function labRow(channel, q, served) {
     var c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     if (channel) await c.addInitScript(pinChannel(channel));
+    if (served) await c.addInitScript('globalThis.RD = globalThis.RD || {}; globalThis.RD.__labProtocol = "http:";');
     var pg = await c.newPage();
-    await pg.goto(LANDING + (q || ''));
+    await pg.goto(LANDING + (served ? '?dev=1' : '') + (q || ''));
     var r = await pg.evaluate(function () {
       var el = document.querySelector('[data-flag="lab"]'); if (!el) return { missing: true };
       var rc = el.getBoundingClientRect(), a = el.querySelector('a');
@@ -1860,13 +1877,15 @@ function pinChannel(ch) {
     await c.close();
     return r;
   }
-  var lr1 = await labRow('public'), lr2 = await labRow('preview'), lr3 = await labRow('public', '?flags=lab');
+  var lr1 = await labRow('public', '', true), lr2 = await labRow('preview', '', true), lr3 = await labRow('public', '&flags=lab', true), lr4 = await labRow('preview', '', false);
   ck('lab link: the home page carries the row, and on the public channel it is not painted',
     !lr1.missing && lr1.display === 'none' && lr1.h === 0, JSON.stringify(lr1));
   ck('lab link: preview channel paints "Atomic Sandbox" with an href that resolves to lab/',
     !lr2.missing && lr2.display !== 'none' && lr2.h > 0 && /Atomic Sandbox/.test(lr2.text) && /\/lab\/$/.test(lr2.href || ''), JSON.stringify(lr2));
   ck('lab link: the Features override (?flags=lab) paints it on the public channel',
     !lr3.missing && lr3.display !== 'none' && lr3.h > 0, JSON.stringify(lr3));
+  ck('lab link: opened from file:// (the lab bundle cannot load there) the row is hidden even on preview',
+    !lr4.missing && lr4.display === 'none' && lr4.h === 0, JSON.stringify(lr4));
   ck('lab link: the Main Menu no longer offers a lab category (preview, served-over-http stand-in)',
     (await labCatsMenu()).indexOf('lab') === -1);
 

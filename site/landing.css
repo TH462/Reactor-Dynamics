@@ -87,7 +87,7 @@ body.lp{background:var(--lp-bg);color:var(--lp-text);font:16px/1.55 "IBM Plex Sa
 .lp .row h3{font:600 22px "Barlow Condensed",system-ui,sans-serif;text-transform:uppercase;letter-spacing:1px;margin:0;color:var(--lp-text)}
 .lp .row p{margin:0;color:var(--lp-dim);font-size:15px}
 .lp .row a{font:500 14px "IBM Plex Sans",sans-serif}
-.lp .row[hidden]{display:none}   /* the author rule above beats the UA [hidden]; a data-flag row hidden by applyDom must really go (the lab row, preview stage) */
+[data-flag][hidden]{display:none !important}   /* applyDom hides with the attribute; author display rules (.lp .row{display:grid}) beat the UA [hidden], so the lab row painted on public until this */
 @media (min-width:1000px){
  .lp .strip,.lp .index{grid-template-columns:300px minmax(0,1fr);gap:40px;padding:56px 48px}
  .lp .row{grid-template-columns:260px minmax(0,1fr) 140px;gap:20px;align-items:baseline}
