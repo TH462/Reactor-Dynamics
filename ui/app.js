@@ -8134,6 +8134,12 @@
    * badge has always used), Lessons on the `openers` area flag — its pane says "more coming" when
    * the flag is on and this plant has no opener yet. Campaign and Scenarios are not offered
    * (#660 item 19) and appear only through the `?mmode=` door, as before. */
+  // The lab needs http(s). Under ?dev=1 a harness may pre-set RD.__labProtocol, so verify_flags_ui,
+  // which loads over file://, can prove the flag half of the door.
+  function labServable() {
+    var dev = /[?&]dev=1/.test(location.search || '') && RD.__labProtocol;
+    return (dev || location.protocol) !== 'file:';
+  }
   function menuCategories() {
     var c = [];
     /* LESSONS FIRST, FREE PLAY LAST *(OWNER, 2026-10-01: "On the main menu I want you to flip the
@@ -8144,7 +8150,7 @@
     /* THE FISSION SANDBOX door (lab/, a separately built page). It is an ES-module bundle, which
      * browsers will not load from file://, so the door exists only when served over http(s): the
      * portable download is file:// and never shows it. Last, after Free Play. */
-    if (location.protocol !== 'file:') c.push({ id: 'lab', name: 'Fission Sandbox', desc: 'An experimental neutron lab. Opens in a new tab.' });
+    if (flagOn('lab') && labServable()) c.push({ id: 'lab', name: 'Fission Sandbox', desc: 'An experimental neutron lab. Opens in a new tab.' });
     if (/[?&]mmode=/.test(location.search || '')) {
       c.push({ id: 'campaign', name: 'Campaign', desc: 'The retired guided path (dev door).' },
              { id: 'scenarios', name: 'Scenarios', desc: 'Instructor-led situations (dev door).' });

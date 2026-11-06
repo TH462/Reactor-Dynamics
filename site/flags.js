@@ -102,6 +102,14 @@
       desc: 'The passive 📋 walkthrough: a procedure ticked off against the plant as it sits.',
       soon: 'Live walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
+    /* The Main Menu DOOR to lab/ (the Fission Sandbox page, separately built). Only the door is
+     * gated: /lab/ itself is served on every channel. Preview until the owner has played it. */
+    lab: {
+      label: 'Fission Sandbox',
+      stage: 'preview',
+      desc: 'The Main Menu door to the experimental neutron lab at /lab/ (opens in a new tab).',
+      soon: 'The Fission Sandbox, an experimental neutron lab, is in review and is not yet offered from the menu.',
+    },
   };
 
   // ITEMS — one entry per piece of playable content, `kind:id`. `kind` matters:

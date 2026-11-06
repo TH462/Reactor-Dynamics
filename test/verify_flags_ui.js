@@ -1834,6 +1834,22 @@ function pinChannel(ch) {
     v5.cont === '' && (await p4.evaluate(function () { return localStorage.getItem('rd_autosave'); })) === null, JSON.stringify(v5));
   await s4.ctx.close();
 
+  /* THE FISSION SANDBOX DOOR (lab/): gated by the `lab` flag area (preview) AND by protocol. The
+   * shell loads over file:// here, where the protocol half hides the door by itself, so ?dev=1 plus
+   * an init-script RD.__labProtocol = 'http:' stands in for a served page and isolates the flag. */
+  async function labCats(channel, q, proto) {
+    var pgs = await menuPage(channel, proto ? 'globalThis.RD = globalThis.RD || {}; globalThis.RD.__labProtocol = ' + JSON.stringify(proto) : null, q);
+    var cats = await pgs.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
+    await pgs.ctx.close();
+    return cats;
+  }
+  var lab1 = await labCats('public', '?dev=1', 'http:'), lab2 = await labCats('preview', '?dev=1', 'http:'),
+      lab3 = await labCats('preview', '', null), lab4 = await labCats('public', '?dev=1&flags=lab', 'http:');
+  ck('lab door: public channel over http offers no Fission Sandbox', lab1.indexOf('lab') === -1, lab1.join(','));
+  ck('lab door: preview channel over http lists it LAST, after Free Play', lab2[lab2.length - 1] === 'lab' && lab2.indexOf('free') < lab2.indexOf('lab'), lab2.join(','));
+  ck('lab door: preview over file:// still hides it (the lab cannot run there)', lab3.indexOf('lab') === -1, lab3.join(','));
+  ck('lab door: the Features override (?flags=lab) turns it on in public over http', lab4.indexOf('lab') !== -1, lab4.join(','));
+
   await browser.close();
   console.log('\n' + C.bold + '──────────────────────────────────────────' + C.off);
   console.log(C.bold + (fail ? C.red + 'FLAG UI: FAIL' : C.green + 'FLAG UI: PASS') + C.off +
