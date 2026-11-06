@@ -30,11 +30,18 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.8.4-rc10] — 2026-11-06
+## [Alpha 1.8.4-rc11] — 2026-11-06
 
-### Added — the Fission Sandbox lab (site)
+### Changed — the owner's 2026-11-05 in-sim bug reports (#826)
 
-- New page at `/lab/`: the Fission Sandbox, an experimental neutron lab, copied as built from Project_Gadget d059763 (fonts under OFL, licences in `lab/licenses/`). Served and link-checked but not in the sitemap; the build adds a `/lab` to `/lab/` redirect. Main Menu gets a Fission Sandbox door behind the preview-stage `lab` flag (not on the public site until the owner moves the stage), shown over http only (the lab cannot run from `file://`), which opens it in a new tab. The offline download does not include it.
+- Startup Part 2 step 11b (reports mw3hghrs, mw3hnwr6): "Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot." The card prints the plot's predicted step through a new display-only `show_1m` row field (grading unchanged); with no prediction (after Clear) it falls back to "about 12 steps". Measured: the plot reads 2–3 steps above critical on the typical routes (209 vs 207), 5 on plot_early, so step 11 takes ~6.9 plant-minutes (was 2.7) and INTER RANGE levels ~1.4e-8 A (was 8.7e-9). The note says so.
+- Startup Part 2 step 12a (report mw3hpst7): "…and stop when it holds above +0.15." Grade unchanged (≥ 0.145 on a two-decimal tile).
+- The 11b card no longer rebuilds on every broadcast (its render key read the raw STARTUP RATE float: 37 rebuilds in 4 s, now 1); `verify_ckl_relevance` counts the rebuilds.
+- The Scanner bar (report mw3hi9cb) sits between the diagram and the strip chart/alarms row. Expanded, it takes its height in flow and the board scales down (0.605 → 0.454 at 1366x768) instead of covering Rewind, the chart buttons, Ack All and the first alarm tile; `verify_quickwins_ui` QW1b checks those are clickable after a real toggle.
+
+### Added — the Atomic Sandbox lab (site)
+
+- New page at `/lab/`: the Fission Sandbox, an experimental neutron lab, copied as built from Project_Gadget d059763 (fonts under OFL, licences in `lab/licenses/`). Served and link-checked but not in the sitemap; the build adds a `/lab` to `/lab/` redirect. Renamed the Atomic Sandbox (owner, 2026-11-06). The link is a row on the home page (`index.html`), not a Main Menu door, behind the preview-stage `lab` flag (not on the public site until the owner moves the stage) and hidden over `file://` (the lab cannot run there). `[data-flag][hidden]{display:none !important}` in `landing.css` makes a flag-hidden element really unpainted (`.lp .row{display:grid}` had beaten `[hidden]`); `verify_flags_ui` checks every such element on the public channel. The lab page itself still titles itself Fission Sandbox until the next bundle. The offline download does not include it.
 
 ### Fixed — board and walkthrough polish from the rc9 playtest (#825, UI half)
 

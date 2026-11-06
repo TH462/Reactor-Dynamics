@@ -209,5 +209,4 @@ and a quote.
   confirmed 2026-11-06 with "1" to the option "Add the lab, then push it together with #825 as
   rc10, after the full test run", asked with the caveat that the R⚛D repo and tester URL are
   public while the lab's source repo is private, so the AGPL source offer is not settled.)* The
-  bundle is Project_Gadget d059763 under `lab/`. Its Main Menu door sits behind the preview-stage
-  `lab` flag, so offering it on the public site is still his call.
+  bundle is Project_Gadget d059763 under `lab/`. Renamed the Atomic Sandbox (owner, 2026-11-06, relayed: "Let's lock it in. I like the suggestion of using atomic sandbox by itself whenever reactor dynamics context is clear. Also, yes on the colon."), and its link is a home-page row, not a Main Menu door (owner, 2026-11-06: "The Atomic Sandbox link should be on the home page not in the simulator selection page."). The row sits behind the preview-stage `lab` flag, so offering it on the public site is still his call.
