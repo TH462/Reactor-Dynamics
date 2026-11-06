@@ -1511,11 +1511,13 @@ function pinChannel(ch) {
     var out = [];
     Array.prototype.forEach.call(document.querySelectorAll('[data-flag]'), function (el) {
       var f = el.getAttribute('data-flag');
-      out.push({ flag: f, on: RD.Flags.on(f), stage: RD.Flags.stage(f) });
+      out.push({ flag: f, on: RD.Flags.on(f), stage: RD.Flags.stage(f), alt: el.hasAttribute('data-flag-off') });
     });
     return out;
   });
-  var offPublic = gated.filter(function (g) { return !g.on; });
+  /* Only an element WITH a data-flag-off alternate makes a claim the public visitor reads instead; a row hidden
+   * outright (the Atomic Sandbox link, `lab`, preview) promises nothing on public. Its own checks are below. */
+  var offPublic = gated.filter(function (g) { return !g.on && g.alt; });
   ck('landing public: every gated claim rests on a flag the public channel has',
     gated.length > 0 && offPublic.length === 0,
     gated.length === 0
@@ -1834,21 +1836,39 @@ function pinChannel(ch) {
     v5.cont === '' && (await p4.evaluate(function () { return localStorage.getItem('rd_autosave'); })) === null, JSON.stringify(v5));
   await s4.ctx.close();
 
-  /* THE FISSION SANDBOX DOOR (lab/): gated by the `lab` flag area (preview) AND by protocol. The
-   * shell loads over file:// here, where the protocol half hides the door by itself, so ?dev=1 plus
-   * an init-script RD.__labProtocol = 'http:' stands in for a served page and isolates the flag. */
-  async function labCats(channel, q, proto) {
-    var pgs = await menuPage(channel, proto ? 'globalThis.RD = globalThis.RD || {}; globalThis.RD.__labProtocol = ' + JSON.stringify(proto) : null, q);
+  async function labCatsMenu() {
+    var pgs = await menuPage('preview', 'globalThis.RD = globalThis.RD || {}; globalThis.RD.__labProtocol = "http:"', '?dev=1');
     var cats = await pgs.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
     await pgs.ctx.close();
     return cats;
   }
-  var lab1 = await labCats('public', '?dev=1', 'http:'), lab2 = await labCats('preview', '?dev=1', 'http:'),
-      lab3 = await labCats('preview', '', null), lab4 = await labCats('public', '?dev=1&flags=lab', 'http:');
-  ck('lab door: public channel over http offers no Atomic Sandbox', lab1.indexOf('lab') === -1, lab1.join(','));
-  ck('lab door: preview channel over http lists it LAST, after Free Play', lab2[lab2.length - 1] === 'lab' && lab2.indexOf('free') < lab2.indexOf('lab'), lab2.join(','));
-  ck('lab door: preview over file:// still hides it (the lab cannot run there)', lab3.indexOf('lab') === -1, lab3.join(','));
-  ck('lab door: the Features override (?flags=lab) turns it on in public over http', lab4.indexOf('lab') !== -1, lab4.join(','));
+  /* THE ATOMIC SANDBOX LINK (owner 2026-11-06: "The Atomic Sandbox link should be on the home page not in the
+   * simulator selection page."): a `data-flag="lab"` row on index.html, preview stage. Asserted on the PAINTED
+   * row (computed display, rect) and on its href, never the attribute: `.lp .row` sets display:grid, which
+   * beats the UA [hidden], so a hidden row that still paints is the failure to catch. */
+  async function labRow(channel, q) {
+    var c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    if (channel) await c.addInitScript(pinChannel(channel));
+    var pg = await c.newPage();
+    await pg.goto(LANDING + (q || ''));
+    var r = await pg.evaluate(function () {
+      var el = document.querySelector('[data-flag="lab"]'); if (!el) return { missing: true };
+      var rc = el.getBoundingClientRect(), a = el.querySelector('a');
+      return { display: getComputedStyle(el).display, w: Math.round(rc.width), h: Math.round(rc.height),
+               href: a && a.href, text: el.textContent.replace(/\s+/g, ' ').trim() };
+    });
+    await c.close();
+    return r;
+  }
+  var lr1 = await labRow('public'), lr2 = await labRow('preview'), lr3 = await labRow('public', '?flags=lab');
+  ck('lab link: the home page carries the row, and on the public channel it is not painted',
+    !lr1.missing && lr1.display === 'none' && lr1.h === 0, JSON.stringify(lr1));
+  ck('lab link: preview channel paints "Atomic Sandbox" with an href that resolves to lab/',
+    !lr2.missing && lr2.display !== 'none' && lr2.h > 0 && /Atomic Sandbox/.test(lr2.text) && /\/lab\/$/.test(lr2.href || ''), JSON.stringify(lr2));
+  ck('lab link: the Features override (?flags=lab) paints it on the public channel',
+    !lr3.missing && lr3.display !== 'none' && lr3.h > 0, JSON.stringify(lr3));
+  ck('lab link: the Main Menu no longer offers a lab category (preview, served-over-http stand-in)',
+    (await labCatsMenu()).indexOf('lab') === -1);
 
   await browser.close();
   console.log('\n' + C.bold + '──────────────────────────────────────────' + C.off);

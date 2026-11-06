@@ -18,6 +18,7 @@ when they disagree, his quote wins.
 
 | Date | Reacting to | His words (verbatim) | Taste it implies |
 |---|---|---|---|
+| 2026-11-06 | The Atomic Sandbox door in the simulator's Main Menu | "The Atomic Sandbox link should be on the home page not in the simulator selection page." | A separate experiment is a front-door link, not a mode inside the plant simulator; keep the simulator's menu to the plant. |
 | 2026-11-06 | Lab door name (relayed from the Project_Gadget session) | "Sounds good. Let's lock it in. I like the suggestion of using atomic sandbox by itself whenever reactor dynamics context is clear. Also, yes on the colon." | Shorter name when context is clear: the Main Menu door reads Atomic Sandbox. |
 | 2026-11-05 | System Scanner line at the bottom of the left column, below the chart row (in-sim report mw3hi9cb) | "Move the scanner bar up to be tween the diagram and the strip chart/alarms panel so it sits right under the diagram." | A description sits next to the thing it describes; the help channel belongs adjacent to the board, not at the far edge of the screen. |
 | 2026-11-03 | Power ascension stage pulls graded at the green band's floor (#825) | "when raising the temperature when pulling rods shouldnt the target temp be in the middle of the green zone not the edge of it?" | A target is the middle of what the board draws as good, not its edge: a number that is technically "in the green" but sits on the line reads as a near miss. |
