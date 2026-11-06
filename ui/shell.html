@@ -51,8 +51,8 @@
            MOVED UP 2026-11-05 (owner, in-sim report mw3hi9cb: "Move the scanner bar up to be
            tween the diagram and the strip chart/alarms panel so it sits right under the
            diagram."): it now sits between the board and .bottom-row, so the line that
-           describes a tile is adjacent to the tile. Expanded, it overlays DOWNWARD over the
-           chart row (negative margin keeps its flow height at 26 px) so the board never moves.
+           describes a tile is adjacent to the tile. Expanded, it takes its height in flow and the
+           board rescales (an overlay covered the chart and alarm controls).
 
            It stays the interlock-refusal channel — a blocked command flashes its reason
            here (`inspectFlash` in ui/app.js) — so the element must exist before the board
