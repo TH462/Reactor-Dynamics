@@ -2639,6 +2639,14 @@
           InstructorLayer.applyReach1m(g, this._oneOverMPredSteps(snapshot), en);
           ax.no_1m = g.no_1m; ax.pred_1m = g.pred_1m;
         }
+        /* `show_1m` (2026-11-06-develop-a, `pwr_startup` 11b; OWNER, 2026-11-05: "should suggest to lower steps to
+         * the critical point indicated on the 1/m startup plot"): the card's ask names the prediction the panel
+         * PRINTS as a number ({pred} in `ask_1m`). DISPLAY ONLY: the row grades on its own op, and `no_1m` stays
+         * unset, so the "ticks once the rods have been still" fallback line (a 1/M-GRADED row's) never draws. */
+        if (en.show_1m && en.reach_1m == null && en.below_1m == null) {
+          var ps1m = this._oneOverMPredSteps(snapshot);
+          ax.pred_1m = (typeof ps1m === 'number' && isFinite(ps1m)) ? ps1m : null;
+        }
         if (en.still_s > 0) {              /* 9b's rods-still wait, folded into the row (develop-k) */
           if (!ax.stillBag) ax.stillBag = { s: [] };
           InstructorLayer.applyStill(g, ax.stillBag, snapshot, en);

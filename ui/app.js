@@ -5934,11 +5934,13 @@
   /* A ROW'S ACTION LINE. `ask_1m` (pwr_startup 10a, layman chain pass 2 S-3, 2026-10-15) is the ask with the
    * 1/M stop written in as a number: drawn when the runtime has a prediction for the row (`pred_1m`, never
    * re-derived here), with {stop} = prediction minus the row's `reach_1m` margin rounded down and {pred} = the
-   * prediction. No prediction: the plain `ask`, which says to work it out. */
+   * prediction. No prediction: the plain `ask`, which says to work it out. A `show_1m` row (pwr_startup 11b,
+   * 2026-11-06-develop-a) has no margin and so no {stop}: its `ask_1m` names {pred} only. Every placeholder is
+   * replaced, not the first (a line may name the prediction twice). */
   function cklAskText(en, av) {
-    if (en && en.ask_1m && av && typeof av.pred_1m === 'number' && en.reach_1m != null) {
-      var pr = av.pred_1m, stop = pr - Math.floor(en.reach_1m);
-      return en.ask_1m.replace('{stop}', String(stop)).replace('{pred}', String(pr));
+    if (en && en.ask_1m && av && typeof av.pred_1m === 'number' && (en.reach_1m != null || en.show_1m)) {
+      var pr = av.pred_1m, s = en.ask_1m.split('{pred}').join(String(pr));
+      return en.reach_1m != null ? s.split('{stop}').join(String(pr - Math.floor(en.reach_1m))) : s;
     }
     return en ? en.ask : '';
   }
@@ -6019,8 +6021,14 @@
        * "past the mark" line below appears when the rods step past prediction-minus-N while
        * `met` stays 0. A `below_1m` or `reach_1m` row carries a non-null `pred_1m` (the latter
        * since develop-k; it also draws 10a's `ask_1m` stop, so a moved prediction must repaint). */
-      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.overtaken ? 4 : a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
-        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : '') + cklProgKey(a); }).join(','),
+      /* ...EXCEPT A `show_1m` ROW (pwr_startup 11b, critic round 1, 2026-11-06-develop-a): it draws no "past the mark"
+       * line, only the prediction in its ask, so it keys on `pred_1m` alone. Its `obs` is the raw STARTUP RATE float,
+       * and keying on it rebuilt the card every broadcast (94 rebuilds in 9.4 plant-s, the #687 blink class). */
+      (ck.accs || []).map(function (a, k) {
+        var stE = !ck.complete && pr.steps && pr.steps[ck.step_index], en1 = stE && stE.accs && stE.accs[k];
+        var show1 = !!(en1 && en1.show_1m && en1.reach_1m == null && en1.below_1m == null);
+        return (a.voided ? 3 : (a.met ? (a.overtaken ? 4 : a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
+        (a.pred_1m != null ? 'p' + a.pred_1m + (show1 ? '' : ':' + a.obs) : '') + cklProgKey(a); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,

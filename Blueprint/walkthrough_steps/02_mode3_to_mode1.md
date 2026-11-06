@@ -259,11 +259,13 @@ Critical means the chain reaction sustains itself; a steady positive STARTUP RAT
 
 Note: About 2 plant-minutes after the rods stopped in step 10.
 
-()11b. Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 15 seconds at 1× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.
+()11b. Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT to step {pred}. Then above +0.02 tap INSERT; below −0.02, WITHDRAW.
 
-Suggested time warp: 1×. While you wait for a read you can press 10× yourself; a tap is still one step.
+(With no prediction on the plot, the card draws: "Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT about 12 steps. Then above +0.02 tap INSERT; below −0.02, WITHDRAW." {pred} is the step number the plot prints.)
 
-Note: STARTUP RATE reads negative while the rods go in and settles over two plant-minutes. INTER RANGE levels near 1.0e-8 A; the later the insert starts, the higher it levels: about 2.0e-8 A a plant-minute late. The check-off comes two plant-minutes after your last rod motion.
+Suggested time warp: 5×. While you wait for a read you can press 10× yourself; a tap is still one step.
+
+Note: Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot reads a little high: critical is usually two or three steps below its prediction. Expect INTER RANGE to level near 1.0e-8 to 2.0e-8 A, higher if the insert starts late or stops short.
 
 ()11c. Write down CONTROL ROD POSITION, the critical rod position, and compare it with the 1/M prediction.
 
@@ -281,7 +283,7 @@ At 1.0e-8 A power is too low to warm the water, so only the rods set reactivity:
 
 *From about 1 % the core warms the water, and warmer water holds the climb back.*
 
-()12a. Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.
+()12a. Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it holds above +0.15.
 
 Note: Do not tap while you wait for the read: every tap starts the plant-minute over.
 
@@ -1274,3 +1276,12 @@ Record and every number: `Diagnostic/TUNING_LOG.md` 2026-09-26-develop-f.
 - **8b's pulse (critic round 1).** The rate-only cue (`< 0.035`) latched when a recovery INSERT drove STARTUP RATE negative, and Plot point pulsed through the insert and after it (MEASURED on the first draft: plotting on it at 185 read 198 / 200 against 207 / 208, mid-insert 212 against 207). Now `hl_when` is STARTUP RATE 0 to +0.035, and ui/app.js gives no cue while any rod moves and takes the latch back on a move (the tile swings through +0.017 mid-insert). Both halves are needed: without the motion rule the new band still plots mid-insert (212); with the motion rule and the old band it plots on the falling count (198).
 - **12a: row-level `overtaken` at REACTOR POWER 1.0 %** (a routine call, stated to the owner 2026-11-02). A player who stops short (+0.12, bank 211) saw REACTOR POWER reach 1.0 % with Continue dark and tripped on SG LO-LO at 62 plant-min (seed 7: 67). Graded at 12b's own render floor. MEASURED: the stop-short route now completes, 12a stood down at 36.8 plant-min into step 12 (seed 7), leg 79.9 / 80.5 plant-min (seeds 42 / 7); the typical route still ticks 12a on its own read at 5.9 plant-min (gated `own_row` 12/1).
 - **Drift: this file was stale, the pool is what ships.** The #819 subtext cut (c29f20ab, 2026-10-03; OWNER RULING 2026-10-02: "i want to get rid of the subtext. check the step off not the subtext.") cut "Plotting before +0.03 puts the prediction too far out." and "Real crews climb gently here, between +0.1 and +0.2." from the pool only; the 2026-10-15 cycle-pass edits (52dd2377, 38558766) changed 8a/8b in the pool only. Steps 8 and 12 now match the pool word for word. NOT DONE: 17 other pool strings in steps 2-17 still differ from this file (same cause); nothing was added back to the pool.
+
+### Owner in-sim reports — 2026-11-06 (develop-a, scratch exp/rpt1105wt): 11b inserts to the 1/M critical point, 12a "holds above +0.15"
+
+The owner's reports of 2026-11-05 (mw3hghrs, mw3hnwr6, mw3hpst7), verbatim: "walkthrough startup part 2 step 11b should suggest to lower steps to the critical point indicated on the 1/m startup plot instead of suggesting about 12 steps. this is much more accurate."; "walktrhough startup part 2 step 11b should say "Insert the CONTROL RODS until STARTUP RATE holds between -0.02 and +0.02; this will be near the critical point indicated on the 1/m Startup Plot."; "walkthrough startup part 2 step 12a should say "...and stop when it holds above +0.15.""
+
+- **11b** leads with his sentence (minus signs, and "1/M Startup Plot", the window's own title). With a prediction printed the card writes the number in (`ask_1m` + the new display-only `show_1m`: the grade is unchanged, STARTUP RATE −0.02 to +0.02 with the rods still two plant-minutes): "...near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT to step 209. Then above +0.02 tap INSERT; below −0.02, WITHDRAW." (40 words, the owner-format ask cap; the read timing moved to the note). No prediction (Clear pressed): the plain ask keeps "about 12 steps", since the plot has no point to indicate.
+- **MEASURED, the gap (run_walkthrough_routes, every pwr_startup route, seed 42 unless named; prediction minus the bank 11b ticks on).** On the old 12-step count: +2 on typical, base and 12 of the 18 mistake routes that reach 11b with a prediction (209 vs 207); +3 on typical_seed7 (211 vs 208), flicker_release_5 and rewind_mid_10; +5 on plot_early (212 vs 207); −1 on both overshoot_8_recover routes (207 vs 208). "Near" holds everywhere (largest +5). The plot reads HIGH (its safe side), so the trims stay in the text.
+- **MEASURED, the new route (insert to the printed number, then the two-minute reads).** Typical: 219 → 209, reads +0.063 / +0.038 / +0.015, two INSERT taps, 11b ticks at 207 after 6.9 plant-min (2.7 on the old count), INTER RANGE 1.4e-8 A (was 8.7e-9). Base 6.9 min, 1.2e-8 A. Seed 7: 220 → 211, three taps, 208, 9.0 min, 1.9e-8 A. plot_early: 212, five taps, 13.4 min, 5.4e-8 A. overshoot_8_recover: 207, no tap, 2.6 min. The note now says the rods usually end two or three steps below the number and INTER RANGE levels between 1.0e-8 and 2.0e-8 A. Routes: `level_short_11` re-aimed (stops 2 short of the number: 211, four taps, 11.0 min, 2.8e-8 A) and `level_past_11` added (3 past it: 206, settles −0.019, 2.8 min).
+- **12a** "stop when it reads +0.15 or more" → "stop when it holds above +0.15". The grade stays `>=` 0.145 with the rods still a plant-minute — the floor of the tile's drawn "+0.15" (#749) — so a tile reading exactly +0.15 for the minute ticks the row although "above" literally excludes it; the check-off resolves it.

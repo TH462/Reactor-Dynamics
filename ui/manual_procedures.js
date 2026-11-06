@@ -364,6 +364,13 @@
  *           claim: with a prediction printed the row is met the broadcast the reading is at or
  *           above the prediction minus N, REPLACING its own op (no stillness, no debounce —
  *           `InstructorLayer.applyReach1m`). No prediction ⇒ its own op and `no_1m`, as above.
+ *   accs[].ask_1m OPTIONAL string — the `ask` with the printed 1/M prediction written in as a number:
+ *           {pred} = the prediction, {stop} = prediction minus `reach_1m` (rounded down). Drawn
+ *           only on a `reach_1m` or `show_1m` row while a prediction is printed (ui/app.js
+ *           cklAskText); otherwise the plain `ask`, which must stand without the number.
+ *   accs[].show_1m OPTIONAL true (`pwr_startup` 11b, 2026-11-06-develop-a) — DISPLAY ONLY: the
+ *           runtime publishes the printed prediction as the row's `pred_1m` so `ask_1m` can name it
+ *           ({pred} only); the row grades on its own op and never flags `no_1m`.
  *   accs[].still_s OPTIONAL seconds (`pwr_startup` 9b, develop-k) — the row ALSO needs the
  *           control bank unmoved that long (`InstructorLayer.applyStill`). Use it instead of a
  *           hidden ordered `stopped` row in front: that row locks (mutes) the drawn row behind it
@@ -3856,7 +3863,8 @@
           control: 'Control Bank', target: 'INTER RANGE near 1.0e-8 A, STARTUP RATE −0.02 to +0.02 with the rods still',
           wait_hint: false,
           /* the replay levels when INTER RANGE gets there, not at step entry (an insert at entry levels
-           * near 3e-9 A and 11a never meets). Its bank 219 -> 207, the same count the card asks for. */
+           * near 3e-9 A and 11a never meets). Its bank 219 -> 207. Since 2026-11-06-develop-a the card asks for
+           * the 1/M prediction instead (209 on this leg, 2 above where 11b ticks); the replay keeps the count. */
           replay_then: { when: { p: 'ir_amps', op: '>=', v: 9.950000000000001e-9 }, cmd: { action: 'rod_nudge', group_id: 'control', steps: -12, speed: 'normal' } },
           hold: 600,
           overtaken: { p: 'power_pct', op: '>=', v: 0.45,
@@ -3870,10 +3878,36 @@
                    hl_watch: ['Intermediate Range'],
                    label: 'INTER RANGE reads 1.0e-8 A or more' },
                  { p: 'startup_rate_dpm', op: '~', v: 0, tol: 0.025, still_s: 120,   /* -0.025 to +0.025: every value toFixed(2) draws as -0.02 to +0.02 (as 1d) */
-                   ask: 'Insert until STARTUP RATE holds between −0.02 and +0.02: press MED, hold INSERT about 3 seconds at 5× (about 12 steps), and read it two plant-minutes later. Above +0.02, tap INSERT once; below −0.02, tap WITHDRAW once.',
-                   note: 'Expect INTER RANGE to level near 1.0e-8 A; the later the insert starts, the higher it levels: about 2.0e-8 A a plant-minute late.',   /* #825 layman S-8, MEASURED: typical 8.7e-9; 10 back on time 1.2e-8; 60 s late 12 back 1.4e-8, 10 back 2.0e-8 (layman 1.5e-8); critic L-2, every startup mistake route: 7.9e-9 to 9.1e-9 on time, rewind_mid_10 1.9e-8, clear_1m_10 5.0e-8 (arrives late) */
+                   /* TO THE 1/M CRITICAL POINT, NOT "ABOUT 12 STEPS" *(OWNER, 2026-11-05, in-sim reports: "step 11b should
+                    * suggest to lower steps to the critical point indicated on the 1/m startup plot instead of suggesting
+                    * about 12 steps. this is much more accurate." and "step 11b should say "Insert the CONTROL RODS until
+                    * STARTUP RATE holds between -0.02 and +0.02; this will be near the critical point indicated on the 1/m
+                    * Startup Plot.")*. The first sentence is his; "1/M Startup Plot" is the window's own title
+                    * (ui/panels/one_over_m.js). With a prediction printed the card draws `ask_1m` (`show_1m`: display
+                    * only, the grade is unchanged). MEASURED 2026-11-06-develop-a (run_walkthrough_routes, every pwr_startup
+                    * route that reaches 11b with a prediction, on the old 12-step count, seed 42 unless named): prediction minus
+                    * the bank 11b ticks on = +2 typical / base / 12 of 18 mistake routes (209 vs 207), +3 typical_seed7 (211 vs
+                    * 208) / flicker_release_5 / rewind_mid_10, +5 plot_early (212 vs 207), -1 both overshoot_8_recover routes
+                    * (207 vs 208): "near" holds on every route, and the
+                    * plot reads high, so the trims are still needed. No prediction (Clear, clear_1m_10): the count stays as
+                    * the fallback, since the plot has no point to indicate. */
+                   ask: 'Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT about 12 steps. Then above +0.02 tap INSERT; below −0.02, WITHDRAW.',
+                   ask_1m: 'Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT to step {pred}. Then above +0.02 tap INSERT; below −0.02, WITHDRAW.',   /* 40 words, the owner-format ask cap (run_checklist_pwr2 askSweep); the read timing is the note's first sentence */
+                   show_1m: true,
+                   note: 'Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot reads a little high: critical is usually two or three steps below its prediction. Expect INTER RANGE to level near 1.0e-8 to 2.0e-8 A, higher if the insert starts late or stops short.',
+                   /* 2026-11-06-develop-a, MEASURED (run_walkthrough_routes, the card's insert to the printed prediction, then the
+                    * two-minute reads and taps): ends 2 below the number on typical / base / 13 mistake routes (209 -> 207,
+                    * 2 INSERT taps), 3 below on typical_seed7 (211 -> 208, 3 taps) / flicker_release_5, 5 on plot_early, 0 on
+                    * both overshoot_8_recover routes (207); level_past_11 goes 3 past and ends there (206, no tap).
+                    * INTER RANGE at the tick, on time: typical 1.4e-8, base 1.2e-8, seed 7 1.9e-8,
+                    * flicker_release_5 1.8e-8; mistakes: level_short_11 2.8e-8, rewind_mid_10 3.8e-8, clear_1m_10 5.0e-8,
+                    * plot_early 5.4e-8. Step 11 takes 6.9 plant-min typical (2.7 on the old 12-step count), 9.0 seed 7, 13.4
+                    * plot_early. On time, the typical routes level 7.7e-9 (overshoot_8_recover) to 1.9e-8; late or short, 2.8e-8
+                    * to 5.4e-8: hence "near 1.0e-8 to 2.0e-8 A, higher if ... late or stops short" (critic round 1, L-1/L-3).
+                    * WAS (#825 layman S-8, the 12-step count): typical 8.7e-9; 60 s late 12 back 1.4e-8, 10 back 2.0e-8. */
                    /* 1 -> 5 (OWNER, 2026-11-03, #825: "mode 3-1 step 11b should be 5x warp."). MED is 0.8 steps a
-                    * plant-second, so the 12-step insert is 15 plant-s: 3 s of wall at 5x, 15 s at 1x. */
+                    * plant-second, so the 12-step insert is 15 plant-s: 3 s of wall at 5x, 15 s at 1x (the insert to the 1/M
+                    * number is 9 to 10 steps on the typical routes since 2026-11-06-develop-a). */
                    wait_speed: 5,
                    speed_text: '5×. While you wait for a read you can press 10× yourself; a tap is still one step.',
                    hl: ['Insert', 'Rod Speed — Normal'], hl_watch: ['Startup Rate', 'Control Rod Position'],
@@ -3928,7 +3962,7 @@
                     * ticks 12a on its own read 20 plant-min before that (`run_walkthrough_routes` own_row 12/1). */
                    overtaken: { p: 'power_pct', op: '>=', v: 0.9500000000000001,
                      label: 'REACTOR POWER already reads 1.0 %, so the climb is under way' },
-                   ask: 'Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it reads +0.15 or more.',
+                   ask: 'Close the 1/M PLOT window with its ✕. Press SLOW. Tap WITHDRAW one step at a time. Read STARTUP RATE about 70 plant-seconds after each tap, and stop when it holds above +0.15.',   /* "holds above +0.15": OWNER, 2026-11-05 in-sim report ("step 12a should say "...and stop when it holds above +0.15.""). The grade stays `>=` 0.145 with the rods still 60 s, the floor of the tile's drawn "+0.15" (#749), so a tile reading exactly +0.15 ticks the row */
                    note: 'Do not tap while you wait for the read: every tap starts the plant-minute over.',
                    wait_speed: 10,
                    hl: ['Rod Speed — Slow', 'Withdraw'], hl_watch: ['Startup Rate', 'Control Rod Position'],
