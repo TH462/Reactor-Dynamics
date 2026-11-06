@@ -8150,7 +8150,7 @@
     /* THE FISSION SANDBOX door (lab/, a separately built page). It is an ES-module bundle, which
      * browsers will not load from file://, so the door exists only when served over http(s): the
      * portable download is file:// and never shows it. Last, after Free Play. */
-    if (flagOn('lab') && labServable()) c.push({ id: 'lab', name: 'Fission Sandbox', desc: 'An experimental neutron lab. Opens in a new tab.' });
+    if (flagOn('lab') && labServable()) c.push({ id: 'lab', name: 'Atomic Sandbox', desc: 'An experimental neutron lab. Opens in a new tab.' });
     if (/[?&]mmode=/.test(location.search || '')) {
       c.push({ id: 'campaign', name: 'Campaign', desc: 'The retired guided path (dev door).' },
              { id: 'scenarios', name: 'Scenarios', desc: 'Instructor-led situations (dev door).' });
@@ -8220,7 +8220,7 @@
   // #mpContent (verify_flags_ui counts buttons there). ../lab/ because this page is /ui/shell.
   function mpLab() {
     return '<div class="m-note">An early experiment, separate from the plant: watch neutrons in a block of fuel. It opens in a new tab; the plant keeps its place here.</div>' +
-      '<a class="btn" href="../lab/" target="_blank" rel="noopener">▶ Open the Fission Sandbox</a>';
+      '<a class="btn" href="../lab/" target="_blank" rel="noopener">▶ Open the Atomic Sandbox</a>';
   }
   function mpWalkthroughs() {
     /* #244/#526 (owner-ruled 2026-08-31): walkthroughs run the validated procedure artifact
@@ -11013,16 +11013,15 @@
       document.querySelector('.plant-area').appendChild(t);
     }
     t.textContent = msg;
-    /* ABOVE THE SCANNER, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
+    /* INSIDE THE BOTTOM ROW, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
      * the average-temperature, pressurizer-level, pressure and subcooling tiles (measured at
-     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It
-     * now sits just above the scanner bar, over the lower end of the alarm list; measured, it
-     * overlaps no board item at those three sizes. Re-read on every show: the scanner can grow. */
+     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It sat
+     * just above the scanner bar when the scanner was the plant area's last child; the scanner moved
+     * above .bottom-row on 2026-11-05 (owner), so the toast now rides the plant area's floor, over the
+     * lower end of the chart / alarm list, and above the (expanded) scanner it overlays. */
     try {
-      var pa = t.parentNode.getBoundingClientRect(), sc = $('scannerPanel');
-      var scTop = sc && sc.offsetParent ? sc.getBoundingClientRect().top : pa.bottom;
       t.style.top = 'auto';
-      t.style.bottom = Math.max(8, Math.round(pa.bottom - scTop + 8)) + 'px';
+      t.style.bottom = '8px';
     } catch (e) { /* layout unavailable: the stylesheet's top placement stands */ }
     t.className = 'app-toast show' + (kind === 'error' ? ' error' : '');
     if (toastTimer) clearTimeout(toastTimer);

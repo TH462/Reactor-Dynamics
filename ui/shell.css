@@ -1583,6 +1583,7 @@ html[data-channel="dev"] .logo-test {
 .scanline {
   flex: 0 0 auto; height: 26px; display: flex; align-items: center; gap: 8px;
   padding: 0 8px; margin-top: 4px;
+  position: relative; z-index: 6;   /* above .bottom-row, which it overlays when expanded (2026-11-05) */
   background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px;
   font-size: 12px; color: var(--text-2); line-height: 1;
 }
@@ -1618,6 +1619,11 @@ html[data-channel="dev"] .logo-test {
    ever appears, the right fix is to re-run the measurement, not to raise this number. */
 .scanline.expanded {
   height: 140px; align-items: flex-start; padding: 5px 8px; line-height: 1.45;
+  /* THE SCANNER SITS BETWEEN THE BOARD AND THE CHART ROW (owner, 2026-11-05) and an expanded one
+     OVERLAYS the chart row downward instead of pushing the board up: the negative bottom margin
+     (140 - 26) keeps its FLOW height at the idle 26 px, so the board, the row and every
+     coordinate above it stay on the same pixels. */
+  margin-bottom: -114px;
 }
 .scanline.expanded .scanline-tag { padding-top: 1px; }
 .scanline.expanded .scanline-body {

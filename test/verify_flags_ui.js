@@ -1845,7 +1845,7 @@ function pinChannel(ch) {
   }
   var lab1 = await labCats('public', '?dev=1', 'http:'), lab2 = await labCats('preview', '?dev=1', 'http:'),
       lab3 = await labCats('preview', '', null), lab4 = await labCats('public', '?dev=1&flags=lab', 'http:');
-  ck('lab door: public channel over http offers no Fission Sandbox', lab1.indexOf('lab') === -1, lab1.join(','));
+  ck('lab door: public channel over http offers no Atomic Sandbox', lab1.indexOf('lab') === -1, lab1.join(','));
   ck('lab door: preview channel over http lists it LAST, after Free Play', lab2[lab2.length - 1] === 'lab' && lab2.indexOf('free') < lab2.indexOf('lab'), lab2.join(','));
   ck('lab door: preview over file:// still hides it (the lab cannot run there)', lab3.indexOf('lab') === -1, lab3.join(','));
   ck('lab door: the Features override (?flags=lab) turns it on in public over http', lab4.indexOf('lab') !== -1, lab4.join(','));

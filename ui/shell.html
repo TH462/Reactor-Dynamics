@@ -39,6 +39,30 @@
         </div>
       </div>
 
+      <!-- SYSTEM SCANNER — a status LINE under the board, not a panel (#439, spec §6).
+           It sat bottom-right in the SIM column because vertical space ran out on the
+           left, which put the only "what is this?" affordance at the maximum possible eye
+           distance from the board it describes — and there are no tooltips over the
+           synoptic by design (spec §1), so this is it. Its content was always one sentence
+           plus a Full Description affordance: a line, not a block. Sitting under the board it is
+           directly under everything it describes, and it retires the 74px/28vh two-height
+           variant and its persisted expand state, because nothing relocates any more.
+
+           MOVED UP 2026-11-05 (owner, in-sim report mw3hi9cb: "Move the scanner bar up to be
+           tween the diagram and the strip chart/alarms panel so it sits right under the
+           diagram."): it now sits between the board and .bottom-row, so the line that
+           describes a tile is adjacent to the tile. Expanded, it overlays DOWNWARD over the
+           chart row (negative margin keeps its flow height at 26 px) so the board never moves.
+
+           It stays the interlock-refusal channel — a blocked command flashes its reason
+           here (`inspectFlash` in ui/app.js) — so the element must exist before the board
+           can refuse anything. -->
+      <div class="scanline" id="scannerPanel">
+        <span class="scanline-tag">SCANNER</span>
+        <span class="scanline-body" id="scanner"><span class="idle">Hover or tap anything on the board to see what it does.</span></span>
+        <button class="scan-exp" id="scannerToggle" title="Read the full description">Click to expand</button>
+      </div>
+
       <!-- Bottom row: strip chart + alarm panel -->
       <div class="bottom-row">
         <div class="strip-chart" data-scanner-hint="Strip Chart — multi-parameter trend. Tick a parameter on the Indications tab to plot it; scrub to replay."
@@ -121,23 +145,6 @@
         </div>
       </div>
 
-      <!-- SYSTEM SCANNER — a status LINE under the board, not a panel (#439, spec §6).
-           It sat bottom-right in the SIM column because vertical space ran out on the
-           left, which put the only "what is this?" affordance at the maximum possible eye
-           distance from the board it describes — and there are no tooltips over the
-           synoptic by design (spec §1), so this is it. Its content was always one sentence
-           plus a Full Description affordance: a line, not a block. Sitting here it is
-           directly under everything it describes, and it retires the 74px/28vh two-height
-           variant and its persisted expand state, because nothing relocates any more.
-
-           It stays the interlock-refusal channel — a blocked command flashes its reason
-           here (`inspectFlash` in ui/app.js) — so the element must exist before the board
-           can refuse anything. -->
-      <div class="scanline" id="scannerPanel">
-        <span class="scanline-tag">SCANNER</span>
-        <span class="scanline-body" id="scanner"><span class="idle">Hover or tap anything on the board to see what it does.</span></span>
-        <button class="scan-exp" id="scannerToggle" title="Read the full description">Click to expand</button>
-      </div>
     </div>
 
     <!-- ============================ RIGHT COLUMN =========================== -->

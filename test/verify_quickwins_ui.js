@@ -118,6 +118,42 @@ function ck(name, ok, detail) {
     await s.ctx.close();
   }
 
+  // ---- QW1b: THE SCANNER SITS UNDER THE DIAGRAM (owner, in-sim report 2026-11-05: "Move the scanner bar up to be
+  // tween the diagram and the strip chart/alarms panel so it sits right under the diagram."). Geometry, not source:
+  // its top is at or below the board area's bottom and its bottom at or above the bottom row's top; expanded, it
+  // overlays the chart row downward and the board, plant area and a board control stay on the same pixels (it was
+  // 288-362 px of board movement when the scanner was the plant area's last child).
+  for (var si = 0; si < 2; si++) {
+    var svp = VPS[si === 0 ? 1 : 0], stag = svp.width + 'x' + svp.height;
+    var sq = await session(svp);
+    var sg = function () {
+      return sq.page.evaluate(function () {
+        function bb(el) { var r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }
+        var sc = document.getElementById('scannerPanel').getBoundingClientRect();
+        var main = document.querySelector('.main-area').getBoundingClientRect();
+        var row = document.querySelector('.bottom-row').getBoundingClientRect();
+        var st = document.querySelector('.pwr-board-stage');
+        return { scTop: sc.top, scBottom: sc.bottom, boardBottom: main.bottom, rowTop: row.top,
+                 plant: bb(document.querySelector('.plant-area')), stage: bb(st), item: bb(document.querySelector('.pwr-board-stage [data-item]')),
+                 scale: getComputedStyle(st).transform, exp: document.getElementById('scannerPanel').classList.contains('expanded') };
+      });
+    };
+    var s0 = await sg();
+    await shot(sq.page, 'qw1b_scanner_idle_' + stag);
+    await sq.page.evaluate(function () { document.getElementById('scannerPanel').classList.add('expanded'); });
+    await sq.page.waitForTimeout(500);
+    var s1 = await sg();
+    await shot(sq.page, 'qw1b_scanner_expanded_' + stag);
+    var sd = drift({ plant: s0.plant, stage: s0.stage, item: s0.item }, { plant: s1.plant, stage: s1.stage, item: s1.item });
+    ck('QW1b ' + stag + ' the Scanner sits between the diagram and the bottom row (top >= board bottom, bottom <= row top)',
+       s0.scTop >= s0.boardBottom - 0.5 && s0.scBottom <= s0.rowTop + 0.5,
+       'board bottom ' + s0.boardBottom.toFixed(1) + ', scanner ' + s0.scTop.toFixed(1) + '-' + s0.scBottom.toFixed(1) + ', row top ' + s0.rowTop.toFixed(1));
+    ck('QW1b ' + stag + ' an expanded Scanner overlays the chart row and moves nothing above it (0.0 px, same scale)',
+       s1.exp && s1.scBottom > s1.rowTop + 20 && sd === 0 && s0.scale === s1.scale,
+       'scanner bottom ' + s1.scBottom.toFixed(1) + ' vs row top ' + s1.rowTop.toFixed(1) + ', drift ' + sd.toFixed(1));
+    await sq.ctx.close();
+  }
+
   var p = await session({ width: 1366, height: 768 });
   await p.page.evaluate(function () { document.querySelector('.app.pwr-synoptic').style.setProperty('--bottomrow-h', '260px'); });
   await p.page.waitForTimeout(600);
