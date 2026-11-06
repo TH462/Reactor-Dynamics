@@ -3328,8 +3328,11 @@ var MUTATIONS = [
    "          steps: ts.scrammed ? 0 : bankSteps(), max_steps: bankSteps()," + NL_ +
    "          position_pct: ts.scrammed ? 0 : 100,", { grp: 'B' }],
   ['the rcp pump record loses flow_pct again (the board animation computes NaN and freezes)',
-   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct\n                          : (e.sys.pumpTripped ? 0 : 100) }]",
-   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped }]", { grp: 'A' }],
+   /* Re-anchored 2026-11-06: #825 inserted the rotor's speed_pct line between `running` and
+    * `flow_pct` and this anchor went BLIND (62/63 in the rc10 aggregate). The mutant keeps
+    * speed_pct, so it still removes flow_pct and nothing else. */
+   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                speed_pct: (e.sys.omega !== undefined && RD.sources.PUMP.w_rated) ? 100 * e.sys.omega / RD.sources.PUMP.w_rated : undefined,\n                flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct\n                          : (e.sys.pumpTripped ? 0 : 100) }]",
+   "      pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,\n                speed_pct: (e.sys.omega !== undefined && RD.sources.PUMP.w_rated) ? 100 * e.sys.omega / RD.sources.PUMP.w_rated : undefined }]", { grp: 'A' }],
   ['the LOOP row regresses to the wave-3 pump-trip-only shape (#507 wave 4)',
    "        EN.command(e, 'offsite_power', false);",
    "        EN.command(e, 'pump_trip', true);", { grp: 'E' }],

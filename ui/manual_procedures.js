@@ -4761,7 +4761,7 @@
            * so the card is no longer ringed at all and the four readings below keep their steady
            * rings. Do not "restore" a `hl` here to get the card back: `hl` IS the pulse. */
           /* #807 item 2 (2026-09-26): 9c's conditional INSERT is a press the card asks for, so INSERT pulses (press_expected, the contingency-press case); the card itself stays unringed. */
-          hl: ['Insert'], press_expected: true, hl_watch: ['Reactor Power', 'Generator Output', 'Tavg', 'Boron Concentration'] },
+          hl: ['Insert', 'Withdraw', 'Rod Speed — Normal'], press_expected: true, hl_watch: ['Reactor Power', 'Generator Output', 'Tavg', 'Boron Concentration'] },
         /* STEPS 10-12 REMOVED 2026-09-26 (workbench-e) *(OWNER DIRECTIVE, 2026-09-26: "I don't think
          * dealing with xenon should be a part of these walkthroughs. That's for a different
          * walkthrough."; then OWNER RULING, same day, selected option "C" — option text, not verbatim:

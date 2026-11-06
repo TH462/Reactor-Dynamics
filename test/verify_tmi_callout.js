@@ -561,10 +561,12 @@ var BUB = '#instrCallout';
     var rows = [].map.call(document.querySelectorAll('#cklRun .ckl-crit'), function (x) { return x.textContent; });
     return { idx: c.idx, ot: !!acc.overtaken, rows: rows };
   });
-  var orow = ot.rows.filter(function (t) { return /4 °F or more below TREF/.test(t); })[0] || '';
+  /* Row finder re-worded 2026-11-06: #825 renamed the row "ΔREF on ROD CONTROL reads −4 °F or lower..." (was "4 °F or more
+   * below TREF"), and the old finder matched nothing (rc10 aggregate, 32/33, row: ""). The assertion is unchanged. */
+  var orow = ot.rows.filter(function (t) { return /ΔREF on ROD CONTROL reads −4 °F or lower/.test(t); })[0] || '';
   ck('raise power 4: a row stood down by its own overtaken draws ↳ and names the condition ("Overtaken: the rods led the load..."), never a plain ✓',
      ot.idx === 3 && ot.ot && /^↳ /.test(orow) && /Overtaken: the rods led the load, so AVG COOLANT TEMPERATURE ran above TREF instead of lagging it/.test(orow) &&
-     !ot.rows.some(function (t) { return /^✓ .*4 °F or more below TREF/.test(t); }), JSON.stringify({ idx: ot.idx, ot: ot.ot, row: orow }));
+     !ot.rows.some(function (t) { return /^✓ .*ΔREF on ROD CONTROL reads −4 °F or lower/.test(t); }), JSON.stringify({ idx: ot.idx, ot: ot.ot, row: orow }));
   await O.ctx.close();
 
   await browser.close();

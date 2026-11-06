@@ -123,7 +123,12 @@ function stripComments(src) {
 }
 var swappers = files.filter(function (rel) {
   if (rel === 'test/verify_pzr2_loadlists.js') return false;   // this file names it in prose
-  return /RD\.pwrPressurizer\s*=[^=]/.test(stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8')));
+  /* Same vanish-between-list-and-read guard as the carrier scan above (2026-11-06: that fix
+   * covered one of the two reads, and the aggregate drifted here on the same probe file). */
+  var src;
+  try { src = fs.readFileSync(path.join(ROOT, rel), 'utf8'); }
+  catch (e) { if (e && e.code === 'ENOENT') return false; throw e; }
+  return /RD\.pwrPressurizer\s*=[^=]/.test(stripComments(src));
 });
 swappers.sort();
 ck('exactly two files assign RD.pwrPressurizer (v1 exports, v2 swaps)',
