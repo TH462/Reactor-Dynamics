@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fission Sandbox</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./assets/main-TCTGCFYA.css">
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="state" hidden></div>
+<div id="readout">
+  <span><span class="label">points</span><span id="readout-points"></span></span>
+  <span><span class="label">interval</span><span id="readout-interval"></span></span>
+  <span id="readout-renderer"></span>
+</div>
+<template id="engine-readouts">
+  <span title="Weight born in a generation over weight born in the one before, averaged over recent generations that are final: nothing of them is left flying or held back. Two hyphens until one is, when the first delayed neutrons are out. Dimensionless."><span class="label">k-eff</span><span id="readout-k"></span></span>
+  <span title="The same ratio over a longer run of final generations. Dimensionless."><span class="label">k-eff avg</span><span id="readout-k-long"></span></span>
+  <span title="Not k-eff. Weight produced over weight ended in the last few hundred ticks, so it answers now, where k-eff waits for delayed neutrons. It leans toward slow neutrons while the count moves: right at k = 1, high far below it, low far above it, by up to a third on a moderated body. Dimensionless."><span class="label">live k</span><span id="readout-k-live"></span></span>
+  <span><span class="label">generation</span><span id="readout-generation"></span></span>
+  <span><span class="label">neutrons</span><span id="readout-neutrons"></span></span>
+  <span><span class="label">time</span><span id="readout-ticks"></span></span>
+</template>
+<script type="module" src="./assets/main-YKGWAA3J.js"></script>
+</body>
+</html>

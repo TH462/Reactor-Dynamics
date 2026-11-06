@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — the Fission Sandbox lab (site)
+
+- New page at `/lab/`: the Fission Sandbox, an experimental neutron lab, copied as built from Project_Gadget d059763 (fonts under OFL, licences in `lab/licenses/`). Served and link-checked but not in the sitemap; the build adds a `/lab` to `/lab/` redirect. Main Menu gets a Fission Sandbox door, shown over http only (the lab cannot run from `file://`), which opens it in a new tab. The offline download does not include it.
+
 ### Fixed — board and walkthrough polish from the rc9 playtest (#825, UI half)
 
 - The at-cursor hover popup (QW2) is removed; it covered vital instruments. The bottom Scanner stays as the help channel.

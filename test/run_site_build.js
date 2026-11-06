@@ -110,6 +110,14 @@ var PAGES = pagesM ? (pagesM[1].match(/'([^']+\.html)'/g) || []).map(function (s
 }) : [];
 check('PAGES', 'site/build_site.js', 'PAGES parsed (' + PAGES.length + ')',
   PAGES.length >= 8 ? 'the declaration this gate measures the output against' : null);
+// APP_PAGES: served app pages (the Fission Sandbox lab), declared apart from PAGES because they
+// are not sitemap content. Parsed the same way.
+var appM = /const APP_PAGES = \[([\s\S]*?)\];/.exec(buildSrc);
+var APP_PAGES = appM ? (appM[1].match(/'([^']+\.html)'/g) || []).map(function (s) {
+  return s.replace(/'/g, '');
+}) : [];
+check('PAGES', 'site/build_site.js', 'APP_PAGES parsed (' + APP_PAGES.join(', ') + ')',
+  APP_PAGES.indexOf('lab/index.html') !== -1 ? 'the declaration that admits the lab page' : null);
 
 function walk(dir, acc) {
   fs.readdirSync(dir).forEach(function (n) {
@@ -149,7 +157,8 @@ check('MANUALS', 'site/build_manuals.js', 'withheld chapters (' + MANUAL_WITHHEL
 // are still named individually, but only when there are some.
 var SERVED = [], undeclared = [];
 OUT_HTML.forEach(function (rel) {
-  if (PAGES.indexOf(rel) !== -1 || MANUAL_PAGES.indexOf(rel) !== -1 || rel === 'ui/shell.html') { SERVED.push(rel); return; }
+  if (PAGES.indexOf(rel) !== -1 || MANUAL_PAGES.indexOf(rel) !== -1 ||
+      APP_PAGES.indexOf(rel) !== -1 || rel === 'ui/shell.html') { SERVED.push(rel); return; }
   // download/ holds the single-file OFFLINE build — everything inlined, downloaded rather
   // than served, so it is neither a page nor bustable.
   if (/^download\//.test(rel)) return;
@@ -162,8 +171,33 @@ undeclared.forEach(function (f) {
   check('PAGES', f, 'is published but declared nowhere — a dev harness on the live domain', null);
 });
 check('PAGES', 'the built output', SERVED.length + ' served pages vs ' + PAGES.length + ' + ' +
-  MANUAL_PAGES.length + ' declared', SERVED.length === PAGES.length + MANUAL_PAGES.length + 1
-    ? 'every declared page, every manual chapter and the control room, and nothing extra' : null);
+  MANUAL_PAGES.length + ' declared', SERVED.length === PAGES.length + MANUAL_PAGES.length + APP_PAGES.length + 1
+    ? 'every declared page, every manual chapter, the app pages and the control room, and nothing extra' : null);
+
+// THE LAB (Fission Sandbox): every file of the source bundle is in the output, the redirect that
+// makes its relative ./assets/ resolve is present next to /sim, and it is not a sitemap page.
+(function () {
+  function srcFiles(dir, acc) {
+    fs.readdirSync(dir).forEach(function (n) {
+      var p = path.join(dir, n);
+      if (fs.statSync(p).isDirectory()) srcFiles(p, acc); else acc.push(path.relative(ROOT, p).replace(/\\/g, '/'));
+    });
+    return acc;
+  }
+  var labSrc = srcFiles(path.join(ROOT, 'lab'), []);
+  var missing = labSrc.filter(function (f) { return OUT_FILES.indexOf(f) === -1; });
+  check('LAB', 'lab/', labSrc.length + ' source files (index, assets, licenses) all in the output',
+    labSrc.length >= 9 && labSrc.indexOf('lab/index.html') !== -1 &&
+    labSrc.some(function (f) { return /^lab\/licenses\/OFL-/.test(f); }) &&
+    labSrc.some(function (f) { return /^lab\/assets\/main-.*\.js$/.test(f); }) && !missing.length
+      ? 'the whole bundle ships' : null);
+  var redir = fs.readFileSync(path.join(OUT, '_redirects'), 'utf8');
+  check('LAB', '_redirects', '/lab -> /lab/ present and /sim line kept',
+    /^\/lab\s+\/lab\/\s+301$/m.test(redir) && /^\/sim\s+\/ui\/shell\?engine=pwr2\s+302$/m.test(redir)
+      ? 'both redirects' : null);
+  var sm = fs.readFileSync(path.join(OUT, 'sitemap.xml'), 'utf8');
+  check('LAB', 'sitemap.xml', 'does not mention /lab', !/\/lab(\/|"|<)/.test(sm) ? 'an app page, not content' : null);
+})();
 
 // ------------------------------------------------ manual pages: canonical + cards
 // Read from the OUTPUT, after the extensionless rewrite: Cloudflare 308s `.html` away, so the
@@ -234,6 +268,9 @@ check('SITEMAP', 'robots.txt (preview)', JSON.stringify(robPrev),
 var NO_BUST = ['site/version.js', 'site/release.js', 'download/manifest.js'];
 var bare = [], versioned = 0, stamped = 0;
 SERVED.forEach(function (rel) {
+  // App pages (lab/) are not cache-busted: their asset names are content-hashed already, which
+  // the LAB check below proves instead.
+  if (APP_PAGES.indexOf(rel) !== -1) return;
   var src = fs.readFileSync(path.join(OUT, rel), 'utf8');
   var base = path.posix.dirname(rel);
   var re = /\s(?:src|href)="([^"]+)"/g, m;
@@ -262,6 +299,17 @@ check('BUST', 'all served pages', stamped + ' of ' + versioned +
   versioned > 0 && stamped === versioned
     ? 'a release requests urls no cache has seen — #470' : null);
 bare.forEach(function (b) { check('BUST', 'unversioned', b, null); });
+// The exemption above is only honest while the lab's local css/js names carry a content hash.
+APP_PAGES.forEach(function (rel) {
+  var src = fs.readFileSync(path.join(OUT, rel), 'utf8'), re = /\s(?:src|href)="([^"]+\.(?:css|js))"/g, m, n = 0, plain = [];
+  while ((m = re.exec(src)) !== null) {
+    if (/^(https?:|\/\/)/.test(m[1])) continue;
+    n++;
+    if (!/-[A-Z0-9]{8}\.(css|js)$/.test(m[1])) plain.push(m[1]);
+  }
+  check('BUST', rel, n + ' local css/js urls, all content-hashed (exempt from ?v=)',
+    n > 0 && !plain.length ? 'a new build is a new url' : null);
+});
 
 // ---------------------------------------------------------------- the headers still exist
 var headers = fs.existsSync(path.join(OUT, '_headers'))
@@ -352,7 +400,7 @@ function report() {
   try { fs.rmSync(OUT, { recursive: true, force: true }); } catch (e) { /* scratch dir */ }
   var byRule = {};
   findings.forEach(function (f) { (byRule[f.rule] = byRule[f.rule] || []).push(f); });
-  ['BUILD', 'PAGES', 'MANUALS', 'SITEMAP', 'RETIRED', 'BUST', 'NOCACHE'].forEach(function (r) {
+  ['BUILD', 'PAGES', 'MANUALS', 'SITEMAP', 'LAB', 'RETIRED', 'BUST', 'NOCACHE'].forEach(function (r) {
     var all = byRule[r] || [], bad = all.filter(function (f) { return !f.why; });
     if (!all.length) return;
     console.log('\n' + B + (bad.length ? R + 'FAIL' : G + 'PASS') + X + '  ' + B + r + X +
