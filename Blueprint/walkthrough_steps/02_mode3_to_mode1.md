@@ -265,7 +265,7 @@ Note: About 2 plant-minutes after the rods stopped in step 10.
 
 Suggested time warp: 5×. While you wait for a read you can press 10× yourself; a tap is still one step.
 
-Note: Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot reads a little high, so the rods usually end two or three steps below its number. Expect INTER RANGE to level between 1.0e-8 and 2.0e-8 A; the later the insert starts, the higher it levels.
+Note: Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot reads a little high: critical is usually two or three steps below its prediction. Expect INTER RANGE to level near 1.0e-8 to 2.0e-8 A, higher if the insert starts late or stops short.
 
 ()11c. Write down CONTROL ROD POSITION, the critical rod position, and compare it with the 1/M prediction.
 

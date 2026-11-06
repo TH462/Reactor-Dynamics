@@ -3894,7 +3894,7 @@
                    ask: 'Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT about 12 steps. Then above +0.02 tap INSERT; below −0.02, WITHDRAW.',
                    ask_1m: 'Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT to step {pred}. Then above +0.02 tap INSERT; below −0.02, WITHDRAW.',   /* 40 words, the owner-format ask cap (run_checklist_pwr2 askSweep); the read timing is the note's first sentence */
                    show_1m: true,
-                   note: 'Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot reads a little high, so the rods usually end two or three steps below its number. Expect INTER RANGE to level between 1.0e-8 and 2.0e-8 A; the later the insert starts, the higher it levels.',
+                   note: 'Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot reads a little high: critical is usually two or three steps below its prediction. Expect INTER RANGE to level near 1.0e-8 to 2.0e-8 A, higher if the insert starts late or stops short.',
                    /* 2026-11-06-develop-a, MEASURED (run_walkthrough_routes, the card's insert to the printed prediction, then the
                     * two-minute reads and taps): ends 2 below the number on typical / base / 13 mistake routes (209 -> 207,
                     * 2 INSERT taps), 3 below on typical_seed7 (211 -> 208, 3 taps) / flicker_release_5, 5 on plot_early, 0 on
@@ -3902,7 +3902,9 @@
                     * INTER RANGE at the tick, on time: typical 1.4e-8, base 1.2e-8, seed 7 1.9e-8,
                     * flicker_release_5 1.8e-8; mistakes: level_short_11 2.8e-8, rewind_mid_10 3.8e-8, clear_1m_10 5.0e-8,
                     * plot_early 5.4e-8. Step 11 takes 6.9 plant-min typical (2.7 on the old 12-step count), 9.0 seed 7, 13.4
-                    * plot_early. WAS (#825 layman S-8, the 12-step count): typical 8.7e-9; 60 s late 12 back 1.4e-8, 10 back 2.0e-8. */
+                    * plot_early. On time, the typical routes level 7.7e-9 (overshoot_8_recover) to 1.9e-8; late or short, 2.8e-8
+                    * to 5.4e-8: hence "near 1.0e-8 to 2.0e-8 A, higher if ... late or stops short" (critic round 1, L-1/L-3).
+                    * WAS (#825 layman S-8, the 12-step count): typical 8.7e-9; 60 s late 12 back 1.4e-8, 10 back 2.0e-8. */
                    /* 1 -> 5 (OWNER, 2026-11-03, #825: "mode 3-1 step 11b should be 5x warp."). MED is 0.8 steps a
                     * plant-second, so the 12-step insert is 15 plant-s: 3 s of wall at 5x, 15 s at 1x (the insert to the 1/M
                     * number is 9 to 10 steps on the typical routes since 2026-11-06-develop-a). */

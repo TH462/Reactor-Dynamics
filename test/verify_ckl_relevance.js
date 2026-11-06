@@ -1261,7 +1261,25 @@ function readMenu(page) {
           return { text: row ? row.textContent : '', acc: (c.accs || [])[0] || null };
         }), { bank: bank });
       }
-      var withP = await read(-10), noP = await read(null);
+      var withP = await read(-10);
+      /* THE CARD DOES NOT REBUILD ON A show_1m ROW'S READING (critic round 1, 2026-11-06-develop-a). The render key took
+       * `pred_1m:obs` for any row with a prediction; on a show_1m row `obs` is the raw graded float (STARTUP RATE on 11b),
+       * so #cklRun was rebuilt every broadcast -- MEASURED 94 rebuilds in 9.4 plant-s, the #687 blink class. Here the
+       * row grades REACTOR POWER, a noisy channel at hot_full_power; anti-vacuity: `obs` must move during the window. */
+      var churn = await page.evaluate(function () {
+        return new Promise(function (res) {
+          var el = document.getElementById('cklRun'), n = 0, obs = [];
+          var mo = new MutationObserver(function (rs) { rs.forEach(function (r) { if (r.target === el && r.type === 'childList') n++; }); });
+          mo.observe(el, { childList: true });
+          var svc = RD.__dev.service();
+          var iv = setInterval(function () { var c = svc.instructor.getSnapshotBlock().checklist || {}; var a = (c.accs || [])[0]; if (a) obs.push(a.obs); }, 250);
+          setTimeout(function () { mo.disconnect(); clearInterval(iv);
+            res({ rebuilds: n, distinct: obs.filter(function (v, i) { return obs.indexOf(v) === i; }).length }); }, 4000);
+        });
+      });
+      ck('#11b: a show_1m row with a prediction does not rebuild the card on its reading (#687 class): under 10 #cklRun rebuilds in 4 s',
+         churn.distinct >= 3 && churn.rebuilds < 10, 'rebuilds ' + churn.rebuilds + ', distinct readings ' + churn.distinct);
+      var noP = await read(null);
       var want = withP.bank - 10;
       ck('#11b: a show_1m row publishes the planted prediction and stays ungraded by it (no no_1m flag)',
          !!withP.acc && withP.acc.pred_1m === want && withP.acc.no_1m === false && !withP.acc.met,

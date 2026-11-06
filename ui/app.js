@@ -6021,8 +6021,14 @@
        * "past the mark" line below appears when the rods step past prediction-minus-N while
        * `met` stays 0. A `below_1m` or `reach_1m` row carries a non-null `pred_1m` (the latter
        * since develop-k; it also draws 10a's `ask_1m` stop, so a moved prediction must repaint). */
-      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.overtaken ? 4 : a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
-        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : '') + cklProgKey(a); }).join(','),
+      /* ...EXCEPT A `show_1m` ROW (pwr_startup 11b, critic round 1, 2026-11-06-develop-a): it draws no "past the mark"
+       * line, only the prediction in its ask, so it keys on `pred_1m` alone. Its `obs` is the raw STARTUP RATE float,
+       * and keying on it rebuilt the card every broadcast (94 rebuilds in 9.4 plant-s, the #687 blink class). */
+      (ck.accs || []).map(function (a, k) {
+        var stE = !ck.complete && pr.steps && pr.steps[ck.step_index], en1 = stE && stE.accs && stE.accs[k];
+        var show1 = !!(en1 && en1.show_1m && en1.reach_1m == null && en1.below_1m == null);
+        return (a.voided ? 3 : (a.met ? (a.overtaken ? 4 : a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
+        (a.pred_1m != null ? 'p' + a.pred_1m + (show1 ? '' : ':' + a.obs) : '') + cklProgKey(a); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
