@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fission Sandbox</title>
+<title>Reactor Dynamics: Atomic Sandbox</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="./assets/main-TCTGCFYA.css">
+<link rel="stylesheet" href="./assets/main-4HBZJ324.css">
 </head>
 <body>
 <canvas id="view"></canvas>
@@ -16,13 +16,103 @@
   <span id="readout-renderer"></span>
 </div>
 <template id="engine-readouts">
-  <span title="Weight born in a generation over weight born in the one before, averaged over recent generations that are final: nothing of them is left flying or held back. Two hyphens until one is, when the first delayed neutrons are out. Dimensionless."><span class="label">k-eff</span><span id="readout-k"></span></span>
-  <span title="The same ratio over a longer run of final generations. Dimensionless."><span class="label">k-eff avg</span><span id="readout-k-long"></span></span>
-  <span title="Not k-eff. Weight produced over weight ended in the last few hundred ticks, so it answers now, where k-eff waits for delayed neutrons. It leans toward slow neutrons while the count moves: right at k = 1, high far below it, low far above it, by up to a third on a moderated body. Dimensionless."><span class="label">live k</span><span id="readout-k-live"></span></span>
+  <span id="readout-k-wrap"><span class="label">k-eff</span><span id="readout-k"></span></span>
+  <span id="readout-k-long-wrap"><span class="label">k-eff avg</span><span id="readout-k-long"></span></span>
   <span><span class="label">generation</span><span id="readout-generation"></span></span>
   <span><span class="label">neutrons</span><span id="readout-neutrons"></span></span>
   <span><span class="label">time</span><span id="readout-ticks"></span></span>
 </template>
-<script type="module" src="./assets/main-YKGWAA3J.js"></script>
+<template id="builder-chrome">
+  <header id="b-top">
+    <span class="b-title">Atomic Sandbox</span>
+    <span class="b-group">
+      <button class="b-btn" id="b-new" title="An empty design">New</button>
+      <button class="b-btn" id="b-scenario">Scenario</button>
+      <button class="b-btn" id="b-save" title="Download this design as JSON">Save</button>
+      <button class="b-btn" id="b-load" title="Open a file, or paste">Load</button>
+      <button class="b-btn" id="b-share" title="This design as a string or a link">Share</button>
+    </span>
+    <span class="b-group">
+      <button class="b-btn" id="b-undo" title="Ctrl+Z">Undo</button>
+      <button class="b-btn" id="b-redo" title="Ctrl+Y">Redo</button>
+    </span>
+    <span class="b-group" id="b-time">
+      <button class="b-btn b-go" id="b-run" title="Space">Run</button>
+      <button class="b-btn" id="b-pause" title="Space">Pause</button>
+      <button class="b-btn" id="b-step" title="Period: one step at this speed">Step</button>
+      <button class="b-btn" id="b-reset" title="Back to tick 0">Reset</button>
+      <span class="b-run-state" id="b-run-state"></span>
+    </span>
+    <span class="b-group" title="Ticks per step. Keys: [ and ]">
+      <span class="b-word">Ticks per step</span>
+      <span class="b-segs" id="b-speeds"></span>
+    </span>
+    <span class="b-group" id="b-snap" title="Hold Ctrl to place freely">
+      <span class="b-word">Snap</span>
+      <label class="b-toggle"><input type="checkbox" id="b-snap-grid" checked>Grid</label>
+      <input class="b-num b-grid-size" id="b-grid-size" type="text" inputmode="decimal" autocomplete="off" aria-label="Grid size in L"><span class="b-unit">L</span>
+      <label class="b-toggle"><input type="checkbox" id="b-snap-edges" checked>Edges</label>
+      <label class="b-toggle"><input type="checkbox" id="b-snap-centers" checked>Centers</label>
+      <span class="b-hint">Ctrl: free</span>
+    </span>
+    <span class="b-group">
+      <label class="b-toggle" title="Show every object's size on the canvas"><input type="checkbox" id="b-show-sizes">Sizes</label>
+      <button class="b-btn" id="b-fit" title="Show the whole design">Fit</button>
+    </span>
+  </header>
+  <nav id="b-rail">
+    <div id="b-tools">
+      <button class="b-tool" data-tool="select" id="b-tool-select" title="Select, move, resize. Key V">Select<kbd>V</kbd></button>
+      <div class="b-rail-head">Draw</div>
+      <button class="b-tool" data-tool="circle" id="b-tool-circle" title="Drag, or click once and type. Key C">Circle<kbd>C</kbd></button>
+      <button class="b-tool" data-tool="rectangle" id="b-tool-rectangle" title="Drag, or click once and type. Key R">Rectangle<kbd>R</kbd></button>
+      <button class="b-tool" data-tool="ring" id="b-tool-ring" title="Drag, or click once and type. Key O">Ring<kbd>O</kbd></button>
+      <button class="b-tool" data-tool="polygon" id="b-tool-polygon" title="Click each point. Double-click to close. Key P">Polygon<kbd>P</kbd></button>
+      <div class="b-rail-head">Fill</div>
+      <button class="b-tool" data-tool="region" id="b-tool-region" title="Click inside an outline to fill it with the material below. Key F">Region<kbd>F</kbd></button>
+      <button class="b-tool" data-tool="lattice" id="b-tool-lattice" title="Click a body to fill it with a lattice of pins. Key L">Lattice<kbd>L</kbd></button>
+      <div class="b-rail-head">Place</div>
+      <button class="b-tool" data-tool="source" id="b-tool-source" title="Click to place a neutron source. Key S">Source<kbd>S</kbd></button>
+      <button class="b-tool" data-tool="rod" id="b-tool-rod" title="Drag, or click once and type. Key K">Rod<kbd>K</kbd></button>
+      <button class="b-tool" data-tool="detector" id="b-tool-detector" title="Click to place a neutron counter. Key D">Detector<kbd>D</kbd></button>
+    </div>
+    <div class="b-rail-head">Material</div>
+    <div id="b-palette"></div>
+  </nav>
+  <canvas id="b-overlay"></canvas>
+  <div id="b-note" hidden></div>
+  <div id="b-caption" hidden></div>
+  <div id="b-sizes" hidden></div>
+  <div id="b-dialog" hidden>
+    <div class="b-dialog-head"><span id="b-dialog-title"></span><button class="b-btn" id="b-dialog-close">Close</button></div>
+    <div id="b-dialog-body"></div>
+  </div>
+  <aside id="b-side">
+    <div id="b-pause-line" hidden>Pause to edit.</div>
+    <details id="b-tune-section" class="b-section" open hidden><summary>Tuning</summary><div id="b-tune"></div></details>
+    <details id="b-lesson-section" class="b-section" open hidden><summary>Lesson</summary><div id="b-lesson"></div></details>
+    <details class="b-section" open><summary>Controls</summary><div id="b-controls"></div></details>
+    <details class="b-section" open><summary>Selected</summary><div id="b-selected"></div></details>
+    <details class="b-section" open><summary>Composition</summary><div id="b-composition"></div></details>
+    <details class="b-section" open><summary>Ratios</summary><div id="b-ratios"></div></details>
+    <details class="b-section" open><summary id="b-warnings-title">Warnings</summary><div id="b-warnings"></div></details>
+  </aside>
+  <section id="b-bottom">
+    <canvas id="b-chart"></canvas>
+  </section>
+  <div id="b-readouts">
+    <span id="ro-k-wrap"><span class="label">k-eff</span><span id="ro-k"></span></span>
+    <span id="ro-k-long-wrap"><span class="label">k-eff avg</span><span id="ro-k-long"></span></span>
+    <span id="ro-dk-wrap"><span class="label">Δk</span><span id="ro-dk"></span></span>
+    <span id="ro-rho-wrap"><span class="label">ρ/β</span><span id="ro-rho"></span></span>
+    <span><span class="label">generation</span><span id="ro-generation"></span></span>
+    <span title="Tracked neutrons, weights not counted. The chart's neutron trace counts their weight."><span class="label">neutrons</span><span id="ro-neutrons"></span></span>
+    <span><span class="label">time</span><span id="ro-time"></span></span>
+    <span title="Fissions per tick-window, weights counted."><span class="label">fission rate</span><span id="ro-fission"></span></span>
+    <span><span class="label">atoms</span><span id="ro-atoms"></span></span>
+  </div>
+  <input type="file" id="b-file" accept=".json,application/json,text/plain" hidden>
+</template>
+<script type="module" src="./assets/main-PTHFJL5Q.js"></script>
 </body>
 </html>

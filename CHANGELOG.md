@@ -30,6 +30,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — Atomic Sandbox stage 2a (site)
+
+- `lab/` replaced with the Project_Gadget stage 2a bundle (lab `develop` dbd0f3a, 308 KB, 9 files), copied as built: the full builder with 6 lessons instead of the viewer, titled "Reactor Dynamics: Atomic Sandbox". Old hashed assets removed. Still behind the preview-stage `lab` flag on the home page; no plant imports, not in the offline download. Website-only: no version bump.
+
 ## [Alpha 1.8.4-rc11] — 2026-11-06
 
 ### Changed — the owner's 2026-11-05 in-sim bug reports (#826)
