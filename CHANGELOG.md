@@ -30,11 +30,11 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.8.4] — 2026-11-08
+
 ### Changed — Atomic Sandbox stage 2a (site)
 
 - `lab/` replaced with the Project_Gadget stage 2a bundle (lab `develop` dbd0f3a, 308 KB, 9 files), copied as built: the full builder with 6 lessons instead of the viewer, titled "Reactor Dynamics: Atomic Sandbox". Old hashed assets removed. Still behind the preview-stage `lab` flag on the home page; no plant imports, not in the offline download. Website-only: no version bump.
-
-## [Alpha 1.8.4-rc11] — 2026-11-06
 
 ### Changed — the owner's 2026-11-05 in-sim bug reports (#826)
 
@@ -45,7 +45,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Added — the Atomic Sandbox lab (site)
 
-- New page at `/lab/`: the Fission Sandbox, an experimental neutron lab, copied as built from Project_Gadget d059763 (fonts under OFL, licences in `lab/licenses/`). Served and link-checked but not in the sitemap; the build adds a `/lab` to `/lab/` redirect. Renamed the Atomic Sandbox (owner, 2026-11-06). The link is a row on the home page (`index.html`), not a Main Menu door, behind the preview-stage `lab` flag (not on the public site until the owner moves the stage) and hidden over `file://` (the lab cannot run there). `[data-flag][hidden]{display:none !important}` in `landing.css` makes a flag-hidden element really unpainted (`.lp .row{display:grid}` had beaten `[hidden]`); `verify_flags_ui` checks every such element on the public channel. The lab page itself still titles itself Fission Sandbox until the next bundle. The offline download does not include it.
+- New page at `/lab/`: the Fission Sandbox, an experimental neutron lab, copied as built from Project_Gadget d059763 (fonts under OFL, licences in `lab/licenses/`). Served and link-checked but not in the sitemap; the build adds a `/lab` to `/lab/` redirect. Renamed the Atomic Sandbox (owner, 2026-11-06). The link is a row on the home page (`index.html`), not a Main Menu door, behind the preview-stage `lab` flag (not on the public site until the owner moves the stage) and hidden over `file://` (the lab cannot run there). `[data-flag][hidden]{display:none !important}` in `landing.css` makes a flag-hidden element really unpainted (`.lp .row{display:grid}` had beaten `[hidden]`); `verify_flags_ui` checks every such element on the public channel. The stage 2a bundle below carries the new title. The offline download does not include it.
 
 ### Fixed — board and walkthrough polish from the rc9 playtest (#825, UI half)
 
