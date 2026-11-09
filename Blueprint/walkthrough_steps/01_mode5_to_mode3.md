@@ -1,6 +1,6 @@
 # Mode 5, Cold Shutdown to Mode 3, Hot Standby
 
-**Walkthrough id: `pwr_heatup`  ·  17 steps**
+**Walkthrough id: `pwr_heatup`  ·  16 steps**
 
 > Edit this freely — it is the step text, and it is what the sim is brought down to.
 >
@@ -14,9 +14,9 @@
 
 ---
 
-1. Confirm the plant is cold and shut down.
+1. Start the reactor coolant pumps.
 
-*The heatup begins from a known state: cold, depressurized, pumps stopped, every rod in.*
+*With the reactor kept shut down, the pumps are what heat the plant.*
 
 ()1a. Check AVG COOLANT TEMPERATURE reads below 200 °F.
 
@@ -26,45 +26,31 @@
 
 ()1d. Check CONTROL ROD POSITION and SHUTDOWN ROD POSITION both read 0 of 627.
 
-Suggested time warp: 1×.
-
-Background
-
-In Cold Shutdown (Mode 5) the water is far below boiling and pressure is low. Residual Heat Removal (RHR) carries the fuel's small leftover heat, and both rod banks are fully in.
-
-[HIGHLIGHTED: Tavg, Primary Pressure, Residual Heat Removal (RHR), Control Rod Position, Shutdown Rod Position (steady)]
-
-
-
-2. Start the reactor coolant pumps.
-
-*With the reactor kept shut down, the pumps are what heat the plant.*
-
-()2a. Press ON on the RCP FLOW card and check RCP FLOW reads above 90 %.
+()1e. Press ON beside the reactor coolant pump, above RCP FLOW, and check RCP FLOW reads above 90 %.
 
 Suggested time warp: 1×.
 
-Note: Only if PRIMARY PRESSURE reads under about 25 psi here, as it can after a cooldown: pump heat carries AVG COOLANT TEMPERATURE to about 205 °F and can bring in the Low Subcooling Margin alarm. Expected: step 9's heaters clear it.
+Note: Only if PRIMARY PRESSURE reads under about 25 psi here, as it can after a cooldown: pump heat carries AVG COOLANT TEMPERATURE to about 205 °F and can bring in the Low Subcooling Margin alarm. Expected: step 8's heaters clear it.
 
 Background
 
-A shut-down reactor makes almost no heat, but the pumps' work ends up in the water as friction, enough to warm the whole plant. Real crews heat up this way, reactor never critical.
+In Cold Shutdown (Mode 5) the water is far below boiling and pressure is low. Residual Heat Removal (RHR) carries the fuel's small leftover heat, and both rod banks are fully in. A shut-down reactor makes almost no heat, but the pumps' work ends up in the water as friction, enough to warm the whole plant. Real crews heat up this way, reactor never critical.
 
-[HIGHLIGHTED: RCP — On (pulsing); RCP ON/OFF (steady)]
+[HIGHLIGHTED: RCP — On (pulsing); RCP ON/OFF, Tavg, Primary Pressure, Residual Heat Removal (RHR), Control Rod Position, Shutdown Rod Position (steady)]
 
 
 
-3. Withdraw the shutdown bank all the way out.
+2. Withdraw the shutdown bank all the way out.
 
 *The shutdown bank is the trip reserve: out first, and it stays out.*
 
-()3a. Press FAST on the ROD CONTROL card, then click WITHDRAW under SHUTDOWN once and check SHUTDOWN ROD POSITION starts counting up.
+()2a. Press FAST on the ROD CONTROL card, then click WITHDRAW under SHUTDOWN once and check SHUTDOWN ROD POSITION starts counting up.
 
 Suggested time warp: 1×.
 
-Note: If SCRAM on the ROD CONTROL card reads PRESS TO RESET, press it once; if PRESS TO ARM, leave it. One click runs the bank to 627 of 627 in about 9 plant-minutes; a second click stops it.
+Note: If SCRAM on the ROD CONTROL card reads SCRAMMED / PRESS TO RESET, press it once; if PRESS TO ARM, leave it. One click runs the bank to 627 of 627 in about 9 plant-minutes; a second click stops it.
 
-()3b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
+()2b. Watch SHUTDOWN ROD POSITION count up to near 627 of 627.
 
 Suggested time warp: 60×.
 
@@ -76,13 +62,13 @@ The shutdown bank never steers the reactor. It stays fully out while the plant r
 
 
 
-4. Confirm the turbine is tripped.
+3. Confirm the turbine is tripped.
 
 *A tripped turbine takes no steam, so pump heat stays in the plant.*
 
-()4a. Check TRIP is lit on the TURBINE-GENERATOR card.
+()3a. Check TRIP is lit on the TURBINE-GENERATOR card.
 
-()4b. Check OUTPUT reads 0 MW. If LOAD reads anything but 0, press UNLOAD.
+()3b. Check OUTPUT reads 0 MW. If LOAD reads anything but 0, press UNLOAD.
 
 Suggested time warp: 1×.
 
@@ -96,11 +82,11 @@ The cold plant starts with the turbine tripped. A turbine taking any steam on pu
 
 
 
-5. Put auxiliary feed in AUTO to hold steam generator level.
+4. Put auxiliary feed in AUTO to hold steam generator level.
 
 *Once the steam generator boils, its level falls; aux feed has to be holding it already.*
 
-()5a. Press AUTO on the AUX FEED WATER card and check the card reads RUNNING.
+()4a. Press AUTO on the AUX FEED WATER card and check the card reads RUNNING.
 
 Suggested time warp: 1×.
 
@@ -112,13 +98,13 @@ The steam generator is the boiler. Main feed needs a steam load to run, so the s
 
 
 
-6. Confirm the steam dump is closed.
+5. Confirm the steam dump is closed.
 
 *Steam the dump lets out is pump heat leaving the plant.*
 
-()6a. Check the STEAM DUMP card reads MANUAL with CLOSE lit. If AUTO is lit, press CLOSE.
+()5a. Check the STEAM DUMP card reads MANUAL with CLOSE lit. If AUTO is lit, press CLOSE.
 
-()6b. Check the % beside the STEAM DUMP valve on the diagram reads 0 %.
+()5b. Check the % beside the STEAM DUMP valve on the diagram reads 0 %.
 
 Suggested time warp: 1×.
 
@@ -130,11 +116,11 @@ The steam dump sends steam to the condenser. Shut, the steam side bottles up the
 
 
 
-7. Open the letdown orifices before the pressure climb shuts the RHR path.
+6. Open the letdown orifices before the pressure climb shuts the RHR path.
 
 *Above 600 psi, the orifices are the only way water leaves the loop.*
 
-()7a. Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.
+()6a. Press A+B 7 % on the LETDOWN card and check A+B 7 % is lit.
 
 Suggested time warp: 1×.
 
@@ -146,11 +132,11 @@ Charging always pumps water in, so letdown must always let it out. Letdown now g
 
 
 
-8. Put pressurizer spray in service before the heaters start the climb.
+7. Put pressurizer spray in service before the heaters start the climb.
 
 *A brake goes in service before the climb it has to stop.*
 
-()8a. Press AUTO under SPRAY on the PRESSURIZER (PZR) card and check AUTO is lit.
+()7a. Press AUTO under SPRAY on the PRESSURIZER (PZR) card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
@@ -164,15 +150,15 @@ The pressurizer is half water, half steam and sets loop pressure: heaters boil w
 
 
 
-9. Raise PRIMARY PRESSURE to the 665 psi accumulator window on the heaters.
+8. Raise PRIMARY PRESSURE to the 665 psi accumulator window on the heaters.
 
 *The accumulator valve opens only between 665 and 1615 psi, so pressure comes up first.*
 
-()9a. Press AUTO under HEATER on the PRESSURIZER (PZR) card and check AUTO is lit.
+()8a. Press AUTO under HEATER on the PRESSURIZER (PZR) card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
-()9b. Wait while PRIMARY PRESSURE climbs to 665 psi.
+()8b. Wait while PRIMARY PRESSURE climbs to 665 psi.
 
 Suggested time warp: 600×.
 
@@ -186,11 +172,11 @@ SET PZR PRESSURE already reads 1700 psi, its lowest, so the heaters run full unt
 
 
 
-10. Open the accumulator valve while PRIMARY PRESSURE is inside its window.
+9. Open the accumulator valve while PRIMARY PRESSURE is inside its window.
 
 *Open, the accumulators inject by themselves if loop pressure is lost.*
 
-()10a. Open the accumulator valve while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.
+()9a. Open the accumulator valve while PRIMARY PRESSURE reads 665 to 1615 psi, and check the ACCUMULATORS tile no longer reads ISOLATED.
 
 Suggested time warp: 1×.
 
@@ -204,15 +190,15 @@ The accumulators are borated-water tanks pushed by nitrogen at 665 psi. They fir
 
 
 
-11. Heat the plant to 542 °F on pump heat alone.
+10. Heat the plant to 542 °F on pump heat alone.
 
 *Hot Standby needs near-operating temperature; the pumps get there without the reactor.*
 
-()11a. Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.
+()10a. Wait until AVG COOLANT TEMPERATURE reaches 542 °F. Do not move rods or change BORON.
 
 Suggested time warp: 3600×.
 
-Note: Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 14), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F; that is expected.
+Note: Expected near the end: Pressurizer Pressure Very Low and Low (pressure is held near 1700 psi until step 13), and Turbine Trip / Low Steam Demand. At 3600× the tile can run about 10 °F past 542 °F; that is expected.
 
 Background
 
@@ -222,13 +208,13 @@ The pumps do the work: AVG COOLANT TEMPERATURE climbs and REACTOR POWER stays at
 
 
 
-12. Confirm letdown now leaves only through the orifices.
+11. Confirm letdown now leaves only through the orifices.
 
 *Charging keeps pumping in, so a letdown path not flowing fills the plant solid.*
 
-()12a. Check ISOLATE is lit on the RHR card.
+()11a. Check ISOLATE is lit on the RHR card.
 
-()12b. Check LETDOWN reads above 0 gpm.
+()11b. Check LETDOWN reads above 0 gpm.
 
 Suggested time warp: 1×.
 
@@ -240,13 +226,13 @@ The RHR suction valve shut itself when PRIMARY PRESSURE passed 600 psi, an inter
 
 
 
-13. Hand STEAM PRESS to the steam dump to hold.
+12. Hand STEAM PRESS to the steam dump to hold.
 
 *Pump heat has STEAM PRESS at about 1020 psi, or past it with the ATMOS DUMP venting, and something has to hold it.*
 
-()13a. Check DUMP SETPOINT reads 1020 psi. If it does not, set it to 1020 psi.
+()12a. Check DUMP SETPOINT reads 1020 psi. If it does not, set it to 1020 psi.
 
-()13b. Press AUTO on the STEAM DUMP card and check AUTO is lit.
+()12b. Press AUTO on the STEAM DUMP card and check AUTO is lit.
 
 Suggested time warp: 1×.
 
@@ -258,15 +244,15 @@ The plant now makes more heat than it needs, and the dump sends the excess to th
 
 
 
-14. Bring PRIMARY PRESSURE up to normal operating pressure.
+13. Bring PRIMARY PRESSURE up to normal operating pressure.
 
 *With the steam side hot, passing 1972 psi will not fire emergency injection.*
 
-()14a. Set SET PZR PRESSURE to 2235 psi.
+()13a. Set SET PZR PRESSURE to 2235 psi.
 
 Suggested time warp: 1×.
 
-()14b. Wait for PRIMARY PRESSURE to read above 2200 psi.
+()13b. Wait for PRIMARY PRESSURE to read above 2200 psi.
 
 Suggested time warp: 600×.
 
@@ -278,17 +264,17 @@ Crossing 1972 psi re-arms emergency injection. It is safe now: STEAM PRESS sits 
 
 
 
-15. Confirm Hot Standby.
+14. Confirm Hot Standby.
 
 *This catches a pressure that never came up or steam venting to the sky.*
 
-()15a. Check AVG COOLANT TEMPERATURE reads 544 to 549 °F.
+()14a. Check AVG COOLANT TEMPERATURE reads 544 to 549 °F.
 
-()15b. Check PRIMARY PRESSURE reads 2200 to 2270 psi. If it does not, set SET PZR PRESSURE to 2235 psi.
+()14b. Check PRIMARY PRESSURE reads 2200 to 2270 psi. If it does not, set SET PZR PRESSURE to 2235 psi.
 
-()15c. Check ATMOS DUMP reads 0 %.
+()14c. Check ATMOS DUMP reads 0 %.
 
-()15d. Check STEAM PRESS reads near 1020 psi.
+()14d. Check STEAM PRESS reads near 1020 psi.
 
 Suggested time warp: 1×.
 
@@ -300,17 +286,17 @@ Hot Standby (Mode 3) is hot and at pressure, reactor shut down. STEAM PRESS near
 
 
 
-16. Confirm the reactor stayed shut down.
+15. Confirm the reactor stayed shut down.
 
 *The startup that follows assumes a core a long way from critical.*
 
-()16a. Check SOURCE RANGE counts read steady.
+()15a. Check SOURCE RANGE counts read steady.
 
-()16b. Check STARTUP RATE reads −0.02 to +0.02.
+()15b. Check STARTUP RATE reads −0.02 to +0.02.
 
-()16c. Check CONTROL ROD POSITION reads 0.
+()15c. Check CONTROL ROD POSITION reads 0.
 
-()16d. Check BORON STATUS reads HOLD.
+()15d. Check BORON STATUS reads HOLD.
 
 Suggested time warp: 10×.
 
@@ -324,11 +310,11 @@ No gauge reads how shut down a reactor is. The signs are SOURCE RANGE steady at 
 
 
 
-17. Confirm the heatup made no fission power.
+16. Confirm the heatup made no fission power.
 
 *Any power means a chain reaction, not the pumps, did the heating.*
 
-()17a. Check REACTOR POWER reads 0.0 %.
+()16a. Check REACTOR POWER reads 0.0 %.
 
 Suggested time warp: 1×.
 
@@ -744,3 +730,31 @@ Mode 3 runs on the motor-driven aux feed pump, main feed secured (OWNER: "Yes", 
 ### Concise pass — 2026-10-02 (#819)
 
 2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 153 -> 115 (2606 -> 1950 over 17 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare). develop text carried in (pool wins): step 2 note "Only if PRIMARY PRESSURE reads under about 25 psi here"; step 4 note "TRIP is also a button"; step 11 Background PRESSURIZER LEVEL to about 44 % near 280 °F, back to about 25 % by 435 °F. Step 13 note removed (draft). Two drafted aim lines (steps 5, 13) said "must", which the style gate bans (W16): now "has to".
+
+### #823 record — 2026-11-02, develop-b: step 1 folded into the pump start (17 → 16 steps)
+
+*OWNER RULING, 2026-11-02, verbatim (agent record): "I think folding step 1 into 2 might be the best option so the player can still see the checks of step 1."*
+
+**Why.** Old step 1, "Confirm the plant is cold and shut down.", asked for nothing: its four rows tick within 3 s of the start and the panel read "Step done — press Continue." 48 of 178 public sessions that started this leg (27 %) never got past it (live telemetry 2026-09-16 → 2026-11-02, `Diagnostic/TUNING_LOG.md` 2026-11-02-develop-a).
+
+**What moved.** Step 1 is the old step 2's goal line, italic line and press, with the old step 1's four checks as its first rows: 1a–1d keep their letters, the press is 1e. Background is the old step 1's paragraph followed by the old step 2's, both the owner's words. The HIGHLIGHTED line is the two steps' rings together. Steps 3–17 are now 2–16. Two in-text references renumbered: the 1e note's "step 9's heaters" → "step 8's", and old 11's note "until step 14" → "until step 13".
+
+**AGENT-DRAFTED:** no new sentence in the step text; the two step numbers above are a renumber. One new card string off the step text: 1c's `overtaken` label, "the pumps were started before OFF was read", which the card draws as "Overtaken: … — not checked on its own." only on the early-press path below.
+
+**Row order (chosen and measured).** Checks first, press last: read top to bottom it says "pumps OFF, then press ON", never the reverse, and the checks are met before anyone reads the card, so the active row is the press. MEASURED, live runtime, preset, seed 42, 1× (0.1 plant-s broadcasts): 1a–1d latch at +0.3 plant-s; Continue lights 11.8 plant-s after the ON press, RCP FLOW 91.5 %; Tavg 122.0 → 122.3 °F inside the step; no row un-ticks. Rows are `<` / `>`, so each latches and pump heat cannot take a tick back.
+
+**1c and the early press.** 1c ("OFF is lit") is the one row the step's own action makes false. Pressed ON at +0.1 plant-s, before the 5-broadcast debounce, 1c never latched and the step stranded 600 plant-s. 1c now carries a row-level `overtaken` (pumps running): on that press it latches flagged at +0.6 s and Continue lights at 11.9 s. A press at +0.3 s or later latches 1c on its own grading.
+
+**Catch-up.** `past` is only "RCP FLOW above 90 %". The old step 1's shutdown-bank and Mode clauses would now skip the pump start.
+
+**Round trip** (the cooldown's plant, `run_walkthrough_routes --leg=chain`, seed 42): enters at 193.7 °F, 252 psia, pumps off, bank in; 1a–1d latch at once, 1e at +0.28 plant-min (91.7 %), Tavg 204.7 °F by the end of step 2. The leg completes, 331.3 plant-min. The 1e note's "under about 25 psi" / "about 205 °F" is INHERITED (layman pass 6, a 19 psia seam); no gate route reaches it.
+
+**Critic round 1 (2026-11-02, develop-b): off-preset starts.** Narrowing `past` stranded two in-place starts that the old confirm step's catch-up had skipped. Both use the manual's 📋 Walkthrough button, which starts the leg on the plant as it stands. MEASURED on the pre-fix pool (`run_walkthrough_routes`, seed 42, ON pressed at +2 s):
+- `hot_shutdown` as booted (Mode 4, 250 °F, 364 psia, pumps off): 1a never latched; stranded at step 1 for 30 plant-min.
+- Shutdown bank pulled to 627 on the cold plant, pumps off: the shutdown-bank row never latched; stranded for 30 plant-min.
+
+Fix: 1a, 1b and the shutdown-bank row each carry a row-level `overtaken` on their own negation. MEASURED after the fix: step 1 checked off at +21.0 plant-s (hot start) and +20.9 plant-s (bank out). On the preset every row still latches as itself at +0.3 plant-s, with none overtaken.
+
+AGENT-DRAFTED card strings (shown only on those starts): "the plant was already above 200 °F", "PRIMARY PRESSURE was already above 725 psi", "the shutdown bank was already out".
+
+`Manuals/04` §PWR-N01 "works identically from step 2" and "step 5b" use the manual procedure's own step numbers, not the walkthrough's, so they are unchanged.

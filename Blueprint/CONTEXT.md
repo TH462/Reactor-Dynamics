@@ -245,9 +245,13 @@ owner's, and the next agent obeys it.
   reasoning, owner-approved 2026-07-27 ('Do as you suggest')"*, not "ruled".
 - **An unattributed directive is advisory.** Weigh it on its merits, say you did, and do not
   propagate it as settled.
+- **`CLAUDE.md` carries its rules as dated one-liners; the words live in `Blueprint/RULINGS.md`**
+  (2026-10-18, the prune that took the file from 14,998 words to under 5,000). A dated line in
+  `CLAUDE.md` whose quote is in that ledger is **fully binding** — the ledger is the quote. A
+  dated line with no ledger entry is advisory like any other; add the row, never the quote inline.
 
-**Guard:** `run_hardrules.js` — every `OWNER RULING` in tracked markdown must carry a date
-and a quotation.
+**Guard:** `run_hardrules.js` — every `OWNER RULING` / `OWNER DIRECTIVE` in tracked markdown
+(the ledger included) must carry a date and a quotation.
 
 **HR12 — An assertion about plant dynamics *or control behaviour* must be MEASURED. Run the
 plant and quote the number.** *(OWNER RULING, 2026-07-29: "if you make assertions about plant

@@ -1697,19 +1697,45 @@ async function testMainMenuButton(page) {
     throw new Error('#689 control: the coach tip did not appear on the first close of the Plant & ' +
       'Mission window, so its aim cannot be measured — missionTipArmed never fired');
   }
-  if (!(aim.ax >= aim.bl && aim.ax <= aim.br)) {
-    throw new Error('#689: #mainMenuTip\'s ▲ points ' + Math.round(Math.min(Math.abs(aim.ax - aim.bl),
-      Math.abs(aim.ax - aim.br))) + ' px away from the Main Menu button it names — arrow centre x ' +
-      aim.ax + ', button box ' + aim.bl + '–' + aim.br + ', bubble ' + aim.tipL + '–' + aim.tipR +
-      '. The bubble spans the whole tools row and the button sits at its right end, so a CENTRED ' +
-      'arrow lands over the speed bar; aimMainMenuTip() has to set --mm-arrow-x from the button.');
+  /* RETIRED, RE-POINTED AT THE RING (S-4 follow-up, #653). This block asserted the #689 aim: the
+   * ▲'s painted centre inside the Main Menu box and below its bottom edge, because a centred ▲
+   * once pointed at the middle of the speed bar. Moving the bubble BELOW the speed bar (so it
+   * stops covering the transport buttons) put that ▲ under 600x, where it reads as naming 600x —
+   * so the ▲ is hidden and the aim assertion now contradicts the design. Passing it would have
+   * certified the misleading arrow. What it protected (the player can tell WHICH button the tip
+   * names) is asserted below on the replacement cue: Main Menu wears .mm-ring, no ▲ is visible. */
+  /* S-4 (#653): THE TIP MUST NOT COVER THE TRANSPORT BAR. Measured 1600x1000: the bubble sat on
+   * ▶ and all six speed buttons for ~5 s and a layman, reading the running 1x clock as stopped,
+   * pressed ▶ and paused the plant. Two assertions, both while the tip is shown: the element at
+   * each button's centre is that button (it takes the click), and the bubble's rect misses it. */
+  var cover = await page.evaluate(function () {
+    var t = document.getElementById('mainMenuTip'), tr = t.getBoundingClientRect(), bad = [];
+    var btns = [document.getElementById('playBtn')].concat([].slice.call(document.querySelectorAll('[data-speed]')));
+    btns.forEach(function (e) {
+      var r = e.getBoundingClientRect(), hit = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+      var lbl = e.id || ('[data-speed=' + e.getAttribute('data-speed') + ']');
+      if (hit !== e && !e.contains(hit)) bad.push(lbl + ' hit-tests to ' + (hit && (hit.id || hit.className || hit.tagName)));
+      if (!(r.right <= tr.left || r.left >= tr.right || r.bottom <= tr.top || r.top >= tr.bottom)) bad.push(lbl + ' is overlapped by the tip rect');
+    });
+    return { n: btns.length, hidden: t.hidden, bad: bad };
+  });
+  if (cover.hidden || cover.n !== 7) throw new Error('S-4 control: tip hidden=' + cover.hidden + ', buttons=' + cover.n + ' (want shown, 7)');
+  if (cover.bad.length) {
+    throw new Error('S-4 (#653): the Main Menu coach tip covers the transport bar — ' + cover.bad.join('; '));
   }
-  if (aim.ay < aim.bb) {
-    throw new Error('#689: the tip\'s ▲ (y ' + aim.ay + ') is drawn ABOVE the button\'s bottom edge (' +
-      aim.bb + ') — the bubble is not below the row it points at');
-  }
-  log.push('coach tip ▲ at x ' + aim.ax + ', inside the Main Menu box ' + aim.bl + '–' + aim.br +
-           ' (bubble ' + aim.tipL + '–' + aim.tipR + ')');
+  log.push('coach tip clears ▶ and the six speed buttons (hit-test and rect)');
+  var cue = await page.evaluate(function () {
+    var t = document.getElementById('mainMenuTip'), a = t.querySelector('.mm-arrow'), b = document.getElementById('mainMenuBtn');
+    var ar = a ? a.getBoundingClientRect() : null, cs = a ? getComputedStyle(a) : null;
+    return { ring: b.classList.contains('mm-ring'), shadow: getComputedStyle(b).animationName,
+             arrowVisible: !!(a && cs.display !== 'none' && cs.visibility !== 'hidden' && ar.width > 0) };
+  });
+  if (!cue.ring) throw new Error('S-4: #mainMenuBtn carries no .mm-ring while its tip shows (animation ' + cue.shadow + ')');
+  if (cue.arrowVisible) throw new Error('S-4: the tip shows a visible ▲ below the speed bar — it reads as pointing at the speed buttons, not Main Menu');
+  await page.waitForFunction(function () { return document.getElementById('mainMenuTip').hidden; }, null, { timeout: 9000 });
+  var ringAfter = await page.evaluate(function () { return document.getElementById('mainMenuBtn').classList.contains('mm-ring'); });
+  if (ringAfter) throw new Error('S-4: .mm-ring is still on #mainMenuBtn after the tip hid');
+  log.push('Main Menu rings while the tip shows, no visible ▲, ring gone when the tip hides');
   await page.evaluate(function () { var t = document.getElementById('mainMenuTip'); if (t) t.hidden = true; });
   if (await page.isVisible('#missionOverlay')) throw new Error('#689: could not get the window shut to start from');
   await page.click('#mainMenuBtn');
@@ -3210,7 +3236,12 @@ async function testHeldAndOpenerGlow(page) {
                                 ask: 'Wait for a cue that never comes, then plot.', label: 'Point plotted' }] },
                      { text: 'Pull.', control: 'Control Bank', cmd: { action: 'rod_nudge', group_id: 'control', steps: 1, speed: 'normal' },
                        hl: ['Withdraw'], hold: 600, wait_speed: 10, moving_speed: 5,
-                       accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Never met.', label: 'Never met' }] }] });
+                       accs: [{ p: 'power_pct', op: '<', v: -1, ask: 'Never met.', label: 'Never met' }] },
+                     /* #824: a plot row whose cue is met at the starting bank and NOT after a withdrawal (`v` is set to
+                      * the bank at the jump, in place) -- a kept latch would light it again once the rods stop */
+                     { text: 'Plot on its cue.', control: '1/M Plot', hl: ['Plot point'],
+                       accs: [{ cmd: 'plot_1m_point', hl: ['Plot point'], hl_when: { p: 'control_bank_steps', op: '<=', v: 9999 },
+                                ask: 'Plot when the cue comes.', label: 'Point plotted' }] }] });
     var w = document.querySelector('#oomWin [data-oom="close"]');
     if (w && w.getClientRects().length) w.click();
   });
@@ -3346,6 +3377,54 @@ async function testHeldAndOpenerGlow(page) {
   if (mv.acc !== 5) throw new Error('OWNER RULING 2026-09-28 (D): with the bank moving the walkthrough must play 5x — read ' + mv.acc + 'x (rods ' + mv.rod + ', still ' + still + 'x, running ' + mv.run + ', t ' + mv.t + ')');
   if (after !== 10) throw new Error('OWNER RULING 2026-09-28 (D): once the bank stops the step rung (10x) must return — read ' + after + 'x');
   log.push('moving_speed: still ' + still + 'x, moving ' + mv.acc + 'x, stopped ' + after + 'x');
+  /* #824 critic rounds 2-3: NO PLOT CUE WHILE RODS MOVE, AND A MOVE TAKES THE LATCH BACK (ui/app.js cklHlWhenMet).
+   * Startup 8b's rate cue latched mid-INSERT (the STARTUP RATE tile swings through +0.017 at rod 210) and pulsed Plot
+   * point for the whole overshoot recovery; a plot on it predicted 212 against a true 207. The probe row's cue is
+   * CONTROL ROD POSITION <= the bank at the jump: met (and LATCHED) at rest, then the bank is withdrawn. Gated: (1) dark
+   * while the bank moves (the motion rule), (2) STILL dark once it stops above the start, where the cue reads false —
+   * which only holds if the move dropped the latch. Injection-proven: each half deleted turns its own assert red. */
+  function rodsMoving() {
+    return page.evaluate(function () {
+      var e = globalThis.RD.__dev.service().engine, eng = e && e.eng;
+      return !!eng && eng.rodSteps !== eng.rodTarget;
+    });
+  }
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'rod_stop', group_id: 'control' }); });
+  await page.waitForFunction(function () { var e = globalThis.RD.__dev.service().engine.eng; return e.rodSteps === e.rodTarget; },
+    { timeout: 30000, polling: 200 }).catch(function () {});
+  var b0 = await page.evaluate(function () {
+    var e = globalThis.RD.__dev.service().engine.eng, b = Math.round(e.rodSteps);
+    var pr = globalThis.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id === 'zz_glow_probe'; })[0];
+    pr.steps[5].accs[0].hl_when.v = b;   // in place: the live checklist and the card read this same object
+    return b;
+  });
+  await jump(5);
+  await page.waitForTimeout(600);
+  var cue0 = await read();
+  var lit = function (x) { return x.op === 'pulse' || x.pp === 'pulse'; };
+  if (!lit(cue0)) throw new Error('#824 fixture: CONTROL ROD POSITION <= ' + b0 + ' is met at rest and the plot cue is not pulsing — ' + JSON.stringify(cue0));
+  await page.evaluate(function () {
+    globalThis.RD.__dev.service().handleCommand({ action: 'rod_nudge', group_id: 'control', steps: 30, speed: 'normal' });
+  });
+  await page.waitForTimeout(900);
+  var cueMv = await read(), mvNow = await rodsMoving();
+  if (!mvNow) throw new Error('#824 fixture: the bank is not moving, the motion case cannot be read');
+  if (lit(cueMv)) {
+    throw new Error('#824: Plot point is cued while the control bank moves (1/M PLOT ' + cueMv.op + ', Plot point ' + cueMv.pp +
+      ') — a latched `hl_when` must go dark during rod motion');
+  }
+  await page.evaluate(function () { globalThis.RD.__dev.service().handleCommand({ action: 'rod_stop', group_id: 'control' }); });
+  await page.waitForFunction(function () { var e = globalThis.RD.__dev.service().engine.eng; return e.rodSteps === e.rodTarget; },
+    { timeout: 30000, polling: 200 }).catch(function () {});
+  await page.waitForTimeout(900);
+  var cue1 = await read(), b1 = await page.evaluate(function () { return Math.round(globalThis.RD.__dev.service().engine.eng.rodSteps); });
+  if (!(b1 > b0)) throw new Error('#824 fixture: the bank did not end above ' + b0 + ' (reads ' + b1 + '), the latch case cannot be read');
+  if (lit(cue1)) {
+    throw new Error('#824: the bank stopped at ' + b1 + ', where the cue (CONTROL ROD POSITION <= ' + b0 + ') reads false, and Plot point is ' +
+      'still cued (1/M PLOT ' + cue1.op + ', Plot point ' + cue1.pp + ') — the move must take the latch back');
+  }
+  log.push('hl_when vs rod motion: at rest ' + b0 + ' ' + (lit(cue0) ? 'cued' : 'dark') + ', moving ' + (lit(cueMv) ? 'cued' : 'dark') +
+    ', stopped at ' + b1 + ' ' + (lit(cue1) ? 'cued' : 'dark'));
   await page.evaluate(function () {
     globalThis.RD.__dev.service().handleCommand({ action: 'set_speed', value: 1 });
     globalThis.RD.__dev.service().handleCommand({ action: 'stop_checklist' });
@@ -5635,11 +5714,16 @@ async function testObservationStepAckButton(page) {
   var r = await page.evaluate(function () {
     var c = globalThis.RD.__dev.service().instructor.checklist;
     var mk = document.querySelector('.ckl-step.ckl-active [data-ckl-check]');
+    /* A `callout: true` leg (TMI-2, 2026-10-10) draws the step on the board and hides the column's
+     * step card; its Continue is the card's, which forwards to this one. Same claim: a usable
+     * Continue, drawn, before anything is expanded. */
+    var co = document.querySelector('#instrCallout:not([hidden]) [data-ico-fwd="[data-ckl-check]"]');
+    if (co && mk && !mk.getClientRects().length) mk = co;
     var rc = mk ? mk.getBoundingClientRect() : null;
     return {
       idx: c.idx,
       anyCheck: document.querySelectorAll('[data-ckl-check]').length,
-      inActive: !!mk,
+      inActive: !!mk && (!!mk.closest('.ckl-step.ckl-active') || !!mk.closest('#instrCallout')),
       w: rc ? Math.round(rc.width) : 0, h: rc ? Math.round(rc.height) : 0,
       disp: mk ? getComputedStyle(mk).display : null,
       inCollapsible: !!(mk && mk.closest('details')),

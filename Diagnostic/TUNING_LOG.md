@@ -29,6 +29,202 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-06-develop-a (owner in-sim reports 2026-11-05: startup 11b inserts to the 1/M critical point, 12a "holds above +0.15")
+
+Built on scratch branch `exp/rpt1105wt` (= develop 3334b8d6). All numbers MEASURED on `run_walkthrough_routes` jobs (live checklist runtime, full stack, seed 42 unless named), every `pwr_startup` route, 2026-11-06. Owner's words verbatim in `Blueprint/TASTE_LOG.md` (reports mw3hghrs / mw3hnwr6 / mw3hpst7).
+
+- **The 1/M prediction sits 2 to 3 steps above where 11b ends — near, and HIGH.** Prediction minus the bank 11b ticks on, old 12-step count: +2 typical / base / 12 of 18 mistake routes (209 vs 207), +3 typical_seed7 (211 vs 208) / flicker_release_5 / rewind_mid_10, +5 plot_early (212 vs 207), −1 both overshoot_8_recover routes (207 vs 208). No route over 5, so "near the critical point" holds; the plot's high bias (its safe side, #748) means a player stopping on the number is still supercritical.
+- **The owner's "much more accurate" does not measure on this plant: the count was closer.** 10b's release at +0.5 leaves the bank 12 steps past critical on every typical route, so "about 12 steps" landed 207 on the first read (2.7 plant-min, INTER RANGE 8.7e-9 A). Inserting to the printed number lands 209 and needs two more INSERT taps on two-minute reads: 6.9 plant-min, INTER RANGE 1.4e-8 A (seed 7: 211 → 208, three taps, 9.0 min, 1.9e-8 A; plot_early 13.4 min, 5.4e-8 A). Shipped as he worded it: the plot is the instrument the leg teaches, and the reads finish the job on every route. The note now says the rods usually end two or three steps below the number and INTER RANGE levels between 1.0e-8 and 2.0e-8 A.
+- **A display-only 1/M number needed a new field.** `ask_1m` drew only on `reach_1m` rows (`cklAskText` required the margin), and the runtime published `pred_1m` only on 1/M-GRADED rows. `show_1m: true` publishes the printed prediction on a row that grades on its own op and never flags `no_1m` (that flag draws "ticks once the rods have been still a plant-minute" — wrong for 11b). `cklAskText` now replaces every `{pred}` (`String.replace` did the first only; the first draft named it twice). 11b's asks sit at the 40-word owner-format cap (`run_checklist_pwr2_b` askSweep reddened the 49-word draft), so "read it two plant-minutes later" moved to the note's first sentence. No prediction (Clear): the plain ask keeps "about 12 steps".
+- **12a** reads "stop when it holds above +0.15"; the grade stays `>=` 0.145 with the rods still 60 s (the tile's "+0.15" floor, #749), so an exact "+0.15" held a minute ticks it.
+- **Routes.** `#11` typical policy inserts to the card's `pred_1m` (`to_pred`); `level_short_11` re-aimed (2 short of the number: 211, four taps, 11.0 min, 2.8e-8 A), `level_past_11` added (3 past: 206, settles −0.019, 2.8 min). Every route that reached step 11 before still completes the leg.
+- **Critic round 1.** M-1: the card render key took `pred_1m:obs` for every row with a prediction, and on a `show_1m` row `obs` is the raw STARTUP RATE float, so #cklRun rebuilt every broadcast (critic: 94 rebuilds in 9.4 plant-s; the #687 blink class). A `show_1m` row now keys on `pred_1m` alone; verify_ckl_relevance counts #cklRun rebuilds on a noisy channel: 1 in 4 s, injection 37 (red). Re-gated one runner at a time: verify_ckl_relevance 62/62, run_walkthrough_routes (part A, whole) 160/160, run_checklist_pwr2_b 204/204, run_manual_controls 1324, run_style 11/11, verify_e2e_ui PASS (4 screenshots), run_procedures 29/29 141/141, run_campaign 35/35 3021. L-1/L-3: the note no longer says "its number" (it stands without a prediction) and says INTER RANGE levels "near 1.0e-8 to 2.0e-8 A, higher if the insert starts late or stops short" — on time 7.7e-9 to 1.9e-8, late or short 2.8e-8 to 5.4e-8, all measured above.
+- **Gates** (`run_all --only`): run_walkthrough_routes 160/160 (155 + 5, the new `level_past_11` route), _c 70/70, run_checklist_pwr2 269/1 (the tracked #588 red), _b 204/204, _c 35/35, verify_ckl_relevance 61/61 (57 + 4 #11b checks; injections: show_1m branch off → 2 red, first-`{pred}`-only → 1 red), run_manual_controls 1324 (1321 + 1 "Press MED" + 2 the speed-press glow scan now reads `ask_1m`; injection: 11b hl without Rod Speed — Normal → 2 red), run_style 11/11, run_checklist 94/94, verify_tmi_callout 33/33. Not re-run after the 40-word trim: the routes parts and verify_ckl_relevance (the routes policy reads `pred_1m`, not the text).
+
+---
+
+## Session log — 2026-11-03-develop-b (#825 walkthrough half: heatup 10 ring, startup 10a/11b/12 pacing, raise-power mid-band, lower-power merge)
+
+Built on scratch branch `exp/825wt` (builder only; board/UI items of #825 are the other lane's). All numbers MEASURED on the routes harness (live checklist runtime, full stack, seed 42 unless named) or in the dev shell under headless Chromium, 2026-11-03.
+
+- **A step-level watch list outlives the substeps that should own it.** Heatup step 10 authored no `hl` and no per-substep lists, so the board lit the step's `hl_watch` — PRIMARY PRESSURE and SG PRESSURE, the chart's reason-why series — while 10a asked for SUBCOOLING MARGIN. Now 10a lights SUBCOOLING MARGIN + AVG COOLANT TEMPERATURE, 10b AVG COOLANT TEMPERATURE.
+- **"Speed the wait, not the action" holds a step at 1× until a press lands ON THAT STEP.** Startup 12 (12a 10×): entered through 11's Continue, 1× on entry, 10× 2.5 s after a rod tap (browser, dev shell). The owner's "didn't go to 10×" was not reproduced on a tap-on-12 route; any route that taps before Continue, or waits for the 70 s read first, sits at 1×. Step 12 now carries `wait_first` (documented in the field list): 10× on entry, measured. Safe because 11 hands over a plant held exactly critical (STARTUP RATE ±0.02, rods still 2 plant-min) and a tap is one step at any rung.
+- **10a / 11b 1× → 5× (owner ruling).** 11b's text said "hold INSERT about 15 seconds at 1×"; MED is 0.8 steps a plant-second, so the 12-step insert is 3 s of wall at 5×. Browser: 11b active → 5×.
+- **The raise-power stage targets were the green band's FLOOR.** The tile band is TREF ± 5.04 °F (2.8 °C, 3.5 × the 0.8 °C rod deadband); 552/558/566/570 °F were TREF − 5 at 30/50/75/90 MWe. Now 557/563/571/576 °F, graded at the whole-degree render floor (556.5/562.5/570.5/575.5). Stage 8 keeps "stop at 573": the dilution still arriving carries every route to 579–581 °F in step 9 (typical stops at 577.5, thi 581.0 — same peak as before). Typical stage ends 557.5 / 563.9 / 571.0 / 576.4 °F (was 552.3 / 559.4 / 568.0 / 573.9); stages 4 and 6 are +1.1 and +0.8 plant-min; whole leg 44.2 plant-min (was 44.5, the boron wait shrinks). Peak Tavg 581.0 °F on all nine routes, 9 °F under the 590 °F caution. Pulls (player routes): 25–30 / 15–25 / 20–35 / 15–20 steps.
+- **Pressurizer Pressure Low is caused by the load increase, and was predicted but not expected.** Step 5 carried it in `predicts_alarms` (display only) and its own note, not in `expect_alarms`, so it dropped warp. A literal ordered player (no pull until OUTPUT reaches 50 MW): `pzr_pressure_low` at 2148 psia (14.81 MPa) / 547.7 °F in step 5; `overpull_60`: at 2150 psia / 565.5 °F in step 6 (setpoint 2149.5 psia). Both declared. Typical routes stay at 2185–2255 psia — the margin is 35 psi, and that is the whole trap: the typical player never sees it.
+- **A "Check X" row that is really a wait strands silently.** 9c (BORON CHEM ≤ 663 ppm) ticks 13.9–25.7 plant-min into step 9 over seven routes (typical 22.4, seed 7 23.8), 44–48 plant-min after the step-3 press; never on arrival. The step-3 comment's "663 ppm at 24.1 plant-min" was the replay's pace, not the player's (INHERITED, refuted). The ask now says wait, and how long.
+- **Lower power: step 3 was the redundant one.** Since layman pass 7, 2b ("after each cut, insert 3 steps") and step 3 ("insert until in band") were one rod action on two cards; 4–6 already pair them in one step. 2b's row (power < 95 %) ticked 0.77 plant-min in, after the first of five cuts. Merged: 2a = cuts + taps (the relation row is its head), 2b = taps into the band, 2c = power < 80 %; `accs_ordered` on steps 2–5 so b/c cannot latch before OUTPUT settles (#724 item 18's timing ask). Typical step 2: OUTPUT 4.18, band 10.15 plant-min, peak 585.9 °F (under the "587" note), 30 taps; steps 3–5 27 / 18–21 / 12–15 taps. Leg 30.9 plant-min (was 30.1). No alarm raised on any of six routes.
+- **10× on a stair of held inserts is a rate trap; taps are not.** At 10× one plant-minute is 6 s of wall and a held 3-step MED insert 0.4 s (the old step 3 measured the band at 43 MED steps, 5.4 s of wall at 10×). The card now counts INSERT taps. Glance yardstick (`tools/glance_rung.js`, replay): step 2 worst REACTOR POWER change per 2.5 s glance 6.70 % at 10× vs 6.22 % at 5×; step 3 6.42 % vs 5.81 % — a load cut lands at once, so the rung barely moves it.
+- **A latching row graded the moment its predecessor latches can still close an evolution early (owner: "it saw the temperature was below 577 and check it off before it raised above 577").** Ordering alone puts the trim row behind OUTPUT reaching its target, and a cut lands at once while its heat peaks about 84 s later (#736). Each load step now carries a re-grading `stopped` row on the LOAD target (`load_target_mwe`, published to the grader for this) — no cut for 120 plant-s — ahead of the trim row, and the power check follows the trim. **First try, refuted by the critic:** `mwe_output steady` (2 %, 120 s half-means) reads steady seconds after a cut when the previous level was held 120 s or more — MEASURED, a 180 s cutter's trim ticked 4 s after the last cut and Continue flashed at step 5. Slow cutter (180 s, card taps) on the shipped form: step 2 trim ticks 2.0 plant-min after the last cut at 571.6 °F; the 30 and 15 MW trims land at 544.5 / 552.5 °F (12 plant-min a stage lets the boration overcool — a slow cutter's own consequence). MEASURED trim ticks, typical seed 42 / slow-cut (cuts a plant-minute apart, trim only from a further minute after the last cut): step 2 10.15 / 12.18 plant-min at 576.2 / 576.0 °F (302.3 / 302.2 °C); 3 9.50 / 11.10 at 568.0 / 568.4 °F; 4 6.50 / 8.05 at 560.7 / 561.1 °F; 5 4.33 / 5.40 at 555.9 / 556.5 °F, LOAD at target every time. Slow-cut peaks 587.9 °F in step 2 (its route skips the card's inserts during the cuts, so it is exempt from the "under about 587" verdict).
+- **The routes gate could not see an early latch, for two reasons.** `ENTRY_S` looks only 5 plant-s after entry, and the un-tick check never fires on a latched row. New verdict `latch` (legs that declare `latch_check`; lower power on `tavg_c`) reds a latching one-sided row that ticks while an earlier row of its step is open, ticks within 90 plant-s of a LOAD cut (`latch_heat_s`), or is crossed back by 0.3 °C (0.5 °F) for 10 plant-s in its step or for 120 plant-s after Continue (until the next step's first action). Injections: `lower_latch_steady_form` (slow_cut_180) red, every trim 4 s after a cut. The after-Continue half has NO red injection: no measured route crosses back after Continue before the next action. UNPROVEN CHECK: the critic zeroed the after-cut branch and the after-Continue watch still went red on none of three routes (round 2). The heat window is 110 plant-s, not 90: the critic's peak delays after 5 MWe cuts run 35-98 s (98 s at 55 -> 50 MWe). Steps 3-5 now say: below the green band, leave the rods (slow cutter ends step 4 at 544.5 degF with no taps; typical ends in band). Injection `lower_latch_old_form` (the old unordered rows, no steady wait) on rods_lead_2: red, step 2's `tavg < 577 °F` row ticked 2.32 plant-min in at 575.9 °F with OUTPUT still cutting (settled 4.18). The owner's exact sequence (latched below 577, rose above) did not reproduce on any measured route: the old trim rows ticked at 7.3–12.2 plant-min on typical, slow-cut and a cool-arrival route; what ticked early was the power rows (old 2b 0.77, 4b 0.39, 5b 0.28, 6b 0.03 plant-min).
+- **Raise-power replay re-tuned, not the targets (Hard Rule 9).** The fixed pulls 20/20/25/20/5 ended stages 4–6 at 552.7 / 561.1 / 569.3 °F, under the new floors. 38/28/32 tripped the reactor on overtemperature ΔT at step 8. 28/20/25/12/5 (stage 7 gives back stage 4's +8): stage ends 558.7 / 566.1 / 574.0 / 577.5 / 581.3 °F, peak 582.3 °F (same as before), minimum overtemperature-ΔT margin 0.253 vs 0.251 (setpoint minus ΔT fraction, true state), no trip (`inbox/825/replay_probe.js`).
+- **A leg seam moved a scram transient across a verdict.** On the chain, the shutdown's trip from about 12 % power drives COOLDOWN RATE to the 100 °F/hr alarm: before #825 it rose in shutdown step 3 (tile -101.5 °F/hr); after it, the trip lands 1 °F cooler (554.5 vs 555.6 °F) and the same transient rises in cooldown step 1 (-99.1, boration only), which the cooldown's "card pacing never raises the rate alarm" verdict blamed on the cooldown card. `pwr_cooldown` 1 now DECLARES `cooldown_rate_high` (measured note on the step) and the rate verdict counts a raised alarm unless its step declares it — the first fix (exempting the chain's pre-cooling steps in the gate) hid a new board interruption, the critic's catch. Why it moved: the trip lands 0.4 °F cooler at 0.3 points more power, the dump's post-trip peak in shutdown 3 is -93.4 instead of -101.5 °F/hr, and the crossing falls after the hand-over; the deeper cause of the slower peak is not measured. The plant is 1 °F/hr from this alarm after every low-power trip — a fragile seam, recorded, not tuned.
+- **Leg-mapping note.** The owner's "mode 3-1" means Startup Part 3 (`pwr_raise_power`); the 2b/step-3/10× notes only fit `pwr_lower_power` (raise power step 2 is a turbine confirm with no rod action, step 3 is boron), so they were applied there.
+
+---
+
+## Session log — 2026-11-03-develop-a (#824: startup step 8 overshoot recovery, step 12 stop-short, the 1/M plot band)
+
+Built on scratch branch `exp/824` (three builder/critic rounds), merged as 223f2b8b. Owner ruling 2026-11-02: "Yes to adding the recover step to step 8." Step 12's `overtaken` was a routine call.
+
+- **The 1/M error has a dangerous direction, and the first draft had it backwards.** 10a stops 3 short of the prediction, so a HIGH prediction is the danger side (#748). The band is true critical ≤ prediction ≤ true critical + 3 (the top is the coordinator's call, 2026-11-03: at + 3 10a stops on the first critical bank, and 10b pulls on past it anyway). A one-sided "prediction ≥ critical" check had passed a recovery that put seed 7 at + 4.
+- **Typical route margin, MEASURED:** 209 vs 207 on seeds 42 / 123 / 1 (+2), 211 vs 208 on seed 7 (+3, the band top). Gated on seeds 42 and 7.
+- **Which way a recovery plot errs depends on the count's direction.** A point on a falling count reads LOW (205 / 206 against 207); a point on a count still far under its settled value reads HIGH (215 at rod 212). After inserting to 202, waiting for STARTUP RATE to climb back to 0.00 plots the count on its way up: 207 / 209 against 207 / 208. The deep variant (185 / under 5.0e3 / "do 8a again") put seed 7 at 210–212 and was dropped.
+- **A latched cue grabs a transient.** The STARTUP RATE tile swings through +0.017 in the middle of an insert. Two fixes, each needed: no cue while rods move and a move drops the latch; and a band of 0 to +0.035. Each half alone still failed (212, 198). A count AND-condition (SOURCE RANGE ≥ 6,950) hid the cue from players whose re-release settled below it (2 and 13 of 24 stranded).
+- **The route runner never loads `ui/app.js`:** its pulse is a copy. Only `verify_e2e_ui` sees the shipped rule; its glow-probe step 5 now gates both halves, each injection-proven.
+- **A named trip passes the routes gate's invariant**, so a route the card can recover needs `must_complete` (the stop-short strand ended in an SG LO-LO trip at 62 plant-min and read as honest).
+- **Step-file drift:** 17 pool strings in steps 2–17 of `02_mode3_to_mode1.md` still lag the pool (the #819 subtext cut changed the pool only). Steps 8 and 12 now match.
+- **Merge note:** the merge resolved the route runner's service setup by taking `seed` from #824 (a mistake's own seed, for `typical_seed7`) and `from` from #823.
+
+---
+
+## Session log — 2026-11-02-develop-b (#823: heatup step 1 folded into the pump start, 17 → 16 steps)
+
+*(OWNER RULING, 2026-11-02: "I think folding step 1 into 2 might be the best option so the player can
+still see the checks of step 1.")* Step 1 is "Start the reactor coolant pumps." — rows 1a–1d are the
+old cold-state checks (letters kept), 1e is the old 2a press. Unordered; every row `<`/`>`, so each latches.
+
+- **The trap: the step's own action falsifies one of its rows.** 1c "Check OFF is lit on the RCP FLOW
+  card" (`rcp_running < 1`) goes false the moment ON is pressed. MEASURED, live runtime, preset, seed 42,
+  1× (0.1 plant-s broadcasts, 5-broadcast debounce): 1a–1d latch at +0.3 plant-s; a press at +0.1 s left
+  1c unlatched for good and the step stranded 600 plant-s; a press at +0.3 s or later lets 1c latch as
+  itself. Fix: a row-level `overtaken` on 1c (pumps running), which latches it flagged at +0.6 s on the
+  early press. Continue lights 11.8 plant-s after the press (RCP FLOW 91.5 %).
+- **No un-tick, no never-tick once the RCPs run** (MEASURED): Tavg 122.0 → 122.3 °F inside step 1 on the
+  preset; on the round trip (the cooldown's plant, 193.7 °F / 252 psia at entry) 1a latches at 193.3 °F
+  and the plant reaches 204.7 °F by the end of step 2 — the latch is what keeps 1a ticked, not margin.
+  Telemetry implication: none of the rows can come back off.
+- **`past` cut to the pump clause.** The old confirm step's catch-up skipped on shutdown bank ≥ 98 % or
+  Mode < 5; carried onto the merged step those would skip the pump start, and a heatup without pumps never
+  heats. Full power still catches up past it (pumps running).
+- **Route gate** (`run_walkthrough_routes`): the hollow check exempts no-command steps and `entry_met`
+  steps, so a confirm-only FIRST step passed it — which is why nothing caught this. New check `first`
+  binds step 1 only, with no exemption except a declared `first_step_confirm` reason. Injection
+  `heatup_confirm_first` (pre-#823 layout rebuilt from today's rows): red, step 1 lit at +0.2 s.
+  Measured over every leg's typical route before the exemptions: `pwr_startup` (+0.2 s),
+  `pwr_raise_power` (+0.2 s) and `pwr_tmi2_incident` (+0.0 s) open the same way; exempted with the
+  reason written, not fixed (outside the ruling).
+- **Routes, seed 42 (MEASURED):** typical complete 382.8 plant-min; double_rcp, pressure_sp_high,
+  rewind_mid_heaters 382.8; dump_auto_early 384.4; chain heatup 382.8, round trip heatup#2 331.3. No
+  flash, no un-tick, no hollow.
+- **Telemetry:** `walkthrough_step` indices for `pwr_heatup` shift by one from this release (old step N
+  is N−1). The `release` column separates the layouts; #823's success measure reads off it.
+- **Critic round 1 — the narrowed `past` stranded two in-place starts.** The manual's Walkthrough button
+  starts the leg on the plant as it stands. MEASURED on b7897bd1 (routes harness, seed 42, ON at +2 s):
+  - `hot_shutdown` as booted (250 °F, 364 psia, pumps off): stranded at step 1 for 30 plant-min, 1a unlatched.
+  - Shutdown bank out on the cold plant: stranded 30 plant-min, the bank row unlatched.
+  Fix: 1a, 1b and the shutdown-bank row stand down on their own negation (row-level `overtaken`). MEASURED
+  after: step 1 checked off at +21.0 and +20.9 plant-s; preset rows still latch as themselves at +0.3 s, none
+  overtaken. The new routes `hot_start` and `bank_out_start` gate this. Injections `heatup_no_hot_relief` and
+  `heatup_no_bank_relief` rebuild the b7897bd1 rows and turn each route red.
+- **`first` gained a structural half:** a non-exempt leg's step 1 must carry a `cmd` (or a `cmd` row), because the
+  5-plant-s window cannot see a confirm step whose rows settle slower. Injection `heatup_first_no_cmd` reddens it
+  with the timing half green.
+- **Not changed:** `Manuals/` (PWR-N01 carries its own step numbers, not the walkthrough's). Dated code
+  comments that quote a heatup step number keep the 17-step numbering; the pool's header note says so.
+
+## Session log — 2026-11-02-develop-a (walkthrough completion from live telemetry; two of my own drop-off causes refuted)
+
+Read-only analysis; no sim change. Source: `tools/site_report.js --days=90` plus raw `walkthrough_*`
+rows (public channel, 2026-09-16 → 2026-11-02; session counts are floors). Scratch scripts were not kept.
+
+- **Completion by leg (sessions):** heatup 87/178 (49 %), startup 35/95 (37 %), raise 28/39 (72 %),
+  lower 16/28 (57 %), shutdown 15/19 (79 %), cooldown 10/21 (48 %). Only 4 sessions ran all six legs.
+  Leg-to-next handoffs in the same session run 61–100 %.
+- **Heatup step 1 is the biggest single loss: 48/178 sessions (27 %) never finish it.** Measured in
+  headless Edge (Main Menu → Walkthroughs → heatup Start): all four rows tick within 3 s and the panel
+  reads "Step done — press Continue." The 41 who ended the leg there spent a median of 47 s in it. So the
+  step asks nothing of them; they leave on a screen whose only action is Continue.
+- **REFUTED (mine): "a launcher starts the heatup on the hot plant and step 1 can never pass."** The one
+  `data-ckl-start` button is the post-leg Next handoff (`ui/app.js` near line 6742; the "Checklists tab"
+  comment near line 11380 is stale). The manual's Procedures (live) 📋 Walkthrough button does run on the
+  plant as it sits (by design, #660). Measured at 580 °F (304 °C): the leg jumps to step 4 within 6 s, so
+  it does not stall on step 1. The 56 % vs 25 % gap I first reported was an artifact: in-sim leg buttons
+  fire a click event only when the button is "Next up", so a session with no click logged still loaded
+  cold shutdown.
+- **REFUTED (mine): "lower power step 1 stalls on the boron ON-resets-target trap."** None of the 8
+  sessions stalled there sent any boron command; 5 of them left within 1.5 min.
+- **Open:** startup step 8 (the final 1/M plot point) was rewound 24 times by 15 sessions, always after
+  rod moves; step 12 (raise power to about 1 %) 41 times by 6 sessions. Telemetry carries action names
+  but not values, so it cannot say whether these were overshoots or early plots.
+- **"Is wordiness turning players off?" (owner question).** Per-step word count from the v1.8.3 step
+  files, compared with 1.8.3 public telemetry over 63 non-final steps (Spearman). Words vs quit rate:
+  total 0.22, action lines 0.06, notes 0.31, Background 0.11. Words vs median time on step: 0.75, but
+  steps with more words also have more to do. Quitting clusters at a leg's FIRST steps, not its long
+  ones: heatup step 1 (97 words, below the 116 median) loses 20 %; startup 13 (228 words) loses 3 %.
+  The one before/after is confounded. 1.8.2 cut 25–35 % of the words (#819), and heatup completion went
+  35 % → 57 % with step-1 quits 31 % → 21 %. The same release pinned Continue (#818 C), which had been
+  off-screen on 34 of 69 steps. Reading: first-screen load, not per-step length. #823 tests it.
+- **Oddity, unverified as a defect:** heatup started from the manual at full power marks steps 1–3 done.
+  That includes step 1, which grades AVG COOLANT TEMPERATURE below 200 °F (93 °C) while it reads 580 °F.
+
+## Session log — 2026-10-18-develop-a (CLAUDE.md pruned 14,998 → under 5,000 words; push/merge guard hook)
+
+Owner approved two changes from the Claude Code best-practices guide: keep CLAUDE.md short (ask of
+each line "would removing it cause mistakes?"), move sometimes-relevant workflows to skills, put
+must-happen-every-time rules in hooks, and stop bolding everything.
+
+- **Hook.** `tools/hook_guard_push_merge.js`, registered as `PreToolUse` on `Bash|PowerShell` in
+  `.claude/settings.json`. Any `git push` → `ask` (never push until he says so, 2026-09-14 — the
+  prompt approval is his permission); a push naming `workbench`/`backshop` or `--all`/`--mirror` →
+  `deny` (lanes are local, 2026-07-31); `gh pr merge` → `ask`; merge/pull/rebase/cherry-pick/reset
+  that would move `develop` → `ask` (2026-07-31), resolving the target tree from `git -C`, a leading
+  `cd`, or a `git checkout` earlier in the chain, so a lane's `git merge --ff-only develop` passes
+  silently. Exit 0 silent on anything else and on any parse error. Pipe-tested on 17 payloads.
+  `settings.audit.json` layers on `settings.json` and inherits hooks; untouched.
+- **Prune.** CLAUDE.md 14,998 → see the commit for the measured count (cap in
+  `test/run_doc_budget.js` lowered to the new size + ~15 %). Every rule kept as a dated one-liner;
+  every verbatim owner quote (55 citations) moved exactly as written to `Blueprint/RULINGS.md`,
+  grouped by topic; HR11 in `CONTEXT.md` §3 amended so a dated CLAUDE.md line whose quote is in the
+  ledger is fully binding. Procedure moved to five new skills: `gate-layers` (layer table,
+  measure_stack, run_all/CI costs), `issue-workflow` (labels, filing bar, lane tags), `manual-edit`
+  (revision row → stamp → pack), `walkthrough-change` (both routes, reviewer, layman), and
+  `version-changelog` (rc numbering, digit choice, changelog.html rules). The 25 standing-procedure
+  bullets cut to one line each; their worked detail is verbatim in `Blueprint/TRAPS.md` §"Standing
+  list, compressed 2026-10-18". Bold kept only on never-push, never-merge-develop, lanes-local,
+  RBMK/BWR-on-hold, HR12 measure, the evidence pass. Output-format blocks (brevity, STILL
+  OUTSTANDING, FIRST PRINCIPLES, ask-with-recommendation) kept with their delimiters. Inventory of
+  every rule and where it landed: the session scratchpad `claude_md_inventory.md` (summarised in
+  the commit message).
+- **Commit 3 (reviewer findings).** Binding substance put back as CLAUDE.md one-liners (walkthrough both-routes/reviewer/layman, version timing and rc digits, owner-review close rule) and eleven dropped clauses restored; themes back to ~80 words; node_modules rule corrected (permanent lanes junctioned, scratch worktrees NODE_PATH); LANES.md notes the lanes carry the guard only after their next merge of develop. Guard rewritten: quote-aware splitting incl. lone `&`, prefix strippers (`&`, env, command, time, nohup), recursion into `bash -c` / `powershell -Command` / `cmd /c` / `$(...)`, `gh api .../pulls/N/merge`, develop-moving `fetch :develop` / `branch -f` / `update-ref` / `checkout -B` / `switch -C`, lane push denied by refspec destination or by the tree branch, `git reset HEAD <file>` and `/c/` paths pass. `${CLAUDE_PROJECT_DIR}` is documented for shell-form hooks but not confirmable in-session (empty in the tool env; hooks snapshot at start) — hook commands left relative.
+- Gates: `run_doc_budget`, `run_hardrules` (baseline re-measured after the quote move),
+  `run_session_labels`, `run_release` — results in the commit message.
+
+## Session log — 2026-10-14-develop-a (SI restarts by itself after its reset — the re-arm law, not tick ordering)
+
+**Filed claim (INHERITED, `inbox/670_redesign/si_relatch.md`):** after SI is reset and stopped, injection restarts by itself as containment pressure falls back through ~3.82 psig. The suspected cause was one-tick ordering: the re-arm block clears on the live signal while the delayed trip signal still asserts.
+
+**The ordering hypothesis is REFUTED, and the symptom is CONFIRMED.**
+- `si_live` IS the delayed `tripping` signal (`pwr2_protection.js`, `pr.si_live = !!anyEsfas`). The live signal and the latch cannot disagree inside one step.
+- The real defect is the re-arm law. The block cleared whenever `si_live` dropped, and the 2.0 s continuous hold resets on ONE sample under the setpoint. The containment instrument's sigma is 0.001 MPa (0.145 psi). So on a falling pressure still above 3.5 psig, a single noise dip cleared the block, and 2.0 s later the still-standing signal re-latched SI.
+- MEASURED in a protection-only fixture (rise to 6 psig, reset at 120 s, fall at 0.006 psi/s, 5 seeds): the block cleared at true containment pressure 3.83–3.99 psig and SI re-latched 2.0 s later. With sigma 0 the block cleared at exactly 3.500 psig and nothing re-latched.
+
+**Source:** WTSM 12.3.2.3 (ML11223A310), the text after the manual-SI paragraph:
+> "After the control room operator resets the SI actuation, all automatic SI actuation signals are disabled until the control room operator manually initiates an SI actuation or until the reactor trip input to the reset circuit (permissive P-4) is cleared by closing the reactor trip breakers. Before closing the reactor trip breakers, the operator should ensure that all SI actuation signals have cleared. Otherwise, when the control room operator closes the reactor trip breakers and removes the reset signal, the actuation sequence restarts."
+
+The #512 build (PWR2_VALIDATION §81) quoted the first half and chose "a recovered plant re-arms". That clear condition was an agent's choice, with no owner ruling behind it.
+
+**Fix:** one line. The SI block clears on `!pr.reactor_trip` (P-4 cleared by the RPS reset). Manual SI is still unmodeled. AFW, feedwater isolation and containment spray keep the live-signal re-arm. Their flicker has the same shape, but none of them is in this source paragraph, so they were not changed.
+
+**Gates:**
+- `run_pwr2_protection` 160 → 163. The new SI RESET group:
+  - a one-sample dip does not re-arm;
+  - a clearing signal followed by another channel does not actuate while P-4 stands;
+  - after P-4 clears, a fresh containment assertion latches with cause `si_hi_ctmt_press`.
+- Mutations 88/88. The old law reddens 2 checks; "never re-arms" reddens 1.
+- `run_pwr2_shell` 205/205 after ONE rewritten check. "...and it STAYS reset" held only because the block survived an RPS reset while `si_lo_pzr_press` still stood on a large break. The source says the sequence restarts, and it now does: `si_live` true, SI re-latched, re-trip cause `safety_injection`. The check read reactor_trip false on the old law, so the new form is red there. The #800 refusal-while-latched check is unchanged.
+- `run_pwr2_board` 110 → 111. "NOT A WEDGE" was the same stale shape, so it is split into two checks: the RPS reset is still ACCEPTED, and then the standing `si_lo_pzr_press` restarts SI, which re-trips. A third check was tried and dropped: block the SI signal too, then reset. It cannot pass, because containment SI is unblockable and still stands on that break. The way out there is the plant recovering, not a button.
+- `run_checklist_pwr2` still 254/2. That is the tracked #588 red on TMI steps 10 and 11, unchanged.
+- Green: `run_pwr2_*` (all), `run_checklist_pwr2_b`, `run_walkthrough_routes` A/B/C, `verify_tmi_callout`, `run_procedures_stack`, `run_procedures_chain`, `run_checklist`, `run_meltdown_stack`, `run_reachability`.
+
+**TMI-2 walkthrough, literal typical route** (live checklist; Continue 3 s after it lights; refused commands retried every 15 s; seed 42; scratch driver; same route on the old and new tree):
+- Step 9 done at 55.7 min: 836 psia, inventory 23.6 %, subcooling −52 °F.
+- Step 10 done at 59.8 min, block valve closed: 849 psia (834 psig, above 750). Tailpipe cooled. It passes WITHOUT any SI restart, on both trees.
+- Step 11: START at 59.9 min. Pressure 1,021–1,038 psia for 80 min, inventory 23.6 → 106 %. Done at 156.5 min.
+- Step 12 done at 156.8 min. Complete.
+- Old tree: SI re-latched at 139.9 min at 3.98 psig containment (cause `si_hi_ctmt_press`). HHSI was already running from the step-11 START, so nothing visible changed. New tree: no re-latch. Step timings are identical.
+- The filed "step 10 passes on the restart" and the T+05:27 never-press-OFF restart were NOT reproduced on this route.
+
 ## Session log — 2026-10-02-develop-a (#818 package B: manual + site copy pass; the plant changes of package D recorded)
 
 All numbers MEASURED on `68b73e31`, `node test/measure_stack.js --plant=pwr2`, full stack, `hot_full_power`, 10 plant-minutes settled unless noted.

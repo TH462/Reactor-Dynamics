@@ -261,7 +261,9 @@ function runSuite(rec, quiet, only) {
     head('0 -- PRECONDITIONS (without these the differential below is vacuous)');
     var probe = new RD.pwr2.shell.PWR2Engine({ initial_state: 'hot_full_power' });
     var cfg = probe.getProtectionConfig();
-    var menu = Object.keys(cfg.failures);
+    /* the MENU, not the table: a `scripted_only` row (the TMI-2 polisher, 2026-10-10) is in
+     * the table for the walkthrough and skipped by getFailureCatalog */
+    var menu = Object.keys(cfg.failures).filter(function (id) { return !cfg.failures[id].scripted_only; });
     ck('pre-menu-size', 'the shipped casualty menu is 22 rows', menu.length === 22,
        menu.length + ' rows');
     /* THE ROW THAT MAKES THE DIFFERENTIAL MEAN ANYTHING. If the retired table ever stops

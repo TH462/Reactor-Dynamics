@@ -1094,6 +1094,37 @@ function runSuite(P, rec, quiet) {
   ckT('UNLATCHED: Tavg back above the setpoint clears the signal (WTSM 12.2 P-4 seals in SI/P-14 only)',
       rT.fwi_lo_tavg === false, '');
 
+  /* ---- THE SI RESET HOLDS UNTIL P-4 CLEARS (2026-10-14) -------------------------------------
+   * [sourced — WTSM 12.3.2.3, ML11223A310]: after the reset "all automatic SI actuation signals
+   * are disabled until ... the reactor trip input to the reset circuit (permissive P-4) is
+   * cleared by closing the reactor trip breakers." The defect: the block cleared when the
+   * DELAYED signal dropped, so ONE sample under the setpoint (a noise dip on a containment
+   * pressure still above it) re-armed it and SI re-latched 2.0 s later. The reset below is
+   * written exactly as pwr2_engine's `reset_si` door writes it. */
+  head('SI RESET  [disabled until P-4 clears — a flickering signal does not re-arm it]');
+  var ctHi = P.CTMT_ESF.si_mpa + 0.002, ctLo = P.CTMT_ESF.si_mpa - 0.0005;
+  var pSR = atPower();
+  ride(pSR, withReading('containment_pressure_mpa', ctHi), 5);
+  var srLatched = pSR.si === true && pSR.reactor_trip === true;
+  pSR.si = false; pSR.si_cause = null; pSR.si_rearm_block = true;        /* the reset door */
+  P.stepProtection(pSR, DT, withReading('containment_pressure_mpa', ctLo)); /* one dip */
+  var rSR = ride(pSR, withReading('containment_pressure_mpa', ctHi), 10);
+  ckT('after an SI reset, a ONE-SAMPLE dip under the setpoint on a signal still above it does ' +
+      'NOT re-actuate SI (10 s back above, reactor still tripped)',
+      srLatched && rSR.si === false && pSR.si_rearm_block === true,
+      'latched ' + srLatched + ', si ' + rSR.si + ', block ' + pSR.si_rearm_block);
+  ride(pSR, withReading('containment_pressure_mpa', ctLo), 10);
+  var rSR2 = ride(pSR, withReading('pressure_mpa', 11.0), 10);
+  ckT('...nor does a signal that CLEARS and a different channel that then asserts — "all ' +
+      'automatic SI actuation signals are disabled" while P-4 stands',
+      rSR2.si === false && pSR.si_rearm_block === true, 'si ' + rSR2.si);
+  pSR.reactor_trip = false; pSR.trip_cause = null;      /* RPS reset: the breakers close, P-4 clears */
+  ride(pSR, healthy(), 1);
+  var rSR3 = ride(pSR, withReading('containment_pressure_mpa', ctHi), 5);
+  ckT('...and once P-4 clears, a FRESH containment assertion actuates SI again (re-armed)',
+      pSR.si_rearm_block === false && rSR3.si === true && rSR3.si_cause === 'si_hi_ctmt_press',
+      'block ' + pSR.si_rearm_block + ', si ' + rSR3.si + ' (' + rSR3.si_cause + ')');
+
   /* ---- REFUSALS ---------------------------------------------------------------------------- */
   head('REFUSALS  [this layer will not report a plant un-tripped on a reading it never had]');
   ['pressure_mpa', 'power_frac', 'flow_frac'].forEach(function (k) {
@@ -1365,7 +1396,13 @@ var MUTATIONS = [
    "    if (drivers.main_feed_lost && !pr.afas_mdafw && !pr.afas_rearm_block) {\n      pr.afas_mdafw = true; pr.afas_mdafw_cause = 'loss_of_main_feed';\n    }",
    ''],
   ['reset leaves the fwi latch standing',
-   '    pr.fwi = false;', '']
+   '    pr.fwi = false;', ''],
+  /* 2026-10-14: the SI re-arm law */
+  ['the SI re-arm clears on the DELAYED live signal again (the noise-dip re-actuation)',
+   '    if (!pr.reactor_trip) pr.si_rearm_block = false;',
+   '    if (!pr.si_live) pr.si_rearm_block = false;'],
+  ['the SI re-arm never clears (a reset disables automatic SI for ever)',
+   '    if (!pr.reactor_trip) pr.si_rearm_block = false;', '']
 ];
 
 /* ---- THE CLEAN-RUN GUARD ---------------------------------------------------------------- */

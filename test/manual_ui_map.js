@@ -105,12 +105,15 @@ var STEP_UI = {
    * verify_manual_follow still walks the pwr profile only — these rows are the STATIC
    * gate's coverage, not the browser gate's. */
   'pwr2:pwr_heatup': [
-    { i: 1, view: 'board', control: 'RCP ON/OFF' },
-    { i: 2, view: 'board', control: 'Shutdown Bank' },
-    { i: 3, view: 'board', control: 'Turbine Load' },
+    /* #823 (2026-11-02): steps 1 and 2 folded into one (the cold-state checks became rows of the pump
+     * start), so every row below moved down by one: RCP ON/OFF is i:0 now. The i: numbers quoted in the
+     * dated notes below are the 17-step layout. */
+    { i: 0, view: 'board', control: 'RCP ON/OFF' },
+    { i: 1, view: 'board', control: 'Shutdown Bank' },
+    { i: 2, view: 'board', control: 'Turbine Load' },
     /* i:4 RENAMED IN PLACE (#808, 2026-09-27): Mode 3 now runs on aux feed, so the step presses
      * AUX FEED WATER AUTO and its pill reads AFW. Nothing shifts. */
-    { i: 4, view: 'board', control: 'AFW' },
+    { i: 3, view: 'board', control: 'AFW' },
     /* i:5 (Dump SP) DELETED, not renumbered (#608 item 1, 2026-09-02): that step became an
      * observation — it commanded the setpoint the Mode 5 initial condition already boots at, and
      * the setpoint is inert in this mode anyway. An obs step carries no `control`, so it owns no
@@ -134,18 +137,18 @@ var STEP_UI = {
      * reported *pill "Steam Dump" != STEP_UI "Pressure SP"* at step 13 plus one unmapped tail
      * step at 14, which is the INSERTION signature run_all.js's note describes. RENUMBER, DO NOT
      * RE-DERIVE. */
-    { i: 6, view: 'board', control: 'Letdown Orifices (CVCS)' },
+    { i: 5, view: 'board', control: 'Letdown Orifices (CVCS)' },
     /* i:7 and i:8 RENAMED IN PLACE, not inserted or deleted (#755 item 11, 2026-09-15). The one
      * "place pressure control in service" step became two — i:7 presses SPRAY, i:8 presses
      * HEATER — and the SET PZR PRESSURE dial step is retired, so 'Pressure SP' leaves i:8 while
      * the step COUNT is unchanged and every row below stays where it is. This is the one edit
      * shape the four cascade notes above do NOT warn about: nothing shifts, so do not renumber.
      * The gate names both halves if you get it wrong ("pill X != STEP_UI Y" on 7 and 8). */
-    { i: 7, view: 'board', control: 'Pressurizer Spray (PZR)' },
-    { i: 8, view: 'board', control: 'Pressurizer Heaters (PZR)' },
-    { i: 9, view: 'board', control: 'Accumulator valve' },
-    { i: 12, view: 'board', control: 'Steam Dump' },
-    { i: 13, view: 'board', control: 'Pressure SP' },
+    { i: 6, view: 'board', control: 'Pressurizer Spray (PZR)' },
+    { i: 7, view: 'board', control: 'Pressurizer Heaters (PZR)' },
+    { i: 8, view: 'board', control: 'Accumulator valve' },
+    { i: 11, view: 'board', control: 'Steam Dump' },
+    { i: 12, view: 'board', control: 'Pressure SP' },
   ],
   /* #750 (2026-09-14) DELETED the 2.0e4 1/M plot step, which sat at i:8, so every row below it
    * shifts UP by one and its own row goes with it — the second time this map has shrunk (see the
@@ -205,13 +208,14 @@ var STEP_UI = {
    * index shifted by one. This table is `verify_manual_follow`'s COVERAGE LIST and it iterates
    * the table, not the pool: an entry left behind does not merely go stale, it silently moves
    * the gate's attention onto a step it was never written for. */
+  /* #825 (2026-11-03): the rod trim is 2b of the load-drop step again (owner: "is step 3 redundant"), so its row went and
+   * the three below it were RENUMBERED by hand, -1 each: 3->2, 4->3, 5->4. */
   'pwr2:pwr_lower_power': [
     { i: 0, view: 'board', control: 'Boron control' },
     { i: 1, view: 'board', control: 'Turbine Load' },
-    { i: 2, view: 'board', control: 'Rod Speed' },      // #736 — the rod trim, split off from the load drop
+    { i: 2, view: 'board', control: 'Turbine Load' },
     { i: 3, view: 'board', control: 'Turbine Load' },
     { i: 4, view: 'board', control: 'Turbine Load' },
-    { i: 5, view: 'board', control: 'Turbine Load' },
   ],
   'pwr2:pwr_shutdown': [
     { i: 0, view: 'board', control: 'Turbine Load' },
@@ -259,15 +263,18 @@ var STEP_UI = {
    * its TWENTY steps carry a `control`; the rest are narration and verification and own no row.
    * ROWS MOVED +4 (#693, 2026-09-11): step 2 -- the lump that injected four failures in one
    * broadcast -- became FIVE narrated steps, so every index from 1 upward shifted by four. The
-   * rows were MOVED, not re-derived, and none of the five new steps carries a `control`. */
+   * rows were MOVED, not re-derived, and none of the five new steps carries a `control`.
+   * ROWS MOVED AGAIN (#670 redesign, OWNER RULING 2026-10-14): twenty steps became TWELVE (old
+   * 1-3 -> 1, 4/7/8/16/17 folded or cut, 12+13 -> 7), so the seven control rows moved to 4,5,7-11.
+   * Moved, not re-derived: the same seven controls in the same order. */
   'pwr2:pwr_tmi2_incident': [
-    { i: 9, view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
-    { i: 10, view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
-    { i: 13, view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
-    { i: 14, view: 'board', control: 'RCP ON/OFF' },        // 05:13:37 — secure the pumps
-    { i: 17, view: 'board', control: 'PORV Block Valve' },  // 06:18:37 — the first correct move
-    { i: 18, view: 'board', control: 'ECCS' },              // 07:20:37 — injection restored
-    { i: 19, view: 'board', control: 'RCP ON/OFF' },        // 19:50:37 — the epilogue restart
+    { i: 4,  view: 'board', control: 'Trip Blocks' },        // 04:03:50 — bypass the SI signal
+    { i: 5,  view: 'board', control: 'ECCS' },               // 04:05:07 — throttle injection
+    { i: 7,  view: 'board', control: 'AFW' },                // 04:08:37 — the found block valves
+    { i: 8,  view: 'board', control: 'RCP ON/OFF' },         // 05:13:37 — secure the pumps
+    { i: 9,  view: 'board', control: 'PORV Block Valve' },   // 06:18:37 — the first correct move
+    { i: 10, view: 'board', control: 'ECCS' },               // 07:20:37 — injection restored
+    { i: 11, view: 'board', control: 'RCP ON/OFF' },         // 19:50:37 — the epilogue restart
   ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },

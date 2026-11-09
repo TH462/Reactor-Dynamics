@@ -320,12 +320,13 @@ var discovered = fs.readdirSync(__dirname)
   .filter(function (f) { return /^(run|verify)_.*\.js$/.test(f) && f !== 'run_all.js'; })
   .sort();
 
-var seen = Object.create(null), dupes = [], sizes = [];
+var seen = Object.create(null), dupes = [], sizes = [], shardMembers = [];
 if (N >= 2) {
   for (var s = 1; s <= N; s++) {
     var res = runAll(['--shard=' + s + '/' + N, '--list']);
     var mem = membersOf(res.out);
     sizes.push(mem.length);
+    shardMembers.push(mem);
     check('SHARDS', 'shard ' + s + '/' + N, 'run_all --shard=' + s + '/' + N + ' --list exits ' +
       res.code + ', lists ' + mem.length + ' runners',
       res.code === 0 && mem.length > 0
@@ -344,6 +345,22 @@ if (N >= 2) {
   check('SHARDS', WF_REL, 'the ' + N + ' shards are DISJOINT' +
     (dupes.length ? ' — in two shards: ' + dupes.join(', ') : ''),
     !dupes.length ? 'no runner is paid for twice' : null);
+  // CO-LOCATION (2026-10-15, CI run 38685630351): the walkthrough-routes parts each fork 8 children on a
+  // 4-core runner; two in one shard timed it out (warp_tier 402 -> 1201 s). run_all's `lanes` weight must keep
+  // them apart. Pure function so the check can be proved red on a bad fixture below.
+  var parallelRunners = discovered.filter(function (f) { return /^run_walkthrough_routes/.test(f); });
+  global.__colocated = function (lists) {
+    return lists.map(function (m, i) {
+      var n = m.filter(function (f) { return parallelRunners.indexOf(f) >= 0; });
+      return n.length > 1 ? 'shard ' + (i + 1) + ': ' + n.join('+') : null;
+    }).filter(Boolean);
+  };
+  var colo = global.__colocated(shardMembers);
+  check('SHARDS', WF_REL, 'no two multi-process runners (' + parallelRunners.length + ' walkthrough-routes parts) share a shard' +
+    (colo.length ? ' - ' + colo.join('; ') : ''),
+    !colo.length || N < parallelRunners.length ? 'the lanes weight spreads the 8-way forkers' : null);
+  check('SHARDS', 'injection', 'the co-location check reddens on a fixture with two forkers in one shard',
+    global.__colocated([parallelRunners.slice(0, 2), []]).length === 1 ? 'the check can fail' : null);
   check('SHARDS', WF_REL, 'shard sizes ' + sizes.join('/') + ' sum to ' +
     sizes.reduce(function (a, b) { return a + b; }, 0),
     sizes.reduce(function (a, b) { return a + b; }, 0) === discovered.length

@@ -1167,6 +1167,9 @@
         EN.command(e, 'break_open', { area_m2: Math.max(1e-6, sevT * 4.33e-4),
                                       node: 'sg_primary' });
       }
+      /* INDICATOR ONLY (owner ruling 2026-10-10, pwr_control.js): no polisher model, so the
+       * engine has nothing to break. The board reads the control layer's active_failures. */
+      else if (c.failure_id === 'condensate_polisher_trip') { /* accepted; no plant effect */ }
       else throw new Error('pwr2_shell: failure "' + c.failure_id + '" REFUSED — not in ' +
         'PWR2\'s failure set yet (PORV stick, primary leak, instrument failures exist)');
     },
@@ -1620,7 +1623,9 @@
                       'anticipatory_trip_failure',   /* #515: the P-9 channel failed */
                       'stuck_open_spray', 'continuous_rod_withdrawal',
                       'tavg_sensor_failure', 'porv_indicator_stuck_closed',
-                      'pzr_level_sensor_stuck', 'pzr_level_sensor_low'], out = {};
+                      'pzr_level_sensor_stuck', 'pzr_level_sensor_low',
+                      /* indicator-only, scripted, not a menu row (getFailureCatalog skips it) */
+                      'condensate_polisher_trip'], out = {};
           /* THE INTERCEPTION IS THE RETIRED PLANT'S, AND IT IS STRIPPED (#546/#547, the
            * #534 systemic pattern). Seven kept rows are `command_override` — a mechanism
            * that has the KERNEL drop or rewrite the operator's command before it reaches
@@ -2267,7 +2272,11 @@
       /* flow_pct is what the board's pump animation SPINS on (pumpProps speed) — without it
        * the driver computed NaN and the RCP impeller froze with its pipe ports dark
        * (#506.5, measured). pump_flow_pct is the true-state's own loop-flow fraction. */
+      /* speed_pct is the ROTOR's own speed (omega / rated, the inertia coastdown in pwr2_sources), what the pump art spins on
+       * (#825). flow_pct is TOTAL loop flow and never reaches zero (natural circulation: 3.9 % in cold shutdown with the pump
+       * off), so an animation driven by it kept turning a stopped pump. */
       pumps: [{ id: 'rcp', running: !e.sys.pumpTripped,
+                speed_pct: (e.sys.omega !== undefined && RD.sources.PUMP.w_rated) ? 100 * e.sys.omega / RD.sources.PUMP.w_rated : undefined,
                 flow_pct: ts.pump_flow_pct !== undefined ? ts.pump_flow_pct
                           : (e.sys.pumpTripped ? 0 : 100) }]
     };
@@ -2424,6 +2433,13 @@
         /* the wave-6 failure levers (#507) — old saves land on the healthy defaults;
          * aw.blocked and the pzDrivers seats ride their own saved objects */
         scramBlocked: e.scramBlocked, runaway: e.runaway,
+        /* THE P-9 DEFEAT (#515) WAS NOT SAVED (TMI-2 layman pass 4 review, 2026-10-15): the
+         * `anticipatory_trip_failure` lever lives only here, so a Rewind into TMI-2 step 2 came
+         * back with the Failures tab still listing it and the plant without it — the reactor
+         * tripped WITH the turbine, pressure never reached the PORV, the stuck-open latch stayed
+         * armed and STEAM GENERATOR LEVEL climbed 60.8 -> 69 % instead of falling below 55 %, so
+         * Continue never lit. An old save lands on undefined: the healthy channel, as before. */
+        p9Defeated: e.p9Defeated,
         /* THE CASUALTY SEATS THAT READ NOTHING ELSE (#551, #671 — added on the #671 quality
          * pass, 2026-09-18; joined by `_lofwInjected` on #785 and `_afwFailureInjected` on #787,
          * both 2026-09-18). Every other row in `engineActiveFailures` is derived from plant

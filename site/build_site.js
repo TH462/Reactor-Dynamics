@@ -42,7 +42,14 @@ const PAGES = ['index.html', 'about.html', 'physics.html', 'roadmap.html',
                // which is why one never existed here. An ordinary page, listed with the
                // rest so test/run_site_meta.js and this file agree on what the site is.
                '404.html'];
-const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios'];
+const DIRS = ['site', 'ui', 'engines', 'layers', 'scenarios', 'lab'];
+
+/* App pages: served and link-checked like ui/shell.html, but NOT content destinations. So they
+ * are not in PAGES: not in the sitemap, not extensionless-rewritten (they carry no .html links),
+ * and not cache-busted (lab/ asset names are already content-hashed, so a new build is a new
+ * URL). lab/ is the Fission Sandbox, a separately built bundle copied as-is from Project_Gadget;
+ * it uses relative ./assets/ so it must be served at /lab/ (see the _redirects line below). */
+const APP_PAGES = ['lab/index.html'];
 
 /* Root pages that deliberately DO NOT ship. Declared here rather than inferred, because
  * this file is now the only statement of what the site is: `.vercelignore` used to name
@@ -248,6 +255,7 @@ function checkHtml(rel) {
 }
 ALL_PAGES.forEach(checkHtml);
 checkHtml('ui/shell.html');
+APP_PAGES.forEach(checkHtml);
 
 /* ------------------------------------------------ EXTENSIONLESS URLS, OUTPUT ONLY
  * Cloudflare Pages redirects `/about.html` to `/about` and there is NO WAY TO TURN THAT
@@ -366,7 +374,10 @@ ALL_PAGES.forEach(bustAssets);
 bustAssets('ui/shell.html');
 
 // /sim must land on the FINAL url, not one that redirects again.
-fs.writeFileSync(path.join(OUT, '_redirects'), '/sim  /ui/shell?engine=pwr2  302\n');
+fs.writeFileSync(path.join(OUT, '_redirects'),
+  '/sim  /ui/shell?engine=pwr2  302\n' +
+  // lab/index.html loads ./assets/..., which only resolves from the trailing-slash url
+  '/lab  /lab/  301\n');
 
 // THE VERSION STAMPS MUST NOT BE CACHED FOR FOUR HOURS. Cloudflare Pages defaults static
 // assets to `max-age=14400`, which is fine for engine code — it is immutable per deploy and

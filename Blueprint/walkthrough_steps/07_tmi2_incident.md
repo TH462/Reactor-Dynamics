@@ -292,10 +292,10 @@ Press OFF on the reactor coolant pumps to secure them.
 - **Knew:** "Further operation could cause severe damage." The pumps had been running without suction head for an hour.
 - **Did:** They stopped the loop B pumps, and the loop A pumps 28 minutes later.
 
-Control: RCP ON/OFF  ·  Target: the pump cavitation alarm clears
+Control: RCP ON/OFF  ·  Target: after OFF, the pump cavitation alarm clears
 
 15a. SUBCOOLING MARGIN pegged on the bottom of its scale at -50 °F
-15b. the pump cavitation alarm clears
+15b. after OFF: the pump cavitation alarm clears
 
 Note: One handswitch here for all the pumps. The crew stopped the loop B pumps at 1 hour 13 minutes and the loop A pumps 28 minutes later.
 

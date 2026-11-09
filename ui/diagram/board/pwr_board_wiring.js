@@ -149,11 +149,13 @@
   function dQ(gpm) { return fmtFam('flow', gpm); }           // flow, gpm in
   // The unit string for a family in the active mode. In US the AUTHORED string wins, so
   // this can never overwrite the board's own spelling — and switching back restores it.
+  /* `F`, `C`, `F/hr`, `C/hr` -> with the degree sign; every other unit (%, psi, gpm, ...) untouched. */
+  function degU(u) { return (typeof u === 'string' && /^[FC](\/hr)?$/.test(u)) ? '°' + u : u; }
   function uStr(name, authored) {
     var f = UNIT_FAMILIES[name];
     if (!f) return authored == null ? '' : authored;
-    if (U() === 'SI') return f.SI.u;
-    return authored == null ? f.US.u : authored;
+    if (U() === 'SI') return degU(f.SI.u);
+    return degU(authored == null ? f.US.u : authored);
   }
 
   // Which family each converting indication belongs to. Items absent from this map are
@@ -677,7 +679,7 @@
      * started here — it stays the casualty backup its own AFAS starts. */
     imrmssr9ihq: { press: function () { cmd({ action: 'set_afw', active: true, pump: 'mdafw' }); cmd({ action: 'set_esf_auto', system: 'afw', auto: true }); }, active: function (s) { return esfAuto(s, 'afw'); } },
     // --- Charging panel: AUTO / MAN / OFF (this panel is the charging pump's control;
-    //     OFF stops the charging pump, AUTO/MAN run it in auto make-up / manual charging) ---
+    //     OFF stops the charging pump, AUTO/MANUAL run it in auto make-up / manual charging) ---
     imrmtg3r8ez: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: true }); }, active: function (s) { return CS(s).charging_pump_running && CS(s).cvcs_auto; } },
     imrprbi6ui1: { press: function () { cmd({ action: 'set_charging_pump', running: true }); cmd({ action: 'set_cvcs_auto', active: false }); }, active: function (s) { return CS(s).charging_pump_running && !CS(s).cvcs_auto; } },
     imrqn630s3b: { press: function () { cmd({ action: 'set_charging_pump', running: false }); }, active: function (s) { return !CS(s).charging_pump_running; } },
@@ -685,7 +687,7 @@
     // rendered art-only so these are its controls — not a redundant built-in toggle).
     imrsjy1m9g: { press: function () { cmd({ action: 'set_rcp', running: true }); }, active: function (s) { return IN(s).rcp_running; } },
     imrsjy59pnu: { press: function () { cmd({ action: 'set_rcp', running: false }); }, active: function (s) { return !IN(s).rcp_running; } },
-    // --- Letdown orifices: CLOSED / A 3% / B 4% / A+B 7% ---
+    // --- Letdown orifices: CLOSE / A 3% / B 4% / A+B 7% ---
     /* THE LINEUP LAMPS READ THE VALVES, NOT THE SELECTION (#624 / #619 item 24, 2026-09-04).
      * `control_state.letdown_isolated` — the 17 % low-level protective cut, which shuts the
      * letdown path and sheds the heaters — had ZERO consumers anywhere in `ui/`. So while the
@@ -1039,9 +1041,9 @@
       left: 660, top: 415, width: 120, height: 50,
       bg: '#0b1119', border: '#25333e', radius: 8, title: '', fontSize: 10, ports: [], stick: false },
     { id: 'bdAdvAuto', kind: 'button', name: 'ADV auto  ·  sim: set_adv mode:auto',
-      left: 1351, top: 458, label: 'AUTO', width: 44, height: 22, color: '#5aad7c', fontSize: 11 },
+      left: 1351, top: 458, label: 'AUTO', width: 40, height: 22, color: '#5aad7c', fontSize: 11 },
     { id: 'bdAdvClose', kind: 'button', name: 'ADV shut  ·  sim: set_adv mode:closed',
-      left: 1398, top: 458, label: 'SHUT', width: 44, height: 22, color: '#ffd166', fontSize: 11 },
+      left: 1394, top: 458, label: 'CLOSE', width: 48, height: 22, color: '#ffd166', fontSize: 11 },
     { id: 'bdAdvSp', kind: 'number', name: 'ADV SET POINT  ·  sim: set_adv_setpoint',
       // No `unit` on the tile: the derived range hint above the box already names it
       // ("29-1350 psi" / "0.2-9.31 MPa"), and in 90 px of card the suffix cost the
@@ -1136,7 +1138,7 @@
      * Tavg program, HR1). */
     { id: 'bdTrefDev', kind: 'value',
       name: 'Tavg minus Tref — indicated average temperature against its program  ·  sim: in.tavg_tref_dev, °C in',
-      left: 520, top: 200, value: '—', unit: 'F', color: '#9fb3c4', fontSize: 11, rAnchor: true },
+      left: 520, top: 200, value: '—', unit: '°F', color: '#9fb3c4', fontSize: 11, rAnchor: true },
     { id: 'bdDtMargin', kind: 'value',
       name: 'Core ΔT margin to the nearer of the OTΔT / OPΔT trip lines  ·  sim: in.otdt_margin / in.opdt_margin, % of rated ΔT',
       // top 234, NOT the 243 copied from bdRodStatus. MEASURED: at 243 the rendered box runs a
@@ -1365,7 +1367,10 @@
     // PORV position light — the COMMANDED state, not the disc. This is the TMI-2 lie: it
     // reads CLOSED while a stuck valve keeps venting, and the tailpipe temperature below is
     // the only honest tell. The schematic PORV shows true disc position; this does not.
-    ims2jf7fv7m: function (s) { return String(IN(s).porv_indicator || 'closed').toUpperCase(); },
+    ims2jf7fv7m: function (s) {   // OPEN reads yellow (#825, owner 2026-11-03), CLOSED keeps the authored green
+      var t = String(IN(s).porv_indicator || 'closed').toUpperCase();
+      return { text: t, color: t === 'OPEN' ? BD_WARN : BD_OK };   // CLOSED must return to the authored green (TMI-2: closed looks normal)
+    },
     // PZR temperature + live heater power (EXTRA_ITEMS pair, #237). Heater reads the
     // engine's ACTUAL output (heater_power_frac) — under AUTO this is the proportional
     // controller's live demand, which the panel's editable % box shows greyed.
@@ -1609,7 +1614,18 @@
     // Condensate polisher: there is no polisher model, so this cannot report resin condition.
     // It reports the one thing that IS modeled — whether condensate is flowing through it —
     // instead of the hard-coded 'NORMAL' it displayed until 2026-07-25.
-    imrqrouhrdr: function (s) { return IN(s).condensate_pump_running ? 'IN SERVICE' : 'STANDBY'; },
+    // FAILED is the TMI-2 walkthrough's scripted polisher failure (owner ruling 2026-10-10,
+    // `condensate_polisher_trip` in pwr_control.js) — indicator only, read off the control
+    // layer's active failures because no engine field exists to carry it.
+    imrqrouhrdr: function (s) {
+      var af = (s && s.active_failures) || [];
+      for (var i = 0; i < af.length; i++) {
+        if (af[i].id === 'condensate_polisher_trip') return { text: 'FAILED', color: BD_WARN };
+      }
+      // an OBJECT on every path: a bare string leaves the last colour standing, so the
+      // amber would outlive a cleared failure. BD_OK is the item's authored green.
+      return { text: IN(s).condensate_pump_running ? 'IN SERVICE' : 'STANDBY', color: BD_OK };
+    },
     // Condenser vacuum, inHg. Two readouts on the V2 board: on the condenser itself, and
     // on the CONDENSER COOLING card next to the circulating-water temperature that drives
     // it — the pairing is the point, since vacuum is the variable that CW temperature moves.
@@ -1777,9 +1793,15 @@
         coreInv: (function () {
           var unc = t.core_uncovered_frac, hlv = t.primary_void_fraction;
           if (unc == null) return t.core_inventory_pct != null ? t.core_inventory_pct : 100;
-          var core = 50 * (1 - Math.max(0, Math.min(1, unc)));
-          var upper = 50 * (1 - Math.max(0, Math.min(1, hlv == null ? 0 : hlv)));
-          return core + upper;
+          /* ONE COLUMN, NOT A SUM (layman pass 2026-10-15, TMI-2 step 9). The component reads a
+           * single level split at 50, so `core + upper` let a full plenum lift an uncovering
+           * core back over its top: MEASURED, browser, TMI-2 step 9, core 37 % uncovered with
+           * the hot leg 70 % voided drew the core pool 93 % full (46.5), and 22 % uncovered drew
+           * it full. A core that is uncovered at all has its water BELOW its top, so the plenum
+           * is drained and the core half is the whole level. */
+          var uc = Math.max(0, Math.min(1, unc));
+          if (uc > 0) return 50 * (1 - uc);
+          return 50 + 50 * (1 - Math.max(0, Math.min(1, hlv == null ? 0 : hlv)));
         })(),
         boil: Math.min(100, Math.max(voidFrac * 400, (sub != null && sub < 0) ? -sub * 3 : 0)),
         // coolant water color = live leg temperatures (fuel/glow stay power-driven)
@@ -1906,7 +1928,15 @@
       return pumpProps(f > 1e-4 || rhr, f > 1e-4 ? f : (rhr ? 0.6 : 0), 50);
     },   // eccs pump (RWST — cold; also the RHR train)
     imrobph7xrq: function (s) { var f = IN(s).fw_flow || 0; return pumpProps(f > 1e-3, f, fwTemp(s)); },      // feed pump (feedwater — tracks load)
-    imrobpq4a70: function (s) { var p = pumpRec(s, 'rcp'); return pumpProps(IN(s).rcp_running, p ? p.flow_pct / 100 : 1, IN(s).tcold); },  // rcp (cold-leg coolant — live)
+    imrobpq4a70: function (s) {
+    var p = pumpRec(s, 'rcp');
+    /* THE ROTOR COASTS WITH THE PUMP, NOT WITH THE LOOP (#825, owner 2026-11-03: "the visual stops instantly but the number coasts").
+     * The art zeroes its speed when `running` is false, so a trip froze the rotor while RCP FLOW ran down. It is driven by the
+     * rotor's own speed (`speed_pct`, omega/rated, the inertia coastdown) and stays turning while that is above 2 %. NOT flow_pct:
+     * that is total loop flow and sits at ~4 % on natural circulation with the pump off, which spun a stopped pump. */
+    var sp = p && p.speed_pct != null ? p.speed_pct : (p ? p.flow_pct : 100);
+    return pumpProps(!!IN(s).rcp_running || sp > 2, sp / 100, IN(s).tcold);
+  },  // rcp (cold-leg coolant — live)
     // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so
     // the impeller keys on running-and-powered rather than on flow magnitude. `charging_flow`
     // is the powered evidence — it is zero on a dead bus and non-zero whenever the pump is
@@ -3798,6 +3828,7 @@
      * Subcooling Margin) and these are the same names. */
     'Pressurizer Level': 'ims2immon9z', 'Subcooling Margin': 'ims2immxl2s',
     'Steam Flow': 'ims3wm0d0bu', 'Feed Flow': 'imrsgkz4lq0',
+    'Polisher Status': 'imrqrouhrdr',   // the TMI-2 initiator's step (owner ruling 2026-10-10)
     /* TWO LABELS THE CHECKLISTS HAVE ALWAYS USED AND THIS MAP NEVER CARRIED (#598 item 14).
      * `revealControl` returns null for an unknown label and the step then glows NOTHING —
      * silently, because a null highlight looks exactly like a step that asked for none. Twelve
@@ -4428,6 +4459,11 @@
       pmsgu7y5cn4: { props: { phase: 'steam' } }
     },
     items: {
+      // BORON target box caption (#825, owner 2026-11-03: "I could not see the 0-2500 ppm at all. This is there so people know the
+      // bounds of the values."). MEASURED: it was drawn, unoccluded, but at 12 px x 0.605 board scale = 7 px of #6b8598 slate on near-black
+      // (1366x768) -- the same size and tone as the card titles, which read as chrome. Now 14 px, the BORON STATUS caption's #9fb3c4, bold.
+      // 10 chars at 14 px mono is ~88 px, inside the 95 px box and the 195 px card.
+      imrpq29jo7t: { props: { label: '0-2500 ppm', labelSize: 14, labelColor: '#9fb3c4', labelWeight: 600 } },
       // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
       // PORV outlet above it, so the drop leans instead of falling straight in.
       imrsi2svtgn: { ports: { ptmrsi3kjfr5: { off: 17 } } },
@@ -5480,7 +5516,14 @@
     // what used to be here and where each piece is authored now.
     extraItems: function () { return EXTRA_ITEMS; },
     // Absolute, idempotent geometry corrections to the generated doc — see DOC_PATCHES.
-    docPatches: function (doc) { applyDocPatches(doc); },
+    docPatches: function (doc) {
+      applyDocPatches(doc);
+      /* DEGREE SIGN ON BOARD TEMPERATURES (quick win 5, owner 2026-10-10): the board printed `581 F`
+       * while the chart and the manual say `581 °F`. The authored doc spells the unit `F`; one pass
+       * here rewrites it for every readout, number box and tile (the dynamic path goes through
+       * uStr, below). Nothing in the driver compares a unit string -- they are display only. */
+      (doc.items || []).forEach(function (it) { if (it && it.unit != null) it.unit = degU(it.unit); });
+    },
     // Live fluid temperature (°C) for a pipe id, or null to keep its authored temp.
     // Lets the renderer repaint pipe fluid color each snapshot (see PIPE_TEMP).
     pipeTemp: function (id, s) { var f = PIPE_TEMP[id]; return f ? f(s) : null; },

@@ -66,6 +66,10 @@
       pzr_level_pct: 'pzr_level', tavg_c: 'tavg', thot_c: 'thot', tcold_c: 'tcold',
       steam_pressure_mpa: 'steam_pressure', boron_ppm: 'boron_analyzer',
       startup_rate_dpm: 'startup_rate', pump_flow_pct: 'rcs_flow',
+      /* TAVG MINUS ITS PROGRAM (relations plan 2026-10-14, item a) — the board's own deviation
+       * instrument, so a threshold on it grades Tavg against Tref off what the operator reads
+       * (Hard Rule 1), not off true_state. */
+      tavg_tref_dev_c: 'tavg_tref_dev',
       mwe_output: 'mwe_output', fw_flow_normalized: 'fw_flow',
       /* PRESSURIZER SPRAY FLOW (#729, added 2026-09-13). `pwr_cooldown` grades the spray on
        * DELIVERED flow, not on the AUTO lamp — the leg puts the spray in MANUAL at 50 %, so no
@@ -231,11 +235,26 @@
 
   /* The two ops that need per-step state, and the ONE dispatcher both runtimes and the replay
    * harness route through. Adding a third bagged op means adding it here and nowhere else. */
-  var BAG_OPS = { steady: 1, stopped: 1 };
+  var BAG_OPS = { steady: 1, stopped: 1, moves: 1 };
   InstructorLayer.isBagOp = function (op) { return !!BAG_OPS[op]; };
+  InstructorLayer.ACC_STABLE_N = ACC_STABLE_N;
+  /* SAVE FORMAT, `accs_relief` (2026-10-15): per entry 0 = latched on its own grading (or unmet), 1 = by
+   * `implied_by`, 2 = by its row-level `overtaken`, 3 = ARMED but still blocked (not met); optional, absent on older
+   * saves (restores 0). An overtaken row restores ARMED, so a re-grade after the load keeps it standing down;
+   * code 3 keeps a save/rewind inside the fallen-back-below-the-arm stretch from stranding the row. */
+  function accsRelief(st) {
+    return st ? st.map(function (a) { return a.overtaken ? 2 : a.implied ? 1 : a.otArmed ? 3 : 0; }) : null;
+  }
+  function reliefState(m, rel, i) {
+    var r = (rel && rel[i]) | 0;
+    return { streak: 0, met: !!m, obs: null, graded_by: null, implied: !!m && r === 1,
+             overtaken: !!m && r === 2, otArmed: r === 3 || (!!m && r === 2), otStreak: 0 };
+  }   /* the row-level `overtaken` debounce, read by test/procedures_harness.js */
+  InstructorLayer.accsRelief = accsRelief; InstructorLayer.reliefState = reliefState;
   InstructorLayer.gradeBagged = function (bag, snapshot, pred) {
-    return (pred && pred.op === 'stopped') ? InstructorLayer.gradeStopped(bag, snapshot, pred)
-                                           : InstructorLayer.gradeSteady(bag, snapshot, pred);
+    if (pred && pred.op === 'stopped') return InstructorLayer.gradeStopped(bag, snapshot, pred);
+    if (pred && pred.op === 'moves') return InstructorLayer.gradeMoves(bag, snapshot, pred);
+    return InstructorLayer.gradeSteady(bag, snapshot, pred);
   };
 
   // #715 — a completion banner's `outcome` text is an AUTHORED plant-state claim
@@ -537,7 +556,31 @@
     // banner that no longer exists); anyone else's message is left alone.
     // #709 — the trip notice goes the same way: it names a panel that no longer exists.
     if (this.checklist && (this.checklist.precondMsg || this.checklist.scramMsg)) this.pendingMessage = null;
+    this._clearScriptedFailures();
     this.checklist = null;
+  };
+
+  /* A `scripted_only` failure (pwr_control.js — the TMI-2 polisher, owner ruling 2026-10-10) has
+   * no Failures-tab row, so nothing in free play could clear it: it goes when the walkthrough
+   * does. Plant failures the walkthrough injected stay — the plant is the plant. */
+  InstructorLayer.prototype._clearScriptedFailures = function () {
+    var L = this.below;
+    if (!L || !L.getActiveFailures || !L.config || !L.config.failures) return;
+    L.getActiveFailures().forEach(function (f) {
+      var d = L.config.failures[f.id];
+      if (d && d.scripted_only) L.handleCommand({ action: 'clear_failure', failure_id: f.id });
+    });
+  };
+
+  /* THE RESTORE BOUNDARY (quality pass on 89597600, 2026-10-10). A save, autosave or rewind
+   * checkpoint taken while a walkthrough held a `scripted_only` failure carries it in the control
+   * layer's own block, and that block restores whether or not a walkthrough comes back with it: an
+   * instructor block with no checklist (a `scope:'world'` rewind after Stop, a save whose
+   * procedure no longer resolves) handed free play a FAILED lamp with no row to clear it.
+   * Called by SimulationService._restore after the instructor is settled. Same ownership rule as
+   * Stop: no walkthrough running, no scripted failure. */
+  InstructorLayer.prototype.releaseOrphanScriptedFailures = function () {
+    if (!this.checklist) this._clearScriptedFailures();
   };
 
   // Manual tick — only the ACTIVE step can be checked (a checklist is sequential).
@@ -634,6 +677,8 @@
     } else if (en.op === 'steady' && ax.bag && (s = ax.bag.s) && s.length && t != null) {
       var W = (en.window > 0) ? en.window : STEADY_WINDOW_S;
       p = { k: 'steady', el: Math.min(W, t - s[0].t), need: W };
+    } else if (en.op === 'moves' && ax.bag && (s = ax.bag.s) && s.length && t != null) {
+      p = { k: 'moves', el: Math.min(en.window, t - s[0].t), need: en.window };
     } else if (en.mean_s > 0 && ax.bag && (s = ax.bag.s) && s.length && t != null) {
       p = { k: 'mean', el: Math.min(en.mean_s, t - s[0].t), need: en.mean_s };
       if (p.el >= en.mean_s && g && typeof g.value === 'number') p.mean = g.value;
@@ -647,6 +692,7 @@
 
   InstructorLayer.prototype.unload = function () {
     var reg = this.register;
+    if (this.checklist) this._clearScriptedFailures();
     this._clear();
     this.register = reg;
   };
@@ -829,6 +875,15 @@
     this.lastBeatFireTime = simTime;
     this._actionsSinceBeat = [];
     this._beatBaseline = {};
+    /* rod_travel's baseline is the bank AT THE FIRE, not at the first pass that evaluates it: under
+     * `pace: 'reading'` that pass is the whole reading hold later (15.8 s on o4_rods), and a player
+     * who acted on the ask's first line lost that travel — measured (#811 QA, 2026-10-09): 16 steps
+     * held in at +2..+15 s, power 89.3 %, never graded; +46 s "I'll drive the rods in 40 steps",
+     * 56 in, 79.9 %. The snapshot is this pass's (step() sets it), i.e. before the beat's commands. */
+    var bss = this._lastSnapshot && this._lastSnapshot.control_state && this._lastSnapshot.control_state.rod_groups;
+    for (var bi = 0; bss && bi < bss.length; bi++) {
+      if (bss[bi] && bss[bi].id != null && typeof bss[bi].steps === 'number') this._beatBaseline[bss[bi].id] = bss[bi].steps;
+    }
 
     // A rewind beat asks M5 to roll the WORLD back while the Instructor keeps its
     // progress (the "watch that again" device). It does not also checkpoint —
@@ -1015,8 +1070,11 @@
          * and does not run at all while a rod HOLD is in progress. Measured before it existed: a
          * player who began holding INSERT at 85-115 s into the rods ask got "I'll drive the rods
          * in 40 steps for you" and the clock to 5x at exactly +120.0 s, under their finger. */
+        /* NO_HOLD (#811, OWNER RULING 2026-10-09 "do 1,2" — help after ~30 s regardless of
+         * fiddling): `no_hold: true` keeps the hold guard WITHOUT the restart-on-every-command, so
+         * the window is plain time since the ask but still never ends under a held rod button. */
+        if ((trigger.quiet || trigger.no_hold) && this._holdActive(snapshot)) return false;
         if (trigger.quiet) {
-          if (this._holdActive(snapshot)) return false;
           if (this._lastActionTime !== null && (arm === null || this._lastActionTime > arm)) arm = this._lastActionTime;
         }
         return arm !== null && (simTime - arm) >= trigger.window;
@@ -1034,8 +1092,8 @@
       case 'scram':
         return !!((snapshot.rps_state && snapshot.rps_state.scrammed) ||
                   (snapshot.true_state && snapshot.true_state.scrammed));
-      case 'manual':          // the user clicked Continue (consumed per pass)
-        return this._continueRequested;
+      case 'manual':          // the user clicked Continue (consumed per pass); `button` names which (#811)
+        return trigger.button ? this._continueRequested === trigger.button : this._continueRequested === true;
       case 'all':
         for (i = 0; i < trigger.triggers.length; i++) {
           if (!this._evalTrigger(trigger.triggers[i], snapshot, simTime)) return false;
@@ -1285,7 +1343,16 @@
        * recovers, which is what `precondMsg` is for; a latch that never clears is the same
        * defect facing the other way. */
       var cklMoving = c.idx > 0;
-      if (anyUnmet && !c.precondMsg && !c.precondSaid && !cklMoving) {
+      /* SETTLED AT THE FIRST EVALUATION (TMI-2 layman pass 2026-10-14, S-5). A run whose plant met
+       * every row when it opened has answered the entry question, and the panel's banner is
+       * captured at that same moment (ui/app.js, #614) — so a row breaking LATER, still on step 1,
+       * raised "the walkthrough panel lists each one" over a panel listing none. MEASURED on
+       * pwr_tmi2_incident: REACTOR POWER above 90 % holds at open, then the leg's own step-1
+       * injections trip the reactor while step 1 is still active, and the comment fired on the
+       * script's own casualty. #732's flicker probe and the heal case both open UNMET, so both
+       * still raise once. */
+      if (c.precondEntryMet === undefined) c.precondEntryMet = !anyUnmet;
+      if (anyUnmet && !c.precondMsg && !c.precondSaid && !cklMoving && !c.precondEntryMet) {
         // One register-aware comment per unmet episode — the checklist banner
         // carries the row-by-row detail, this just points the operator at it.
         c.precondMsg = true;
@@ -1302,7 +1369,7 @@
     }
 
     /* CATCH-UP AT START (#607 item 7). Sequential grading of the first unchecked step
-     * traps a player who already did the early actions: heatup step 1 wants pumps
+     * traps a player who already did the early actions: heatup step 1 wanted pumps
      * secured, and a plant whose pumps are running can never satisfy the prose even
      * when later accs are already true. Walking BACKWARD from "a later acc is met"
      * would skip the whole heatup — the last confirms are `power_pct < 1`, true the
@@ -1442,7 +1509,11 @@
      * leaves; and never on a step already met, since `met` below returns first only when
      * both are true on the same tick, which is the tie the acceptance should win. */
     if (st.overtaken && st.overtaken.p) {
-      c.overtakenStreak = this._grade(snapshot, st.overtaken).met ? (c.overtakenStreak || 0) + 1 : 0;
+      /* `or: [{p, op, v}, …]` — a second CAUSE of the same overtake (TMI step 9: SUBCOOLING MARGIN
+       * cannot peg with injection on OR with the relief line already closed; quality pass 2026-10-14) */
+      var self0 = this, otMet = this._grade(snapshot, st.overtaken).met ||
+        (st.overtaken.or || []).some(function (q) { return self0._grade(snapshot, q).met; });
+      c.overtakenStreak = otMet ? (c.overtakenStreak || 0) + 1 : 0;
       if (c.overtakenStreak >= ACC_STABLE_N) {
         var otText = st.overtaken.text || 'The plant has moved past this step.';
         /* ⚠ CHECK OFF FIRST, THEN SPEAK (#749 item 4, 2026-09-18). `_checklistCheckOff` now
@@ -1543,6 +1614,15 @@
      * acknowledgement (#619 item 4). The overtaken path (#641) still advances by itself: it is
      * the plant moving past a step, not the player finishing one. */
     c.awaitingAck = !!met;
+    /* `pause_on_met` (TMI-2 layman pass 4, S-1): the RAPID watch beats hold the clock the tick
+     * their Continue lights, so the next beat's event cannot play out under this card (measured:
+     * TMI step 2 held lit 60 wall-s at 1x ran 47 plant-s, and step 4 opened already met). The same
+     * hold `pause` takes (#694), released the same ways; unlike `pause` the step grades normally,
+     * because it has to RUN to light Continue. Once per step (`c.paused` is cleared with it). */
+    if (met && st.pause_on_met && !c.paused) {
+      this._pauseRequested = true;
+      c.paused = true;
+    }
   };
 
   /* A STEP MAY FIRE FAILURES BEHIND THE SCENES (#670 Phase 1, incident walkthroughs).
@@ -1821,7 +1901,11 @@
                       * operator's setpoint, published as `control_state.pressure_setpoint` (MPa,
                       * pwr2_shell.js) and read by the box itself (pwr_board_wiring `imrsg8b7b9o`).
                       * Same shape as `steam_dump_setpoint` above. */
-                     pressure_setpoint: 1 };
+                     pressure_setpoint: 1,
+                     /* THE LOAD TARGET (#825 critic round 1): `control_state.load_target_mwe`, the machine's reference. A cut
+                      * lands whole (pwr2_shell `stepLoadDial`, raises only are rate-limited), so `stopped` on it reads "no
+                      * LOAD cut for N s" -- `pwr_lower_power` 2-5 hold their temperature trim behind it. */
+                     load_target_mwe: 1 };
   /* STEAM DUMP IN PRESSURE MODE — the card's status word PRESS, as a number the grader can read
    * *(OWNER RULING, 2026-09-24, selected "Grade the mode": "Give the grader a numeric 'dump in
    * pressure mode' value so PRESS is actually required. This is a small shared change and
@@ -2209,6 +2293,107 @@
     return out;
   };
 
+  /* A RELATIONSHIP, GRADED — `op: 'moves'` (OWNER RULING, 2026-10-14: walkthroughs grade one plant
+   * RELATIONSHIP each; plan inbox/670_redesign/relations_plan.md).
+   *
+   * `{ p, op:'moves', dir:'up'|'down', v, window (plant seconds), with:{p, dir, v} | {p, op, v} }` —
+   * over the trailing `window` plant-seconds `p` moved at least `v` in `dir`, AND the `with`
+   * channel moved its way by `with.v` (`with.dir`), or its CURRENT reading meets `with.op`/`with.v`
+   * (`> < >= <=`). `v` is an absolute change in the channel's own unit (instrument unit where
+   * PARAM_INSTRUMENT maps it, so the number is what the board draws).
+   *
+   * THE WINDOW MUST FILL (like `steady`): the ring is cleared when the step changes (caller) and
+   * when the clock goes back, and nothing can be met until a sample at or before the trailing
+   * edge exists, so it cannot tick on entry. The change is current reading minus the value AT
+   * the trailing edge (linear interpolation between the two bracketing samples, so a WARP
+   * broadcast that spans minutes is not over-read).
+   *
+   * IT LATCHES, unlike `steady`/`stopped`: "p moved with q" is a "you saw it happen" claim, true
+   * afterwards. THE SUBTLETY: `_gradeAccs` treats every BAG_OPS member as a re-grading hold unless
+   * it opts out, and `_gradeOne` (the single-`acc` path) never latches. So the latch lives HERE, in
+   * the bag: once met on ACC_STABLE_N distinct plant instants (one noisy sample cannot latch it),
+   * `met` stays true until the bag is cleared; `_gradeAccs` also exempts `moves` from `holds`.
+   * Distinct instants: a paused broadcast repeats the same sim time and counts once. */
+  /* The instrument channel `readParam` grades `p` on for this snapshot, or null when it grades true state / the
+   * control state. The walkthrough card's pair row (ui/app.js cklPairSeries) reads a graded `moves` channel on this
+   * same side, so the two numbers on the card are the ones the row ticks on (heatup step 11 review, 2026-10-15). */
+  InstructorLayer.gradedInstrument = function (snapshot, p) {
+    var r = readParam(snapshot, p);
+    if (!r || r.graded_by !== 'instrument') return null;
+    var plant = (snapshot.metadata && snapshot.metadata.plant_id) || null, map = plant ? PARAM_INSTRUMENT[plant] : null;
+    return map && map[p] ? map[p] : null;
+  };
+  InstructorLayer.movesLegal = function (pred) {
+    if (!pred || pred.op !== 'moves') return 'not a moves predicate';
+    if (!pred.p) return 'no p';
+    if (pred.dir !== 'up' && pred.dir !== 'down') return 'dir must be up or down';
+    if (!(pred.v > 0)) return 'v must be > 0';
+    if (!(pred.window > 0)) return 'window (plant s) is required';
+    var w = pred.with;
+    if (!w || !w.p) return 'with.p is required';
+    if (w.dir !== undefined) {
+      if (w.dir !== 'up' && w.dir !== 'down') return 'with.dir must be up or down';
+      if (!(w.v > 0)) return 'with.v must be > 0';
+    } else {
+      if (['>', '<', '>=', '<='].indexOf(w.op) < 0) return 'with needs dir, or op in > < >= <=';
+      if (typeof w.v !== 'number' || !isFinite(w.v)) return 'with.v must be a number';
+    }
+    return null;
+  };
+  InstructorLayer.gradeMoves = function (bag, snapshot, pred) {
+    var r = readParam(snapshot, pred.p);
+    var w = pred.with, rw = w ? readParam(snapshot, w.p) : null;
+    var t = snapshot && snapshot.metadata ? snapshot.metadata.sim_time : null;
+    var W = pred.window;
+    var out = { met: false, value: r.value, graded_by: r.graded_by, covered: false, n: 0,
+                delta: null, with_delta: null, with_value: rw ? rw.value : null };
+    if (!bag.s) bag.s = [];
+    var s = bag.s;
+    if (!(W > 0) || (pred.dir !== 'up' && pred.dir !== 'down')) return out;
+    if (t == null || !isFinite(t) || typeof r.value !== 'number' || !isFinite(r.value)) return out;
+    if (rw && (typeof rw.value !== 'number' || !isFinite(rw.value))) return out;
+    if (s.length && t < s[s.length - 1].t) { s.length = 0; bag.latched = false; bag.run = 0; bag.runT = null; }
+    if (bag.latched) { out.met = true; out.latched = true; return out; }
+    var gap = Math.max(0.05, W / 120);
+    if (!s.length || t - s[s.length - 1].t >= gap) s.push({ t: t, v: r.value, w: rw ? rw.value : 0 });
+    while (s.length > 1 && t - s[1].t > W) s.shift();
+    out.n = s.length;
+    out.covered = s.length > 1 && (t - s[0].t) >= W;
+    if (!out.covered) { bag.run = 0; return out; }
+    /* the value AT the trailing edge: interpolate between the last sample at/before it and the next */
+    var te = t - W, i0 = 0;
+    for (var i = 0; i < s.length; i++) if (s[i].t <= te) i0 = i;
+    var a = s[i0], b = s[Math.min(i0 + 1, s.length - 1)];
+    var f = (b.t > a.t) ? Math.min(1, Math.max(0, (te - a.t) / (b.t - a.t))) : 0;
+    var v0 = a.v + (b.v - a.v) * f, w0 = a.w + (b.w - a.w) * f;
+    var sgn = pred.dir === 'up' ? 1 : -1;
+    out.delta = sgn * (r.value - v0);
+    var main = out.delta >= pred.v;
+    var other = true;
+    if (w) {
+      if (w.dir !== undefined) {
+        out.with_delta = (w.dir === 'up' ? 1 : -1) * (rw.value - w0);
+        other = out.with_delta >= w.v;
+      } else {
+        switch (w.op) {
+          case '>': other = rw.value > w.v; break;
+          case '<': other = rw.value < w.v; break;
+          case '>=': other = rw.value >= w.v; break;
+          case '<=': other = rw.value <= w.v; break;
+          default: other = false;
+        }
+      }
+    }
+    var ok = main && other;
+    if (ok) {
+      if (bag.runT !== t) { bag.run = (bag.run || 0) + 1; bag.runT = t; }
+    } else { bag.run = 0; bag.runT = null; }
+    if ((bag.run || 0) >= ACC_STABLE_N) bag.latched = true;
+    out.met = !!bag.latched;
+    out.latched = !!bag.latched;
+    return out;
+  };
+
   /* Is this param read off the OPERATOR'S OWN CONTROL STATE (exact, quantized, no instrument in
    * the path) rather than off a gauge? Derived from the same three maps `readParam` dispatches
    * on — never a hand-kept second list, which is the shape that certifies a map instead of a
@@ -2261,7 +2446,11 @@
     // Instructor-internal commands — consumed here, never forwarded below (they
     // are not plant commands and would only be an M4 error).
     if (command && command.action === 'instructor_continue') {
-      this._continueRequested = true;
+      /* A NAMED chat button (#811, OWNER RULING 2026-10-09 "do 1,2": "Show me", "Carry on") sends
+       * `button: '<id>'` and satisfies only a `manual` trigger naming that id; a plain Continue /
+       * Ready (no id) satisfies only an unnamed one. So a stray second Ready click can never be
+       * taken as "Show me", and a Show me never advances a beat waiting on Ready. */
+      this._continueRequested = (typeof command.button === 'string' && command.button) ? command.button : true;
       return null;
     }
     if (command && command.action === 'instructor_interact') {
@@ -2396,7 +2585,7 @@
    * THE BLAST RADIUS IS MEASURED, NOT ASSUMED, which is why this is the default rather than an
    * authored opt-in flag: of 203 predicate acceptances across the whole pool, 20 are two-sided
    * and exactly TWO of those sit in this latching `accs[]` path — `pwr_raise_power` step 8
-   * (this defect) and `pwr_heatup` step 14's steam-pressure band, which the dumps HOLD on
+   * (this defect) and `pwr_heatup` step 13's (14 before #823) steam-pressure band, which the dumps HOLD on
    * setpoint rather than pass through. Every `>`/`<` bound and every cmd-kind entry latches
    * exactly as before, so a ticked box still behaves like a ticked box everywhere it did. */
   InstructorLayer.prototype._ensureAccsState = function (holder, st) {
@@ -2407,7 +2596,7 @@
         // serialize/restore and the card can read it on the first broadcast.
         // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         // NOT a latch: re-derived every tick, so `clear_failure` gives the row back.
-        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false,
+        return { streak: 0, met: false, obs: null, graded_by: null, bag: null, implied: false, overtaken: false, otStreak: 0,
                  voided: null };
       });
     }
@@ -2426,13 +2615,13 @@
       /* ...UNLESS THE ROW AUTHORS `latch: true` (2026-09-23 layman playtest S-1): then it is a
        * "you got here" claim like `>`, and the HOLD it would have re-asserted must live in a
        * later row of the same ordered step (`run_checklist_pwr2` §2ak gates that pairing). */
-      var holds = !!(en && !en.latch && (en.op === '~' || BAG_OPS[en.op]));
+      var holds = !!(en && !en.latch && (en.op === '~' || (BAG_OPS[en.op] && en.op !== 'moves')));   /* `moves` LATCHES (gradeMoves) */
       /* THE PLAYER'S OWN CASUALTY (#773/#788) — recomputed here every tick for EVERY row,
        * met or not, so that clearing the failure takes the relief away again. It is kept
        * OUT of `ax.met` on purpose: `met` is a latch, and a latched void would survive the
        * clear. The row still grades underneath, so the card keeps showing its reading. */
       ax.voided = this._predVoided(snapshot, en);
-      if ((!ax.met || holds) && en && en.p) {
+      if ((!ax.met || holds) && !ax.overtaken && en && en.p) {   /* an overtaken row is never re-graded back off */
         var g;
         if (BAG_OPS[en.op]) {
           if (!ax.bag) ax.bag = { s: [] };
@@ -2450,12 +2639,25 @@
           InstructorLayer.applyReach1m(g, this._oneOverMPredSteps(snapshot), en);
           ax.no_1m = g.no_1m; ax.pred_1m = g.pred_1m;
         }
+        /* `show_1m` (2026-11-06-develop-a, `pwr_startup` 11b; OWNER, 2026-11-05: "should suggest to lower steps to
+         * the critical point indicated on the 1/m startup plot"): the card's ask names the prediction the panel
+         * PRINTS as a number ({pred} in `ask_1m`). DISPLAY ONLY: the row grades on its own op, and `no_1m` stays
+         * unset, so the "ticks once the rods have been still" fallback line (a 1/M-GRADED row's) never draws. */
+        if (en.show_1m && en.reach_1m == null && en.below_1m == null) {
+          var ps1m = this._oneOverMPredSteps(snapshot);
+          ax.pred_1m = (typeof ps1m === 'number' && isFinite(ps1m)) ? ps1m : null;
+        }
         if (en.still_s > 0) {              /* 9b's rods-still wait, folded into the row (develop-k) */
           if (!ax.stillBag) ax.stillBag = { s: [] };
           InstructorLayer.applyStill(g, ax.stillBag, snapshot, en);
         }
         ax.obs = g.value; ax.graded_by = g.graded_by;
         ax.prog = InstructorLayer.holdProgress(ax, en, g, snapshot);   /* #818: the card's "holding… N of M s" */
+        /* WITH A PREDICTION, A `reach_1m` ROW IS NOT A STILLNESS WAIT (layman chain pass 2, S-3, 2026-10-15): it ticks on
+         * the broadcast the counter reaches prediction minus 3, so the fallback `stopped` op's "Holding still... 1 of 60"
+         * was drawn on entry, before any rod moved, for a count that grades nothing. Only the no-prediction fallback
+         * (which really does tick on 60 s of stillness) keeps the line. */
+        if (en.reach_1m != null && !g.no_1m) ax.prog = null;
         ax.streak = g.met ? ax.streak + 1 : 0;
         /* A `reach_1m` verdict reads the operator's own step counter against a printed number — exact,
          * no instrument noise to debounce — so it ticks on the FIRST broadcast it holds, which is the
@@ -2490,6 +2692,27 @@
                             !(t_ != null && ax.missT != null && t_ - ax.missT >= BAND_RELEASE_S))) {
           ax.met = false; ax.bandHeld = false;  // left the band — the check-off comes back off
         }
+      }
+      /* A ROW-LEVEL `overtaken` (#670 relations plan, raise power 4, 2026-10-15) — `{p, op, v, or?,
+       * label}` on an `accs` entry: the plant condition under which THIS ROW no longer applies while
+       * the step's other rows still do (the step-level `overtaken` would skip the whole stage).
+       * MEASURED, routes harness, `pwr_raise_power` 4, seeds 42/7: a player who pulls rods ahead of
+       * LOAD (overpull_60, hot_stage4) holds AVG COOLANT TEMPERATURE 8.0-12.7 degF ABOVE its program
+       * for the whole stage, so the "4 degF below program" relation never shows and the ordered step
+       * strands on it. Same debounce as the row's own latch: ACC_STABLE_N consecutive gradings ARM
+       * it (counted while blocked; once armed it stays armed for the step, because "the rods led the
+       * load at some point in this stage" is what masks the relation -- MEASURED hot_stage4: +8.15
+       * degF at 60 s falling to +2.95 degF by the 239 s the row unblocks, so a re-checked condition
+       * would race the noise), and it latches only when unblocked, so position keeps its meaning.
+       * The row's own grading runs first, so a row whose own predicate is met latches as itself. It
+       * LATCHES and is flagged `overtaken` so the card never draws a plain tick for it. Saved via
+       * `accs_relief` (2 latched, 3 armed-and-blocked). Mirrored in test/procedures_harness.js. */
+      if (en && en.overtaken && en.overtaken.p && !ax.met) {
+        var selfO = this, otRow = this._grade(snapshot, en.overtaken).met ||
+          (en.overtaken.or || []).some(function (q) { return selfO._grade(snapshot, q).met; });
+        ax.otStreak = otRow ? (ax.otStreak || 0) + 1 : 0;
+        if (ax.otStreak >= ACC_STABLE_N) ax.otArmed = true;
+        if (ax.otArmed && !blocked) { ax.met = true; ax.overtaken = true; }
       }
       // a voided row neither holds the step nor blocks its successors — it is an
       // observation the player deliberately made impossible, not an unmet one.
@@ -2526,9 +2749,11 @@
      * single-row step it would tick the step off a broken instrument, which is "you are done
      * because your meter died". The honest condition is REDUNDANCY, and that is what this
      * names: the row stands down only when a NAMED sibling, itself graded on an instrument,
-     * has already answered the same question. Hard Rule 1 is untouched — no true_state is
-     * read on either side — and the relief works for any cause, a stuck channel or a lost
-     * failure list included, because it is a plant-and-board condition, not a failure flag.
+     * has already answered the same question. On the startup row both sides were instruments;
+     * the shipped carrier (TMI-2 step 9) is not: its relation row reads `core_inventory_pct`,
+     * true state the Learning-mode RCS INVENTORY tile draws (Hard Rule 1, instruments vs
+     * truth: Realistic mode is not built). The relief works for any cause, a stuck channel or
+     * a lost failure list included, because it is a plant-and-board condition, not a failure flag.
      *
      * IT IS SAFE ONLY WHERE THE IMPLICATION IS REAL, AND THAT IS THE AUTHOR'S CLAIM TO MAKE.
      * For step 9 it is arithmetic, not a fit: `pwr2_true_state` computes `ir_amps = 8.333e-3 ×
@@ -2541,7 +2766,9 @@
      * §2ad reddens if one is ever authored.
      *
      * WHAT THIS PASS DOES NOT DO, and why it is the AUTHOR's constraint rather than a check
-     * (quality pass, 2026-09-18; neither is reachable from the one shipped instance). It does
+     * (quality pass, 2026-09-18; neither is reachable from the one shipped instance — TMI-2 step 9
+     * since the startup INTER RANGE row was deleted 2026-09-27; its sibling, the SUBCOOLING MARGIN
+     * peg, latches). It does
      * not give the latch back: once implied-met the row is skipped by both loops for ever, so a
      * `~` band or a `steady`/`stopped` sibling that later un-ticks leaves the implied row
      * standing -- name a LATCHING sibling. And it resolves in ONE forward pass, so a row implied
@@ -2653,7 +2880,11 @@
      * actions whose ONLY payload is the sense — adding one whose payload matters would make the
      * check narrower than the step and reintroduce the soft-lock #697 is about. */
     if (SENSE_ACTIONS[stepCmd.action]) {
-      return (stepCmd.active !== false) === (command.active !== false);
+      /* `set_rcp` and `set_charging_pump` carry the sense as `running`, not `active` (pwr2_shell.js
+       * set_rcp: `c.running === false` secures). Reading `active` alone made OFF and ON both "on",
+       * so either button ticked a row that asked for the other (#670 Fable pass, 2026-10-14). */
+      var on = function (c) { return c.running !== undefined ? c.running !== false : c.active !== false; };
+      return on(stepCmd) === on(command);
     }
     return true;
   };
@@ -3066,6 +3297,9 @@
       message_register: base.message_register,
       scenario_id: this.scenario ? this.scenario.id : null,
       current_beat_id: this.currentBeatId,
+      // The beat whose BRANCHES are being watched (it has fired; the player is on its ask), or
+      // null. The chat renders that beat's `ask_buttons` only then (#811 "Show me", 2026-10-09).
+      branch_beat_id: this.branchWatch ? this.branchWatch.id : null,
       trend: this._trend ? { rev: this._trend.rev, series: this._trend.series.slice() } : null,
       scope: this.mode === 'scenario' && this._scope ? { rev: this._scope.rev, names: this._scope.names.slice() } : null,
       // Is a beat currently GATING progress? (#439, spec §4.) The UI tiers its
@@ -3098,7 +3332,7 @@
         // per entry, order-parallel to the step's `accs`), or null on single-acc steps.
         // `implied` — this row latched on a sibling's threshold, not its own (`implied_by`).
         accs: f.accsState ? f.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied, overtaken: !!a.overtaken,
                    voided: a.voided || null, no_1m: !!a.no_1m,
                    pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,
@@ -3173,7 +3407,7 @@
         // steps. `implied` — latched on a sibling's threshold (`implied_by`), not its own.
         // `voided` — the player's own named casualty took this row's gauge out (#773/#788).
         accs: this.checklist.accsState ? this.checklist.accsState.map(function (a) {
-          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied,
+          return { met: a.met, obs: a.obs, graded_by: a.graded_by, implied: !!a.implied, overtaken: !!a.overtaken,
                    voided: a.voided || null, no_1m: !!a.no_1m,
                    pred_1m: (a.pred_1m == null ? null : a.pred_1m), prog: a.prog || null };
         }) : null,
@@ -3295,6 +3529,7 @@
         // cmd-kind latch (a plotted point) cannot re-earn itself after a load.
         accs_met: this.follow.accsState
           ? this.follow.accsState.map(function (a) { return !!a.met; }) : null,
+        accs_relief: accsRelief(this.follow.accsState),
       } : null,
       checklist: this.checklist ? {
         procedure_id: this.checklist.procedure_id,
@@ -3307,6 +3542,7 @@
         complete: this.checklist.complete,
         accs_met: this.checklist.accsState
           ? this.checklist.accsState.map(function (a) { return !!a.met; }) : null,
+        accs_relief: accsRelief(this.checklist.accsState),
         /* #670 — the per-step-entry fired-set RIDES IN THE CHECKPOINT. A `scope:'full'` rewind
          * is a loadState of a saved checkpoint, so this is what makes "Rewind un-does the
          * injection and the step fires it again" true rather than an assumption. */
@@ -3347,13 +3583,14 @@
           cmdSeen: !!cs.cmdSeen, sawSeen: !!cs.sawSeen,
           accStreak: cStreak, accMetNow: cStreak >= ACC_STABLE_N,
           gradedBy: null, complete: !!cs.complete,
-          /* restore the per-entry latches; streaks/obs regrade live (#244 item 8). `implied`
-           * is NOT saved and restores false: the save format carries one boolean per entry,
-           * and a latch taken by `implied_by` restores as the latch it is — the card loses
-           * only the "covered by" note under that row until the run ends. Widening
-           * `accs_met` to carry it is a save-format change for a note. */
-          accsState: cs.accs_met ? cs.accs_met.map(function (m) {
-            return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
+          /* restore the per-entry latches; streaks/obs regrade live (#244 item 8). HOW a row
+           * latched rides beside them in `accs_relief` (2026-10-15): before it, a row latched by
+           * `implied_by` or by its row-level `overtaken` restored as a plain latch and the card drew
+           * a plain tick for it (measured in Node after a save/load and a ring rewind: met:true,
+           * overtaken:false). A save without the field (older) restores both as false — the old
+           * behaviour, a missing note, never a wrong latch. */
+          accsState: cs.accs_met ? cs.accs_met.map(function (m, i) {
+            return reliefState(m, cs.accs_relief, i);
           }) : null,
           // Precondition VERDICTS are DERIVED state — never saved; the first step() tick
           // after a restore regrades them against the live plant.
@@ -3437,10 +3674,10 @@
         idx: fs.idx, cmdSeen: fs.cmdSeen, sawSeen: fs.sawSeen,
         accStreak: fStreak, accMetNow: fStreak >= ACC_STABLE_N,
         gradedBy: null, done: fs.done,
-        // restore the per-entry latches; streaks/obs regrade live (#244 item 8); `implied`
-        // is not saved — see the checklist half above.
-        accsState: fs.accs_met ? fs.accs_met.map(function (m) {
-          return { streak: 0, met: !!m, obs: null, graded_by: null, implied: false };
+        // restore the per-entry latches; streaks/obs regrade live (#244 item 8); `accs_relief`
+        // as in the checklist half above.
+        accsState: fs.accs_met ? fs.accs_met.map(function (m, i) {
+          return reliefState(m, fs.accs_relief, i);
         }) : null,
       };
       this.scenarioStartTime = state.scenario_start_time;

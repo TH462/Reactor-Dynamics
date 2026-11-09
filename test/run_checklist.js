@@ -685,6 +685,31 @@ ck('...and an explicit start() (what releaseHold calls) resumes it normally',
    svc11.running === true, 'svc11.running = ' + svc11.running);
 svc11.handleCommand({ action: 'stop_checklist' });
 
+/* A STEP'S `pair: [a, b]` IS ON THE CHART IT DRAWS (lower power 2 review, 2026-10-15). The trend a step draws is the
+ * LAST `trend` at or before it (ui/app.js applyCklChart); drawChart spares the active pair from numeric-row demotion and
+ * stacks it on top (browser-gated in verify_tmi_callout section 10, at 1600x1000 where two lanes fit), but it can only
+ * do that for a series the trend pinned. A pair series missing from the trend draws no trace at all. Anti-vacuity: the
+ * shipped pool carries at least three array pairs. INJECTION (2026-10-15): 'tavg' dropped from lower power 2's trend
+ * -> red. */
+head('pair series are on the walkthrough chart they draw');
+(function () {
+  var seen = 0, bad = [];
+  Object.keys(RD.MANUAL_PROCEDURES).forEach(function (k) {
+    (RD.MANUAL_PROCEDURES[k] || []).forEach(function (p) {
+      var tr = null;
+      (p.steps || []).forEach(function (st, i) {
+        if (st.trend) tr = st.trend;
+        if (!Array.isArray(st.pair)) return;
+        seen++;
+        if (!(tr && tr.indexOf(st.pair[0]) >= 0 && tr.indexOf(st.pair[1]) >= 0))
+          bad.push(p.id + ' step ' + (i + 1) + ' pair ' + st.pair.join('/') + ' vs trend ' + (tr ? tr.join(',') : 'none'));
+      });
+    });
+  });
+  ck('every `pair: [a, b]` step has a and b in the trend it draws', seen >= 3 && bad.length === 0,
+     seen + ' pair step(s); ' + (bad.length ? 'NOT ON THE CHART: ' + bad.join('; ') : 'all on the chart'));
+})();
+
 // ---------------------------------------------------------------- summary
 console.log('\n' + B + '──────────' + X);
 var ok = passed === total;

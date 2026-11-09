@@ -1357,6 +1357,9 @@
     var failures = this.config.failures || {}, out = [];
     for (var id in failures) {
       var def = failures[id];
+      /* a walkthrough's scripted event (pwr_control `scripted_only`) is injectable by the
+       * instructor but is no menu row — it has no consequence outside its walkthrough */
+      if (def.scripted_only) continue;
       var entry = { id: id, display: def.display, category: def.category || 'safety_system' };
       if (def.severity_meta) entry.severity_meta = def.severity_meta;
       /* player-facing copy for the Inject Failure tab (#818): one line on what it does, and

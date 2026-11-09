@@ -1,6 +1,6 @@
 # Lower power
 
-**Walkthrough id: `pwr_lower_power`  ·  6 steps**
+**Walkthrough id: `pwr_lower_power`  ·  5 steps** (the trim step merged into step 2, #825, 2026-11-03)
 
 > This is the LIVE step file: the sim's `pwr_lower_power` walkthrough was brought down to it on
 > 2026-09-24 (the owner: "Adopt the format for the other walkthroughs."). Edit it freely — it is
@@ -43,13 +43,20 @@ Coming down is the climb in reverse. Each percent of power shed hands reactivity
 
 *The reactor follows the turbine: load comes off first, rods follow.*
 
-()2a. Lower LOAD 5 MW at a time, one plant-minute apart, to 75 MW: 95, 90, 85, 80, 75.
+()2a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 75 MW: 95, 90, 85, 80, 75. After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, tap INSERT 3 times.
+()   On the chart, REACTOR POWER falls 3 points within 1 plant-minute while AVG COOLANT TEMPERATURE rises.
+()   OUTPUT settled near 75 MW.
+()   No LOAD cut for 2 plant-minutes.
 
-()2b. After each cut, if AVG COOLANT TEMPERATURE reads above 577 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down, below 95 %.
+Note: The inserts hold AVG COOLANT TEMPERATURE under about 587 °F.
 
-Suggested time warp: 5×.
+()2b. After the last cut, keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 577 °F, the top of its green band.
 
-Note: The inserts hold AVG COOLANT TEMPERATURE under about 587 °F. Continue can light at 75 MW before the last insert; step 3 finishes that trim.
+Note: About 30 taps in all, the ones after each cut included, cutting a plant-minute apart from 580 °F; slower cuts or a cooler start need fewer, down to about 15. Faster inserts sag PRIMARY PRESSURE toward the 1775 psi low-pressure trip.
+
+()2c. Check REACTOR POWER has followed down below 80 % and OUTPUT still reads about 75 MW.
+
+Suggested time warp: 10×.
 
 
 
@@ -57,51 +64,26 @@ Background
 
 Less steam drawn leaves the heat nowhere to go: the water warms, and warmer water walks power down by itself. Insert first and you starve a reactor still asked for full steam, walking the steam generator down.
 
-[HIGHLIGHTED: Load Setpoint, Insert (pulsing); Turbine Load, Tavg, Reactor Power (steady)]
+[HIGHLIGHTED: Load Setpoint, Insert (pulsing); Turbine Load, Tavg, Reactor Power, Generator Output (steady)]
 
 
 
-3. Bring AVG COOLANT TEMPERATURE back into its band with the rods.
-
-*The load drop left the reactor hot, and the plant cannot fix that alone.*
-
-()3a. Insert at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 577 °F, the top of the green band on its tile.
-
-()3b. Check REACTOR POWER has followed down to about 73 %, below 80 %.
-
-()3c. Check OUTPUT still reads about 75 MW.
-
-Suggested time warp: 5×.
-
-Note: About 10 to 20 steps. Stop once in the band: the tile trails the rods and the boration keeps walking it down. PRIMARY PRESSURE sags to about 2200 psi; faster pulls sag it toward the 1775 psi low-pressure trip.
-
-
-
-Background
-
-The green band is the temperature the plant should hold at its power: 578 °F at 100 %, 547 °F at no load. After a load drop the reactor sits above it until rods take reactivity out.
-
-[HIGHLIGHTED: Rod Speed — Normal, Insert (pulsing); Tavg, Reactor Power, Generator Output (steady)]
-
-
-
-4. Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
+3. Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
 *Each drop is the same pair of moves: turbine first, rods second.*
 
-()4a. Lower LOAD 5 MW at a time, one plant-minute apart, to 50 MW: 70, 65, 60, 55, 50.
-
-()4b. After each cut, if AVG COOLANT TEMPERATURE reads above 569 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 70 %.
-
-Suggested time warp: 5×.
+()3a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 50 MW: 70, 65, 60, 55, 50. After each cut, if AVG COOLANT TEMPERATURE reads above 569 °F, tap INSERT 3 times.
+()   No LOAD cut for 2 plant-minutes.
 
 Note: The inserts hold AVG COOLANT TEMPERATURE under about 580 °F.
 
-()4c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
+()3b. Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 569 °F, the top of its green band.
 
-Suggested time warp: 5×.
+Note: Control Rods — Approaching Insertion Limit can come in here and goes out by itself as the load comes off; keep to the 3-tap inserts. If AVG COOLANT TEMPERATURE reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.
 
-Note: About 20 to 30 steps at MED in all, the inserts after each cut included.
+()3c. Check REACTOR POWER has followed the load down below 70 %.
+
+Suggested time warp: 10×.
 
 
 
@@ -113,23 +95,22 @@ STEAM GENERATOR LEVEL dips and recovers on each drop; that is normal, and SG FEE
 
 
 
-5. Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
+4. Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
 *Lower power needs smaller rod moves as the band walks down.*
 
-()5a. Lower LOAD 5 MW at a time, one plant-minute apart, to 30 MW: 45, 40, 35, 30.
-
-()5b. After each cut, if AVG COOLANT TEMPERATURE reads above 562 °F, insert 3 steps at MED. Watch REACTOR POWER follow the load down through 45 %.
-
-Suggested time warp: 5×.
+()4a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 30 MW: 45, 40, 35, 30. After each cut, if AVG COOLANT TEMPERATURE reads above 562 °F, tap INSERT 3 times.
+()   No LOAD cut for 2 plant-minutes.
 
 Note: The inserts hold AVG COOLANT TEMPERATURE under about 572 °F.
 
-()5c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
+()4b. Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 562 °F, the top of its green band.
 
-Suggested time warp: 5×.
+Note: About 20 taps in all, the ones after each cut included. If AVG COOLANT TEMPERATURE reads below its green band, leave the rods: the boron is still cooling the water, and the next cut warms it.
 
-Note: About 20 steps at MED in all, the inserts after each cut included.
+()4c. Check REACTOR POWER has followed the load down below 45 %.
+
+Suggested time warp: 10×.
 
 
 
@@ -141,23 +122,22 @@ The band is walking back down toward 547 °F. A plant left hot at low load sends
 
 
 
-6. Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
+5. Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
 
 *15 MWe, about 12 % power, is where the shutdown walkthrough trips the reactor.*
 
-()6a. Lower LOAD 5 MW at a time, one plant-minute apart, to 15 MW: 25, 20, 15.
+()5a. Lower LOAD 5 MW at a time, one plant-minute apart (6 seconds at 10×), to 15 MW: 25, 20, 15. After each cut, if AVG COOLANT TEMPERATURE reads above 557 °F, tap INSERT 3 times.
+()   No LOAD cut for 2 plant-minutes.
 
-()6b. After each cut, if AVG COOLANT TEMPERATURE reads above 557 °F, insert 3 steps at MED. Check REACTOR POWER reads below 40 %.
+Note: The inserts hold AVG COOLANT TEMPERATURE under about 565 °F.
 
-Suggested time warp: 5×.
+()5b. Keep tapping INSERT 3 times a plant-minute apart until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
 
-Note: The inserts hold AVG COOLANT TEMPERATURE under about 565 °F. Power keeps falling as the boration finishes; the rod trims take it to about 12 %.
+Note: About 12 to 15 taps in all, the ones after each cut included. If AVG COOLANT TEMPERATURE reads below its green band, leave the rods: the boron is still cooling the water.
 
-()6c. Keep inserting at MED in pulls of about 3 steps, one plant-minute apart, until AVG COOLANT TEMPERATURE reads below 557 °F, the top of its green band.
+()5c. Check REACTOR POWER reads below 40 %.
 
-Suggested time warp: 5×.
-
-Note: About 10 to 15 steps at MED in all. Stop here; the shutdown walkthrough takes over.
+Suggested time warp: 10×.
 
 
 
@@ -169,37 +149,7 @@ A scram from full power is a thermal shock. At about 12 % the trip is gentle, an
 
 
 
-## Notes — agent record, NOT step text
-
-### Reconcile record — 2026-09-24, wt-lower lane (brought down to the sim)
-
-*Ported under the owner's 2026-09-24 directive, "Adopt the format for the other walkthroughs.",
-from the previous version of this file (`git show HEAD~1:Blueprint/walkthrough_steps/04_lower_power.md`).
-`ui/manual_procedures.js` `pwr_lower_power` (the PWR2 pool) carries it word for word.*
-
-**Tally.** 6 steps (unchanged — no split, no fold), 9 lettered substeps, 15 check-off lines
-(the 14 rows the sim graded before, plus step 1's, which was a bare command observation
-and is now drawn).
-
-**GOAL LINES — AGENT-DRAFTED FOR OWNER REVIEW.** His old step lines are now the substep actions;
-these six are new:
-1. Start adding boron before any load comes off.
-2. Take the first load off the turbine and let the reactor follow it down.
-3. Bring AVG COOLANT TEMPERATURE back into its band with the rods.
-4. Take the load down to 50 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
-5. Take the load down to 30 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
-6. Take the load down to 15 MWe, then trim AVG COOLANT TEMPERATURE back into its band.
-
-**Also agent-drafted, for review:** step 1's check-off `BORON target set to 719` (the step had
-no drawn check-off); the substep actions 4a/5a/6a, "Set LOAD to N MWe and let power follow.",
-which join his old check-off line "Set LOAD to N MWe." to the "let power follow" clause of his
-step line ("," became "and").
-
-**THE ROD COUNTS ARE NOW RANGES — agent edit to his notes, for review.** He wrote about 40, 20,
-10 and 6 steps. MEASURED on the full stack, live runtime, `hot_full_power`:
-
-| step | authored replay (waits the full hold, seed 42) | player who inserts as soon as the load check-offs tick (seeds 42 / 7 / 99) | card now |
-|---|---|---|---|
+---|---|---|---|
 | 3 | 40 (five plant-minutes after the drop) | 72 / 74 / 74 | about 40 to 75 |
 | 4 | 0 — the boration alone brings it in | 62 / 60 / 64 | about 20 to 65 |
 | 5 | 0 | 45 / 45 / 46 | about 10 to 45 |
@@ -455,3 +405,9 @@ holds: the walk with its 3-step inserts off peaks 589.3 °F at step 2 against "u
 ### Concise pass — 2026-10-02 (#819)
 
 2026-10-02 (#819): concise pass, owner directive 2026-10-01 ("we dont need to hide the background. we just need to clean up the steps and subtext to be more streamlined and concise."). Words/step 212 -> 161 (1270 -> 964 over 6 steps; step line through Background, HIGHLIGHTED lines excluded). No predicate, target, band, hold, command, highlight or step/substep count changed; the pool is brought down word for word (script compare). Step 1 aim "must" -> "has to" (W16). RE-MEASURED 2026-10-02, seed 42, live checklist typical route, full stack (run_walkthrough_routes --leg=pwr_lower_power and --leg=chain): step 3 PRIMARY PRESSURE floor 2212 psia standalone, 2207 psia chained after raise power, so the 2140 figure in the layer-mixing record above is superseded and "about 2200 psi" stands. Rods inserted, steps 2/3/4/5/6: standalone 15/18/27/18/15, chained 15/9/24/18/12, against the notes 10 to 20 (3), 20 to 30 (4), about 20 (5), 10 to 15 (6); chained step 3 sits one step under its range, left as an "about".
+
+### #825 record — 2026-11-03, `exp/825wt` (owner playtest of 1.8.4-rc9)
+
+- **Step 3 folded into step 2; steps 4-6 renumbered 3-5.** Owner: "is step 3 redundant because it says to insert rods in step 2 or is step 2b redundant?" — step 3 was the tail of 2b's inserts, and steps 4-6 already carried the pair as one step. Old 2b graded REACTOR POWER < 95 % and ticked 0.77 plant-min in, after the first of five cuts.
+- **Every load step is ordered and waits for no LOAD cut for 2 plant-minutes** (`stopped` on the LOAD target; an OUTPUT-steady window was tried first and ticked 4-12 s after a slow cutter's last cut) (owner: "it saw the temperature was below 577 and check it off before it raised above 577"): the trim row cannot tick before the cuts are done and the last cut's heat has arrived; the power check comes after the trim. MEASURED trim ticks (typical seed 42 / slow-cut): step 2 at 10.15 / 12.18 plant-min, 576.2 / 576.0 °F; 3 at 9.50 / 11.10, 568.0 / 568.4 °F; 4 at 6.50 / 8.05, 560.7 / 561.1 °F; 5 at 4.33 / 5.40, 555.9 / 556.5 °F; LOAD at its target in every case.
+- **10× (owner: "steps 2, , 5, 6 should be 10x warp", read as old 2, 4, 5, 6) with taps, not held MED pulls** — a held 3-step insert is 0.4 s of wall at 10×.

@@ -75,11 +75,55 @@ var only = process.argv[2] || null;
  * boundary would make part B repay the whole replay just to rebuild it; 2ai.1 moved to sit next
  * to REPLAY_TRIP instead (immediately after section 1, still gated on `!only`) rather than the
  * boundary moving. Nothing else depends across the boundary — grepped before the split. */
-var PART = globalThis.__PWR2_CHECKLIST_PART || 0;      // 0 = A (default), 1 = B
+var PART = globalThis.__PWR2_CHECKLIST_PART || 0;      // 0 = A (default), 1 = B, 2 = C
 var ALL = process.argv.indexOf('--all') >= 0;
-var RUN_A = ALL || PART !== 1;
-var RUN_B = ALL || PART === 1;
-var RUNNER_NAME = 'run_checklist_pwr2' + (PART === 1 && !ALL ? '_b' : '');
+var RUN_A = ALL || PART === 0;
+var RUN_B = ALL || PART === 1;          // part B also owns the small trailing sections (2mn, 2mo, 12, 2ai.2-7, 2aq: ~16 s)
+var RUN_LIVE = ALL || PART >= 1;        // the section-2 shell, entered by B and C alike
+var RUNNER_NAME = 'run_checklist_pwr2' + (ALL ? '' : ['', '_b', '_c'][PART]);
+
+/* THE THREE-WAY SPLIT (2026-10-14, CI run 38670341210): part B alone took 1789 s on CI (30-min shard
+ * step budget, 3 lanes) after section 2aq landed. MEASURED solo (one process, nothing else heavy):
+ * 1574.6 s, i.e. a CI/solo ratio of 1.136. Cost by section, from the output timeline mapped to
+ * source: 2t ~345 s, 2ag ~276, 2o ~231, 2i ~172, 2l + 2l2 ~125, 2ah ~40, 2al ~48, 2j ~38, the rest
+ * small. Each section-2 IIFE is now gated by SEL('<id>'), and the two tables below say which part
+ * owns it. Part C takes the 2t/2ag/2ah/2al/2ae/2j group; part B keeps every UNLISTED... no: BOTH
+ * tables are explicit and the source is scanned at startup (below) so a SEL id that is in neither
+ * table, in both, or a table entry no SEL names THROWS, in every mode -- the run_pwr2_engine.js
+ * #637 pattern. It adds no check, so the union stays 224 + A. RD_GTIME=1 prints each selected
+ * group's wall seconds, which is how the table was balanced. */
+var PART_C_GROUPS = ['2t', '2ag', '2ah', '2al', '2ae', '2j'];
+var PART_B_GROUPS = ['2a', '2b', '2c', '2xo', '2d', '2d2', '2e', '2f', '2g', '2i', '2h', '2k', '2l', '2l2',
+  '2m', '2n', '2o', '2p', '2q', '2r', '2s', '2u', '2v', '2w', '2x2', '2y', '2z', '2aa', '2ab', '2ad',
+  '2ac', '2aj', '2ak', '2am', '2af'];
+(function () {
+  var claimed = {};
+  PART_B_GROUPS.forEach(function (g) { claimed[g] = (claimed[g] || 0) + 1; });
+  PART_C_GROUPS.forEach(function (g) { claimed[g] = (claimed[g] || 0) + 1; });
+  var used = {};
+  var m, re = /[S]EL[(]'([^']+)'[)]/g, src = fs.readFileSync(__filename, 'utf8');
+  src = src.slice(src.lastIndexOf('/* END OF THE SPLIT' + ' TABLES */'));   // only the gated sites below the tables
+  while ((m = re.exec(src))) used[m[1]] = (used[m[1]] || 0) + 1;
+  Object.keys(used).forEach(function (g) {
+    if (!claimed[g]) throw new Error('run_checklist_pwr2: group ' + g + ' is claimed by NO part');
+    if (claimed[g] > 1) throw new Error('run_checklist_pwr2: group ' + g + ' is claimed by BOTH part B and part C');
+    if (used[g] > 1) throw new Error('run_checklist_pwr2: group ' + g + ' is gated at ' + used[g] + ' sites');
+  });
+  Object.keys(claimed).forEach(function (g) {
+    if (!used[g]) throw new Error('run_checklist_pwr2: group ' + g + ' is listed but no SEL() names it');
+  });
+})();
+var GT_LAST = null, GT_T0 = 0;
+function GT_FLUSH() {
+  if (GT_LAST && process.env.RD_GTIME) console.log('GTIME ' + GT_LAST + ' ' + ((Date.now() - GT_T0) / 1000).toFixed(1));
+  GT_LAST = null;
+}
+function SEL(id) {
+  var run = ALL || (PART === 2 ? PART_C_GROUPS.indexOf(id) >= 0 : PART === 1 && PART_B_GROUPS.indexOf(id) >= 0);
+  if (run) { GT_FLUSH(); GT_LAST = id; GT_T0 = Date.now(); }
+  return run;
+}
+/* END OF THE SPLIT TABLES */
 
 if (RUN_A) {
 /* ================================ 1. THE REPLAY ======================================== */
@@ -178,7 +222,7 @@ if (!only) {
 }   // end if (RUN_A)
 
 /* ============================ 2. THE LIVE RUNTIME ====================================== */
-if (!only && RUN_B) {
+if (!only && RUN_LIVE) {
   console.log(B + '\nTHE LIVE RUNTIME  [Path 3 on a pwr2 service]' + X);
 
   /* PRESSING AN ORDERED STEP'S BUTTONS THE WAY THE PLAYER HAS TO (#756). A section that walks a
@@ -210,7 +254,7 @@ if (!only && RUN_B) {
   }
 
   /* 2a. the grading map is real: every PARAM_INSTRUMENT.pwr2 id exists in a live broadcast */
-  (function () {
+  if (SEL('2a')) (function () {
     var svc = mkSvc('hot_full_power');
     var s = null; for (var i = 0; i < 5; i++) s = svc.tick();
     var src = fs.readFileSync(path.join(ROOT, 'layers', 'instructor_layer.js'), 'utf8');
@@ -224,7 +268,7 @@ if (!only && RUN_B) {
   })();
 
   /* 2b. start → instrument-first grading → complete, on the shipped plant */
-  (function () {
+  if (SEL('2b')) (function () {
     var svc = mkSvc('hot_full_power');
     var r = svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_shutdown' });
     ck('start_checklist resolves in the pwr2 pool (#526 — this returned unknown procedure_id before)',
@@ -273,13 +317,16 @@ if (!only && RUN_B) {
      * that satisfied itself after the scram and then HELD. That step is an action now (STEAM
      * DUMP AUTO, graded on the valve carrying flow), so no step of the shutdown leg holds for an
      * acknowledgement any more — and "0 acks" here says only that. The mechanism is proved on a
-     * step that still holds: the heatup's opening Mode 5 confirm, which satisfies itself on the
-     * cold plant at once and waits for the button. */
+     * step that still holds: the heatup's opening step. Until #823 (2026-11-02) that was a Mode 5
+     * confirm that satisfied itself at once; it is now the pump start, so the fixture presses ON
+     * (as the player does) and the step HOLDS once RCP FLOW is above 90 %. Same claim: met, then held
+     * for the button, then advanced by it. */
     (function () {
       var svc2 = mkSvc('cold_shutdown');
       svc2.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
+      svc2.tick(); svc2.handleCommand({ action: 'set_rcp', running: true });
       var s2 = null, held = false, acked = false;
-      for (var k2 = 0; k2 < 80; k2++) {
+      for (var k2 = 0; k2 < 400; k2++) {
         s2 = svc2.tick();
         var c2 = s2.instructor && s2.instructor.checklist;
         if (c2 && c2.awaiting_ack && !c2.complete) {
@@ -291,16 +338,16 @@ if (!only && RUN_B) {
       }
       var after = s2 && s2.instructor && s2.instructor.checklist;
       for (var k3 = 0; k3 < 5 && after && after.step_index === 0; k3++) { s2 = svc2.tick(); after = s2.instructor.checklist; }
-      ck('at least one step HELD for an acknowledgement (#619 item 4 — not a vacuous loop): the heatup\'s opening confirm',
+      ck('at least one step HELD for an acknowledgement (#619 item 4 — not a vacuous loop): the heatup\'s opening step, after ON',
          held && acked && !!after && after.step_index >= 1,
-         held ? 'held; acknowledged; index now ' + (after && after.step_index) : 'never held in 80 ticks');
+         held ? 'held; acknowledged; index now ' + (after && after.step_index) : 'never held in 400 ticks');
     })();
     ck('grading ran instrument-first on pwr2 (graded_by never fell back for mapped params)',
        true, 'asserted structurally by 2a; per-step graded_by is in the snapshot');
   })();
 
   /* 2c. multi-check-off (#244 item 8): per-entry latching + the blinded-entry injection */
-  (function () {
+  if (SEL('2c')) (function () {
     var svc = mkSvc('hot_full_power');
     /* a synthetic two-entry step: one predicate that is ALREADY true, one cmd that has not
      * been seen — the step must NOT advance until the cmd lands (the blinded entry). */
@@ -351,7 +398,7 @@ if (!only && RUN_B) {
    * feature existed, on the shipped pool's own shape: accs = [false,true] with the cmd entry
    * latched and the predicate entry still false. That is the hole #755 filed and could not
    * close - the plot press was never gated, only the step's completion. */
-  (function () {
+  if (SEL('2xo')) (function () {
     /* THE FIXTURE IS THE 1/M LADDER'S OWN SHAPE, MINIATURISED: a `steady` row gating a cmd row.
      * `power_pct` at full power IS steady, so the row is false only because its 30 s window is
      * not yet covered - which is exactly why it works here, and is the one predicate that goes
@@ -434,7 +481,7 @@ if (!only && RUN_B) {
   /* 2d. natural language coverage (#244 item 7): every predicate param in the pwr2 pool has
    * a PRED_DISPLAY entry in ui/app.js — a source-scan seam, so new content cannot quietly
    * render raw internals. */
-  (function () {
+  if (SEL('2d')) (function () {
     var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
     var mapM = /var PRED_DISPLAY = \{([\s\S]*?)\n  \};/.exec(appSrc);
     var mapKeys = {};
@@ -468,7 +515,7 @@ if (!only && RUN_B) {
    * would take twelve casualties, while the defect is a MAP with a hole in it — exactly the shape
    * the PRED_DISPLAY check above exists for. PROVEN RED BY INJECTION: deleting the 'ot_delta_t'
    * key reports `MISSING: ot_delta_t`. */
-  (function () {
+  if (SEL('2d2')) (function () {
     var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
     var m = /var TRIP_CAUSE = \{([\s\S]*?)\n  \};/.exec(appSrc);
     var keys = {};
@@ -506,7 +553,7 @@ if (!only && RUN_B) {
    * It is written generally: any step whose acceptance is a primary-pressure threshold, and which
    * is IMMEDIATELY followed by a step that opens the accumulators, must accept above the cover
    * gas. That way re-authoring the pool cannot slide the pair apart unnoticed. */
-  (function () {
+  if (SEL('2e')) (function () {
     var ACC = RD.pwr2 && RD.pwr2.eccs && RD.pwr2.eccs.ACC;
     var cover = ACC && ACC.p0_mpa;
     var pairs = 0, bad = [];
@@ -538,7 +585,7 @@ if (!only && RUN_B) {
    * sourced floor is 1700 psig, 85 psi ABOVE the lock. A refusal that sends you to a control that
    * refuses you again is the dead-end shape #509 is the record of. Asserted on the LIVE thrown
    * message, not on the source: the point is what reaches the player. */
-  (function () {
+  if (SEL('2f')) (function () {
     var svc = mkSvc('hot_full_power');
     for (var i = 0; i < 5; i++) svc.tick();
     var msg = '';
@@ -551,7 +598,7 @@ if (!only && RUN_B) {
 
 
   /* 2g. every pwr2 step has expandable details (#607 item 5) */
-  (function () {
+  if (SEL('2g')) (function () {
     var missing = [];
     POOL.forEach(function (p) {
       (p.steps || []).forEach(function (st, i) {
@@ -577,7 +624,7 @@ if (!only && RUN_B) {
    *
    * Three claims, and the middle one is the one that matters: dropping out is not enough on
    * its own, because the player's next act is to press the speed button again. */
-  (function () {
+  if (SEL('2i')) (function () {
     var svc = mkSvc('cold_shutdown');
     var s = null; for (var i = 0; i < 4; i++) s = svc.tick();
     svc.handleCommand({ action: 'set_rcp', running: true });
@@ -630,7 +677,7 @@ if (!only && RUN_B) {
    * Both halves are asserted on the SPAN, not a sample: the hold must stand on every tick of a
    * 60 s 1x ride with the valve shut, and the accumulator step must be the active one within a
    * bounded number of broadcasts of the hold rising. The player here never opens the valve. */
-  (function () {
+  if (SEL('2j')) (function () {
     var svc = mkSvc('cold_shutdown');
     svc.attentionStops = true; svc.timeAcceleration = 1;     // the player's defaults
     svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
@@ -707,7 +754,7 @@ if (!only && RUN_B) {
 
   /* 2h. catch-up (#607 item 7): starting heatup with RCPs already running skips the
    * "confirm pumps secured" step and lands on the first not-yet-done action. */
-  (function () {
+  if (SEL('2h')) (function () {
     var svc = mkSvc('cold_shutdown');
     var s = null; for (var i = 0; i < 8; i++) s = svc.tick();
     svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
@@ -729,7 +776,7 @@ if (!only && RUN_B) {
     for (var m = 0; m < 4; m++) s = svc.tick();
     var mid = s.instructor && s.instructor.checklist;
     ck('heatup started with RCPs already running lands past the opening confirm (#607 item 7)',
-       !!mid && mid.step_index >= 2 && mid.complete !== true,
+       !!mid && mid.step_index >= 1 && mid.complete !== true,   /* >= 2 until #823: the confirm and the pump start were two steps; both are step 1 now */
        mid && ('step_index ' + mid.step_index + ' flow ' + (s.true_state && s.true_state.pump_flow_pct)));
   })();
 
@@ -757,7 +804,7 @@ if (!only && RUN_B) {
    * It caught this change: the removal reddened it here with the observation `5 plot steps done_by
    * [overtaken x5], past the last one 24 s later`, i.e. every claim the check makes still held and
    * only the count had moved. */
-  (function () {
+  if (SEL('2k')) (function () {
     var svc = mkSvc('hot_zero_power');
     svc.timeAcceleration = 10;
     var s = null; for (var i = 0; i < 3; i++) s = svc.tick();
@@ -820,7 +867,7 @@ if (!only && RUN_B) {
    * sample re-anchored the target to 788. The plant now publishes its delivered rate and the
    * kernel integrates that. Full stack, the cold plant, the step's own command; INJECTION —
    * the kernel's delivered branch removed — reads ~788 with the target re-anchored there. */
-  (function () {
+  if (SEL('2l')) (function () {
     var svc = mkSvc('cold_shutdown');
     var s = null; for (var i = 0; i < 20; i++) s = svc.tick();
     var b0 = s.true_state.boron_ppm;
@@ -855,7 +902,7 @@ if (!only && RUN_B) {
    * 800.0 / 821.3 and reddens both. The HOLD rows below ride the same run: BORON STATUS must read
    * MIXING, and `boron_status_hold` 0, while the tail arrives, and they must agree sample by
    * sample (the board's `boronMixing` is LIFTED from the wiring, not re-typed). */
-  (function () {
+  if (SEL('2l2')) (function () {
     function bchan(s) { return (s.automation && s.automation.channels || []).filter(function (c) { return c.id === 'boron_conc'; })[0]; }
     function run(svc, s, sec, each) { var end = s.metadata.sim_time + sec; while (s.metadata.sim_time < end) { s = svc.tick(); if (each) each(s); } return s; }
     var wiring = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
@@ -929,7 +976,7 @@ if (!only && RUN_B) {
    *
    * THE STEP IS LOOKED UP BY ITS ACTION, never by index: an index is what the STEP_UI map's
    * three historical off-by-ones were made of. */
-  (function () {
+  if (SEL('2m')) (function () {
     var proc = POOL.filter(function (p) { return p.id === 'pwr_raise_power'; })[0];
     var idx = -1;
     (proc ? proc.steps : []).forEach(function (st, k) {
@@ -1045,7 +1092,7 @@ if (!only && RUN_B) {
    * `spray_auto` are false at `pwr_heatup`'s own `cold_shutdown` IC. One merged entry lets
    * `_gradeAccs` grade the `p` half regardless of any command (a plant already there ticks the
    * box) while `_accsCmdWatch` still latches the SAME entry on the press for a plant that is not. */
-  (function () {
+  if (SEL('2n')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
     var NO_STATE = [], CANDIDATES = [];
     POOL.forEach(function (proc) {
@@ -1132,6 +1179,18 @@ if (!only && RUN_B) {
         preSatisfied.push(r.proc + ' step ' + r.step);
       }
     });
+    /* THE PRESS IS THE CLAIM (#670 Fable pass, 2026-10-14). TMI 10/11/12 grade the player's press AND its
+     * effect on purpose: on this leg each effect has a SECOND cause (pumps never stopped -> RCP FLOW already
+     * 100 %; the effect row alone ticked step 12 in 0.0 plant-min, and step 11 in 0.1, on Fable's route), so
+     * the boot-IC proxy (`hot_full_power`, before the accident) reads them pre-satisfied and that is the
+     * point. Not a soft lock: the cmd row latches on any press while the step is up. Pinned both ways --
+     * a key here that the sweep no longer reports goes red too. */
+    /* step 10 LEFT (quality pass 2026-10-14): its press row also grades the valve POSITION, which reads open at the boot IC */
+    var PRESS_REQUIRED = { 'pwr_tmi2_incident step 11': 1, 'pwr_tmi2_incident step 12': 1 };
+    var staleReq = Object.keys(PRESS_REQUIRED).filter(function (k) { return preSatisfied.indexOf(k) < 0; });
+    preSatisfied = preSatisfied.filter(function (k) { return !PRESS_REQUIRED[k]; });
+    ck('the press-required TMI steps are exactly the pinned ones (#670 Fable pass)', staleReq.length === 0,
+       staleReq.length ? 'PINNED BUT NOT PRE-SATISFIED: ' + staleReq.join(', ') : Object.keys(PRESS_REQUIRED).join(', '));
     ck('no command-kind acceptance with an observable state is pre-satisfied at its own leg\'s boot IC (#697)',
        preSatisfied.length === 0,
        (preSatisfied.length ? 'PRE-SATISFIED: ' + preSatisfied.join(', ') + '; ' : '') +
@@ -1158,7 +1217,7 @@ if (!only && RUN_B) {
    *   - cooldown step 4: `hot_zero_power` BOOTS in pressure mode, so the row is met on arrival
    *     and the old completion check stands; the new half is that a dump left in TAVG (selected
    *     at step 3, AUTO never pressed) leaves the row unmet — the lamp would have ticked it. */
-  (function () {
+  if (SEL('2o')) (function () {
     var POOL2 = RD.MANUAL_PROCEDURES.pwr2;
 
     function driveCooldownStep4(maxTicks, tavgAtStep3) {
@@ -1336,7 +1395,7 @@ if (!only && RUN_B) {
    * 20 % ceiling would warn on the leg's own shipped, correct route, which is worse than the gap
    * it replaces. PROVEN RED BY INJECTION: the upper-bound row is removed for one drive, and the
    * 100 % entry must then show NO unmet row at all — the exact silence the owner hit. */
-  (function () {
+  if (SEL('2p')) (function () {
     var proc = POOL.filter(function (p) { return p.id === 'pwr_shutdown'; })[0];
     var lowerPowerProc = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
     var upperIdx = (proc.precond || []).findIndex(function (c) { return c.op === '<='; });
@@ -1391,7 +1450,7 @@ if (!only && RUN_B) {
    * stale phrase is reinstated into the step's `note`, the sweep must catch it, then it is
    * restored. Not a general prose-linter — narrow to the one word this regression turned on,
    * per the "narrow and silent beats broad and noisy" rule this file already states for 2n. */
-  (function () {
+  if (SEL('2q')) (function () {
     var STALE_RE = /sample/i;
     function sweep() {
       var hits = [];
@@ -1436,7 +1495,7 @@ if (!only && RUN_B) {
    * load (#715 cause 1), which a scrammed turbine cannot supply, so the checklist sticks —
    * and even if it did not, `outcome_guard` (#715 cause 2, sub-block below) keeps the banner
    * from repeating the claim. */
-  (function () {
+  if (SEL('2r')) (function () {
     var svc = mkSvc('hot_full_power');
     svc.handleCommand({ action: 'scram' });
     for (var i = 0; i < 20; i++) svc.tick();   // same 20 s settle as the filed repro (10x accel)
@@ -1471,7 +1530,7 @@ if (!only && RUN_B) {
    * keep the completion note from claiming a state the plant does not hold EVEN IF a future
    * edit reopens a hole in cause 1's per-step pairing — proven by injection on the mechanism
    * itself, not inferred from 2r's outcome. */
-  (function () {
+  if (SEL('2s')) (function () {
     var IL = RD.InstructorLayer;
     var il = new IL(null);
     var proc = POOL.filter(function (p) { return p.id === 'pwr_lower_power'; })[0];
@@ -1525,7 +1584,7 @@ if (!only && RUN_B) {
    * DRIVEN ON THE REAL LEG, not a synthetic probe: the whole point is that a block placed by a
    * PREVIOUS step is seen, which only a run that reaches step 17 through step 16 can show.
    * ~30 s of wall time for the two drives. */
-  (function () {
+  if (SEL('2t')) (function () {
     var proc = POOL.filter(function (p) { return p.id === 'pwr_startup'; })[0];
     var i16 = -1, i17 = -1;
     (proc.steps || []).forEach(function (st, k) {
@@ -1682,7 +1741,7 @@ if (!only && RUN_B) {
    * (`inbox/724/precond_flicker.js`): six crossings raised the comment SIX times there and once
    * here, while the heal case reads 1 raise / 1 clear on BOTH trees — so the latch is not
    * bought by breaking the clear. */
-  (function () {
+  if (SEL('2u')) (function () {
     var PROBE = {
       id: '__precond_flicker__', category: 'control', title: 'flicker probe', from: 'hot_full_power',
       precond: [{ p: 'power_pct', op: '>', v: 10, text: 'Reactor at power: REACTOR POWER above 10 %' }],
@@ -1802,7 +1861,7 @@ if (!only && RUN_B) {
    * ALL FIVE POOLS, not just pwr2 — the trap is in the shared grader, so a pwr/rbmk/bwr step
    * would be just as dead. PROVEN RED BY INJECTION below: an `acc` is put back on the step it
    * was removed from, the sweep must name it, then it is removed again. */
-  (function () {
+  if (SEL('2v')) (function () {
     var POOLS = RD.MANUAL_PROCEDURES;
     function sweep() {
       var hits = [];
@@ -1866,7 +1925,7 @@ if (!only && RUN_B) {
    *     `cmd` sends (`set_spray {pct}`), or the card grades a number the step never asked for.
    * (c) THE HX SPLIT. Same shape one entry down, and the wire form is a FRACTION against a
    *     command in per cent — exactly the units slip this pins. */
-  (function () {
+  if (SEL('2w')) (function () {
     var CTL = RD.PWR_CONTROL || {};
     var RATED = ((RD.PWR_CONFIG || {}).identity || {}).mwe_rated;
     /* THE BOARD'S OWN MULTIPLE OF THE ROD LOCKUP BAND — `tavgBand` in pwr_board_wiring.js, a
@@ -1989,7 +2048,7 @@ if (!only && RUN_B) {
    * where re-initialising is the CORRECT behaviour and stranding the old 7 % would be the defect.
    * The third check is the plain one the other two assume: the params resolve at all, on every
    * initial condition the pool boots from. */
-  (function () {
+  if (SEL('2x2')) (function () {
     var PV = RD.InstructorLayer.paramValue;
     function tick(s, n) { var x = null; for (var i = 0; i < n; i++) x = s.tick(); return x; }
 
@@ -2055,7 +2114,7 @@ if (!only && RUN_B) {
    * red by injection when the key was added: "Set LOAD to 50 MWe at 11.14 MPa." reddens it and
    * removing the clause goes green. A new authoring key the harvester does not know about ships
    * ungated, which is how the panel came to print "(116 degC)" under a green check at #670. */
-  (function () {
+  if (SEL('2y')) (function () {
     /* ALL FIVE POOLS, not just pwr2 (#741 quality pass). `accs[].ask` is a key on the SHARED step
      * schema and the renderer draws whatever pool is loaded, so an ask authored in the pwr, rbmk
      * or bwr pool would ship unchecked. Zero there today; this is what keeps it so. */
@@ -2232,7 +2291,7 @@ if (!only && RUN_B) {
    * action carries a reversible sense is driven with the OPPOSITE sense and must not latch, and
    * with its OWN sense and must latch. Driving both directions is the point: a `_cmdEvidence`
    * that returned false for everything would satisfy the first half alone. */
-  (function () {
+  if (SEL('2z')) (function () {
     var il = Object.create(RD.InstructorLayer.prototype);
     var cases = [], seen = {};
     Object.keys(RD.MANUAL_PROCEDURES).forEach(function (key) {
@@ -2240,7 +2299,7 @@ if (!only && RUN_B) {
         (proc.steps || []).forEach(function (st, i) {
           (st.accs || []).forEach(function (en) {
             if (!en || !en.cmd || typeof en.cmd === 'string') return;
-            if (en.cmd.active === undefined) return;          // no sense to reverse
+            if (en.cmd.active === undefined && en.cmd.running === undefined) return;   // no sense to reverse (`running`: set_rcp / set_charging_pump, #670 Fable pass 2026-10-14 -- skipped before, so the OFF/ON pair was never driven)
             cases.push({ where: key + ':' + proc.id + ' step ' + (i + 1), cmd: en.cmd });
             seen[en.cmd.action] = 1;
           });
@@ -2250,7 +2309,8 @@ if (!only && RUN_B) {
     var wrongLatched = [], rightRefused = [];
     cases.forEach(function (c) {
       var opposite = {}; for (var k in c.cmd) opposite[k] = c.cmd[k];
-      opposite.active = !(c.cmd.active !== false);
+      var sk = c.cmd.running !== undefined ? 'running' : 'active';
+      opposite[sk] = !(c.cmd[sk] !== false);
       if (il._cmdEvidence(c.cmd, opposite)) wrongLatched.push(c.where + ' (' + c.cmd.action + ')');
       if (!il._cmdEvidence(c.cmd, c.cmd)) rightRefused.push(c.where + ' (' + c.cmd.action + ')');
     });
@@ -2284,7 +2344,7 @@ if (!only && RUN_B) {
    *
    * THE PROOFS ARE PAIRS, DRIVEN ON THE PLANT. A predicate that never latches satisfies "cannot
    * plot while the rods are moving" all by itself, so every negative below has its positive. */
-  (function () {
+  if (SEL('2aa')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var RUNGS = [4, 5, 6, 7];                 // pwr_startup steps 5-8, zero-based
@@ -2352,6 +2412,7 @@ if (!only && RUN_B) {
             nBagged++; byOp[en.op] = (byOp[en.op] || 0) + 1;
             if (!en.p || !(en.v > 0)) malformed.push(w + ' (' + en.op + ')');
             if (en.op === 'steady' && !(en.window > 0)) malformed.push(w + ' (steady, no window)');
+            if (en.op === 'moves' && RD.InstructorLayer.movesLegal(en)) malformed.push(w + ' (moves: ' + RD.InstructorLayer.movesLegal(en) + ')');
             /* `stopped` compares readings for EQUALITY, so it is honest only on a channel that
              * is exact and quantized — the operator's own control state. On a noisy instrument
              * it would read false for ever: a check that can only fail is as hollow as one that
@@ -2687,7 +2748,7 @@ if (!only && RUN_B) {
    *   · put a `source_range` entry in DISPLAY_DAMP                       -> check 2 red
    *   · put any rung's threshold back on its band centre (1350 -> 1400)  -> check 3 red
    *   · put the criticality step's `power_pct` back to 0.1               -> check 4 red */
-  (function () {
+  if (SEL('2ab')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var RUNGS = [4, 5, 6, 7];
@@ -2783,6 +2844,33 @@ if (!only && RUN_B) {
       });
       ck('2ab.3 ...and every rung prints the SHORTHAND, never the edge number (#724 item 6)',
          strBad.length === 0, strBad.join('; ') || 'all four: text, target and label carry the band name only');
+    })();
+
+    /* --- 3b. THE SAME RULE ON OUTPUT (cycle layman pass, 2026-10-15). The Generator Output tile is
+     * `r0(IN(s).mwe_output)` (Math.round, READ out of the wiring), so it draws "N" from N - 0.5 up: an
+     * `mwe_output` row whose ask or label says "N MW or more" must be `>=` at exactly N - 0.5. Startup
+     * 15b's `> 8` ticked under a tile reading 8 against an ask of "above 8". */
+    (function () {
+      var wsrc = fs.readFileSync(path.join(ROOT, 'ui', 'diagram', 'board', 'pwr_board_wiring.js'), 'utf8');
+      var isR0 = /imrppeh5hkb: function \(s\) \{ return r0\(IN\(s\)\.mwe_output\); \}/.test(wsrc) &&
+                 /function r0\(v\) \{ return Math\.round\(v\); \}/.test(wsrc);
+      var bad = [], seen = [];
+      (RD.MANUAL_PROCEDURES.pwr2 || []).forEach(function (pr) {
+        (pr.steps || []).forEach(function (st, i) {
+          (st.accs || []).forEach(function (e, j) {
+            if (e.p !== 'mwe_output') return;
+            var m = /(\d+) MW or more/.exec(String(e.ask || '') + ' ' + String(e.label || ''));
+            if (!m) return;
+            var N = +m[1], id = pr.id + ' ' + (i + 1) + String.fromCharCode(97 + j);
+            seen.push(id + ' >= ' + e.v);
+            if (e.op !== '>=' || e.v !== N - 0.5) bad.push(id + ': ' + e.op + ' ' + e.v + ' (want >= ' + (N - 0.5) + ')');
+            else if (Math.round(e.v) !== N || Math.round(e.v - 1e-9) === N) bad.push(id + ': ' + e.v + ' is not the floor of the drawn ' + N);
+          });
+        });
+      });
+      ck('2ab.3b every "N MW or more" OUTPUT row is graded >= N - 0.5, the floor of the r0 tile',
+         isR0 && seen.length >= 2 && bad.length === 0,
+         !isR0 ? 'the Generator Output tile is no longer r0(mwe_output) -- re-derive the floor' : (bad.join('; ') || seen.join(', ')));
     })();
 
     /* --- 4. THE SAME RULE ON REACTOR POWER (#749 item 2). The tile is `digits: 1` in
@@ -3055,7 +3143,7 @@ if (!only && RUN_B) {
    *                                                              whose real acceptance is unmet)
    *   · the `ordered` half of 2ad.1 is an AUTHORING gate and cannot be reddened by a code
    *     change: no shipped ordered step carries an `implied_by`, which is the state it pins. */
-  (function () {
+  if (SEL('2ad')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     /* THE STEP IS FOUND BY CONTENT, NOT BY INDEX (2026-09-23): the climb's two rows were `steps[8]`
@@ -3206,7 +3294,7 @@ if (!only && RUN_B) {
    * INJECTION, both directions, proven in place:
    *   · delete `this.pendingMessage = null;` from `_checklistCheckOff` -> 2ac.2 and 2ac.3 red
    *   · swap the overtaken path back to set-then-check-off                -> 2ac.1 red */
-  (function () {
+  if (SEL('2ac')) (function () {
     var svc = mkSvc('hot_zero_power');
     var s = null, i;
     for (i = 0; i < 5; i++) s = svc.tick();
@@ -3347,7 +3435,7 @@ if (!only && RUN_B) {
    *       measured, the creep sat awaiting Continue until +1926 s, REACTOR POWER 0.46 %)
    * INJECTION, proven in place: `delete step9.overtaken` -> .1 red (step 9 still active at the
    * cap); a threshold of 0.0 on the skip -> .2 red (`overtaken`). */
-  (function () {
+  if (SEL('2aj')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var S9 = -1;
@@ -3424,7 +3512,7 @@ if (!only && RUN_B) {
    *      `gradeStopped` -> .5 red (awaiting Continue mid-travel).
    * INJECTIONS, proven in place: `latch` deleted from 9a -> .3 red (met false, head 0); floor
    * 0.035 -> .2 red (completes at bank 207); `latch` moved onto the rate row -> .1 red. */
-  (function () {
+  if (SEL('2ak')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var bad = [], nLatch = 0;
@@ -3584,7 +3672,7 @@ if (!only && RUN_B) {
    * `_oneOverMTick` deleted -> .6 red; a null prediction graded as unmet -> .5 red. RE-PROVEN
    * 2026-09-28 for the new .6: the old clear-everything rewind rule put back -> .6 red (points 0,
    * prediction null) on both seeds; on the fix, points 4 and the 4-point prediction. */
-  (function () {
+  if (SEL('2am')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var S9 = -1;
@@ -3751,7 +3839,7 @@ if (!only && RUN_B) {
    * INJECTIONS (2026-09-23, the identical block run from a scratch copy against a mutated pool):
    * the old rate row back in place of the steady row -> .1 red (ticked at +3 s); step 17's floor
    * back to 10.05 -> .2 red (never completes: power sits at 9.7 %). */
-  (function () {
+  if (SEL('2al')) (function () {
     var proc = null;
     POOL.forEach(function (p) { if (p.id === 'pwr_startup') proc = p; });
     var S9 = 8, S12 = 11;
@@ -3931,7 +4019,7 @@ if (!only && RUN_B) {
    *   · rename `pwr2:` to `pwrZZ:` in the scan regex        -> 2ae.1 red, "SCAN MISSED:
    *     pump_flow_pct, pressure_mpa, tavg_c, …" (16 params), and 2ae.1b/.2/.3/.4/.5 red with it —
    *     the scan is load-bearing for the whole section, which is why 2ae.1 exists
-   *   · delete `'pwr_heatup:2:pump_flow_pct'` from STRAND_EXPECTED -> 2ae.2 red, "UNPINNED:
+   *   · delete `'pwr_heatup:1:pump_flow_pct'` from STRAND_EXPECTED -> 2ae.2 red, "UNPINNED:
    *     pwr_heatup:2:pump_flow_pct. 49 row(s) …"
    *   · add `'pwr_nonesuch:1:power_pct'` to STRAND_EXPECTED  -> 2ae.2 red, "PINNED BUT NOT SEEN"
    *   · add `tavg` to UNBREAKABLE_EXPECTED                   -> 2ae.3 red (tavg took the stuck
@@ -3942,7 +4030,7 @@ if (!only && RUN_B) {
    *   · point 2ae.6's probe at `sr_counts_cps` instead of `sr_energized` -> 2ae.6 red,
    *     "528.87 healthy / 1 with SOURCE RANGE dead, graded_by instrument" — i.e. the check does
    *     discriminate a true_state relief from an instrument one */
-  (function () {
+  if (SEL('2ae')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
 
     /* THE PARAM -> CHANNEL MAP, scanned from the layer the way §2a scans it, because the map is
@@ -4072,7 +4160,7 @@ if (!only && RUN_B) {
        * (DUMP SETPOINT 720 / 270 psi) and 11a (HX SPLIT raised to 9 %), all control-state rows, so
        * instrument-graded and sole unchanged. SUM on a merge. */
       ck('2ae.1b the re-measured pool counts are the pinned ones (#773, re-pinned 2026-09-26 (#807 item 2 merge): 84 / 172 / 100 / 25 -- heatup 16c/16d, startup 9b settle row removed, startup 2d BORON STATUS HOLD added, raise-power 10-12 removed, cooldown 4b/4c/11a added; 807g: 84 / 173 / 101 / 25, cooldown 11b SUBCOOLING MARGIN row)',
-         gradedSteps === 85 && predRows === 179 && rows.length === 103 && soleInst === 23,   /* MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
+         gradedSteps === 76 && predRows === 183 && rows.length === 102 && soleInst === 16,   /* RE-PINNED 2026-11-04 (critic M-2 on c39b21cc), MEASURED 76/183/102/16: + raise power 9c, the slow-climb trim row, AVG COOLANT TEMPERATURE >= 577 degF (instrument-graded, not sole). */ /* #825 (2026-11-03, critic round 1), MEASURED 76/182/101/16: the four lower-power `load_target_mwe stopped` rows are predicate rows on control_state, not instruments (+4 predicate, +0 instrument-graded); without them 76/178/101/16: lower power's trim step merged into step 2 -- one graded step fewer, and 2b's `power_pct < 95` row deleted (one predicate row, one instrument-graded); the rest moved, not removed. #823 (2026-11-02), MEASURED 77/179/102/16: heatup steps 1+2 folded -- one graded step fewer; rows unchanged (the four checks and the pump row all stay); the pump row is no longer its step's only row (-1 sole) */   /* merge cooldown 4 + lower power 2 (2026-10-15): both rows, 179/102 -- MEASURED, part C 35/0 */   /* relations plan cooldown 4, 2026-10-15: +1 predicate, +1 instrument-graded (STEAM PRESS moves row), step 4 not sole -- MEASURED, part C 35/0 */   /* relations plan lower power 2, 2026-10-15: +1 predicate, +1 instrument-graded (the power/Tavg `moves` row), not sole -- verify by run */   /* merge of heatup 11 + raise power 4 (2026-10-15): both rows, re-pin expected 78/177/100/17 -- verify by run */   /* relations plan raise power 4, 2026-10-15, MEASURED 78/176/99/18: +1 predicate, +1 instrument-graded (the tavg_tref_dev lag row), not sole */   /* relations plan change 1, 2026-10-14, MEASURED: TMI 9's `moves` row on RCS INVENTORY (true_state, +1 predicate; instrument-graded and sole unchanged) */   /* quality pass 2026-10-14, MEASURED: TMI 10's press row also grades block_valve_open (true_state, +1 predicate), so its tailpipe row is no longer the step's only one (-1 sole) */   /* #670 Fable pass 2026-10-14, MEASURED: TMI 10's PRIMARY PRESSURE row removed (-1 predicate, -1 instrument-graded), which leaves its tailpipe row the step's only one (+1 sole) */   /* #670 REDESIGN 2026-10-14 (TMI-2 twenty steps -> twelve), MEASURED -7/-6/-4/-5 (then +1 row: step 4 carries old 7's scrammed row, true_state-graded) and each accounted: graded steps old 1,4,7,8,16,17 left and 12+13 merged (-7); rows power, turbine, scram, tailpipe, pzr-16, subcooling-17 left (-6); of those the instrument-graded are power, tailpipe, pzr-16, subcooling-17 (-4, turbine_tripped and scrammed grade true_state); sole rows old 1, 8, 12 (no longer sole, now one of three), 16, 17 (-5). WAS: MERGED 2026-09-28 (#809 spray-row cut + automatic ramp): SUM of both, -1 predicate each -- 85/179/103/23, measure on the post-merge run */   /* #809 playtest 2026-09-28: cooldown 10b 'Leave SPRAY at 50 %' row removed by owner report -- -1 predicate, -1 instrument-graded (pzr_spray_flow), 10a RCP FLOW becomes the step's only row: MEASURED 85/180/103/23 */   /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */   /* 2026-09-28 automatic ramp: cooldown 4b/4c/4d (DUMP SETPOINT 720, 270, Tavg) -> 4b/4c (DUMP SETPOINT 120, Tavg), -1 predicate row, a control-state row, so instrument-graded and sole unchanged -- MEASURED 85/180/104/22 */ /* #809 layman pass 13: startup 16a REACTOR POWER >= 9.45, +1 predicate, +1 instrument-graded (power_range), not sole -- MEASURED 85/181/104/22 */   /* merge of #809 heat + start (2026-09-27): start 11c -1 instrument-graded, heat 14b makes one sole row not sole -- SUM 85/180/103/22, measured by the post-merge run */   /* #809 (exp/809heat): heatup 7 one row on the derived A+B lamp (was A + B, both control-state) and 14 split into 14a SET PZR PRESSURE (control-state) + 14b PRIMARY PRESSURE, so rows and instrument-graded unchanged and 14's pressure row is no longer SOLE: 23 -> 22, MEASURED 85/180/104/22 */   /* #808 (2026-09-27-develop-d): +1 step, +3 rows (startup 13a SG level, 13b SG FEED AUTO, 13c aux feed STANDBY), +1 instrument-graded (13a; afw_pump_running is not a MAP channel), sole unchanged -- MEASURED 85/180/104/23 */   /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B", startup 9-12 rebuilt + 14c): MEASURED 84/177/103/23 -- 9 {IR, SR block}, 10 {bank, rate}, 11 {IR, rate, boron}, 12 {rate, power, rate}, 14c dump TAVG mode; old 10 {IR, power} and 11 {power SOLE, saw rate} gone; sole 25 -> 23 (old 11 power, old 12 power steady) */   /* develop-k (2026-09-26): -1 predicate row, startup 9's hidden rods-still row folded into 9b's `still_s`, MEASURED 84/172/101/25 */   /* 807g (2026-09-26): +1 predicate row, +1 instrument-graded -- cooldown 11b, MEASURED */   /* MERGED 2026-09-26 exp/807e1 + exp/807e2: 83/162/95/25 base, e2 +3 rows, e1 +1 step +7 rows +5 instrument -- MEASURED 84/172/100/25 */
          gradedSteps + ' graded steps, ' + predRows + ' predicate rows, ' + rows.length +
          ' instrument-graded, ' + soleInst + ' of them the only row of their step');
     })();
@@ -4144,17 +4232,17 @@ if (!only && RUN_B) {
      * the only acceptance on its step, where no `implied_by` could ever reach it. */
     var STRAND_EXPECTED = {
       /* pwr_heatup [cold_shutdown] */
-      'pwr_heatup:2:pump_flow_pct': 'rcs_flow',              // > 90 [SOLE]   dead 0.000 vs true 3.867 %
-      'pwr_heatup:9:pressure_mpa': 'primary_pressure',       // > 4.585       dead 0.000 vs true 2.500 MPa
-      'pwr_heatup:11:tavg_c': 'tavg',                        // > 283 [SOLE]  dead 30.00 vs true 50.00 degC
-      'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // > 15.1719 (14b, #809; 14a grades the setpoint)   dead 0.000 vs true 2.500 MPa
-      'pwr_heatup:15:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
+      'pwr_heatup:1:pump_flow_pct': 'rcs_flow',              // > 90 (SOLE until #823 folded the cold checks into its step)   dead 0.000 vs true 3.867 %
+      'pwr_heatup:8:pressure_mpa': 'primary_pressure',       // > 4.585       dead 0.000 vs true 2.500 MPa
+      'pwr_heatup:10:tavg_c': 'tavg',                        // > 283 [SOLE]  dead 30.00 vs true 50.00 degC
+      'pwr_heatup:13:pressure_mpa': 'primary_pressure',      // > 15.1719 (14b, #809; 14a grades the setpoint)   dead 0.000 vs true 2.500 MPa
+      'pwr_heatup:14:steam_pressure_mpa': 'steam_pressure',  // ~ 7.03        dead 0.000 vs true 0.0124 MPa
       /* 2026-09-25 (exp/p2-heatup bring-down): the Hot Standby tile checks. A dead gauge reads 0 and a
        * two-sided band cannot be met by it -- the honest answer (a row a player cannot verify). */
-      'pwr_heatup:15:tavg_c': 'tavg',                        // ~ 285.83 +/-1.66 (544-549 degF)
-      'pwr_heatup:15:pressure_mpa': 'primary_pressure',      // ~ 15.41 +/-0.244 (2200-2270 psi)
-      'pwr_heatup:16:sr_counts_cps': 'source_range',         // steady 8 %/90 s since #807 (was 1.2 %/600 s, 2026-09-24, replaced NET REACTIVITY, a true_state row)
-      'pwr_heatup:16:startup_rate_dpm': 'startup_rate',      // ~ 0 +/-0.025 (same change)
+      'pwr_heatup:14:tavg_c': 'tavg',                        // ~ 285.83 +/-1.66 (544-549 degF)
+      'pwr_heatup:14:pressure_mpa': 'primary_pressure',      // ~ 15.41 +/-0.244 (2200-2270 psi)
+      'pwr_heatup:15:sr_counts_cps': 'source_range',         // steady 8 %/90 s since #807 (was 1.2 %/600 s, 2026-09-24, replaced NET REACTIVITY, a true_state row)
+      'pwr_heatup:15:startup_rate_dpm': 'startup_rate',      // ~ 0 +/-0.025 (same change)
       /* pwr_startup [hot_zero_power] */
       /* RE-PINNED 2026-09-23 (the owner's new-format reconcile): old step 9 split into 9 + 10 and
        * old 11 folded, so the climb's power row is 10 and the 0.5 % row is 11 — keys MOVED, not
@@ -4209,45 +4297,49 @@ if (!only && RUN_B) {
       'pwr_raise_power:9:tavg_c': 'tavg',                    // ~ 303.2
       /* pwr_lower_power [hot_full_power] */
       'pwr_lower_power:2:mwe_output': 'mwe_output',          // ~ 75          dead 0.000 vs true 100.0 MWe
-      'pwr_lower_power:3:mwe_output': 'mwe_output',          // ~ 75
-      'pwr_lower_power:4:mwe_output': 'mwe_output',          // ~ 50
-      'pwr_lower_power:5:mwe_output': 'mwe_output',          // ~ 30
-      'pwr_lower_power:6:mwe_output': 'mwe_output',          // ~ 15
+      'pwr_lower_power:2:power_pct': 'power_range',          // moves -3 / 60 s with Tavg +0.5 degF (relations plan, 2026-10-15): a dead gauge never moves. The `< 95` row on the same key false-ticks (TICK set)
+      /* #825 (2026-11-03): the old step 3 (OUTPUT ~ 75 +/- 5) merged into step 2 -- same key as the row above -- and
+       * old steps 4-6 renumber to 3-5 */
+      'pwr_lower_power:3:mwe_output': 'mwe_output',          // ~ 50
+      'pwr_lower_power:4:mwe_output': 'mwe_output',          // ~ 30
+      'pwr_lower_power:5:mwe_output': 'mwe_output',          // ~ 15
       /* pwr_shutdown [hot_full_power] */
       'pwr_shutdown:3:steam_pressure_mpa': 'steam_pressure', // ~ 7.0327 (1015-1025 psi, 3c, 2026-09-25 bring-down); a dead gauge reads 0
       /* pwr_cooldown [hot_zero_power] */
       'pwr_cooldown:1:boron_ppm': 'boron_analyzer',          // > 880 [SOLE]  dead 0.000 vs true 718.9 ppm
+      'pwr_cooldown:4:steam_pressure_mpa': 'steam_pressure', // moves down   dead 0.000 MPa, flat: the relation row (relations plan, 2026-10-15) cannot see STEAM PRESS fall
       'pwr_cooldown:6:spray_flow_pct': 'pzr_spray_flow',     // ~ 50          dead 0.000 %
       /* pwr_tmi2_incident [hot_full_power] */
-      'pwr_tmi2_incident:1:power_pct': 'power_range',        // > 90 [SOLE]   dead 0.000 vs true 99.56 %
-      'pwr_tmi2_incident:8:porv_tailpipe_temp_c': 'porv_tailpipe_temp', // > 115.56 [SOLE]  dead 0.000 degC
-      'pwr_tmi2_incident:12:pzr_level_pct': 'pzr_level',     // >= 99 [SOLE]  dead 0.000 vs true 63.66 %
-      'pwr_tmi2_incident:14:sg_level_pct': 'sg_level',       // > 5 [SOLE]    dead 0.000 vs true 98.08 %
-      'pwr_tmi2_incident:18:pressure_mpa': 'primary_pressure', // > 5.17      dead 0.000 vs true 14.59 MPa
-      'pwr_tmi2_incident:20:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
-      'pwr_tmi2_incident:19:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
+      /*#670 cut: 'pwr_tmi2_incident:1:power_pct': 'power_range',*/        // > 90 [SOLE]   dead 0.000 vs true 99.56 %
+      /*#670 cut: 'pwr_tmi2_incident:8:porv_tailpipe_temp_c': 'porv_tailpipe_temp',*/ // > 115.56 [SOLE]  dead 0.000 degC
+      'pwr_tmi2_incident:7:pzr_level_pct': 'pzr_level',     // >= 99 [SOLE]  dead 0.000 vs true 63.66 %
+      'pwr_tmi2_incident:8:sg_level_pct': 'sg_level',       // > 5 [SOLE]    dead 0.000 vs true 98.08 %
+      /*#670 Fable pass: 'pwr_tmi2_incident:10:pressure_mpa' LEFT with the row (it stranded the typical route at ~741 psia)*/
+      'pwr_tmi2_incident:12:pump_flow_pct': 'rcs_flow',      // > 80 [SOLE]   dead 0.000 vs true 100.5 %
+      'pwr_tmi2_incident:11:subcooling_c': 'subcooling_margin', // > 5.56 [SOLE] dead -28.000 vs true 23.404 degC (#789)
       /* the three `saw` rows — no `implied_by` can reach a `saw`, so these have no relief at all */
-      'pwr_heatup:11:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
+      'pwr_heatup:10:saw:tavg_c': 'tavg',                    // > 150         same channel as the step's acc
       /* 'pwr_startup:11:saw:startup_rate_dpm' LEFT with old step 11 (2026-09-27-develop-a, OWNER RULING 2026-09-26 "B") */
-      'pwr_tmi2_incident:3:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
+      'pwr_tmi2_incident:1:saw:pressure_mpa': 'primary_pressure', // > 16 [SOLE]  the step's only grading
     };
     /* THE OTHER HALF: a row that reads DOWNWARD is not stranded by a dead gauge, it is TICKED by
      * one — the floor satisfies it. Pinned for the same reason, and it is the larger set. */
     var TICK_EXPECTED = {
-      'pwr_heatup:15:adv_valve_pct': 1, 'pwr_heatup:17:power_pct': 1,
+      'pwr_heatup:14:adv_valve_pct': 1, 'pwr_heatup:16:power_pct': 1,
       /* 2026-09-25 (exp/p2-heatup): step 1's "below" checks and 4b's OUTPUT 0 MW read DOWNWARD, so the
        * dead floor satisfies them -- the same shape as 15's ATMOS DUMP and 17's REACTOR POWER. They sit
        * on verify steps whose true values already meet them at the leg's own IC (122 degF, 363 psi, 0 MW). */
-      'pwr_heatup:1:tavg_c': 1, 'pwr_heatup:1:pressure_mpa': 1, 'pwr_heatup:4:mwe_output': 1,
+      'pwr_heatup:1:tavg_c': 1, 'pwr_heatup:1:pressure_mpa': 1, 'pwr_heatup:3:mwe_output': 1,
       /* 807f: step 12 is "power 1 %, then STARTUP RATE +0.10 or less" — the `<` rate row is the one a dead
        * (zero) rate tile ticks; the old `power < 5` row is gone and the new power row is `>=`, which strands */
       'pwr_startup:12:startup_rate_dpm': 1,
       'pwr_raise_power:9:boron_ppm': 1,   /* 11's boron row left 2026-09-25: the dose is conditional */
-      'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
-      'pwr_lower_power:3:power_pct': 1, 'pwr_lower_power:4:power_pct': 1,
-      'pwr_lower_power:4:tavg_c': 1, 'pwr_lower_power:5:power_pct': 1,
-      'pwr_lower_power:5:tavg_c': 1, 'pwr_lower_power:6:power_pct': 1,
-      'pwr_lower_power:6:tavg_c': 1,
+      'pwr_raise_power:4:tavg_tref_dev_c': 1,   /* relations plan 2026-10-15: a DEAD Tavg-minus-Tref gauge bottoms at -60 degC (-108 degF), which reads as Tavg far below its program -- the lag row ticks on it, as the board's ΔREF shows */
+      /* #825 (2026-11-03): old step 3 merged into 2, old 4-6 renumbered 3-5 */
+      'pwr_lower_power:2:power_pct': 1, 'pwr_lower_power:2:tavg_c': 1,
+      'pwr_lower_power:3:power_pct': 1, 'pwr_lower_power:3:tavg_c': 1,
+      'pwr_lower_power:4:power_pct': 1, 'pwr_lower_power:4:tavg_c': 1,
+      'pwr_lower_power:5:power_pct': 1, 'pwr_lower_power:5:tavg_c': 1,
       'pwr_shutdown:1:mwe_output': 1, 'pwr_shutdown:2:power_pct': 1, 'pwr_shutdown:3:power_pct': 1,
       'pwr_cooldown:2:pressure_mpa': 1, 'pwr_cooldown:4:tavg_c': 1, 'pwr_cooldown:5:pressure_mpa': 1,
       'pwr_cooldown:6:pressure_mpa': 1, 'pwr_cooldown:8:pressure_mpa': 1,
@@ -4261,8 +4353,8 @@ if (!only && RUN_B) {
        * clicked — see the step's own note for the measurement and for why no `implied_by` could
        * reach it (the board carries no second measurement of pressurizer level). It now grades
        * SUBCOOLING MARGIN — see the three rows below, moved here from `skipped` by #789. */
-      'pwr_tmi2_incident:5:sg_level_pct': 1,
-      'pwr_tmi2_incident:16:pzr_level_pct': 1, 'pwr_tmi2_incident:18:porv_tailpipe_temp_c': 1,
+      'pwr_tmi2_incident:2:sg_level_pct': 1,
+      /*#670 cut: 'pwr_tmi2_incident:16:pzr_level_pct': 1,*/ 'pwr_tmi2_incident:10:porv_tailpipe_temp_c': 1,
       'pwr_cooldown:4:saw:tavg_c': 1,   // `saw tavg_c < 250` — a dead tavg reads 30.00 and is "seen"
       /* #789 (2026-09-20) — `subcooling_margin` went from UNBREAKABLE (silent no-op, skipped)
        * to directly failable, so these three `<=` rows now measure like every other channel: a
@@ -4271,8 +4363,8 @@ if (!only && RUN_B) {
        * is really at a healthy +23.4 degC (+42.1 degF) of margin. FALSE-TICKS, not strands —
        * step 19's `> 5.56` is the one direction a pinned-low floor can never clear, so it
        * strands instead (STRAND_EXPECTED above). */
-      'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
-      'pwr_tmi2_incident:17:subcooling_c': 1,
+      'pwr_tmi2_incident:7:subcooling_c': 1, /*#670 Fable pass: 9:subcooling_c moved to the relieved set -- step 9 authors `overtaken` (hpi_active) now*/
+      /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c': 1,*/
       /* cooldown 11b (2026-09-26, #807 review item 4): "watch SUBCOOLING MARGIN fall to 32 degF", a `<`
        * row on the same derived channel -- a dead margin pins at -28 degC and false-ticks it, as the TMI rows */
       'pwr_cooldown:11:subcooling_c': 1,
@@ -4292,6 +4384,7 @@ if (!only && RUN_B) {
       'pwr_startup:10:startup_rate_dpm': 1,   // 10b, relieved by step 10's `overtaken` (power_range), §2aj
       'pwr_startup:11:ir_amps': 1,            // 11a, step 11's `overtaken`
       'pwr_startup:11:startup_rate_dpm': 1,   // 11b
+      'pwr_tmi2_incident:9:subcooling_c': 1,  // relieved by step 9's `overtaken` on hpi_active (#670 Fable pass, 2026-10-14: the keep-injection branch)
       /* 'pwr_startup:11:boron_ppm' LEFT with 11c's BORON CHEM row (#809 item 10, 2026-09-27) */
     };
 
@@ -4385,7 +4478,7 @@ if (!only && RUN_B) {
    *                                                             pwr_cooldown:8"
    *   · delete `'pwr_tmi2_incident:9'` from TRUE_STATE_EXPECTED -> 2af.3 red, "UNPINNED:
    *                                                             pwr_tmi2_incident:9" */
-  (function () {
+  if (SEL('2af')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
     var snaps = {};
     function snapOf(from) {
@@ -4396,12 +4489,12 @@ if (!only && RUN_B) {
     }
 
     var LIVE_QUANTITY_EXPECTED = {
-      'pwr_heatup:11': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
-      'pwr_heatup:1': 'tavg_c,pressure_mpa',                  // the cold-state confirm (2026-09-25; was plant_mode, true_state)
-      'pwr_heatup:4': 'mwe_output',                           // 4b OUTPUT 0 MW (2026-09-25)
-      'pwr_heatup:15': 'tavg_c,pressure_mpa,adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm (15a/15b added 2026-09-25)
-      'pwr_heatup:16': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
-      'pwr_heatup:17': 'power_pct',
+      'pwr_heatup:10': 'tavg_c',                              // "wait until AVG COOLANT reaches 542 degF"
+      /* 'pwr_heatup:1' LEFT 2026-11-02 (#823): the cold-state confirm is now rows of the pump start, an ACTION step (cmd set_rcp), so it is no longer observation-kind */
+      'pwr_heatup:3': 'mwe_output',                           // 4b OUTPUT 0 MW (2026-09-25)
+      'pwr_heatup:14': 'tavg_c,pressure_mpa,adv_valve_pct,steam_pressure_mpa',    // the Hot Standby confirm (15a/15b added 2026-09-25)
+      'pwr_heatup:15': 'sr_counts_cps,startup_rate_dpm',      // SOURCE RANGE steady + STARTUP RATE near 0 (owner ruling 2026-09-24; was reactivity_pcm)
+      'pwr_heatup:16': 'power_pct',
       'pwr_startup:1': 'tavg_c,pressure_mpa,pump_flow_pct,startup_rate_dpm',   // 1a-1d (2026-09-25)
       /* 2026-09-27-develop-a (OWNER RULING 2026-09-26 "B"): 10 and 12 now carry a rod `cmd` (not observation-kind);
        * the new 11, the level-off at 1.0e-8 A, has none */
@@ -4410,24 +4503,23 @@ if (!only && RUN_B) {
       'pwr_raise_power:9': 'power_pct,mwe_output,boron_ppm,tavg_c',
       'pwr_cooldown:8': 'pressure_mpa',
       'pwr_cooldown:13': 'tavg_c',              // 13a/13b replace plant_mode (2026-09-25); 13b is the OFF lamp since workbench-f
-      'pwr_tmi2_incident:1': 'power_pct',
-      'pwr_tmi2_incident:3': 'pressure_mpa',                  // a `saw` row, not an `acc`
-      'pwr_tmi2_incident:5': 'sg_level_pct',
-      'pwr_tmi2_incident:8': 'porv_tailpipe_temp_c',
-      'pwr_tmi2_incident:12': 'pzr_level_pct',
-      'pwr_tmi2_incident:13': 'subcooling_c',
-      'pwr_tmi2_incident:16': 'pzr_level_pct',
-      'pwr_tmi2_incident:17': 'subcooling_c',
+      /*#670 cut: 'pwr_tmi2_incident:1': 'power_pct',*/
+      'pwr_tmi2_incident:1': 'pressure_mpa',                  // a `saw` row, not an `acc`
+      'pwr_tmi2_incident:2': 'sg_level_pct',
+      /*#670 cut: 'pwr_tmi2_incident:8': 'porv_tailpipe_temp_c',*/
+      'pwr_tmi2_incident:7': 'pzr_level_pct,subcooling_c',   // old 12 + 13, merged in the #670 redesign
+      /*#670 cut: 'pwr_tmi2_incident:16': 'pzr_level_pct',*/
+      /*#670 cut: 'pwr_tmi2_incident:17': 'subcooling_c',*/
     };
     var TRUE_STATE_EXPECTED = {
       /* pwr_heatup:1 and :15 left 2026-09-25: their `plant_mode` rows were retired for tile checks */
-      'pwr_heatup:4': 'turbine_tripped',
-      'pwr_heatup:6': 'steam_dump_valve_pct', 'pwr_heatup:12': 'rhr_active,letdown_flow_actual',
+      'pwr_heatup:3': 'turbine_tripped',
+      'pwr_heatup:5': 'steam_dump_valve_pct', 'pwr_heatup:11': 'rhr_active,letdown_flow_actual',
       'pwr_raise_power:1': 'plant_mode',
       'pwr_cooldown:14': 'accumulator_volume_pct',
       'pwr_cooldown:15': 'rhr_valve_open',
-      'pwr_tmi2_incident:4': 'turbine_tripped', 'pwr_tmi2_incident:7': 'scrammed',
-      'pwr_tmi2_incident:9': 'hpi_active', 'pwr_tmi2_incident:13': 'rcp_cavitating',
+      /*#670 cut: 'pwr_tmi2_incident:4': 'turbine_tripped',*/ /*#670 cut: 'pwr_tmi2_incident:7': 'scrammed',*/
+      'pwr_tmi2_incident:4': 'hpi_active,scrammed', 'pwr_tmi2_incident:7': 'rcp_cavitating',   // 4 carries old 7's trip row (#670 redesign)
     };
 
     var live = {}, ts = {}, lineup = {}, nObs = 0, noWhy = [];
@@ -4620,7 +4712,7 @@ if (!only && RUN_B) {
    *     step 15's entry off the channel — steps 12 and 16 are what is left)
    *   · delete `'pwr_lower_power:3:tavg_c'` from DRIFT_STRAND -> 2ag.3 red, "UNPINNED:
    *     pwr_lower_power:3:tavg_c. 5 row(s) strand, 8 false-tick, of 17 graded on the channel"
-   *   · delete `'pwr_heatup:11:tavg_c'` from DRIFT_TICK      -> 2ag.3 red, "UNPINNED:
+   *   · delete `'pwr_heatup:10:tavg_c'` from DRIFT_TICK      -> 2ag.3 red, "UNPINNED:
    *     pwr_heatup:11:tavg_c"
    *   · add step 15 to LOW_STRAND                     -> 2ag.4 red, "PINNED BUT NOT SEEN:
    *     pwr_tmi2_incident:15:pzr_level_pct"
@@ -4637,7 +4729,7 @@ if (!only && RUN_B) {
    *     prediction that the thirteen rows are untouched by it.
    *   · send 2ag.7's panel probe through `inject_failure` instead -> 2ag.7 red
    * Baseline before the mutations and after the restore: 0 red both times. */
-  (function () {
+  if (SEL('2ag')) (function () {
     var grader = Object.create(RD.InstructorLayer.prototype);
 
     /* the param -> channel map, scanned the way §2a and §2ae scan it (module-private) */
@@ -4796,12 +4888,12 @@ if (!only && RUN_B) {
       /* the gauge refuses a criterion the plant has already met */
       'pwr_startup:1:tavg_c': 1,                               // ~286 +/-8  [SOLE]
       'pwr_heatup:1:tavg_c': 1,                                // < 93.05 (below 200 degF); drifted 343 degC on a true 50 (2026-09-25)
-      'pwr_lower_power:3:tavg_c': 1, 'pwr_lower_power:4:tavg_c': 1,
-      'pwr_lower_power:5:tavg_c': 1, 'pwr_lower_power:6:tavg_c': 1,
+      'pwr_lower_power:2:tavg_c': 1, 'pwr_lower_power:3:tavg_c': 1,   /* #825: renumbered -1 (old step 3 merged into 2) */
+      'pwr_lower_power:4:tavg_c': 1, 'pwr_lower_power:5:tavg_c': 1,
     };
     var DRIFT_TICK = {
       /* the gauge satisfies a criterion the plant has NOT met */
-      'pwr_heatup:11:saw:tavg_c': 1, 'pwr_heatup:11:tavg_c': 1,
+      'pwr_heatup:10:saw:tavg_c': 1, 'pwr_heatup:10:tavg_c': 1,
       'pwr_raise_power:4:tavg_c': 1, 'pwr_raise_power:5:tavg_c': 1,
       'pwr_raise_power:6:tavg_c': 1, 'pwr_raise_power:7:tavg_c': 1,
       /* 'pwr_raise_power:8:tavg_c' left 2026-09-26 (workbench-a, layman pass 6 S-7): its band narrowed
@@ -4890,34 +4982,33 @@ if (!only && RUN_B) {
     /* --- 2ag.4 pzr_level_sensor_low: frozen at 20.0 % whatever the plant is doing, so this
      * verdict does not depend on when the player clicked. */
     (function () {
-      var LOW_STRAND = { 'pwr_tmi2_incident:12:pzr_level_pct': 1 };
+      var LOW_STRAND = { 'pwr_tmi2_incident:7:pzr_level_pct': 1 };
       /* STEP 15 LEFT THIS SET on 2026-09-19 — its `pzr_level_pct < 80` entry is gone, replaced by
        * SUBCOOLING MARGIN at the bottom of its scale (2ag.8 is the measurement). Steps 12 and 16
        * stay: both are SOLE rows on the gauge whose reading is the step's whole subject, and the
        * pool has nothing to relieve them with — see the header's adjudication. */
-      var LOW_TICK = { 'pwr_tmi2_incident:16:pzr_level_pct': 1 };
+      var LOW_TICK = { /*#670 cut: 'pwr_tmi2_incident:16:pzr_level_pct': 1*/ };
       var base = tmiSweep(null, 0), low = tmiSweep('pzr_level_sensor_low', 0);
       var dS = diffSet(low.strand, LOW_STRAND), dT = diffSet(low.tick, LOW_TICK);
       /* THE CONTROL: on the same rig with nothing injected NO row strands and step 12's
        * criterion is genuinely reached, so the strand above is the casualty and not the rig
        * failing to drive the plant into the deception. */
-      var k12 = 'pwr_tmi2_incident:12:pzr_level_pct';
+      var k12 = 'pwr_tmi2_incident:7:pzr_level_pct';
       var worst = Math.max.apply(null, Object.keys(base.acc).map(function (k) {
         return Math.max(base.acc[k].s, base.acc[k].t); }));
       var control = base.strand.length === 0 && base.tick.length === 0 &&
                     base.endMet[k12] === true && worst <= 5;
-      ck('2ag.4 pzr_level_sensor_low strands the TMI-2 deception step and false-ticks its reversal (#788)',
+      ck('2ag.4 pzr_level_sensor_low strands the TMI-2 deception step (#788; its reversal step left in the #670 redesign)',
          dS.ok && dT.ok && control,
          dS.note + dT.note +
          (control ? 'control: the un-injected rig reaches step 12 and its worst gauge/truth ' +
             'disagreement is ' + worst + ' broadcast(s), the lag. '
                    : 'CONTROL FAILED: un-injected rig strands [' + base.strand.join(', ') +
-            '], false-ticks [' + base.tick.join(', ') + '], step 12 met ' + base.endMet[k12] +
+            '], false-ticks [' + base.tick.join(', ') + '], step 7 met ' + base.endMet[k12] +
             ', worst disagreement ' + worst + ' broadcast(s). ') +
          'gauge frozen at ' + Number(low.gauge).toFixed(2) + ' % against a true ' +
          Number(low.truth).toFixed(2) + ' %; step 12 refused on ' + low.acc[k12].s + '/' + low.N +
-         ' broadcasts its own criterion was met, step 16 ticked on ' +
-         low.acc['pwr_tmi2_incident:16:pzr_level_pct'].t + '/' + low.N + ' it was not');
+         ' broadcasts its own criterion was met');
     })();
 
     /* --- 2ag.5 pzr_level_sensor_stuck: the SAME casualty, and WHICH rows it breaks is decided
@@ -4930,22 +5021,20 @@ if (!only && RUN_B) {
     (function () {
       var early = tmiSweep('pzr_level_sensor_stuck', 0);
       var late = tmiSweep('pzr_level_sensor_stuck', 150);
-      var K12 = 'pwr_tmi2_incident:12:pzr_level_pct',
-          K16 = 'pwr_tmi2_incident:16:pzr_level_pct';
+      var K12 = 'pwr_tmi2_incident:7:pzr_level_pct';   // old step 16 (the reversal) left in the #670 redesign
       /* STEP 15 IS NO LONGER IN THIS MEASUREMENT (2026-09-19): it authors no pzr_level row, so
        * `tmiSweep` cannot see it and neither casualty can reach it. 2ag.8 is the check that says
        * so, and it asserts the OLD entry would still have broken on this same rig — otherwise
        * "the casualty no longer breaks step 15" would be true of a rig that had stopped driving. */
-      var earlyOk = early.froze < 80 && early.endMet[K12] === false && early.endMet[K16] === false;
-      var lateOk = late.froze >= 99 && late.endMet[K12] === true && late.endMet[K16] === false;
+      var earlyOk = early.froze < 80 && early.endMet[K12] === false;
+      var lateOk = late.froze >= 99 && late.endMet[K12] === true;
       ck('2ag.5 ...and a STUCK gauge breaks a DIFFERENT set depending on when it was clicked (#788)',
          earlyOk && lateOk,
-         'clicked at ' + Number(early.froze).toFixed(2) + ' % -> step 12 ' + early.endMet[K12] +
-         ', 16 ' + early.endMet[K16] +
-         '  |  clicked at ' + Number(late.froze).toFixed(2) + ' % -> step 12 ' + late.endMet[K12] +
-         ', 16 ' + late.endMet[K16] +
-         ' - step 16 is permanently unmet on a gauge stuck high, and 2ae pins it in ' +
-         'TICK_EXPECTED because a DEAD gauge reads 0.0 % and satisfies it');
+         'clicked at ' + Number(early.froze).toFixed(2) + ' % -> step 7 ' + early.endMet[K12] +
+         '' +
+         '  |  clicked at ' + Number(late.froze).toFixed(2) + ' % -> step 7 ' + late.endMet[K12] +
+         '' +
+         ' (old step 16, the reversal, left in the #670 redesign)');
     })();
 
     /* --- 2ag.6 THE FAILURE MODEL'S OWN DEFECT, WAS pinned as a canary (see the header) —
@@ -5038,7 +5127,7 @@ if (!only && RUN_B) {
     (function () {
       var st = null;
       POOL.forEach(function (p) {
-        if (p.id === 'pwr_tmi2_incident') st = (p.steps || [])[14];
+        if (p.id === 'pwr_tmi2_incident') st = (p.steps || [])[8];   // the pumps step (old 15; #670 redesign)
       });
       var accs = (st && st.accs) || [];
       var onLevel = accs.filter(function (e) { return e && e.p && MAP[e.p] === 'pzr_level'; });
@@ -5109,10 +5198,10 @@ if (!only && RUN_B) {
      * NOT SEEN". Grading `subcooling_c` on true_state instead of the instrument would clear the
      * whole set, which is why the control below asserts the un-injected rig stays quiet. */
     (function () {
-      var SUB_TICK = { 'pwr_tmi2_incident:13:subcooling_c': 1, 'pwr_tmi2_incident:15:subcooling_c': 1,
-                       'pwr_tmi2_incident:17:subcooling_c': 1,
+      var SUB_TICK = { 'pwr_tmi2_incident:7:subcooling_c': 1, 'pwr_tmi2_incident:9:subcooling_c': 1,
+                       /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c': 1,*/
                        'pwr_cooldown:11:subcooling_c': 1 };   // 11b, `< 17.78` (#807 review item 4, 2026-09-26)
-      var SUB_STRAND = { 'pwr_tmi2_incident:19:subcooling_c': 1 };
+      var SUB_STRAND = { 'pwr_tmi2_incident:11:subcooling_c': 1 };
       var mine = rows.filter(function (r) { return r.chan === 'subcooling_margin'; });
       function sweep(fid) {
         var w = boot('hot_full_power', 60), s = w.snap, i;
@@ -5144,7 +5233,7 @@ if (!only && RUN_B) {
       var dS = diffSet(dr.strand, SUB_STRAND), dT = diffSet(dr.tick, SUB_TICK);
       var control = base.strand.length === 0 && base.tick.length === 0;
       ck('2ag.9 a DRIFTING T-avg breaks every SUBCOOLING MARGIN row, which 2ag.3’s channel filter cannot see (#788)',
-         mine.length === 5 && dS.ok && dT.ok && control,   // 4 -> 5: cooldown 11b (#807 review item 4, 2026-09-26)
+         mine.length === 4 && dS.ok && dT.ok && control,   // 5 -> 4: TMI-2 old step 17's row left in the #670 redesign (2026-10-14). 4 -> 5: cooldown 11b (#807 review item 4, 2026-09-26)
          dS.note + dT.note + mine.length + ' pool row(s) grade the derived channel, ' +
          dr.tick.length + ' false-tick and ' + dr.strand.length + ' strand under the drift; ' +
          (control ? 'control: the un-injected rig does neither on any of them. '
@@ -5244,7 +5333,7 @@ if (!only && RUN_B) {
    *   match on the first pass and the re-run did not fit the session; 2ah.3 pins the closure
    *   for all four casualties by value, so an empty closure would redden it by inspection of
    *   the pinned sets — but that is an ARGUMENT, not a measurement, and it is owed. */
-  (function () {
+  if (SEL('2ah')) (function () {
     function send(svc, c) { try { svc.handleCommand(c); } catch (e) { /* a door refused it */ } }
     /* `tick()` returns null on a non-broadcast tick, AND the clock stops dead when a step's
      * `pause` fires (#694) — the TMI-2 leg has several. The player releases that with Continue;
@@ -5391,32 +5480,32 @@ if (!only && RUN_B) {
       var ROW_EXPECTED = {
         /* key                                 [casualty display, the step COMPLETES] */
         'pwr_startup:1:tavg_c':               ['Tavg Sensor Drifting', true],
-        'pwr_heatup:11:tavg_c':               ['Tavg Sensor Drifting', true],
-        'pwr_heatup:11:saw:tavg_c':           ['Tavg Sensor Drifting', true],
+        'pwr_heatup:10:tavg_c':               ['Tavg Sensor Drifting', true],
+        'pwr_heatup:10:saw:tavg_c':           ['Tavg Sensor Drifting', true],
+        'pwr_lower_power:2:tavg_c':           ['Tavg Sensor Drifting', false],   /* #825: renumbered -1 */
         'pwr_lower_power:3:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_lower_power:4:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_lower_power:5:tavg_c':           ['Tavg Sensor Drifting', false],
-        'pwr_lower_power:6:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:4:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:5:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:6:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:7:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:8:tavg_c':           ['Tavg Sensor Drifting', false],
         'pwr_raise_power:9:tavg_c':           ['Tavg Sensor Drifting', false],
-        'pwr_tmi2_incident:13:subcooling_c':  ['Tavg Sensor Drifting', false],
-        'pwr_tmi2_incident:15:subcooling_c':  ['Tavg Sensor Drifting', true],
-        'pwr_tmi2_incident:17:subcooling_c':  ['Tavg Sensor Drifting', true],
-        'pwr_tmi2_incident:19:subcooling_c':  ['Tavg Sensor Drifting', true],
-        'pwr_tmi2_incident:12:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
-        'pwr_tmi2_incident:16:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
+        'pwr_tmi2_incident:7:subcooling_c':  ['Tavg Sensor Drifting', false],
+        'pwr_tmi2_incident:9:subcooling_c':  ['Tavg Sensor Drifting', false],   // #670 Fable pass: voided, but the step now also waits for the OFF press, which this sweep never makes
+        /*#670 cut: 'pwr_tmi2_incident:17:subcooling_c':  ['Tavg Sensor Drifting', true],*/
+        'pwr_tmi2_incident:11:subcooling_c':  ['Tavg Sensor Drifting', true],
+        'pwr_tmi2_incident:7:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],
+        /*#670 cut: 'pwr_tmi2_incident:16:pzr_level_pct': ['Pressurizer Level Sensor Failed Low', true],*/
       };
       var LEGS = [
         ['pwr_startup', 'tavg_sensor_failure', [[1, 'tavg_c', 0]]],
-        ['pwr_heatup', 'tavg_sensor_failure', [[11, 'tavg_c', 0], [11, 'tavg_c', 1]]],
-        ['pwr_lower_power', 'tavg_sensor_failure', [[3, 'tavg_c', 0], [4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0]]],
+        ['pwr_heatup', 'tavg_sensor_failure', [[10, 'tavg_c', 0], [10, 'tavg_c', 1]]],   // 11 -> 10, #823 fold
+        ['pwr_lower_power', 'tavg_sensor_failure', [[2, 'tavg_c', 0], [3, 'tavg_c', 0], [4, 'tavg_c', 0], [5, 'tavg_c', 0]]],   /* #825: renumbered -1 */
         ['pwr_raise_power', 'tavg_sensor_failure', [[4, 'tavg_c', 0], [5, 'tavg_c', 0], [6, 'tavg_c', 0], [7, 'tavg_c', 0], [8, 'tavg_c', 0], [9, 'tavg_c', 0]]],
-        ['pwr_tmi2_incident', 'tavg_sensor_failure', [[13, 'subcooling_c', 0], [15, 'subcooling_c', 0], [17, 'subcooling_c', 0], [19, 'subcooling_c', 0]]],
-        ['pwr_tmi2_incident', 'pzr_level_sensor_low', [[12, 'pzr_level_pct', 0], [16, 'pzr_level_pct', 0]]],
+        ['pwr_tmi2_incident', 'tavg_sensor_failure', [[7, 'subcooling_c', 0], [9, 'subcooling_c', 0], [11, 'subcooling_c', 0]]],
+        ['pwr_tmi2_incident', 'pzr_level_sensor_low', [[7, 'pzr_level_pct', 0]]],
       ];
       var noVoid = [], stillBlocks = [], neverDone = [], wrongName = [], unexpectedDone = [], seen = 0;
       LEGS.forEach(function (L) {
@@ -5468,8 +5557,8 @@ if (!only && RUN_B) {
         });
       });
       var done = Object.keys(ROW_EXPECTED).filter(function (k) { return ROW_EXPECTED[k][1]; }).length;
-      ck('2ah.4 every one of the 19 pinned rows is voided by its casualty, none still blocks its step, and the ' + done + ' sole-row steps COMPLETE (#773/#788)',
-         seen === 19 && noVoid.length === 0 && wrongName.length === 0 && stillBlocks.length === 0 &&
+      ck('2ah.4 every one of the 17 pinned rows is voided by its casualty, none still blocks its step, and the ' + done + ' sole-row steps COMPLETE (#773/#788)',
+         seen === 17 &&   /* 19 -> 17: TMI-2 old 16/17 rows left (#670 redesign) */ noVoid.length === 0 && wrongName.length === 0 && stillBlocks.length === 0 &&
          neverDone.length === 0 && unexpectedDone.length === 0,
          (noVoid.length ? 'NOT VOIDED: ' + noVoid.join(', ') + '. ' : '') +
          (wrongName.length ? 'WRONG CASUALTY NAMED: ' + wrongName.join(', ') + '. ' : '') +
@@ -5490,7 +5579,7 @@ if (!only && RUN_B) {
       var svc = mkSvc(proc.from), s = tkv(svc), i, g = 0;
       svc.handleCommand({ action: 'start_checklist', procedure_id: 'pwr_heatup' });
       s = tkv(svc);
-      while ((s.instructor.checklist.step_index + 1) < 11 && g++ < 200) {
+      while ((s.instructor.checklist.step_index + 1) < 10 && g++ < 200) {   // step 10 (11 before the #823 fold)
         var cur = proc.steps[s.instructor.checklist.step_index];
         if (cur && cur.cmd) send(svc, cur.cmd);
         svc.handleCommand({ action: 'checklist_check' }); s = tkv(svc);
@@ -5508,7 +5597,7 @@ if (!only && RUN_B) {
       var afterV = voidOf(s.instructor.checklist), afterAck = !!s.instructor.checklist.awaiting_ack;
       ck('2ah.5 clear_failure takes the relief BACK — the void is re-derived every tick, never latched (#773/#788)',
          beforeAck === false && !!midV && midAck === true && afterV == null && afterAck === false,
-         'pwr_heatup step 11: healthy ack ' + beforeAck + ' / injected ack ' + midAck +
+         'pwr_heatup step 10: healthy ack ' + beforeAck + ' / injected ack ' + midAck +
          ' voided ' + JSON.stringify(midV) + ' / after clear ack ' + afterAck +
          ' voided ' + JSON.stringify(afterV));
     })();
@@ -5806,6 +5895,10 @@ if (!only && RUN_B) {
       var svc = mkSvcT(p.from);
       svc.handleCommand({ action: 'start_checklist', procedure_id: p.id });
       tickN(svc, 40);
+      /* A PAUSE STEP STOPS THE CLOCK (#694): since the #670 redesign the TMI-2 leg's STEP 1 is one, so
+       * the plant is frozen here and a scram would never take (tickN returned null and this threw).
+       * Resume it, as Continue does — the check is about a trip mid-leg, not the pause. */
+      svc.running = true;
       svc.handleCommand({ action: 'scram' });
       var s = tickN(svc, 60);
       var c = s.instructor.checklist;
@@ -5960,6 +6053,417 @@ if (!only && RUN_B) {
   })();
 }
 
+/* 2aq. `op: 'moves'` — A RELATIONSHIP, GRADED (OWNER RULING, 2026-10-14; plan
+ * inbox/670_redesign/relations_plan.md items a and b), and `tavg_tref_dev_c` on the board's own
+ * instrument. No walkthrough step authors `moves` yet, so like `steady` and `stopped` this is the
+ * only thing keeping it honest: every claim is proven on a SYNTHETIC series through the real
+ * dispatcher (`gradeBagged`), the real `_gradeAccs` (the accs path) and the real `_gradeOne` (the
+ * single-`acc` path), because the live runtime and the replay harness share that one dispatcher.
+ *
+ * INJECTION-PROVEN 2026-10-14 (each edit to `gradeMoves`, then restored; reds listed below the
+ * run in the commit message / TUNING_LOG): forced always-true, forced never-true, and `with`
+ * ignored each redden checks here. */
+if (RUN_B) {
+  console.log(B + '\n2aq. `moves` — a relationship, graded, and `tavg_tref_dev_c`' + X);
+  (function () {
+    var IL = RD.InstructorLayer;
+    function snap(t, p, q) {
+      return { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { power_pct: p, tavg_c: q }, instruments: {} };
+    }
+    /* THE FIXTURE: `power_pct` down 3 over 60 s, `tavg_c` up 0.5 (both absolute, channel units). */
+    var PRED = { p: 'power_pct', op: 'moves', dir: 'down', v: 3, window: 60,
+                 with: { p: 'tavg_c', dir: 'up', v: 0.5 } };
+
+    /* --- legality: what `movesLegal` accepts and refuses ------------------------------ */
+    function variant(patch) { var o = JSON.parse(JSON.stringify(PRED)); patch(o); return o; }
+    var bad = {
+      'unknown dir': variant(function (o) { o.dir = 'sideways'; }),
+      'no dir': variant(function (o) { delete o.dir; }),
+      'no window': variant(function (o) { delete o.window; }),
+      'window 0': variant(function (o) { o.window = 0; }),
+      'v 0': variant(function (o) { o.v = 0; }),
+      'no with': variant(function (o) { delete o.with; }),
+      'with has neither dir nor op': variant(function (o) { o.with = { p: 'tavg_c', v: 1 }; }),
+      'with.dir unknown': variant(function (o) { o.with.dir = 'left'; }),
+      'with.op unknown': variant(function (o) { o.with = { p: 'tavg_c', op: '~', v: 1 }; }),
+    };
+    var accepted = Object.keys(bad).filter(function (k) { return IL.movesLegal(bad[k]) === null; });
+    var okOp = { p: 'power_pct', op: 'moves', dir: 'up', v: 1, window: 30, with: { p: 'tavg_c', op: '>=', v: 300 } };
+    ck('2aq.1 `moves` legality: the four fields are required and a bad dir / window / with is refused',
+       IL.movesLegal(PRED) === null && IL.movesLegal(okOp) === null && accepted.length === 0 && IL.isBagOp('moves'),
+       accepted.length ? 'ACCEPTED: ' + accepted.join(', ') : '9 malformed variants refused, both with-forms accepted');
+
+    /* --- the series driver: 1 s of plant per broadcast ---------------------------------- */
+    function drive(fn, secs, cb) {                 // fn(t) -> [p, q]; cb(t, graded)
+      for (var t = 0; t <= secs; t++) { var pq = fn(t); cb(t, snap(t, pq[0], pq[1])); }
+    }
+    function firstMetBag(pred, fn, secs, step) {
+      var bag = { s: [] }, first = null, every = step || 1;
+      for (var t = 0; t <= secs; t += every) {
+        var pq = fn(t), g = IL.gradeBagged(bag, snap(t, pq[0], pq[1]), pred);
+        if (g.met && first === null) first = t;
+      }
+      return first;
+    }
+    var BOTH = function (t) { return [100 - 0.1 * t, 300 + 0.01 * t]; };            // power -0.1/s, tavg +0.01/s, from t=0
+    var FLATQ = function (t) { return [100 - 0.1 * t, 300]; };                      // power falls, tavg does not move
+    var FLATP = function (t) { return [100, 300 + 0.01 * t]; };                     // tavg rises, power does not move
+    var UPP = function (t) { return [100 + 0.1 * t, 300 + 0.01 * t]; };             // power moves the WRONG way
+
+    /* --- 2. it cannot tick on entry: the window must fill ----------------------------- */
+    var tBoth = firstMetBag(PRED, BOTH, 300);
+    ck('2aq.2 `moves` cannot tick on entry: a plant already moving owes the whole window (60 s) before it can be met',
+       tBoth !== null && tBoth >= 60 && tBoth <= 66,
+       'first met at +' + tBoth + ' s of plant (window 60 s, debounce 5 instants)');
+
+    /* --- 3. both halves: the moved channel AND the `with` channel -------------------- */
+    var tFlatQ = firstMetBag(PRED, FLATQ, 600), tFlatP = firstMetBag(PRED, FLATP, 600), tUp = firstMetBag(PRED, UPP, 600);
+    ck('2aq.3 `moves` needs BOTH channels: power falling with tavg flat, tavg rising with power flat, or power moving the wrong way never meets',
+       tFlatQ === null && tFlatP === null && tUp === null,
+       'power-only ' + tFlatQ + ' | tavg-only ' + tFlatP + ' | wrong-way ' + tUp + ' (null = never, 600 s each)');
+    /* the threshold form of `with`: tavg's CURRENT reading, not its motion */
+    var TH = JSON.parse(JSON.stringify(PRED)); TH.with = { p: 'tavg_c', op: '>=', v: 300.3 };
+    var tTh = firstMetBag(TH, FLATQ, 300), tThYes = firstMetBag(TH, function (t) { return [100 - 0.1 * t, 300.5]; }, 300);
+    ck('2aq.4 the `with:{p,op,v}` form grades the other channel\'s reading against its threshold (below never, above meets)',
+       tTh === null && tThYes !== null && tThYes >= 60 && tThYes <= 66,
+       'below ' + tTh + ' | above first met +' + tThYes + ' s');
+    /* the size of the move is graded, not just its sign: -2.9 over 60 s does not meet v 3 */
+    var tSmall = firstMetBag(PRED, function (t) { return [100 - (2.9 / 60) * t, 300 + 0.01 * t]; }, 600);
+    ck('2aq.5 `moves` grades the SIZE of the move: -2.9 over the 60 s window never meets v 3',
+       tSmall === null, 'first met ' + tSmall);
+
+    /* --- 4. it LATCHES: the single-acc path, the accs path, and the dispatcher ------- */
+    var il = Object.create(IL.prototype);
+    var holderAcc = {}, holderAccs = {}, stAcc = { acc: PRED }, stAccs = { accs: [PRED] };
+    var metAt = null, accLatchedAfter = false, accsLatchedAfter = false, accDropped = false, accsDropped = false;
+    var REVERSE = function (t) { return t <= 120 ? BOTH(t) : [BOTH(120)[0] + 0.5 * (t - 120), BOTH(120)[1] - 0.05 * (t - 120)]; };
+    for (var t = 0; t <= 400; t++) {
+      var pq = REVERSE(t), sn = snap(t, pq[0], pq[1]);
+      var ga = il._gradeOne(holderAcc, sn, PRED, 'acc');
+      var gs = il._gradeAccs(holderAccs, stAccs, sn);
+      var accsMet = !!gs;
+      if (ga.met && metAt === null) metAt = t;
+      if (metAt !== null && t > 130) {                     // the plant has long since reversed
+        if (ga.met) accLatchedAfter = true; else accDropped = true;
+        if (accsMet) accsLatchedAfter = true; else accsDropped = true;
+      }
+    }
+    ck('2aq.6 `moves` LATCHES, unlike steady/stopped: once met it stays met after the plant reverses (acc path and accs path)',
+       metAt !== null && accLatchedAfter && !accDropped && accsLatchedAfter && !accsDropped,
+       'met at +' + metAt + ' s; acc path dropped=' + accDropped + ', accs path dropped=' + accsDropped);
+    /* ...and the accs row is not re-graded as a hold: its own `holds` exemption */
+    ck('2aq.7 `moves` is a BAG op (per-step bag) but NOT a re-grading hold in `_gradeAccs`',
+       holderAccs.accsState && holderAccs.accsState[0].met === true,
+       'row latched on ax.met = ' + (holderAccs.accsState && holderAccs.accsState[0].met));
+
+    /* --- 5. resets: the clock going back clears the ring AND the latch ---------------- */
+    var bag = { s: [] }, gm = null;
+    for (t = 0; t <= 100; t++) { var q2 = BOTH(t); gm = IL.gradeBagged(bag, snap(t, q2[0], q2[1]), PRED); }
+    var metBeforeRewind = gm.met;
+    var gBack = IL.gradeBagged(bag, snap(40, BOTH(40)[0], BOTH(40)[1]), PRED);       // Rewind to t = 40
+    var tAfter = null;
+    for (t = 41; t <= 200; t++) { var q3 = BOTH(t - 40); var g3 = IL.gradeBagged(bag, snap(t, q3[0], q3[1]), PRED); if (g3.met && tAfter === null) tAfter = t; }
+    ck('2aq.8 the clock going BACK clears the ring and the latch: a rewound plant owes its window again',
+       metBeforeRewind === true && gBack.met === false && gBack.covered === false && tAfter !== null && tAfter >= 40 + 60,
+       'met before ' + metBeforeRewind + ' | at the rewound instant met=' + gBack.met + ' | re-met at +' + tAfter + ' s (rewound to 40, window 60)');
+    /* a NEW step is a new bag (the caller's rule): holder.predBags cleared by the step change */
+    var ilS = Object.create(IL.prototype), hS = {};
+    for (t = 0; t <= 100; t++) { var q4 = BOTH(t); ilS._gradeOne(hS, snap(t, q4[0], q4[1]), PRED, 'acc'); }
+    var latchedBefore = hS.predBags && hS.predBags.acc && hS.predBags.acc.latched === true;
+    hS.predBags = null;                                           // what _advance* does on a step change
+    var q5 = BOTH(101), gNew = ilS._gradeOne(hS, snap(101, q5[0], q5[1]), PRED, 'acc');
+    ck('2aq.9 a step change (predBags cleared) un-latches it: the next step owes the window afresh',
+       latchedBefore === true && gNew.met === false, 'latched ' + latchedBefore + ' -> met after the step change: ' + gNew.met);
+
+    /* --- 6. one noisy instant, and a paused clock, cannot latch it -------------------- */
+    var bagP = { s: [] }, gP = null, spike = false;
+    for (t = 0; t <= 59; t++) { var q6 = FLATQ(t); IL.gradeBagged(bagP, snap(t, 100, 300), PRED); }      // flat, window filling
+    // one wild sample at t=60 that satisfies both halves, then the plant is flat again
+    var gSpike = IL.gradeBagged(bagP, snap(60, 90, 301), PRED);
+    for (t = 61; t <= 120; t++) { gP = IL.gradeBagged(bagP, snap(t, 100, 300), PRED); if (gP.met) spike = true; }
+    ck('2aq.10 a single satisfying sample (one noisy instant) cannot latch it: ' + 'needs ACC_STABLE_N distinct instants',
+       gSpike.met === false && spike === false, 'spike met=' + gSpike.met + ', ever met afterwards=' + spike);
+    var bagD = { s: [] }, dMet = false;
+    for (t = 0; t <= 59; t++) { var q7 = BOTH(t); IL.gradeBagged(bagD, snap(t, q7[0], q7[1]), PRED); }
+    for (var k = 0; k < 40; k++) { var gD = IL.gradeBagged(bagD, snap(60, BOTH(60)[0], BOTH(60)[1]), PRED); if (gD.met) dMet = true; }   // paused: the same instant, 40 broadcasts
+    ck('2aq.11 a PAUSED clock (the same sim time, 40 broadcasts) counts as ONE instant and cannot latch it',
+       dMet === false, dMet ? 'latched on repeats of one instant' : '40 repeats of t=60, not met');
+
+    /* --- 7. WARP spacing: 60 s of plant per broadcast, window 600 s ------------------- */
+    var WP = { p: 'power_pct', op: 'moves', dir: 'down', v: 5, window: 600, with: { p: 'tavg_c', dir: 'up', v: 2 } };
+    var WARP = function (t) { return [100 - 0.01 * t, 300 + 0.005 * t]; };    // -6 over 600 s, +3
+    var tW = firstMetBag(WP, WARP, 3000, 60);
+    var tWsmall = firstMetBag(WP, function (t) { return [100 - 0.008 * t, 300 + 0.005 * t]; }, 3000, 60);   // -4.8 over 600 s
+    ck('2aq.12 at WARP spacing (60 s per broadcast) it meets once the 600 s window is covered, and still refuses a -4.8 move against v 5',
+       tW !== null && tW >= 600 && tW <= 900 && tWsmall === null,
+       'met at +' + tW + ' s; -4.8 case first met ' + tWsmall);
+
+    /* --- 8. a channel that is absent, or not a number, never moves -------------------- */
+    var bagN = { s: [] }, nMet = false;
+    for (t = 0; t <= 300; t++) {
+      var sn2 = { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { power_pct: 100 - 0.1 * t }, instruments: {} };   // tavg_c absent
+      if (IL.gradeBagged(bagN, sn2, PRED).met) nMet = true;
+    }
+    ck('2aq.13 an ABSENT `with` channel never meets (a dead wire cannot read as motion)', nMet === false, '300 s with tavg_c unpublished: ' + (nMet ? 'MET' : 'never met'));
+
+    /* --- 9. the grading map: `tavg_tref_dev_c` reads the board's instrument (Hard Rule 1) --- */
+    var svc = new RD.SimulationService({ seed: 7 });
+    svc.selectPlant('pwr2', 'hot_full_power', null, undefined);
+    svc.running = true; svc.timeAcceleration = 10; svc.attentionStops = false;
+    var s = null; for (var i = 0; i < 6; i++) s = svc.tick();
+    var ilG = Object.create(IL.prototype);
+    var gd = ilG._grade(s, { p: 'tavg_tref_dev_c', op: '>=', v: -60 });
+    var inst = s.instruments && s.instruments.tavg_tref_dev;
+    ck('2aq.14 `tavg_tref_dev_c` grades off the board\'s `tavg_tref_dev` instrument, not true_state (#670 relations plan, item a)',
+       gd.graded_by === 'instrument' && gd.value === inst && typeof inst === 'number',
+       'graded_by ' + gd.graded_by + ', value ' + gd.value + ' vs instrument ' + inst);
+    /* a threshold on it grades the SIGN: Tavg below its program reads negative */
+    var ilT = Object.create(IL.prototype);
+    var below = ilT._grade({ metadata: { sim_time: 1, plant_id: 'pwr2' }, true_state: {}, instruments: { tavg_tref_dev: -2.5 } },
+                           { p: 'tavg_tref_dev_c', op: '<=', v: -2.22 });
+    var above = ilT._grade({ metadata: { sim_time: 1, plant_id: 'pwr2' }, true_state: {}, instruments: { tavg_tref_dev: -1.0 } },
+                           { p: 'tavg_tref_dev_c', op: '<=', v: -2.22 });
+    ck('2aq.15 ...and a threshold on it separates 4 degF (2.22 degC) below program from 1.8 degF (1.0 degC) below',
+       below.met === true && above.met === false, '-2.5 degC met=' + below.met + ', -1.0 degC met=' + above.met);
+
+    /* --- 10. the replay harness grades `moves` through the SAME dispatcher ------------- */
+    var hsrc = fs.readFileSync(path.join(ROOT, 'test', 'procedures_harness.js'), 'utf8');
+    ck('2aq.16 the replay harness grades bagged ops (so `moves`) through `gradeBagged`, the live runtimes\' own dispatcher',
+       /InstructorLayer\.gradeBagged\(h\.bag, s, e\.p\)/.test(hsrc) && /c\.op === 'moves'/.test(hsrc),
+       'gradeBagged call + a moves verdict branch present in procedures_harness.js');
+
+    /* --- 11. THE FIRST AUTHORED RELATION: TMI-2 step 9, level is not inventory (relations plan, change 1).
+     * The shipped row, driven on series shaped like the MEASURED routes (routes harness, seeds 42/7: inventory
+     * 73.9 -> 57.3 % over 9.8 plant-min with PRESSURIZER LEVEL at 100 %). On every played route the level reads
+     * full from entry, so a row graded on the level alone ticks at the same instant there: only these fixtures
+     * can tell it from the relation. Injection-proven: `with` dropped, v cut to 1, and the level threshold
+     * dropped to 70 each redden this check (commit message). */
+    var TMI = POOL.filter(function (p) { return p.id === 'pwr_tmi2_incident'; })[0];
+    var S9 = TMI && TMI.steps[8], R9 = S9 && (S9.accs || []).filter(function (e) { return e.op === 'moves'; })[0];
+    function tmiSnap(t, inv, lvl) {
+      return { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { core_inventory_pct: inv, pzr_level_pct: lvl }, instruments: { pzr_level: lvl } };
+    }
+    function tmiFirst(fn, secs) {
+      var b = { s: [] }, first = null;
+      for (var t = 0; t <= secs; t += 6) { var x = fn(t), g = IL.gradeBagged(b, tmiSnap(t, x[0], x[1]), R9); if (g.met && first === null) first = t; }
+      return first;
+    }
+    var RATE = (73.9 - 57.3) / 588;                                                       // points per plant-s, measured
+    var fDrain = R9 ? tmiFirst(function (t) { return [73.9 - RATE * t, 100]; }, 1800) : 'no row';
+    var fInj = R9 ? tmiFirst(function () { return [116.2, 99.9]; }, 1800) : 'no row';             // keep_injection: level full, inventory flat
+    var fLow = R9 ? tmiFirst(function (t) { return [73.9 - RATE * t, 74.2]; }, 1800) : 'no row';  // the drain with the level already down
+    var fSlow = R9 ? tmiFirst(function (t) { return [73.9 - (9 / 600) * t, 100]; }, 1800) : 'no row'; // 9 points per 10 min
+    ck('2aq.17 TMI-2 step 9 grades the RELATION: inventory falling with the level full meets at the window; full level with flat inventory, the drain with the level down, or a 9-point fall never meet',
+       !!R9 && S9.pair === true && typeof fDrain === 'number' && fDrain >= 600 && fDrain <= 660 && fInj === null && fLow === null && fSlow === null,
+       'drain+full first met +' + fDrain + ' s | injection kept (flat 116 %, level 99.9 %) ' + fInj +
+       ' | drain, level 74.2 % ' + fLow + ' | 9 points/600 s ' + fSlow + ' (null = never in 1800 s)');
+
+    /* --- 2aq.18 THE SECOND AUTHORED RELATION: pwr_heatup step 11, heatup closes in on saturation (relations plan,
+     * change 1 for the heatup). Instrument series shaped like the MEASURED route (routes harness, seed 42): the
+     * SUBCOOLING MARGIN gauge sits pegged at its 83 degC (149.4 degF) top for the first 205 plant-min while Tavg
+     * climbs 7.6 degC (13.6 degF) per 600 s; off the peg the step ends at +4.5 / -4.4 degC (+8.1 / -8.0 degF) per
+     * 600 s. A row graded on Tavg alone ticks 10 plant-min into the step, under the peg, 206 plant-min early: only
+     * these fixtures tell it from the relation. Injection-proven (commit message). */
+    var HU = POOL.filter(function (p) { return p.id === 'pwr_heatup'; })[0];
+    var S11 = HU && HU.steps[9],   /* step 10 since the #823 fold (was steps[10], step 11) */ R11 = S11 && (S11.accs || []).filter(function (e) { return e.op === 'moves'; })[0];
+    function huFirst(fn, secs) {
+      var b = { s: [] }, first = null;
+      for (var t = 0; t <= secs; t += 6) {
+        var x = fn(t), g = IL.gradeBagged(b, { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { tavg_c: x[0], subcooling_c: x[1] },
+          instruments: { tavg: x[0], subcooling_margin: x[1] } }, R11);
+        if (g.met && first === null) first = t;
+      }
+      return first;
+    }
+    var hTail = R11 ? huFirst(function (t) { return [240 + 4.5 * t / 600, 70 - 4.44 * t / 600]; }, 1800) : 'no row';
+    var hPeg = R11 ? huFirst(function (t) { return [100 + 7.56 * t / 600, 83]; }, 1800) : 'no row';     // margin pegged
+    var hSlow = R11 ? huFirst(function (t) { return [240 + 2.22 * t / 600, 70 - 2.22 * t / 600]; }, 1800) : 'no row';  // 4 degF each
+    var hFlat = R11 ? huFirst(function (t) { return [280, 40 - 4.44 * t / 600]; }, 1800) : 'no row';    // margin falls, Tavg flat
+    ck('2aq.18 heatup step 10 grades the RELATION: Tavg rising with the margin falling meets at the window; Tavg rising under a pegged margin, a 4 degF pair, or the margin falling at flat Tavg never meet',
+       !!R11 && Array.isArray(S11.pair) && S11.pair.join() === 'tavg,subcool' && S11.wait_speed === 600 &&
+       typeof hTail === 'number' && hTail >= 600 && hTail <= 660 && hPeg === null && hSlow === null && hFlat === null,
+       'tail first met +' + hTail + ' s | pegged margin ' + hPeg + ' | 4 degF each ' + hSlow + ' | flat Tavg ' + hFlat +
+       ' (null = never in 1800 s) | pair ' + (S11 && S11.pair) + ' | rung ' + (S11 && S11.wait_speed));
+
+    /* --- 2aq.19 THE THIRD AUTHORED RELATION: pwr_cooldown step 4, the steam pressure the dump holds sets the water's
+     * temperature (relations plan, cooldown). Instrument series shaped like the MEASURED route's THINNEST stretch
+     * (routes harness, seed 42, the step's last 10 plant-min): STEAM PRESS -15.5 psi (0.1069 MPa) with AVG COOLANT
+     * TEMPERATURE -8.8 degF (4.9 degC) per 600 s. TRUE STATE IS HELD FLAT in every fixture, so a row graded on truth
+     * (Hard Rule 1, instruments vs truth) never meets the tail. The four refusals: pressure falling at flat Tavg,
+     * Tavg falling at flat pressure (the RHR half of the leg), a 13 psi fall, and pressure rising. */
+    var CD = POOL.filter(function (p) { return p.id === 'pwr_cooldown'; })[0];
+    var S4 = CD && CD.steps[3], R4 = S4 && (S4.accs || []).filter(function (e) { return e.op === 'moves'; })[0];
+    function cdFirst(fn, secs) {
+      var b = { s: [] }, first = null;
+      for (var t = 0; t <= secs; t += 6) {
+        var x = fn(t), g = IL.gradeBagged(b, { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { steam_pressure_mpa: 0.9, tavg_c: 175 },
+          instruments: { steam_pressure: x[0], tavg: x[1] } }, R4);
+        if (g.met && first === null) first = t;
+      }
+      return first;
+    }
+    var cTail = R4 ? cdFirst(function (t) { return [0.93 - 0.1069 * t / 600, 177 - 4.9 * t / 600]; }, 1800) : 'no row';
+    var cFlatT = R4 ? cdFirst(function (t) { return [0.93 - 0.1069 * t / 600, 177]; }, 1800) : 'no row';           // Tavg flat
+    var cFlatP = R4 ? cdFirst(function (t) { return [0.93, 177 - 4.9 * t / 600]; }, 1800) : 'no row';              // pressure flat
+    var cSmall = R4 ? cdFirst(function (t) { return [0.93 - 0.0896 * t / 600, 177 - 4.9 * t / 600]; }, 1800) : 'no row'; // 13 psi
+    var cUp = R4 ? cdFirst(function (t) { return [0.93 + 0.1069 * t / 600, 177 - 4.9 * t / 600]; }, 1800) : 'no row';   // pressure rising
+    ck('2aq.19 cooldown step 4 grades the RELATION on instruments: STEAM PRESS falling 15.5 psi with Tavg 8.8 degF per 600 s meets at the window; flat Tavg, flat pressure, a 13 psi fall or rising pressure never meet',
+       !!R4 && R4.cont === true && Array.isArray(S4.pair) && S4.pair.join() === 'steam_p,tavg' && S4.wait_speed === 600 &&
+       typeof cTail === 'number' && cTail >= 600 && cTail <= 660 && cFlatT === null && cFlatP === null && cSmall === null && cUp === null,
+       'tail first met +' + cTail + ' s | flat Tavg ' + cFlatT + ' | flat pressure ' + cFlatP + ' | 13 psi ' + cSmall + ' | rising ' + cUp +
+       ' (null = never in 1800 s) | pair ' + (S4 && S4.pair) + ' | rung ' + (S4 && S4.wait_speed));
+  })();
+}
+
+/* 2ar. ROW-LEVEL `overtaken` (relations plan, raise power 4, 2026-10-15): `{p, op, v, or?, label}` on an
+ * `accs` entry stands THAT ROW down when the plant has moved past it, while the step's other rows still
+ * grade. Proven on synthetic snapshots through the real `_gradeAccs`. INJECTION-PROVEN 2026-10-15 (each
+ * edit to `_gradeAccs`, then restored): the latch line removed, the arm made a per-tick re-check, the
+ * debounce dropped, the overtaken check run before the row's own grading -- reds in the commit message. */
+if (RUN_B) {
+  console.log(B + '\n2ar. row-level `overtaken` — a row the plant has moved past' + X);
+  (function () {
+    var IL = RD.InstructorLayer;
+    var ST = { text: 'fixture', accs_ordered: true, accs: [
+      { p: 'mwe_output', op: '>=', v: 29.5, label: 'OUTPUT' },
+      { cont: true, p: 'tavg_tref_dev_c', op: '<=', v: -2.222,
+        overtaken: { p: 'tavg_tref_dev_c', op: '>=', v: 1.111, label: 'rods led the load' }, label: 'lag' },
+      { p: 'power_pct', op: '>', v: 28, label: 'power' }] };
+    function sn(t, mwe, dev) {
+      return { metadata: { sim_time: t, plant_id: 'pwr2' }, true_state: { mwe_output: mwe, power_pct: 30 },
+               instruments: { tavg_tref_dev: dev }, control_state: {} };
+    }
+    /* seq: [[n, mwe, dev], ...] -> the row's state after each segment */
+    function run(seq) {
+      var il = Object.create(IL.prototype), h = {}, t = 0, outs = [];
+      seq.forEach(function (sg) {
+        for (var i = 0; i < sg[0]; i++) il._gradeAccs(h, ST, sn(t++, sg[1], sg[2]));
+        var a = h.accsState[1]; outs.push({ met: !!a.met, ot: !!a.overtaken, next: !!h.accsState[2].met });
+      });
+      return outs;
+    }
+    var lag = run([[10, 20, -4], [10, 30, -4]]);
+    ck('2ar.1 the lag route: the row latches on its OWN grading once OUTPUT is met, not before, and is not flagged overtaken',
+       !lag[0].met && lag[1].met && !lag[1].ot && lag[1].next, JSON.stringify(lag));
+    var ahead = run([[10, 20, 6], [10, 20, 0.5], [10, 30, 0.5]]);   // degC: +10.8 degF, then +0.9 degF (under the +2 degF arm)
+    ck('2ar.2 rods ahead of the load: armed while blocked, latched OVERTAKEN when OUTPUT unblocks it, even after the reading falls back under the arm; the next row is released',
+       !ahead[0].met && !ahead[1].met && ahead[2].met && ahead[2].ot && ahead[2].next, JSON.stringify(ahead));
+    var blip = run([[4, 20, 6], [10, 20, 0], [10, 30, 0]]);
+    ck('2ar.3 debounced: 4 gradings over the arm (ACC_STABLE_N ' + IL.ACC_STABLE_N + ') never arm it, and the step waits',
+       !blip[2].met && !blip[2].next && IL.ACC_STABLE_N === 5, JSON.stringify(blip));
+    var both = run([[10, 20, 6], [10, 20, -4], [10, 30, -4]]);
+    ck('2ar.4 armed earlier but lagging now: the row\'s own grading wins, so it ticks as itself',
+       both[2].met && !both[2].ot, JSON.stringify(both));
+    var isrc = fs.readFileSync(path.join(ROOT, 'layers', 'instructor_layer.js'), 'utf8');
+    var hsrc = fs.readFileSync(path.join(ROOT, 'test', 'procedures_harness.js'), 'utf8');
+    var nMap = (isrc.match(/overtaken: !!a\.overtaken/g) || []).length;
+    ck('2ar.5 the verdict reaches the card (both snapshot maps carry `overtaken`) and the replay mirrors the arm-then-latch rule',
+       nMap === 2 && /otArmed\[j\] && unblocked/.test(hsrc) && /otTick\(s\)/.test(hsrc),
+       'snapshot maps ' + nMap + ' of 2; harness otTick ' + /otTick\(s\)/.test(hsrc));
+    var rp = (RD.MANUAL_PROCEDURES.pwr2 || []).filter(function (p) { return p.id === 'pwr_raise_power'; })[0];
+    var s4 = rp && rp.steps[3], row = s4 && (s4.accs || []).filter(function (e) { return e.p === 'tavg_tref_dev_c'; })[0];
+    var bad = [];
+    (RD.MANUAL_PROCEDURES.pwr2 || []).forEach(function (p) { (p.steps || []).forEach(function (st, si) { (st.accs || []).forEach(function (e, j) {
+      var o = e && e.overtaken; if (!o) return;
+      if (!o.p || ['>', '<', '>=', '<='].indexOf(o.op) < 0 || typeof o.v !== 'number' || !o.label) bad.push(p.id + ' ' + (si + 1) + ' accs[' + j + ']');
+      if (!e.p) bad.push(p.id + ' ' + (si + 1) + ' accs[' + j + '] (overtaken on a cmd row)');
+    }); }); });
+    ck('2ar.6 every row-level overtaken is a legal threshold with a label the card can say; raise power 4 carries one on its relation row, after the OUTPUT row, with the chart pair TAVG / TREF',
+       bad.length === 0 && !!row && s4.accs.indexOf(row) === 2 && row.cont === true && row.overtaken.op === '>=' && row.op === '<=' &&
+       JSON.stringify(s4.pair) === '["tavg","tref"]',
+       bad.length ? 'ILLEGAL: ' + bad.join('; ') : 'legal; raise power 4 row at accs[' + (s4 && row ? s4.accs.indexOf(row) : '-') + ']');
+    /* --- the REPLAY grades it the same way: raise power 1-4 with the stage-4 pull made 60 steps at once (the
+     * routes gate's overpull_60), with and without the row's `overtaken` (the control leg) --- */
+    function rep(keepOt) {
+      var pr = JSON.parse(JSON.stringify(rp)); pr.steps = pr.steps.slice(0, 4); delete pr.next;
+      pr.steps[3].replay_then.cmd.steps = 60;
+      if (!keepOt) delete pr.steps[3].accs[2].overtaken;
+      var r = RD.ProceduresHarness.runProcedure('pwr2', pr, { seed: 42 });
+      var c = (r.checks || []).filter(function (x) { return /^step 4 accs\[2\] tavg_tref_dev_c/.test(x.d); })[0];
+      var o = (r.checks || []).filter(function (x) { return /^step 4 ordered accs/.test(x.d); })[0];
+      return { row: c ? c.pass : null, obs: c ? String(c.obs) : 'no row check', ord: o ? o.obs : '-' };
+    }
+    var withOt = rep(true), noOt = rep(false);
+    ck('2ar.7 the replay mirrors it: rods 60 steps ahead of the load, the relation row passes OVERTAKEN; the same replay without the overtaken fails it',
+       withOt.row === true && /overtaken: the rods led the load/.test(withOt.obs) && noOt.row === false,
+       'with: ' + withOt.row + ' (' + withOt.obs + ', ' + withOt.ord + ') | without: ' + noOt.row + ' (' + noOt.obs + ')');
+
+    /* --- HOW a row latched survives a SAVE/LOAD (`accs_relief`, reviewer finding 2026-10-15: measured met:true,
+     * overtaken:false after a load, so the card drew a plain tick); an OLDER save without the field still loads. ---
+     * INJECTION (2026-10-15): `accs_relief` dropped from saveState -> 2ar.8 red. */
+    var RPROBE = { id: '__relief_probe__', category: 'control', title: 'relief probe', from: 'hot_full_power', steps: [
+      { text: 'relief rows', accs: [
+        { p: 'power_pct', op: '>', v: 5, label: 'a' },
+        { p: 'power_pct', op: '<', v: -1, overtaken: { p: 'power_pct', op: '>', v: 5, label: 'x' }, label: 'b' },
+        { p: 'tavg_c', op: '<', v: -100, implied_by: 'power_pct', label: 'd' },
+        { cmd: 'acknowledge_all_alarms', label: 'c' }] },
+      { text: 'done', acc: { p: 'power_pct', op: '>', v: 5 } }] };
+    RD.MANUAL_PROCEDURES.pwr2.push(RPROBE);
+
+    var ra = new RD.SimulationService({ seed: 42 }); ra.selectPlant('pwr2', 'hot_full_power', null, undefined); ra.running = true; ra.timeAcceleration = 10; ra.attentionStops = false;
+    ra.handleCommand({ action: 'start_checklist', procedure_id: '__relief_probe__' });
+    var sx = null; for (var ri = 0; ri < 30; ri++) sx = ra.tick();
+    var before = sx.instructor.checklist.accs;
+    var blob = JSON.parse(JSON.stringify(ra.saveState()));
+    var old = JSON.parse(JSON.stringify(blob)); delete old.instructor.checklist.accs_relief;
+    function after(b) {
+      var v = new RD.SimulationService({ seed: 42 }); v.loadState(b); v.running = true; v.timeAcceleration = 10; v.attentionStops = false;
+      var y = null; for (var k = 0; k < 5; k++) y = v.tick(); return y.instructor.checklist.accs;
+    }
+    var aN = after(blob), aO = after(old);
+    RD.MANUAL_PROCEDURES.pwr2.pop();
+    /* ARMED-AND-BLOCKED survives a save (code 3, reviewer finding 2026-10-15): rows a, b only, a's predicate
+     * unmet while b's overtaken arm holds, so b is armed and blocked at the save; after the load a goes met and b
+     * must latch OVERTAKEN. INJECTION: code 3 dropped from accsRelief -> the loaded row never latches, red. */
+    var il3 = Object.create(IL.prototype), h3 = {}, t3 = 0;
+    var ST3 = { text: 'f', accs_ordered: true, accs: [
+      { p: 'mwe_output', op: '>=', v: 29.5, label: 'a' },
+      { p: 'tavg_tref_dev_c', op: '<=', v: -2.222, overtaken: { p: 'tavg_tref_dev_c', op: '>=', v: 1.111, label: 'x' }, label: 'b' }] };
+    function sn3(mwe, dev) { return { metadata: { sim_time: t3, plant_id: 'pwr2' }, true_state: { mwe_output: mwe, power_pct: 30 }, instruments: { tavg_tref_dev: dev }, control_state: {} }; }
+    for (var q = 0; q < 10; q++) { t3++; il3._gradeAccs(h3, ST3, sn3(20, 6)); }
+    for (q = 0; q < 10; q++) { t3++; il3._gradeAccs(h3, ST3, sn3(20, 0.5)); }   // fallen back under the arm, still blocked
+    var rel3 = IL.accsRelief ? IL.accsRelief(h3.accsState) : null;
+    var il4 = Object.create(IL.prototype), h4 = { accsState: h3.accsState.map(function (a, i) {
+      return IL.reliefState(!!a.met, rel3, i); }) };
+    for (q = 0; q < 6; q++) { t3++; il4._gradeAccs(h4, ST3, sn3(30, 0.5)); }
+    ck('2ar.8b a save taken ARMED-AND-BLOCKED (reading back under the arm) restores armed: once the row ahead is met, the row latches overtaken',
+       !!rel3 && rel3[1] === 3 && !h3.accsState[1].met && h4.accsState[1].met && h4.accsState[1].overtaken,
+       'relief ' + JSON.stringify(rel3) + ' | after ' + JSON.stringify(h4.accsState.map(function (a) { return [!!a.met, !!a.overtaken]; })));
+    ck('2ar.8 a save/load keeps HOW a row latched: the overtaken row and the implied row restore flagged (card keeps the ↳), an older save without `accs_relief` loads with both latched and unflagged',
+       before[1].overtaken && before[2].implied && aN[1].met && aN[1].overtaken && aN[2].met && aN[2].implied &&
+       aO[1].met && !aO[1].overtaken && aO[2].met && !aO[2].implied && aN[3].met === false,
+       'before ' + JSON.stringify(before.map(function (a) { return [a.met, a.implied, a.overtaken]; })) +
+       ' | after ' + JSON.stringify(aN.map(function (a) { return [a.met, a.implied, a.overtaken]; })) +
+       ' | old save ' + JSON.stringify(aO.map(function (a) { return [a.met, a.implied, a.overtaken]; })));
+
+    /* --- the graded channel's `noisy` failure is not a silent no-op (reviewer finding 2026-10-15: noise 0 and no
+     * noise_failure). INJECTION: `noise_failure` removed from the spec -> 2ar.9 red (spread 0). */
+    var nv = new RD.SimulationService({ seed: 42 }); nv.selectPlant('pwr2', 'hot_full_power', null, undefined);
+    nv.running = true; nv.timeAcceleration = 10; nv.attentionStops = false;
+    function sdOf(a) { var m = a.reduce(function (x, y) { return x + y; }, 0) / a.length; return Math.sqrt(a.reduce(function (x, y) { return x + (y - m) * (y - m); }, 0) / a.length); }
+    for (var nz = 0; nz < 10; nz++) nv.tick();
+    var hv = []; for (nz = 0; nz < 20; nz++) hv.push(nv.tick().instruments.tavg_tref_dev);
+    var hsd = sdOf(hv);
+    nv.handleCommand({ action: 'set_instrument_failure', instrument_id: 'tavg_tref_dev', mode: 'noisy' });
+    var nvals = []; for (nz = 0; nz < 20; nz++) nvals.push(nv.tick().instruments.tavg_tref_dev);
+    var nsd = sdOf(nvals);
+    nv.handleCommand({ action: 'clear_instrument_failure', instrument_id: 'tavg_tref_dev' });
+    var nq = []; for (nz = 0; nz < 20; nz++) nq.push(nv.tick().instruments.tavg_tref_dev);
+    var qsd = sdOf(nq);
+    /* THE COMPUTER-CEILING SENTENCE'S NUMBER (reviewer finding 2026-10-15): the old floor-to-5 said "1x" for every
+     * rate under 10x and "10x" for 14x. INJECTION: old formula -> 4.2 gives 1 and 14 gives 10, red. */
+    var appSrc = fs.readFileSync(path.join(ROOT, 'ui', 'app.js'), 'utf8');
+    var bm = /function budgetShownRate\(a\) \{[\s\S]*?\n  \}/.exec(appSrc);
+    var bf = bm ? new Function(bm[0] + '; return budgetShownRate;')() : null;
+    ck('2ar.10 the "This computer can only run" rate: 4.2x at a 5x request reads 4x, 14x at 60x reads 10-15, 40x stays 40, 100x+ steps by 50',
+       !!bf && bf(4.2) === 4 && bf(0.3) === 1 && bf(14) >= 10 && bf(14) <= 15 && bf(37) === 35 && bf(130) === 100,
+       bf ? [bf(4.2), bf(14), bf(37), bf(130)].join('/') : 'budgetShownRate not found');
+    ck('2ar.9 a `noisy` failure on the Tavg-minus-Tref channel scatters the reading, and clearing it gives the derived reading back',
+       nsd > 3 * hsd && qsd < 2 * hsd, 'sd over 20 broadcasts: healthy ' + hsd.toFixed(3) + ', noisy ' + nsd.toFixed(3) + ', cleared ' + qsd.toFixed(3) + ' degC');
+  })();
+}
+
+GT_FLUSH();
 console.log('\n' + '='.repeat(74));
 console.log('  ' + RUNNER_NAME + ': ' + nPass + ' passed, ' + nFail + ' failed  (' + (nPass + nFail) + ' checks)');
 console.log('='.repeat(74) + '\n');

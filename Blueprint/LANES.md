@@ -31,6 +31,7 @@ directory does, which is why the lanes are worktrees and not branches.
 A new STANDING lane comes from `git worktree add <path> <branch>`, and needs `node_modules`
 junctioned from the primary tree (it is gitignored, and the Playwright gates need it) plus an
 `inbox/` directory. `CLAUDE.md` arrives with the checkout. A SCRATCH tree gets no junction — §9.
+A standing lane carries the repo's `.claude/settings.json` hooks only as of the `develop` it last merged: the push/merge guard (`tools/hook_guard_push_merge.js`, 2026-10-18) is not in force on `workbench` or `backshop` until their next `git merge develop`.
 
 ## 2. The occupancy check, and the two things it cannot see
 

@@ -292,6 +292,7 @@
     var ox = (r.width - b.w * s) / 2 - b.x * s;
     var oy = (r.height - b.h * s) / 2 - b.y * s;
     stage.style.transform = 'translate(' + ox.toFixed(2) + 'px,' + oy.toFixed(2) + 'px) scale(' + s.toFixed(5) + ')';
+    stage.style.setProperty('--bd-s', s.toFixed(4));   // the stage scale, for hit zones sized in SCREEN px (.bd-num-steps)
     focusRescale();
   }
 
@@ -483,7 +484,10 @@
       var lab = h('div', null, it.label);
       // letter-spacing 0.06em, not 0.14em: at fontSize 14 the wide tracking alone put the
       // DUMP SETPOINT hint "29-1350 psi" ~7 px past its authored box (#235 finding 5)
-      lab.style.cssText = 'color:#6b8598;font-family:' + MONO + ';font-size:' + (it.fontSize || 10) + 'px;letter-spacing:0.06em;margin-bottom:3px;white-space:nowrap';
+      lab.style.cssText = 'color:#6b8598;font-family:' + MONO + ';font-size:' + (it.labelSize || it.fontSize || 10) + 'px;letter-spacing:0.06em;margin-bottom:3px;white-space:nowrap';
+      /* #825: a box may author its caption brighter/larger (the BORON range, which the owner could not see at 7 px in #6b8598) */
+      if (it.labelColor) lab.style.color = it.labelColor;
+      if (it.labelWeight) lab.style.fontWeight = it.labelWeight;
       el.appendChild(lab);
       labEl = lab;
     }
@@ -1557,6 +1561,12 @@
     // control panel authored over a vessel edge still covers it); buttons/values/text/
     // numbers/scram lift to z-index 1.
     var LIFT = { button: 1, value: 1, readout: 1, text: 1, number: 1, scram: 1 };
+    var vesselIt = (doc.items || []).filter(function (q) { return q.id === 'reactorVessel'; })[0];
+    function overlapsVessel(q) {
+      var v = vesselIt;
+      return !!(v && v.width && v.height && q.width && q.height &&
+        q.left < v.left + v.width && q.left + q.width > v.left && q.top < v.top + v.height && q.top + q.height > v.top);
+    }
     (doc.items || []).forEach(function (it) {
       var b = BUILDERS[it.kind];
       if (!b) return;
@@ -1570,6 +1580,14 @@
       // the panel contents; it has no interactive controls (showControls:false), so make it
       // click-through — the rod hold-buttons beneath it stay reachable.
       if (it.id === 'reactorVessel') { el.style.zIndex = '2'; el.style.pointerEvents = 'none'; }
+      /* A BUTTON WINS OVER A NEIGHBOUR'S STEP-ARROW ZONE (layman pass S-1 follow-up, 2026-10-15). The number
+       * boxes' invisible hit zones (quick win 6, pwr_board.css) are 24 / scale board px, largest at the
+       * smallest scale -- 0.605 at 1366x768, which the board now has in both alarm states, since the alarm
+       * strip no longer rescales it. There the Generator Load box's down-arrow zone swallowed the centre of
+       * UNLOAD (MEASURED: 1 stolen centre at 0.605). Both tiles sat at z 1 and the later one won, so a button
+       * goes one above -- except where it overlaps the vessel, which is authored to read IN FRONT of the rod
+       * panels (z 2 above) and must keep doing so. */
+      if (it.kind === 'button' && !overlapsVessel(it)) el.style.zIndex = '2';
       tiles[it.id] = el;
       stage.appendChild(el);
     });
@@ -1898,6 +1916,12 @@
     setScope: function (spec) { setScope(spec); },
     pointAt: function (names) { return pointAt(names); },
     clearPointers: function () { clearPointers(); },
+    // The ELEMENTS a pointer would outline (halo where there is one), for the instructor callout
+    // (#811 prototype) to measure and keep clear of. Read-only; draws nothing.
+    pointTargets: function (names) {
+      if (!stage) return [];
+      return focusResolve([].concat(names || []), false).map(function (id) { return haloFor(id) || tiles[id]; }).filter(Boolean);
+    },
     // Read accessor for harnesses: what is scoped, lit, dimmed and pointed at right now.
     scopeState: function () {
       return { key: focus.key, names: focus.names.slice(), lit: focus.lit.slice(),

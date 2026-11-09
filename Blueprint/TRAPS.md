@@ -555,3 +555,205 @@ budget stops the loop and credits only what it stepped. What the bullet said, ve
   waited for `plot_1m_point` after the source range had secured and the tool refused the press — a
   soft lock. Steps now author `overtaken`. **Grep every `{cmd:…}` acceptance for the plant state
   that makes its control refuse.**
+
+---
+
+## Standing list, compressed 2026-10-18 — the worked detail behind each one-line bullet
+
+Not an eviction: on 2026-10-18 `CLAUDE.md` was pruned from 14,998 words to under 5,000 and every
+standing-procedure bullet was cut to one line. The text each line used to carry is here, verbatim
+as it stood that day, in the same order as the list. The lines in `CLAUDE.md` are the rule; this is
+the record of why. Also here: the two *Recent themes* bullets at their pre-prune length.
+
+### Recent themes (pre-prune text)
+
+- **AN ACCEPTANCE THRESHOLD AT THE CENTRE OF ITS OWN RENDER BAND IS A STEP THE BOARD CANNOT TELL
+  THE PLAYER IS MET** (2026-09-18, #749). `fmtExp` is `toFixed(1)`, so `1.4e3` draws for
+  [1350, 1450) while `> 1400` refused the whole lower half; REACTOR POWER's `digits: 1` did the
+  same at 0.1 — **107.4 s of dark Continue beside a tile already reading the target**. Grade the
+  band FLOOR, on the channel the tile DRAWS: the map's "PWR2 has no SR/IR channels" was stale, 88
+  reused channels. **Measure the PLAYER's route — the same fix buys 1 s on the replay, 127 on
+  theirs.**
+- **A LATCHING FAILURE ARMED AFTER THE EVENT IT LATCHES ON IS A NO-OP THAT READS AS A WORKING
+  INJECTION** (2026-09-09, #670 Phase 2): `stuck_porv_open` latches on the first lift; the lift is
+  at 5.5 s and the reseat near 25 s, so armed at 0–20 s the accident follows, at 30–60 s the valve
+  reseats at 1985 psia (13.69 MPa) and nothing happens. A step's `inject` must fire before the
+  event its failure waits for — **measure the window.**
+
+### Standing procedure (pre-prune text)
+
+- **A check can pin a BIFURCATION, not a claim** (#543, 2026-08-28; #588, 2026-08-30). One bit
+  picks the branch — green here, red on CI. **Assert the invariant the defect violated.**
+  **It also reads as a one-platform defect** (#588: **+1 ulp reproduced the other platform's
+  branch**, Math bit-identical). Move the FIXTURE off the cliff, not the budget; **sweep five ulps
+  before trusting a blowdown check**. `playwright:v1.61.1-noble` reproduces CI's MATH, **not its
+  FONTS** (no DejaVu): CI is `ubuntu:24.04` + `install-deps chromium`. **A geometry bound from a
+  local render dates your FONT STACK** — 179.34 px on Windows is **206.38** there, eating a
+  14.5 px margin (2026-09-12, #713).
+- **A pre-declared reject criterion can outlive its measurement** (rescued from the #394
+  limit-cycle bullet on eviction, 2026-08-10): #378's was void the next day. Re-measure the
+  criterion, not just the result, before you let it reject anything. **So does a FIXTURE BUILT AT
+  AN ENVELOPE WALL** (#524, rescued 2026-09-02): `P_MIN = 0.1` was `PLow=0.1` in a NIST fetch URL.
+  Move the wall and every probe standing on it reddens — adjudicate per-probe, refit inside it.
+- **A bracketed TEMPLATE placeholder cites like a number** (rescued from the #380 bullet on
+  eviction, 2026-08-09): NUREG-1431's "~30–32 %" SG lo-lo survived two evidence passes because
+  both verdicted the mechanism and inherited the figure. Ginna, the anchor plant, says 17 %.
+- **A ruling names the WORK, not the THING — read it as "build it, having found out what it is"**
+  (rescued from the #572 bullet on eviction, 2026-08-28): "build the 1.5 DPM startup-rate rod block"
+  named a stop that exists in no source, and `Manuals/09` was CITING the document that lists the four
+  real ones beside the row contradicting it. A citation can sit three lines from what it refutes.
+- **Before you declare anything UNSOURCED, run `node tools/find_source.js <regex>`.** The corpus is
+  three lanes' `inbox/sources` and they cannot see each other, so a one-lane grep has now shipped
+  two wrong claims — #315 §6 (an OTΔT argument built and reverted while the primary sat in another
+  lane) and `DESIGN_COMPANION` §8.34, which declared *"no document in any lane's corpus"* two days
+  after the refuting document landed in develop's. It exits **1** on a genuine zero, so "not in the
+  corpus" is a command's verdict rather than your claim.
+- **A claim about COVERAGE OR ABOUT WHAT IS BUILT is an unmeasured claim — prove it by injection**
+  *(my call, 2026-07-31; broadened from tests to the PLANT 2026-08-27, #570)*. HR12 binds
+  plant-dynamics claims; the class that keeps going wrong is the neighbouring one — *"X is
+  untested"*, *"the gate covers Y"*, **and *"X is not built"***. **To prove something is untested or
+  unbuilt, BREAK IT AND SEE WHAT NOTICES.** That is how #286 found five inert automation channels
+  behind a green 24/24 — and skipping it is how #562 reported a protection half as newly built when
+  the engine had carried it all along (deleting the one line it "lacked" would have changed nothing;
+  deleting the FWI line's `tb.tripped` changes everything). **Inherited claims are the risky ones,
+  and A MODULE HEADER IS ONE**: a sentence from a review, an issue, a file header or this file has
+  usually aged, and repeating it in your own voice launders it into a fresh assertion. **AND THE
+  SPECIFICATION CAN BE THE STALE SECOND COPY** (rescued from the #562 themes bullet on eviction,
+  2026-08-28): `CONTEXT.md` defined AFW flow as *"capacity × throttle × level hold"* and the manual
+  documented the throttle box while PWR2 had none of the three — a spec is what you check code
+  against, so nothing could catch it. Same shape as a ruling that was executed on the RETIRED
+  engine and never reached the shipped one (#573). **Grep for the EFFECT, never the name you
+  expected it to have.**
+- **Verify a claim before you act on it.** Roughly half the issues touched on 2026-07-27 were stale
+  or mis-framed. An issue's own investigation comment is a claim like any other, and this repo
+  merges faster than one ages well (#326 — both comments were correct when written and wrong hours
+  later). Re-measure on the tree you are standing in, including your own lane's. **A filed root
+  cause repeated in four documents was still never re-measured** (rescued from the #403/#433
+  bullet on eviction, 2026-08-12): "MSLI flow reads 0" came from watching the turbine-only
+  variable, and repetition is not corroboration — neither is a sourced number being the WHOLE
+  source ("600 psig" was adopted and "(Rate sensitive)" dropped from the same cell).
+- **Declare a simplification only after you have MEASURED the regime it lives in** (rescued from
+  the #347 themes bullet on eviction, 2026-08-07). "Optimistic" and "defeats the relief ladder"
+  look identical from outside: spray-at-solid was declared harmless and held pressure 164 psi
+  under the code safeties on the one path #346 never exercised. Corollary from the same change —
+  the TMI-2 securing beat sits BEFORE the decision, on its historical cue, and the decision is
+  RESTORE injection or not; re-litigating that order re-breaks nine missions.
+- **A passing check can be HOLLOW — the failure modes seen here.** A `range()` call on a BOOLEAN
+  returns NaN, so `!range(x).max` is `!NaN`, true always (TR-17, shipped #392, could never fail). A
+  check asserting an ABSENCE can be pinning a NON-EVENT (`run_reachability` exists for the
+  instrument half). `h.range()` spans the WHOLE run, the wrong window for a loss on an event that
+  recovers — take the ends and assert the SPAN. A gate that iterates a hand-maintained MAP tests
+  the map (`verify_manual_follow` covered 17 of 45 steps at a confident PASS). **ASK WHAT A GATE
+  READS, not only what it asserts** — `run_manual_setpoints` scored 9/9 over a chapter-09 §3.0 it
+  never opened (#532), and marked a row `narrative` *because the plant lacked the constant*, which
+  is how a rod stop's setpoint lived in a trip's row (#601). A SOURCE SCAN for a
+  rendered string cannot tell you the string is REACHABLE — `/\(partial\)/` passed green on
+  `(false ? ' (partial)' : '')` (#485); make it a function and test the claim, don't spell it. And
+  a term that is an IDENTITY in the regime you test in is a term nothing tests — 44 green probes
+  agreed with a leg-split formula that computed 0.0 °F on a scrammed core. **A check can SAMPLE THE
+  DEFECT and call it the claim**: "flow RAMPS, it does not step" took both samples BELOW the
+  setpoint, where the mis-anchored ramp lived — certifying a 60 %-of-rated step for as long as it
+  existed (#542). **A DEGENERATE LATCH reads exactly like a working feature** (rescued from the
+  #403/#433 bullet on eviction, 2026-08-12): a no-dt harness left `held_within_s` permanently
+  satisfied (age `0 <= 60` for ever) and three green probes certified an isolation that never once
+  fired. **And the OBSERVER is where the defect can be, invisible to any source read** (rescued
+  from the #436 bullet on eviction, 2026-08-26): a paired list comparing FORMATTED strings lit five
+  rows on a healthy plant (`-0.0` vs `0.0`), a recorder emitted 46 `alarm_clear` events at t=0, and
+  a lane-height check measuring `plot ÷ lanes` certified 56 px while 38 px was drawn.
+  **`isFinite(null)` is TRUE and `Number.isFinite` is used NOWHERE in this tree** — a JSON round
+  trip writes NaN out as null, so a dead channel comes back a plausible ZERO that every guard in
+  `engines/` accepts (#555; fix at the save boundary, not by sweeping ~20 guards). **A row's gate
+  must assert the EFFECT — flow, area, the landed value — never the WRITE**, or a DARK WIRE (a
+  driver documented, read, and never passed; a field read off a channel nothing publishes) reads as
+  a working feature: #507 wave 6 shipped three that way, #540 shipped a fourth for six days.
+  **And a MUTATION goes blind when the defect it needs is FIXED, or when a refactor moves the line
+  its anchor names** (rescued from the #501–#504 bullet on eviction, 2026-08-27): settling the
+  startup ring sent three caught mutations blind; rewriting four protection gates orphaned four
+  anchors — and a NEIGHBOUR's fix blinds too: #544's air term fixed the initial condition that was
+  exposing the unbounded-bisection mutation (2026-08-28). Fix a defect, then re-run the
+  INJECTIONS — the whole file's, not just yours.
+- **A tolerance band is a claim that what it excludes is harmless — measure that** (rescued
+  from the #348 themes bullet on eviction, 2026-08-07). CA-10's 1-point "coupling lag" band
+  hid an interlock with no reset differential chattering at 35 % duty. **And CHECK THE BAND'S
+  PROVENANCE before you retune what sits inside it** (#598, rescued 2026-09-03): AUTO charging
+  held its program to 0.11 % while the tile's hard-coded 40–70 % painted an on-program Mode 5
+  level 15 points below normal.
+- **Adjudicate a physics change's red probes ONE AT A TIME** (rescued from the #364/#365
+  themes bullet on eviction, 2026-08-08). Batch-judging 11 reds as "the retune moved things"
+  would have hidden two real defects — each red is the fix working, a stale fixture, or a new
+  defect, and only per-probe adjudication (HR10) tells which.
+- **Know which LAYER owns the effect you are asserting** (the table now lives in the
+  `gate-layers` skill). A multi-part fix whose parts are each sufficient makes a one-sided
+  injection lie — revert BOTH to reproduce (#295; #545 shipped it again with a level hold AND a
+  door that refuses by name, and `run_pwr2_engine` came back 59/60 — **plant the demand PAST the
+  half you are not testing**). Neutering an automation channel: blank the ENGAGE direction ONLY,
+  or the plant sits in the IC's own AUTO and the probe passes against a dead channel (#286).
+- **A de-energization written into the operator's DEMAND heals itself on the next button press.**
+  Take away the delivered power/flow/head; leave the selector and the latched demand where the
+  operator put them (#200, #329, #332). The `afw_pump_running` vs `afw_flow_normalized` split is
+  the house idiom. Relatedly `true_state.ac_available` is the question every motor load must ask —
+  today exactly `!station_blackout`, and the point is that the question has a NAME; a plain LOOP
+  KEEPS it, and **AFW carries a do-not-gate note** (WTSM 5.7.5).
+- **`power_pct` is FISSION power, not core thermal power** — total is `true_state.core_heat_pct`.
+  Equal by construction at steady power, which is why no gate caught it; seconds into a LOCA it is
+  11.0 MWt against 21.0 MWt of decay heat. Anything reading `power_pct` as core heat is wrong from
+  the moment the rods drop. **Decimals belong to the UNIT**: `toFixed(0)` on MPa printed three
+  different pressures as "15 MPa" and collapsed the loop split that panel exists to show.
+- **The pressurizer's level constants are ONE object** — `level_per_mass` (776), `level_per_void`
+  (375.33), `level_per_tavg` (1.62); the pressure surge reads the same geometry (#337) and since
+  #385 the NODE's credit does too (`level_per_mass_surplus` retired at #365). The TMI deception
+  is a DIFFERENCE between two of them, so moving one inverts it. **Touch one, re-solve the set.**
+  And a SINGLE TERM of a coupled pressure/inventory regime is worse than none — three independent
+  measurements say so (#346, `Manuals/12` §12.4c, the #384 attempt).
+- **Measure a limit's INCIDENCE before trusting a green suite about it** (#362, rescued
+  2026-08-08): the `levelBase` clip bound on 95.7 % of loss-of-heat-sink samples, 0.0 % of every
+  other IC — removing it reddened nothing because no probe stood where it bound. Corollary:
+  **this plant goes solid at an inventory DEFICIT** (thermal expansion), not overfilled.
+- **Natural circulation: the SHAPE is sourced (W ∝ Q^⅓), the SCALE is this plant's** and is fitted
+  — do not quote our percentage as a real-plant figure (`Manuals/12` §12.4). The board's dash-speed
+  ladder needs a step BELOW that flow or a blackout paints a STOPPED loop; #364 moved it under the
+  floor once already.
+- **Protection cadence is written down TWICE** — `PROTECTION_DT` 0.1 s and an independent copy in
+  `test/ops_harness.js`. Move one and not the other and the ops suites certify a plant no player
+  can produce. 1× is byte-identical by construction, which is why a divergence hides at the speed
+  you are most likely to test at.
+- **A sourced anchor can be the WRONG FORM of the measurement for your model** (rescued from the
+  #386 hydrogen bullet on eviction, 2026-08-11): GEND-061's burn ΔP is real, and the adiabatic
+  form vs the measured 27.5 psi form decides whether the drained family lands over or under the
+  ruled 30 psig hi-hi. Having the document is not having the number.
+- **"Block SI" is THREE actions on a cooldown** and the procedure named one: `lo_press` and
+  `si_trip` both watch pressure downward and neither auto-blocks on the way down; both need P-11,
+  so the Pressure SP comes down first. **The live checklist NEVER issues the step's `cmd`** — it
+  draws text, grades off `acc`, `cmd`/`hold`/`ramp` stay replay-side (it DOES fire
+  `inject_failure`/`clear_failure` behind the scenes since #670 — #694). **Only a rate
+  guard can tell a ramp from a staircase.**
+- **A red probe can be the REFERENCE moving, not the plant — adjudicate at BOTH values** (#508,
+  2026-09-06). Three of six pre-adjudicated probes had their filed reading inverted: a dump check
+  read 18.5 °F against an 18.4 °F bound because **Tref fell 4.0 °F while Tavg fell 1.14 °F** — the
+  better-controlled plant read as the regression. **Run the fixture at the old constant AND the new
+  one and ask which quantity moved.** And a fix that reddens something DISTANT may have been
+  **cancelling against it**: a 4.9 % ΔT head start and an equal, opposite K3 credit read as a
+  healthy plant for three weeks (#647/#650). Ask *"what was this cancelling?"* before writing the
+  red off as stale. **And a fixture pinned at an ARBITRARY state can be right only because the
+  model IGNORES that state** (rescued on eviction, 2026-09-09): 56 relief checks green over a FLAT
+  mass flow, ten sampled at 6.0 MPa (#633).
+- **An unmeasured claim in PLAYER-FACING COPY is still an unmeasured claim** (rescued from the
+  Indications-tab bullet on eviction, 2026-08-17): a "pressurizer mass-only level" row promised
+  a TMI divergence that measures 0.0 everywhere, because `pzr_level_pct` is `clip(that,0,100)`
+  of the very same number. HR12 does not stop at engine prose.
+- **THREE runners now gate the manual's NUMBERS against the engine, and NOTHING gates its PROSE**
+  (rewritten 2026-08-30, #532; was "nothing gates manual prose", #468 via 2026-08-22).
+  `run_manual_setpoints` checks chapter 09's three tables and BOOTS all four initial conditions;
+  `run_manual_commands` checks §18 and the ESF arm payload. **A setpoint, action or IC that drifts
+  now reddens a gate — a described BEHAVIOUR or a procedure's reasoning still does not**, and #532
+  found six sites teaching an ESF arm that never existed. **Grep the manual for the subject of every
+  ruling and board change**, and add the map entry when you add a row: coverage is asserted.
+- **A subscriber that reads inside the rAF paint is ONE FRAME LATE, and only a browser
+  can see it** (rescued from the #432 themes bullet on eviction, 2026-08-11): the
+  recorder's drain sat in the paint and logged **1475 rows in, 35 recorded** — call sites
+  all correct to a source scan, and green to a Node gate that hands it the rows itself.
+  `drainFine()` is the single `takeFine()` caller and is called synchronously from
+  `render()`; keep it there.
+- **On a board issue, read `git log develop`, not just the lane TAGS.** A tag says someone is
+  THERE; the log says what they have already DONE. Four #357 items were worked against a
+  convention #350 had already inverted.

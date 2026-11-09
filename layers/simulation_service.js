@@ -1529,6 +1529,10 @@
       this.activeRegister = m.register || 'learning';
     }
 
+    /* a walkthrough-only failure restores only with its walkthrough (instructor_layer.js
+     * releaseOrphanScriptedFailures) — after the instructor block, so a restored checklist keeps it */
+    if (this.instructor.releaseOrphanScriptedFailures) this.instructor.releaseOrphanScriptedFailures();
+
     this.activePlantId = m.plant_id;
     this.activeInitialState = m.initial_state || 'hot_full_power';   // #563 item 3
     this.activeDesignVersion = m.design_version || null;

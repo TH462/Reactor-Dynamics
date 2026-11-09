@@ -70,6 +70,7 @@ require(path.join(__dirname, '..', 'engines', 'pwr', 'pwr_instruments.js'));
 ].forEach(function (f) { require(path.join(SRC, f + '.js')); });
 require(path.join(__dirname, '..', 'layers', 'instructor_layer.js'));
 require(path.join(__dirname, '..', 'layers', 'simulation_service.js'));
+require(path.join(__dirname, '..', 'ui', 'manual_procedures.js'));   /* the TMI-2 polisher step */
 require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_data.js'));
 var WIRING_PATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_wiring.js');
 require(WIRING_PATH);
@@ -747,6 +748,16 @@ function runSuite(quietRec) {
     'returned the same number for a covered core and a dry one',
     vHalf > vDry && vDry < 1 && Math.abs(vHalf - 25) < 0.01,
     'half-uncovered ' + vHalf + ', fully uncovered ' + vDry + ', both at mass fraction 0.5');
+  /* AN UNCOVERING CORE UNDER A PLENUM THAT IS NOT YET VOID (layman pass 2026-10-15, TMI-2 step 9).
+   * The probes above all set the hot-leg void to 1 whenever the core uncovers, which is the one regime
+   * where summing the two halves is harmless. MEASURED in the browser on TMI-2 step 9: core 37 %
+   * uncovered with the hot leg 70 % voided drew the core 93 % covered. The water in an uncovered
+   * core is below its top, so the drawn level is the core half alone. */
+  var vMid = vesselInv(0.37, 0.70, 50), vWet = vesselInv(0.3, 0, 50);
+  q('...and a core that is uncovering draws its water BELOW the core top whatever the plenum void ' +
+    '(37 % uncovered draws 63 % of the core pool, not 93 %)',
+    Math.abs(vMid - 31.5) < 0.01 && Math.abs(vWet - 35) < 0.01,
+    '37 % uncovered / 70 % void ' + vMid + ', 30 % uncovered / no void ' + vWet);
 
   /* ---- 2e. THE PIPES SAY WHAT IS IN THEM (#516 item 7) --------------------------------------
    * The primary runs declared `contents: 'water'` unconditionally, so the board drew liquid
@@ -1152,10 +1163,24 @@ function runSuite(quietRec) {
     'resp ' + JSON.stringify(rReSI && rReSI.reason) + ', si ' + e3.pt.si);
   w3.cmd({ action: 'set_hpi', active: false }); w3.tick(2);
   var rRe2 = w3.cmd({ action: 'reset_rps' }); w3.tick(3);
+  /* SPLIT 2026-10-14 (the SI re-arm fix). This check asserted the press takes AND stays
+   * (scrammed false), which held only because the SI reset's re-arm block outlived the RPS
+   * reset while an SI signal still stood. WTSM 12.3.2.3 (ML11223A310): after the SI reset,
+   * automatic SI is disabled "until ... (permissive P-4) is cleared by closing the reactor trip
+   * breakers ... Otherwise ... the actuation sequence restarts." So the press is still ACCEPTED
+   * (not a wedge — the #509 concern), and the standing signal then restarts SI, which re-trips.
+   * There is no breaker-closing exit while containment stands over 3.5 psig: that SI channel is
+   * unblockable (WTSM 12.3), so this fixture's way out is the plant recovering, not a button. */
   q('...and it is NOT A WEDGE: blocking the low-pressure trip (P-11) and resetting SI releases ' +
-    'the permissive and the same press then takes',
-    (rRe2 == null || !rRe2.type) && w3.snap().rps_state.scrammed === false,
-    'resp ' + JSON.stringify(rRe2) + ', scrammed ' + w3.snap().rps_state.scrammed);
+    'the permissive and the same press is ACCEPTED',
+    (rRe2 == null || !rRe2.type),
+    'resp ' + JSON.stringify(rRe2));
+  q('...but with an SI signal still STANDING the breakers closing restart SI, which re-trips ' +
+    '(WTSM 12.3.2.3: "Otherwise ... the actuation sequence restarts")',
+    e3.pt.si_live === true && e3.pt.si === true && e3.pt.reactor_trip === true &&
+    e3.pt.trip_cause === 'safety_injection',
+    'si_live ' + e3.pt.si_live + ', si ' + e3.pt.si + ' (' + e3.pt.si_cause + '), trip ' +
+    e3.pt.trip_cause);
 
   /* items 1/5 recovery: manual scram -> blocked during the drop -> accepted at the seat */
   var w4 = mkWorld();
@@ -1387,6 +1412,78 @@ function runSuite(quietRec) {
     bindWorld(w);                 /* put the driver back on the suite's world — see above */
   })();
 
+  /* ---- THE TMI-2 POLISHER (owner ruling 2026-10-10, #670) ----------------------------------
+   * *("The condensate polisher failure should be a scripted event and we can have the indicator
+   * on the condensate polisher show that it has failed and we also should narrate what's going
+   * on so kind of a hybrid of both.")*. Driven through the WALKTHROUGH, not a bare inject: the
+   * claim is that step 2 lights POLISHER STATUS, pauses, moves no plant time, is not a Failures
+   * tab row, and leaves with the walkthrough (Stop) and with a plant reset. The pre-check is the
+   * control: the lamp reads IN SERVICE in green before anything fires. */
+  if (!rec) head('CONDENSATE POLISHER  [the TMI-2 initiator lights the lamp, and goes with the walkthrough]');
+  (function () {
+    var BD_OK = '#5aad7c', BD_WARN = '#d8a657';
+    function lamp(s) { var v = s && D.valueFor({ id: 'imrqrouhrdr' }, s); return v ? v.text + '/' + v.color : 'null'; }
+    function polActive(s) { return s.active_failures.some(function (f) { return f.id === 'condensate_polisher_trip'; }); }
+    /* tick, keeping the last snapshot — a paused service's tick() returns null */
+    function run(P, n, last) { for (var i = 0; i < n; i++) { var s = P.svc.tick(); if (s) last = s; } return last; }
+    /* walk the leg to the polisher's fire: since the #670 redesign it is STEP 1 (old steps 1-3 merged),
+     * so start, take the entry tick, then tick */
+    function toPolisher() {
+      var P = mkWorld(); bindWorld(P);
+      var pre = lamp(P.snap()), s = P.snap(), i, c;
+      P.cmd({ action: 'start_checklist', procedure_id: 'pwr_tmi2_incident' });
+      s = run(P, 1, s);
+      var t0 = P.svc.simTime;
+      s = run(P, 5, s);
+      c = s.instructor && s.instructor.checklist;
+      return { P: P, s: s, pre: pre, step: c && c.step_index, paused: !!(c && c.paused),
+               dt: P.svc.simTime - t0, running: P.svc.running };
+    }
+    var A = toPolisher();
+    q('polisher: before the walkthrough fires it the lamp reads IN SERVICE in green (the control)',
+      A.pre === 'IN SERVICE/' + BD_OK, A.pre);
+    q('polisher: TMI-2 step 1 lights POLISHER STATUS FAILED in amber and pauses the clock',
+      A.step === 0 && lamp(A.s) === 'FAILED/' + BD_WARN && A.paused && A.running === false,
+      'step ' + A.step + ', lamp ' + lamp(A.s) + ', paused ' + A.paused + ', running ' + A.running);
+    q('polisher: indicator only — the paused step spends no plant time (the stuck-valve arm on the same step lands inside its 21 s window)',
+      A.dt < 0.25, 'sim time across 5 ticks after the fire: ' + A.dt.toFixed(3) + ' s');
+    var cat = A.P.svc.layer.getFailureCatalog().map(function (f) { return f.id; });
+    q('polisher: it is NOT a Failures-tab row (a lamp with no consequence in free play)',
+      cat.indexOf('condensate_polisher_trip') < 0 && cat.indexOf('loss_of_feedwater') >= 0,
+      cat.length + ' catalog rows');
+    var sA = A.P.cmd({ action: 'stop_checklist' });
+    A.P.svc.running = true; sA = run(A.P, 2, sA);
+    q('polisher: Stop clears it — no stale FAILED (or amber) left behind in free play',
+      !polActive(sA) && lamp(sA) === 'IN SERVICE/' + BD_OK, lamp(sA));
+    var B = toPolisher();
+    var sB = B.P.cmd({ action: 'reset', plant_id: 'pwr2', initial_state: 'hot_full_power' });
+    B.P.svc.running = true; sB = run(B.P, 2, sB && sB.active_failures ? sB : B.s);
+    q('polisher: a plant reset clears it too',
+      !polActive(sB) && lamp(sB) === 'IN SERVICE/' + BD_OK, lamp(sB));
+    /* THE RESTORE BOUNDARY (quality pass, 2026-10-10). The control layer's block carries the
+     * failure in every save and checkpoint; it must come back only WITH its walkthrough. Control
+     * first: a save of the running walkthrough restores both (lamp still FAILED). Then the two
+     * shapes that used to orphan it — measured before the fix: polisher active, no checklist. */
+    var C = toStep2Save();
+    var Cs = mkWorld(); Cs.svc.loadState(JSON.parse(JSON.stringify(C.save)));
+    q('polisher: a save of the running walkthrough restores it WITH the walkthrough (the control)',
+      polActive(Cs.svc.assembleSnapshot()) && !!Cs.svc.instructor.checklist,
+      'checklist ' + !!Cs.svc.instructor.checklist);
+    var strip = JSON.parse(JSON.stringify(C.save)); strip.instructor.checklist = null;
+    var Co = mkWorld(); Co.svc.loadState(strip);
+    var sCo = Co.svc.assembleSnapshot();
+    q('polisher: a restore that brings back no walkthrough drops it (no FAILED lamp free play cannot clear)',
+      !polActive(sCo) && lamp(sCo) === 'IN SERVICE/' + BD_OK, lamp(sCo));
+    var E = toPolisher();
+    E.P.cmd({ action: 'checklist_check', index: 1 }); run(E.P, 5, E.s);   /* step 3: a checkpoint WITH it */
+    E.P.cmd({ action: 'stop_checklist' });
+    E.P.cmd({ action: 'rewind', steps: 1, exact: true, scope: 'world' });
+    var sE = E.P.svc.assembleSnapshot();
+    q('polisher: Stop, then a plant-only rewind to a checkpoint that held it, does not bring it back',
+      !polActive(sE) && !E.P.svc.instructor.checklist && lamp(sE) === 'IN SERVICE/' + BD_OK, lamp(sE));
+    function toStep2Save() { var X = toPolisher(); return { save: X.P.svc.saveState() }; }
+    bindWorld(w);
+  })();
 
   return rec;
 }
@@ -1402,7 +1499,26 @@ var KPATH = path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js')
 var KSRC = fs.readFileSync(KPATH, 'utf8').replace(/\r\n/g, '\n');
 var PTPATH = path.join(SRC, 'pwr2_protection.js');
 var PTSRC = fs.readFileSync(PTPATH, 'utf8').replace(/\r\n/g, '\n');
+var IPATH = path.join(__dirname, '..', 'layers', 'instructor_layer.js');
+var ISRC = fs.readFileSync(IPATH, 'utf8').replace(/\r\n/g, '\n');
+var SVCPATH = path.join(__dirname, '..', 'layers', 'simulation_service.js');
+var SVCSRC = fs.readFileSync(SVCPATH, 'utf8').replace(/\r\n/g, '\n');
+var MPPATH = path.join(__dirname, '..', 'ui', 'manual_procedures.js');
+var MPSRC = fs.readFileSync(MPPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* THE TMI-2 POLISHER (owner ruling 2026-10-10) — one mutation per claim */
+  ['the polisher lamp ignores the scripted failure (step 2 lights nothing)', WIRING_PATH, WSRC,
+   "if (af[i].id === 'condensate_polisher_trip') return", "if (false) return"],
+  ['the polisher lamp drops its colour on the normal path (amber outlives the clear)', WIRING_PATH, WSRC,
+   "'IN SERVICE' : 'STANDBY', color: BD_OK };", "'IN SERVICE' : 'STANDBY' };"],
+  ['the scripted-only failure becomes a Failures-tab row', KPATH, KSRC,
+   "      if (def.scripted_only) continue;\n", ""],
+  ['Stop leaves the scripted failure standing (stale FAILED in free play)', IPATH, ISRC,
+   "    this._clearScriptedFailures();\n    this.checklist = null;", "    this.checklist = null;"],
+  ['a restore keeps a walkthrough-only failure with no walkthrough to own it (orphan FAILED lamp)', SVCPATH, SVCSRC,
+   "    if (this.instructor.releaseOrphanScriptedFailures) this.instructor.releaseOrphanScriptedFailures();\n", ""],
+  ['TMI-2 step 1 stops injecting the polisher failure (narrated only again)', MPPATH, MPSRC,
+   "{ failure: 'anticipatory_trip_failure' }, { failure: 'condensate_polisher_trip' },", "{ failure: 'anticipatory_trip_failure' },"],
   /* THE WORLD SEAM (#738 quality pass). Without the reset at onMount the message state from the
    * previous plant is compared against the new one, which raised two false "RELEASED BY THE PLANT"
    * messages and a flashing button on a brand-new plant. Reachable from the RESET button. */

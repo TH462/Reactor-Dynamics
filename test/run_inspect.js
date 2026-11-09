@@ -459,7 +459,10 @@ test('every failure is placed in a group', function (ck) {
   var titles = (block.match(/title:\s*'[^']+'/g) || []).length;
   ck('groups are authored', titles >= 5, titles + ' groups');
 
-  var cat = Object.keys((RD.PWR_PROTECTION && RD.PWR_PROTECTION.failures) || {});
+  /* a `scripted_only` row (the TMI-2 polisher, 2026-10-10) is no menu row — getFailureCatalog
+   * skips it, so it has no group to be placed in */
+  var _fdefs = (RD.PWR_PROTECTION && RD.PWR_PROTECTION.failures) || {};
+  var cat = Object.keys(_fdefs).filter(function (id) { return !_fdefs[id].scripted_only; });
   ck('failure catalog loaded', cat.length > 0, cat.length + ' failures');
 
   // Direction 1: a catalog entry with no group falls into "Other" — present, misfiled.

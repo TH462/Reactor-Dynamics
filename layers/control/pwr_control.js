@@ -1055,6 +1055,15 @@
     // PHYSICS ENGINE ONLY (`pwr2_only`): the old engine's getProtectionConfig hides it
     // rather than shipping a row that does nothing there (the hollow-row class, #507 wave 6).
     anticipatory_trip_failure:   { type: 'physics_parameter', category: 'safety_system', effect: 'p9_defeat', pwr2_only: true, display: 'Anticipatory Trip (P-9) Channel Failure' },
+    // THE TMI-2 INITIATOR AS A SCRIPTED EVENT *(OWNER RULING, 2026-10-10: "The condensate polisher
+    // failure should be a scripted event and we can have the indicator on the condensate polisher
+    // show that it has failed and we also should narrate what's going on so kind of a hybrid of
+    // both.")*. INDICATOR ONLY: there is no polisher model, so this drives the board's POLISHER
+    // STATUS to FAILED (pwr_board_wiring `imrqrouhrdr`) and nothing else — the plant consequence
+    // is the walkthrough's next step (`loss_of_feedwater`). `scripted_only`: kept OUT of the
+    // Failures tab (getFailureCatalog) — in free play it would be a lamp with no consequence, a
+    // Design Criteria Q4 orphan — and cleared when the walkthrough stops (InstructorLayer).
+    condensate_polisher_trip:    { type: 'indicator_only', category: 'power', pwr2_only: true, scripted_only: true, display: 'Condensate Polisher Failure' },
     stuck_open_spray:            { type: 'command_override', category: 'coolant', intercepts: ['set_spray'], override_value: true, display: 'Pressurizer Spray Stuck Open' },
     failed_pzr_heaters:          { type: 'command_override', category: 'coolant', intercepts: ['set_heater'], override_value: 0.0, display: 'Pressurizer Heaters Failed' },
     sg_overfeed:                 { type: 'command_override', category: 'power', intercepts: ['set_feedwater_flow', 'set_feed_pump_speed'], override_value: 120, display: 'SG Overfeed / Overcooling' },   // 120 % pump speed (was 1.2 — a pct-units slip)

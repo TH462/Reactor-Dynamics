@@ -723,6 +723,54 @@ function pinChannel(ch) {
     'auto ' + lg0 + '×, player pressed 1× -> ' + ov0 + '×, row A met ' + ov1.met0 + ' -> ' + ov1.accel + '×');
   await b.ctx.close();
 
+  /* ---- ...AND THE SAME ON A STEP THAT DOES AUTHOR A PER-ROW RUNG, FOR THE ROWS THAT DO NOT (review,
+   * 2026-10-15). TMI-2 step 9 gained `wait_speed: 1` on its OFF row, which keyed every head of the
+   * step by index: RCS INVENTORY latching (head 0 -> 1, same wanted rung) changed the key and auto
+   * re-forced the step's 60x over the player's speed. Fixture: step 10×, rows A and B with no rung,
+   * row C 1×. The player presses 5×, A ticks: the clock must stay 5×. Then B ticks, C is the head and
+   * carries its own rung: the clock must go to 1× (the rung row still acts). INJECTION-PROVEN: the
+   * old key (`'|s' + head` on every head) reds the first half at 10×. */
+  b = await build('dev', WT2 + '&run=1&dev=1');
+  await b.page.evaluate(function () {
+    var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_rowrung'; });
+    window.RD.MANUAL_PROCEDURES.pwr2 = P;
+    P.push({ id: 'zz_pace_rowrung', category: 'control', manual_ref: 'ZZ-09',
+             title: 'Pacing row-rung probe', purpose: 'Rung fixture.', from: 'hot_full_power',
+             steps: [{ text: 'A three-row step, the last row with a rung of its own.', control: '(observe)',
+                       wait_speed: 10,
+                       accs: [
+                         { p: 'power_pct', op: '<', v: -1, label: 'A not met yet' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'B not met yet' },
+                         { p: 'power_pct', op: '<', v: -1, label: 'C not met', wait_speed: 1 }
+                       ] }] });
+  });
+  await openManualProcs(b.page).catch(function () {});
+  await b.page.click('#manualContent [data-checklist="zz_pace_rowrung"]', { timeout: 4000 }).catch(function () {});
+  await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+  await b.page.waitForTimeout(1800);
+  var rr0 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var btn = document.querySelector('#speed [data-speed="5"]'); if (btn) btn.click();
+  });
+  await b.page.waitForTimeout(1500);
+  var rr1 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    if (c.accsState && c.accsState[0]) c.accsState[0].met = true;
+  });
+  await b.page.waitForTimeout(2000);
+  var rr2 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  await b.page.evaluate(function () {
+    var c = globalThis.RD.__dev.service().instructor.checklist;
+    if (c.accsState && c.accsState[1]) c.accsState[1].met = true;
+  });
+  await b.page.waitForTimeout(2000);
+  var rr3 = await b.page.evaluate(function () { return globalThis.RD.__dev.service().timeAcceleration; });
+  ck('dev (pwr2): on a step with a per-row rung, a row without one ticking keeps the player\'s override; the rung row still acts',
+    rr0 === 10 && rr1 === 5 && rr2 === 5 && rr3 === 1,
+    'auto ' + rr0 + '×, player pressed 5× -> ' + rr1 + '×, row A met -> ' + rr2 + '× (want 5), row B met, row C (1×) head -> ' + rr3 + '× (want 1)');
+  await b.ctx.close();
+
   /* ---- A TAP ON A LATCHED TAP-AND-WAIT STEP DOES NOT HAND THE CLOCK BACK (2026-09-23 layman
    * playtest S-1). `pwr_startup` 9a is a `stopped` row; before `latch` every tap 9b asks for
    * un-ticked it, the active substep fell back to 9a and auto forced its 1× over 9b's 10× wait.
@@ -843,6 +891,28 @@ function pinChannel(ch) {
   ck('dev (pwr2): "Held at real time" does not stand under a clock the walkthrough has raised',
     /Held at real time/.test(pa3a.info) && !/Held at real time/.test(pa3b.info),
     'before: "' + pa3a.info + '" · after, at ' + pa3b.accel + '×: "' + pa3b.info + '"');
+  /* A WARP RATE DROP DOES NOT QUOTE ITS HALF-SECOND FIGURE ONCE WARP IS OPEN AGAIN (2026-10-11
+   * TMI-2 layman pass, S-1: "pressure moving 41 psi/s right now" stood ~6 wall-minutes over a
+   * gauge rising 0.2 psi per wall-second). Clock at 60× on a quiet plant, so `warp_available`
+   * is true. INJECTION-PROVEN: without the `rateM` branch in `syncWarpInfo` the line still reads
+   * "43 psi/s". */
+  await injectSnap({ reason: 'transient', detail: 'pressure moving 43 psi/s right now (the gauge is damped and shows the trend)' });
+  await b.page.waitForTimeout(1500);
+  var pa4 = await paceRead();
+  var pa4av = await b.page.evaluate(function () { var q = globalThis.RD.__dev.service()._pacingBlock(); return q.warp_available; });
+  ck('dev (pwr2): a WARP drop on a pressure rate stops quoting the rate once WARP is available again',
+    pa4av === true && pa4.accel === 60 && /brief pressure swing — it has passed/.test(pa4.info) && !/43 psi\/s/.test(pa4.info),
+    'warp_available ' + pa4av + ', clock ' + pa4.accel + '× · line: "' + pa4.info + '"');
+  /* …AND "IT HAS PASSED" IS NOT SAID OF A SWING THAT KEEPS COMING BACK (#670, 2026-10-14: 53 of 59
+   * browser samples on the never-close-block-valve route read "it has passed" while the drop recurred).
+   * A second rate drop on the same step. INJECTION-PROVEN: with `nDrops` pinned to 1 in `syncWarpInfo`
+   * the line stays "it has passed" and this goes red. */
+  await injectSnap({ reason: 'transient', detail: 'pressure moving 39 psi/s right now (the gauge is damped and shows the trend)' });
+  await b.page.waitForTimeout(1500);
+  var pa5 = await paceRead();
+  ck('dev (pwr2): a second WARP rate drop on the same step says the swings keep coming, not "it has passed"',
+    /keeps dropping to 60× on brief pressure swings \(2 times on this step\)/.test(pa5.info) && !/it has passed/.test(pa5.info),
+    'line: "' + pa5.info + '"');
   await b.ctx.close();
   b = await build('dev', WT2 + '&run=1&dev=1');
   await b.page.evaluate(function () {
@@ -861,6 +931,42 @@ function pinChannel(ch) {
   var pw1 = await paceRead();
   ck('dev (pwr2): a wait_first step is paced from entry (the opt-out)', pw1.accel === 60, 'clock ' + pw1.accel + '×');
   await b.ctx.close();
+
+  /* ---- A CHART-LED STEP SAYS "WATCH THE CHART", NOT "NOTHING TO DO" (cooldown 4 review, 2026-10-15) ----
+   * The #warpInfo line auto prints when it raises the clock on a step with no generated wait line
+   * (`wait_hint: false`, as every substep-format step has). On a step carrying `pair` the card asks the
+   * player to WATCH two channels move (cooldown 4c), so the line must not say there is nothing to do.
+   * Two otherwise identical probes, one with `pair`, one without: the negative half keeps it non-vacuous.
+   * INJECTION (2026-10-15): the `pair` branch in syncWarpInfo removed -> the pair probe reads
+   * "nothing to do for a while" and this check goes red. */
+  async function watchLine(withPair) {
+    b = await build('dev', WT2 + '&run=1&dev=1');
+    await b.page.evaluate(function (wp) {
+      var P = window.RD.MANUAL_PROCEDURES.pwr2.filter(function (x) { return x.id !== 'zz_pace_watch'; });
+      window.RD.MANUAL_PROCEDURES.pwr2 = P;
+      var st = { text: 'Watch the two readings move.', control: '(observe)', hold: 600, wait_first: true, wait_hint: false,
+                 wait_speed: 60, cmd: { action: 'set_pressure_setpoint', mpa: 15.41 },
+                 accs: [{ p: 'power_pct', op: '<', v: -1, label: 'the wait' }] };
+      if (wp) st.pair = ['tavg', 'pressure'];
+      P.push({ id: 'zz_pace_watch', category: 'control', manual_ref: 'ZZ-11', title: 'Watch-line probe',
+               purpose: 'Speed-line fixture.', from: 'hot_full_power', steps: [st] });
+    }, withPair);
+    await openManualProcs(b.page).catch(function () {});
+    await b.page.click('#manualContent [data-checklist="zz_pace_watch"]', { timeout: 4000 }).catch(function () {});
+    await b.page.waitForSelector('.ckl-step.ckl-active', { timeout: 15000 }).catch(function () {});
+    await b.page.waitForTimeout(1800);
+    var r = await paceRead();
+    await b.ctx.close();
+    return r;
+  }
+  var pwP = await watchLine(true), pwN = await watchLine(false);
+  /* RE-WORDED 2026-11-06 (#825 layman pass S-2, e4949322): the raise lands while the player may still be
+   * acting, so neither form says "nothing to do" any more; the line says the walkthrough moved the clock,
+   * and a `pair` step adds "watch the chart". The pair/no-pair split is still what this asserts. */
+  ck('dev (pwr2): auto speeding up on a chart-led step (`pair`) says "watch the chart"; without `pair` it says only that the walkthrough set the speed',
+    pwP.accel === 60 && /The walkthrough set the speed to 60× — watch the chart\./.test(pwP.info) && !/nothing to do/.test(pwP.info) &&
+    pwN.accel === 60 && /The walkthrough set the speed to 60×\./.test(pwN.info) && !/watch the chart|nothing to do/.test(pwN.info),
+    'pair: ' + pwP.accel + '× "' + pwP.info + '" | no pair: ' + pwN.accel + '× "' + pwN.info + '"');
 
   /* ---- AND ON REAL CONTENT, MID-RUN: THE CLOCK RE-ACTS WHEN THE ACTIVE SUBSTEP CHANGES (2026-09-23,
    * the pwr_startup reconcile). The two synthetic probes above each read ONE substep from the first
@@ -1405,11 +1511,13 @@ function pinChannel(ch) {
     var out = [];
     Array.prototype.forEach.call(document.querySelectorAll('[data-flag]'), function (el) {
       var f = el.getAttribute('data-flag');
-      out.push({ flag: f, on: RD.Flags.on(f), stage: RD.Flags.stage(f) });
+      out.push({ flag: f, on: RD.Flags.on(f), stage: RD.Flags.stage(f), alt: el.hasAttribute('data-flag-off') });
     });
     return out;
   });
-  var offPublic = gated.filter(function (g) { return !g.on; });
+  /* Only an element WITH a data-flag-off alternate makes a claim the public visitor reads instead; a row hidden
+   * outright (the Atomic Sandbox link, `lab`, preview) promises nothing on public. Its own checks are below. */
+  var offPublic = gated.filter(function (g) { return !g.on && g.alt; });
   ck('landing public: every gated claim rests on a flag the public channel has',
     gated.length > 0 && offPublic.length === 0,
     gated.length === 0
@@ -1418,6 +1526,22 @@ function pinChannel(ch) {
       : offPublic.map(function (g) { return g.flag + ' (stage ' + g.stage + ')'; }).join(', ') +
         ' — a visitor to the released site reads the data-flag-off alternate here, not the ' +
         'sentence that was written');
+
+  /* HIDDEN MUST MEAN UNPAINTED (critic round 2, 2026-11-06). applyDom hides an element with the `hidden` attribute,
+   * and an author display rule beats it (`.lp .row{display:grid}` did, for the Atomic Sandbox row). So EVERY
+   * [data-flag] element with no alternate whose flag is off on public must compute display:none with a zero rect. */
+  var hiddenPaint = await page.evaluate(function () {
+    var bad = [], n = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-flag]'), function (el) {
+      if (el.hasAttribute('data-flag-off') || RD.Flags.on(el.getAttribute('data-flag'))) return;
+      n++;
+      var r = el.getBoundingClientRect();
+      if (getComputedStyle(el).display !== 'none' || r.width || r.height) bad.push(el.getAttribute('data-flag') + ' ' + getComputedStyle(el).display + ' ' + Math.round(r.height) + 'px');
+    });
+    return { n: n, bad: bad };
+  });
+  ck('landing public: every flag-hidden element (no alternate) computes display:none with a zero rect',
+    hiddenPaint.n > 0 && hiddenPaint.bad.length === 0, 'hidden elements ' + hiddenPaint.n + (hiddenPaint.bad.length ? ', PAINTED: ' + hiddenPaint.bad.join('; ') : ''));
 
   /* THE SWAP ITSELF, PROVEN ON THE PAGE. Without this the check above is satisfied by an
    * `applyDom` that does nothing at all: every flag reads on, no element is ever rewritten, and
@@ -1727,6 +1851,43 @@ function pinChannel(ch) {
   ck('#816: a corrupt autosave is dropped silently (no Continue, key removed)',
     v5.cont === '' && (await p4.evaluate(function () { return localStorage.getItem('rd_autosave'); })) === null, JSON.stringify(v5));
   await s4.ctx.close();
+
+  async function labCatsMenu() {
+    var pgs = await menuPage('preview', null, '?dev=1');
+    var cats = await pgs.page.$$eval('#mpModes [data-mmode]', function (els) { return els.map(function (e) { return e.getAttribute('data-mmode'); }); });
+    await pgs.ctx.close();
+    return cats;
+  }
+  /* THE ATOMIC SANDBOX LINK (owner 2026-11-06: "The Atomic Sandbox link should be on the home page not in the
+   * simulator selection page."): a `data-flag="lab"` row on index.html, preview stage. Asserted on the PAINTED
+   * row (computed display, rect) and on its href, never the attribute: `.lp .row` sets display:grid, which
+   * beats the UA [hidden], so a hidden row that still paints is the failure to catch. */
+  async function labRow(channel, q, served) {
+    var c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    if (channel) await c.addInitScript(pinChannel(channel));
+    if (served) await c.addInitScript('globalThis.RD = globalThis.RD || {}; globalThis.RD.__labProtocol = "http:";');
+    var pg = await c.newPage();
+    await pg.goto(LANDING + (served ? '?dev=1' : '') + (q || ''));
+    var r = await pg.evaluate(function () {
+      var el = document.querySelector('[data-flag="lab"]'); if (!el) return { missing: true };
+      var rc = el.getBoundingClientRect(), a = el.querySelector('a');
+      return { display: getComputedStyle(el).display, w: Math.round(rc.width), h: Math.round(rc.height),
+               href: a && a.href, text: el.textContent.replace(/\s+/g, ' ').trim() };
+    });
+    await c.close();
+    return r;
+  }
+  var lr1 = await labRow('public', '', true), lr2 = await labRow('preview', '', true), lr3 = await labRow('public', '&flags=lab', true), lr4 = await labRow('preview', '', false);
+  ck('lab link: the home page carries the row, and on the public channel it is not painted',
+    !lr1.missing && lr1.display === 'none' && lr1.h === 0, JSON.stringify(lr1));
+  ck('lab link: preview channel paints "Atomic Sandbox" with an href that resolves to lab/',
+    !lr2.missing && lr2.display !== 'none' && lr2.h > 0 && /Atomic Sandbox/.test(lr2.text) && /\/lab\/$/.test(lr2.href || ''), JSON.stringify(lr2));
+  ck('lab link: the Features override (?flags=lab) paints it on the public channel',
+    !lr3.missing && lr3.display !== 'none' && lr3.h > 0, JSON.stringify(lr3));
+  ck('lab link: opened from file:// (the lab bundle cannot load there) the row is hidden even on preview',
+    !lr4.missing && lr4.display === 'none' && lr4.h === 0, JSON.stringify(lr4));
+  ck('lab link: the Main Menu no longer offers a lab category (preview, served-over-http stand-in)',
+    (await labCatsMenu()).indexOf('lab') === -1);
 
   await browser.close();
   console.log('\n' + C.bold + '──────────────────────────────────────────' + C.off);

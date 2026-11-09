@@ -78,7 +78,20 @@
    * true_state here would make this harness a SECOND sampler that cannot see them, which is the
    * shape #432 was: the live runtime would check the step off and the gate would call it a fail.
    * `paramValue` takes the whole snapshot; every call site below passes one. */
-  function pv(snap, p) { return RD.InstructorLayer.paramValue(snap, p); }
+  /* ...AND A CHANNEL THAT EXISTS ONLY AS AN INSTRUMENT reads the way the live `_grade` reads it (2026-10-15):
+   * `tavg_tref_dev_c` (raise power 4's relation row) has no true_state field, so `paramValue` returned
+   * undefined and the replay failed a row the live runtime ticks (measured: replay red, live routes 7/7
+   * complete). Only the undefined case falls through, so every other replay reading is unchanged. */
+  var IL_READ = null;
+  function pv(snap, p) {
+    var v = RD.InstructorLayer.paramValue(snap, p);
+    if (v === undefined) {   /* only an INSTRUMENT read: a control or status param that is null mid-run stays undefined (reviewer, 2026-10-15) */
+      IL_READ = IL_READ || Object.create(RD.InstructorLayer.prototype);
+      var g = IL_READ._grade(snap, { p: p, op: '>', v: 0 });
+      if (g.graded_by === 'instrument') v = g.value;
+    }
+    return v;
+  }
   function pred(snap, c) { return cmp(pv(snap, c.p), c.op, c.v, c.tol); }
 
   function groupId(svc, which) {
@@ -274,6 +287,23 @@
        * rather than only at the step's end, because the ISSUE ORDER is what this models. */
       var ordMet = (st.accs_ordered && st.accs) ? st.accs.map(function () { return false; }) : null;
       var ordUnissued = [];
+      /* ROW-LEVEL `overtaken` (2026-10-15), the live `_gradeAccs` rule in full: the condition (or any
+       * `or`) graded every tick while the row is unmet; ACC_STABLE_N consecutive ticks ARM it for the
+       * step (counted while blocked); latched once armed and every earlier row of an ordered step is
+       * met; never re-graded off. */
+      var OT_N = RD.InstructorLayer.ACC_STABLE_N || 5;
+      var otStreak = (st.accs || []).map(function () { return 0; }), otLatched = (st.accs || []).map(function () { return false; });
+      var otArmed = (st.accs || []).map(function () { return false; });
+      function otTick(s) {
+        (st.accs || []).forEach(function (en, j) {
+          if (!en || !en.overtaken || !en.overtaken.p || otLatched[j] || (ordMet && ordMet[j])) return;
+          var hit = pred(s, en.overtaken) || (en.overtaken.or || []).some(function (q) { return pred(s, q); });
+          otStreak[j] = hit ? otStreak[j] + 1 : 0;
+          var unblocked = !ordMet || ordMet.slice(0, j).every(Boolean);
+          if (otStreak[j] >= OT_N) otArmed[j] = true;
+          if (otArmed[j] && unblocked) { otLatched[j] = true; if (ordMet) ordMet[j] = true; }
+        });
+      }
       function ordAdvance(s) {
         for (var i = 0; i < st.accs.length; i++) {
           var en = st.accs[i];
@@ -319,6 +349,7 @@
           if (h.last.met) h.ever = true;
         });
         if (ordMet) ordAdvance(s);
+        otTick(s); if (ordMet) ordAdvance(s);   /* a row overtaken this tick unblocks its successors on the same tick, as live */
         /* `replay_then` (2026-09-24, pwr_startup 9a): a REPLAY-ONLY second command, issued once
          * on the first tick the named accs row has been met — the player's next action after a
          * milestone, which a single step-entry `cmd` cannot express. The live runtime never reads it. */
@@ -381,6 +412,13 @@
                         ' @ ' + reading + (c.latch ? (h.ever ? ', latched' : ', never met') : '') +
                         ((c.below_1m != null || c.reach_1m != null) ? (last.no_1m ? ', no 1/M prediction' : ', 1/M prediction ' + last.pred_1m) : '') };
         }
+        if (c.op === 'moves') {
+          /* LATCHES inside gradeMoves (the bag holds it), so the standing verdict is the answer */
+          return { pass: !!last.met,
+                   obs: (last.delta == null ? 'window not covered' : (last.delta >= 0 ? '+' : '') + last.delta.toFixed(2) + ' ' + c.dir) +
+                        (last.with_delta != null ? ', with ' + last.with_delta.toFixed(2) : '') +
+                        ' @ ' + reading + (last.latched ? ', latched' : ', never met') };
+        }
         return { pass: !!last.met,
                  obs: (last.drift == null ? 'window not covered' : (last.drift * 100).toFixed(2) + '% drift')
                       + ' @ ' + reading };
@@ -394,9 +432,18 @@
        * this step, so their evidence is the acceptance-free issue itself (the live runtime
        * latches them off the command watch — that half is run_checklist's subject). */
       if (st.accs && st.accs.length) {
+        /* `implied_by` (#749 field; second live carrier TMI-2 step 9, 2026-10-14, after the startup INTER RANGE row deleted 2026-09-27): the live `_gradeAccs`
+         * latches a row whose NAMED sibling is met, so the replay grades it the same way — a failed row
+         * passes when its sibling's own verdict passes, and says so. Ignored on an ordered step, as live. */
+        var implPass = {};
+        if (!st.accs_ordered) st.accs.forEach(function (o, j) {
+          if (o && o.p && !o.implied_by && st.accs.some(function (x) { return x && x.implied_by === o.p; }) && accVerdict(o, 'accs' + j).pass) implPass[o.p] = true;
+        });
         st.accs.forEach(function (en, k) {
           if (!en || !en.p) return;
           var ev = accVerdict(en, 'accs' + k);
+          if (!ev.pass && en.implied_by && implPass[en.implied_by]) ev = { pass: true, obs: ev.obs + ' (implied by ' + en.implied_by + ')' };
+          if (!ev.pass && otLatched[k]) ev = { pass: true, obs: ev.obs + ' (overtaken: ' + (en.overtaken.label || en.overtaken.p) + ')' };
           /* A LATCHING ROW ON AN ORDERED STEP IS A MILESTONE, AS THE LIVE RUNTIME GRADES IT (2026-09-26,
            * #807 review item 4): a `>`/`<` row latches once met (instructor `_gradeAccs`), and the
            * ordered tracker above already holds that verdict in `ordMet`. `pwr_cooldown` 11b ("watch

@@ -45,7 +45,8 @@
     diagMode: 'learning',   // synoptic: 'learning' (M8 Education) | 'realistic'
     physOverlay: false,     // synoptic: Physics Overlay toggle (Learning only)
     rodSpeed: 'normal',
-    window: 300,            // strip-chart seconds
+    window: 300,            // strip-chart seconds (the rung: a CAP while windowAuto, the choice once clicked)
+    windowAuto: true,       // QW3: until the player clicks a rung, the shown window fits the data (chartWindowEff)
     series: {},             // per-plant; defaults set on plant load — "is it plotted at all"
     /* WHICH SIDE(S) each plotted channel traces (#454): id -> 'ind' | 'phys' | 'both'.
      * ABSENT MEANS "follow the global Learning/Realistic rule", which is why this starts
@@ -760,12 +761,12 @@
         // and because the chart picks its side by mode (physics in Teaching, instruments in
         // Realistic), plotting this in Realistic shows the operator exactly the lie TMI-2's
         // control room was shown for two hours and twenty minutes.
-        // AUTHORED hint, overriding the manual's own first sentence. `measures` opens with
-        // "Relief-valve indicator." and only says the load-bearing part — that the light shows
-        // the COMMANDED position — in its second sentence, which the summary tier drops. On
-        // every other row losing the tail is fine; on this one the tail is the whole lesson.
+        // AUTHORED hint, overriding the manual's own first sentence (`measures` opens with
+        // "Relief-valve indicator.", i.e. the LIGHT). The hint describes what the LANE DRAWS: in
+        // Learning mode (`chartTruth`, the only mode built) that is `tru`, the valve's true
+        // position, not the light (review 2026-10-15: the old hint called the lane the light).
         { id: 'porv',     instr: 'porv_indicator', grp: 'Pressure boundary', label: 'PORV Open', c: '#e08050',
-          hint: 'the relief-valve position LIGHT, which shows the commanded position and not the valve.',
+          hint: 'the relief valve itself, open or shut. The relief-valve light on the board shows the commanded position, so a stuck-open valve reads OPEN here beside a CLOSED light.',
           get: function (i) { return i.porv_indicator === 'open' ? 1 : 0; }, tru: function (t) { return t.porv_open ? 1 : 0; }, range: [0, 1], dHi: 1, fmt: function (v) { return v > 0.5 ? 'OPEN' : 'shut'; } },
         // NO SERIES for `block_valve_open`, `porv_stuck` or `spray_stuck`, deliberately. All
         // three are true-state-only, so they are absent from the Indications list by its own
@@ -3070,10 +3071,28 @@
     var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
     return 'T+' + (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
   }
+  /* QUIET-BOARD LAYOUT (quick win 1, owner 2026-10-10: "more intuitive and easier"). With no alarm
+   * up, the alarm panel folds to a one-line strip over the chart's legend corner and the chart takes
+   * the row's width (CSS: .alarms-quiet). LAYOUT ONLY -- the alarm list and its behaviour are untouched
+   * (#822). The first alarm expands it at once; folding waits ALARM_QUIET_HOLD_MS of continuous quiet
+   * so a chattering alarm cannot flip the strip every second. THE BOARD NEVER MOVES (cycle layman pass
+   * S-1, 2026-10-15): the row keeps its height in both states, so the pointer deferral that used to
+   * hold the fold while the pointer was on the board is gone -- there is no board movement to defer. */
+  var ALARM_QUIET_HOLD_MS = 8000, alarmQuietSince = -1e9, alarmQuietOn = null;
+  function updateAlarmQuiet(activeCount) {
+    var app = document.querySelector('.app.pwr-synoptic');
+    if (!app) return;
+    var t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (activeCount) alarmQuietSince = null;
+    else if (alarmQuietSince == null) alarmQuietSince = t;
+    var want = alarmQuietSince != null && (t - alarmQuietSince) >= ALARM_QUIET_HOLD_MS;
+    if (want !== alarmQuietOn) { alarmQuietOn = want; app.classList.toggle('alarms-quiet', want); }
+  }
   function renderAlarms(s) {
     var stack = $('alarmStack');
     var now = s.metadata ? s.metadata.sim_time : 0;
     var active = s.alarms.filter(function (a) { return a.state !== 'clear'; });
+    updateAlarmQuiet(active.length);
     var liveIds = {};
     active.forEach(function (a) {
       liveIds[a.id] = true;
@@ -3217,10 +3236,22 @@
     var ck = s && s.instructor && s.instructor.checklist;
     return ck && !ck.complete ? ck.procedure_id + '#' + ck.step_index : '';
   }
+  /* A RATE drop: the in-loop WARP watch's half-second pressure/power reading (or a loop transient),
+   * not an alarm, trip or failure event. One test for syncWarpInfo, the drop counter and cklAuto. */
+  function isRateSnap(sn) {
+    return !!sn && sn.reason === 'transient' && (/^(pressure|power) moving /.test(sn.detail || '') || sn.detail === 'loop transient');
+  }
+  var rateDrops = { step: null, n: 0, t: 0 };   // rate drops on one walkthrough step (#670 item 1, below)
   function retireWarpNote() {
     if (warpNote && warpNote.reason === 'hold' && latest && latest.true_state && latest.true_state.speed_hold) return;
     warpNote = null;
   }
+  /* The rate the sentence names: whole numbers under 10x (a 5x request that delivers 4.2x said "1x" off a
+   * floor-to-5), the nearest 5 to 100x, the floor to 50 above (measured: 14x at 60x read "10x"). */
+  function budgetShownRate(a) {
+    return a >= 100 ? Math.floor(a / 50) * 50 : a < 10 ? Math.max(1, Math.round(a)) : Math.round(a / 5) * 5;
+  }
+  var budgetNote = { step: null, req: 0, since: 0, on: false, shown: 0 };   // the step-budget shortfall sentence's state (V-3, below)
   function syncWarpInfo(s) {
     var el = $('warpInfo');
     if (!el) return;
@@ -3280,13 +3311,70 @@
     }
     if (warpNote) {
       cls = 'dropped';
-      text = warpNote.text + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
+      /* A RATE REASON IS A HALF-SECOND READING, NOT A STANDING ONE (2026-10-11 TMI-2 layman pass,
+       * S-1). MEASURED on pwr_tmi2_incident step 18 (service probe, inbox/tmi_review3): 600× was
+       * ACCEPTED, the first WARP steps kicked primary pressure 476 -> 508 psia, the in-loop watch
+       * dropped to 60× on "pressure moving 43 psi/s right now", and pressure settled back to 494
+       * within one 6 s broadcast; `warp_available` was true from then on. The line kept the
+       * 43 psi/s figure for the ~6 wall-minutes the player then waited, beside a gauge rising
+       * 0.2 psi per wall-second. Once the plant would take WARP again, say the swing has passed
+       * instead of quoting it. Alarm, trip and failure reasons are events, not rates: unchanged. */
+      var noteText = warpNote.text;
+      var pcg = s.metadata && s.metadata.pacing;
+      /* "IT HAS PASSED" IS ONE SWING'S CLAIM (#670, 2026-10-14). MEASURED in the browser on the
+       * never-close-block-valve route (step 10, the player re-pressing 600×): the line read "it has
+       * passed" on 53 of 59 samples while the clock sat at 60× on the next drop. From the second rate
+       * drop on the same step the line says the swings keep coming and how many, which is true
+       * whether or not another follows. */
+      var rateM = /^(pressure|power) moving /.exec(warpNote.detail || '');
+      if (isRateSnap(warpNote) && pcg && pcg.warp_available === true) {
+        var swing = rateM ? rateM[1] : 'coolant-loop';
+        var nDrops = rateDrops.step === warpNote.step ? rateDrops.n : 1;
+        noteText = nDrops > 1
+          ? 'WARP keeps dropping to 60× on brief ' + swing + ' swings (' + nDrops + ' times on this step)'
+          : 'WARP dropped to 60× on a brief ' + swing + ' swing — it has passed';
+      }
+      text = noteText + (warpNote.reason !== 'hold' && advice ? '. ' + advice : '');
     } else {
       text = advice;
       if (autoSpeedNote) {
         var curRate = (s.metadata && s.metadata.time_acceleration) || 1;
         if (curRate !== autoSpeedNote.rate || autoSpeedNote.step !== cklNoteStepKey(s)) autoSpeedNote = null;
-        else if (!text) text = 'Speeding up to ' + curRate + '× — nothing to do for a while.';
+        /* A CHART-LED STEP IS NOT "NOTHING TO DO" (cooldown 4 review, 2026-10-15): a step carrying `pair` asks the
+         * player to WATCH its two channels move (cooldown 4c "Watch STEAM PRESS and AVG COOLANT TEMPERATURE fall
+         * together"), and the line under the speed buttons said the opposite. */
+        /* NOT "NOTHING TO DO" EITHER (#825 layman pass, S-2): the raise fires the moment the step's own action lands
+         * (`cklActionPending`), so it lands WHILE the player is still acting -- startup 5 mid-hold on WITHDRAW, raise power
+         * 5 with the pressure-low rule asking for pulls. The line says only what happened: the walkthrough moved the clock.
+         * `done` (S-10): the walkthrough's own hand-back to 1x when a step's rows are met (`cklStepSpeed`), which drew
+         * nothing before -- the #619 service step snap it is mistaken for was released 2026-09-17. */
+        else if (!text) text = autoSpeedNote.done ? 'Step done — the walkthrough set the speed back to 1×.'
+          : 'The walkthrough set the speed to ' + curRate + '×' + (actv && actv.st && actv.st.pair ? ' — watch the chart.' : '.');
+      }
+    }
+    /* THE COMPUTER'S CEILING, SAID IN WORDS (TMI-2 layman pass 3, V-3, 2026-10-15). MEASURED on step 9:
+     * 60× requested, 34-40× then 14× delivered, no drop and no stated cause — the 40 ms step budget cut
+     * each broadcast to 250-300 of 300 steps, then 100 of 300 once the plant sub-stepped. The badge's
+     * "actual 14×" was the only sign. Said only on a walkthrough step, in the play tier, when the
+     * budget is what cut it (fewer steps done than asked) and under 0.9× of the request (the badge's
+     * own amber line, #581). */
+    /* HYSTERESIS AND A SETTLE DELAY (review of 8db64bb4): `achieved` is a smoothed figure, so right after a
+     * speed change or a resume it lags low. The sentence waits 4 s of wall after the request or the step
+     * changes, comes on below 0.85x with the budget cutting, and goes off only at 0.95x. The number shown is
+     * floored to 5 (50 above 100) and moves only on a change of a quarter or more, so 34-40x reads steadily. */
+    var pcB = s.metadata && s.metadata.pacing, reqB = (s.metadata && s.metadata.time_acceleration) || 1;
+    var keyB = cklNoteStepKey(s), nowW = Date.now();
+    var playB = !!(actv && pcB && pcB.tier === 'play' && reqB > 1 && pcB.achieved != null);
+    if (!playB || budgetNote.step !== keyB || budgetNote.req !== reqB) budgetNote = { step: keyB, req: reqB, since: nowW, on: false, shown: 0 };
+    if (playB) {
+      var achR = pcB.achieved;
+      if (budgetNote.on && achR >= 0.95 * reqB) budgetNote.on = false;
+      else if (!budgetNote.on && nowW - budgetNote.since >= 4000 && achR < 0.85 * reqB &&
+               pcB.steps_requested > 0 && pcB.steps_done < pcB.steps_requested) budgetNote.on = true;
+      if (budgetNote.on) {
+        var achF = budgetShownRate(achR);
+        if (!budgetNote.shown || Math.abs(achF - budgetNote.shown) >= 0.25 * budgetNote.shown) budgetNote.shown = achF;
+        text = (text ? text.replace(/\.?$/, '. ') : '') + 'This computer can only run the plant at about ' + budgetNote.shown + '× here.';
       }
     }
     if (el.textContent !== text) el.textContent = text;
@@ -3308,8 +3396,8 @@
   function syncPacingUI(s) {
     var p = s && s.metadata ? s.metadata.pacing : null;
     var el = $('ffRate');
+    syncWarpInfo(s);   // BEFORE the pacing return: a held step's snapshot may carry no pacing, and the line then kept its pre-hold text (review 2026-10-15: "fast-forwarding at 10×" under a stopped clock)
     if (!p || !el) return;
-    syncWarpInfo(s);
     var req = s.metadata.time_acceleration || 1, ach = p.achieved;
     var straining = false;
     if (RD.Perf && req > 1) {
@@ -3358,7 +3446,13 @@
        * speed buttons until the player next acts — the other reasons rely on the toast +
        * flash above since #686; carrying `reason` is what lets `syncWarpInfo` single out this
        * one case without re-deriving it from the text. */
-      warpNote = { text: speedSnapText(snap), reason: snap.reason, step: cklNoteStepKey(s) };
+      warpNote = { text: speedSnapText(snap), reason: snap.reason, detail: snap.detail || '', step: cklNoteStepKey(s) };
+      if (isRateSnap(snap)) {   // counted for #warpInfo's recurrence wording (syncWarpInfo)
+        /* a new step, or the clock went BACK on the same one (a Rewind, a restarted leg): count afresh */
+        var tDrop = +s.metadata.sim_time || 0;
+        if (rateDrops.step !== warpNote.step || tDrop < (rateDrops.t || 0)) rateDrops = { step: warpNote.step, n: 0 };
+        rateDrops.n++; rateDrops.t = tDrop;
+      }
       /* FLASH THE SPEED BUTTONS *(OWNER, 2026-09-03, #619 item 7: "when dropping out of warp,
        * flash the warp buttons for a moment to make it more obvious.")*. The toast says what
        * happened; the flash says WHERE, which is the control the player now has to touch to
@@ -3425,10 +3519,12 @@
       btns[j].setAttribute('data-win', wins[j]);
       btns[j].textContent = chartWinLabel(wins[j]);
     }
-    CHART_RECORD_SEC = wins[wins.length - 1];
+    var pin = (cklChart && cklChart.pin && ui.window === cklChart.pin) ? cklChart.pin : 0;   // a walkthrough's pinned window (#670)
+    CHART_RECORD_SEC = Math.max(wins[wins.length - 1], pin);
+    if (pin) cklLightRung(pin);   // the relabelled ladder lights the pinned width, or nothing (quality pass 2026-10-14)
     if (lastWinSpeed !== spd) {
       lastWinSpeed = spd;
-      ui.window = wins[rung];
+      ui.window = pin || wins[rung];
       chartRange = {};
       drawChart();
     }
@@ -3791,6 +3887,7 @@
     renderHighlight(s);
     renderScope(s);
     applyInstrTrend(s);   // after the highlight: it adds its own glow, which that pass would clear
+    applyCklChart(s);     // a walkthrough step's chart preset (#670)
     instrGateOpen(s);     // a step that blocks progress opens the card, once per beat (#439)
     // Follow state is derived FROM the snapshot (the Instructor owns it); ui.follow
     // is just a synced mirror. This survives start_follow's internal plant reset,
@@ -3824,14 +3921,16 @@
     if (ui.follow) ui.follow = null;              // the snapshot says the follow ended
     // Chat-mode scenarios (TMI-2 M5): a scrolling multi-speaker transcript
     // replaces the single-slot commentary card. Level-complete renders inline.
-    if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); return; }
+    if (s.instructor && s.instructor.chat) { syncInstrNav('chat'); renderChat(s); calloutSync(); return; }
     if (chatState.sid) resetChat();
+    if (callout.el && !callout.el.hidden) calloutSync();   // the opener ended: the bubble goes with it
     // Auto-checklist (Path 3): painted in the Checklists tab, not this card.
     var ckb = s.instructor && s.instructor.checklist;
     if (ckb) {
       /* The walkthrough IS the Instructor's card (#660 item 15): the step card above, the
        * instructor's own line (check-offs, overtaken notes) as plain text beneath it. */
       renderChecklist(s, ckb);
+      calloutSync();
       syncInstrNav('idle');
       instrHeaderless(true);   /* #687 item 1 — no "Walkthrough" heading, and no empty strip */
       var curW = $('instrCurrent');
@@ -4064,9 +4163,22 @@
     var cb = beat && beat.chat_button;
     var bid = beat ? beat.id : null;
     if (chatState.skipBid && chatState.skipBid !== bid) chatState.skipBid = null;
-    var key = bid + '|' + (cb ? cb.style : '') + '|' + ui.register + '|' + (chatState.skipBid === bid);
+    /* ASK BUTTONS (#811, OWNER RULING 2026-10-09 "do 1,2"): a beat's `ask_buttons` show while its
+     * BRANCHES are watched (it has fired; the player is on its ask) — "Show me", or the early
+     * trip's "Restart the opener" / "Carry on". The first is the primary. Such a beat's own
+     * `chat_button` (the Ready that fired it) is not shown again over its ask: it did nothing there. */
+    var asking = !!(beat && beat.ask_buttons && s.instructor.branch_beat_id === bid);
+    var key = bid + '|' + (asking ? 'ask' : (cb ? cb.style : '')) + '|' + ui.register + '|' + (chatState.skipBid === bid);
     if (key === chatState.btnKey) return;
     chatState.btnKey = key;
+    if (asking) {
+      btns.innerHTML = beat.ask_buttons.map(function (b, i) {
+        var lbl = b['label_' + ui.register] || b.label_learning || b.style;
+        return '<button class="btn chat-btn ' + (i === 0 ? 'chat-btn-ack' : 'ghost chat-btn-alt') +
+          '" data-chatbtn="' + mesc(b.style) + '">' + mesc(lbl) + '</button>';
+      }).join('');
+      return;
+    }
     if (!cb || (cb.style === 'skip' && chatState.skipBid === bid)) {
       btns.innerHTML = (cb && cb.style === 'skip')
         ? '<div class="chat-ff">⏩ running ahead — the board will pull us back</div>' : '';
@@ -4087,7 +4199,757 @@
       if (latest) renderChat(latest);
       return;
     }
-    cmd({ action: 'instructor_continue' });
+    // The early trip's "Restart the opener" (#811, 2026-10-09): the finish card's Retry path —
+    // a fresh opener at full power. Filed as an abandon at the beat it left, like End.
+    if (style === 'restart') {
+      var rs = latest, rid = ui.opener || (rs && rs.instructor && rs.instructor.scenario_id);
+      var rop = rid && RD.OPENERS && RD.OPENERS[rid];
+      if (!rop) return;
+      TEL.missionAbandon(rid, Math.max(0, rop.beats.map(function (b) { return b.id; }).indexOf(rs.instructor.current_beat_id)));
+      startOpener(rid);
+      // The button stands until the next broadcast re-renders: a double-click's second press
+      // filed a second abandon (against the fresh mission) and restarted twice (#811 QA 2026-10-09).
+      var rb = $('chatBtns'); if (rb) rb.innerHTML = '';
+      return;
+    }
+    // A named ask button ("Show me", "Carry on") names itself; the plain Ready does not (#811).
+    cmd(style === 'show_me' || style === 'carry_on' ? { action: 'instructor_continue', button: style } : { action: 'instructor_continue' });
+  }
+
+  /* ============================================================ instructor CALLOUT (prototype)
+   * OWNER, 2026-10-10: the chat panel makes the eye shuttle between the instructor's text and the
+   * board; he chose the "anchored callout": the current line in a bubble BESIDE the highlighted
+   * control with a pointer, bottom-centre over the board when nothing is highlighted, the history
+   * collapsed, and the chat buttons in the bubble. And (same day): "nobody reads any of the fine
+   * text … They read only enough to accomplish a step" — so the ACTION sentence leads, big; the
+   * explanation follows, small. The split is presentational (sentence-level, by an imperative
+   * verb); the opener's wording is untouched.
+   *
+   * OFF BY DEFAULT: `?callout=1` or Settings > Instructor callout. Openers only (RD.OPENERS).
+   * The chat panel stays the engine of record: the bubble MIRRORS its revealed lines and its
+   * button row, and a bubble click is forwarded to the matching button in #chatBtns, so every
+   * button keeps exactly one handler (chatButtonAction / the level-complete card). */
+  var CALLOUT_LS = 'rd_instr_callout';
+  function calloutPref() {
+    var m = /[?&]callout=([01])/.exec(location.search || '');
+    if (m) return m[1] === '1';
+    // TRI-STATE (2026-10-10): null = never chosen. The opener needs an explicit On; a walkthrough
+    // authored `callout: true` (TMI-2) draws it unless the player chose Off.
+    try { var v = localStorage.getItem(CALLOUT_LS); return v === '1' ? true : v === '0' ? false : null; } catch (e) { return null; }
+  }
+  // v: true (On), false (Off) or null (Auto: unset; only a `callout: true` walkthrough draws it)
+  function setCalloutPref(v) {
+    var on = v === true;
+    ui.callout = on; ui.calloutSet = v === null ? null : on;
+    cklState.key = null;   // the walkthrough column swaps step card <-> progress list
+    if (latest && latest.instructor && latest.instructor.checklist) renderChecklist(latest, latest.instructor.checklist);
+    try { if (v === null) localStorage.removeItem(CALLOUT_LS); else localStorage.setItem(CALLOUT_LS, on ? '1' : '0'); } catch (e) { /* private mode */ }
+    syncCalloutSeg();
+    calloutSync();
+  }
+  function syncCalloutSeg() {
+    var seg = $('calloutSeg'); if (!seg) return;
+    [].forEach.call(seg.querySelectorAll('[data-callout]'), function (b) {
+      // the EFFECTIVE state: Auto when the player has not chosen (the TMI-2 walkthrough draws it)
+      var cur = ui.calloutSet === true ? 'on' : ui.calloutSet === false ? 'off' : 'auto';
+      b.classList.toggle('on', b.getAttribute('data-callout') === cur);
+    });
+  }
+  var callout = { el: null, histOpen: false, key: null, timer: null, raf: 0, obs: null, points: [] };
+  function calloutActive() {
+    var s = latest, sid = s && s.instructor && s.instructor.chat && s.instructor.scenario_id;
+    return !!(ui.callout && ui.plant === 'pwr' && sid && RD.OPENERS && RD.OPENERS[sid] && chatState.sid === sid);
+  }
+  // Sentence split + action test. An ACTION sentence starts (after an optional "Your turn:" style
+  // lead-in) with an imperative the player can carry out on the board.
+  // "Watch …" is not an action: the player is told where to look, which is what an OBSERVATION
+  // callout is for (owner refinement 2026-10-10: a concise "what matters about what you are
+  // seeing", anchored to the board item, lighter, no control asked for).
+  var CALLOUT_VERBS = /^(set|press|hold|put|type|drive|trip|restart|reduce|select|insert|return|open|close|click|turn)\b/i;
+  function calloutSentences(txt) {
+    return String(txt || '').split(/(?<=[.!?])\s+(?=[A-Z0-9"'])/).filter(function (x) { return x.trim(); });
+  }
+  function calloutIsAction(sen) {
+    return CALLOUT_VERBS.test(sen.replace(/^(?:[A-Z][a-z]+(?: [a-z]+)?:\s*)/, ''));
+  }
+  // The CURRENT message: the trailing revealed lines that arrived together (one beat's dialogue
+  // shares its sim time), the player's own echo excluded.
+  function calloutGroup() {
+    var log = (latest && latest.instructor.chat && latest.instructor.chat.log) || [];
+    var n = Math.min(chatState.shown, log.length), out = [], t = null;
+    for (var i = n - 1; i >= 0; i--) {
+      var e = log[i];
+      if (e.speaker === 'player') { if (out.length) break; else continue; }
+      if (t === null) t = e.t; else if (e.t !== t) break;
+      out.unshift(e);
+    }
+    return out;
+  }
+  function calloutEl() {
+    if (callout.el && callout.el.isConnected) return callout.el;
+    var el = document.createElement('div');
+    el.id = 'instrCallout'; el.className = 'instr-callout'; el.hidden = true;
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = '<div class="ico-arrow"></div>' +
+      '<div class="ico-head"><span class="ico-who">Instructor</span>' +
+      '<button type="button" class="ico-hist-btn" data-ico-hist="1" data-scanner-hint="Show or hide everything the instructor has said so far.">History</button></div>' +
+      '<div class="ico-hist" hidden></div><div class="ico-body"></div><div class="ico-btns"></div>';
+    el.addEventListener('click', function (e) {
+      if (e.target.closest('[data-ico-why]')) { callout.whyOpen = !callout.whyOpen; callout.key = null; calloutSync(); return; }
+      if (e.target.closest('[data-ico-hist]')) {
+        callout.histOpen = !callout.histOpen; callout.key = null; calloutSync(); return;
+      }
+      // A walkthrough button forwards to the real one in #cklRun (hidden under the callout).
+      var fw = e.target.closest('[data-ico-fwd]');
+      if (fw) { var rb = document.querySelector('#cklRun ' + fw.getAttribute('data-ico-fwd')); if (rb && !rb.disabled) rb.click(); return; }
+      // Forward to the real button in the chat panel — one handler per button, always.
+      var b = e.target.closest('[data-chatbtn],[data-chatrevealall],[data-lc]');
+      if (b) {
+        var attr = b.hasAttribute('data-chatbtn') ? 'data-chatbtn' : b.hasAttribute('data-lc') ? 'data-lc' : 'data-chatrevealall';
+        var real = document.querySelector('#chatBtns [' + attr + '="' + b.getAttribute(attr) + '"]');
+        if (real) real.click();
+        return;
+      }
+      var pl = e.target.closest('[data-point]');
+      if (pl) chatPoint(pl.getAttribute('data-point').split('|'));   // click the line: show it again
+    });
+    document.body.appendChild(el);
+    callout.el = el;
+    window.addEventListener('resize', calloutPlaceSoon);
+    window.addEventListener('scroll', calloutPlaceSoon, true);
+    return el;
+  }
+  function calloutSync() {
+    var card = $('instructorCard');
+    var on = calloutActive(), ckOn = !on && cklCalloutActive();
+    if (card) { card.classList.toggle('callout-on', on); card.classList.toggle('ckl-callout-on', ckOn); }
+    var mode = on ? 'chat' : ckOn ? 'ckl' : null;
+    if (mode !== callout.mode) { callout.mode = mode; callout.key = null; callout.pos = null; callout.histOpen = false; }
+    if (!on && !ckOn) {
+      if (callout.el) callout.el.hidden = true;
+      if (callout.lead) callout.lead.hidden = true;
+      if (callout.boardObs) { callout.boardObs.disconnect(); callout.boardObs = null; }
+      clearInterval(callout.timer); callout.timer = null; callout.key = null;
+      return;
+    }
+    var el = calloutEl();
+    if (!callout.obs && $('instrCurrent') && window.MutationObserver) {
+      callout.obs = new MutationObserver(function () { if (ui.callout) calloutSyncSoon(); });
+      callout.obs.observe($('instrCurrent'), { childList: true, subtree: true });
+    }
+    calloutWatchBoard();
+    if (ckOn) {
+      cklCalloutFill(el);
+      calloutPlace();
+      if (!callout.timer) callout.timer = setInterval(calloutPlace, 400);
+      return;
+    }
+    var grp = calloutGroup();
+    var btnSrc = $('chatBtns');
+    var btnHtml = btnSrc ? btnSrc.innerHTML : '';
+    var key = JSON.stringify([grp.map(function (e) { return e.t + '|' + (e[ui.register] || e.learning); }), btnHtml, callout.histOpen, callout.whyOpen, ui.register]);
+    if (key !== callout.key) {
+      callout.key = key;
+      var acts = [], rests = [], pts = [];
+      // Only an ASK (a beat whose `ask_buttons` are up: the player is being asked to operate
+      // something) is an ACTION callout. Everything else — the hello, the watch beats, the
+      // instructor doing it for you — is an OBSERVATION callout, whatever its verbs.
+      var pb = latest && chatPendingBeat(latest);
+      var isAsk = !!(pb && pb.ask_buttons && latest.instructor.branch_beat_id === pb.id);
+      grp.forEach(function (e) {
+        calloutSentences(e[ui.register] || e.learning || '').forEach(function (x) { (isAsk && calloutIsAction(x) ? acts : rests).push(x); });
+        if (e.point) pts = pts.concat(e.point);
+      });
+      var ptAttr = pts.length ? ' data-point="' + mesc(pts.join('|')) + '" data-scanner-hint="Click to show it on the board again."' : '';
+      // COMPACT (owner 2026-10-10: the card "blocks part of the diagram"; players read only enough
+      // to do the step). An ask shows its ACTION only; the explanation waits behind "why?". An
+      // observation shows ONE sentence (the "Watch …" one, else the first that is not a clock
+      // note); the rest of it is in History.
+      var gk = JSON.stringify(grp.map(function (e) { return e.t; }));
+      if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
+      var body = '';
+      if (acts.length) {
+        body += '<div class="ico-act"' + ptAttr + '>' + acts.map(mesc).join(' ') + '</div>';
+        if (rests.length) {
+          body += '<button type="button" class="ico-more" data-ico-why="1">' + (callout.whyOpen ? 'hide' : 'why?') + '</button>';
+          if (callout.whyOpen) body += '<div class="ico-why">' + rests.map(mesc).join(' ') + '</div>';
+        }
+      } else if (rests.length) {
+        var one = rests.filter(function (x) { return /^watch\b/i.test(x); })[0] ||
+          rests.filter(function (x) { return !/^clock\b/i.test(x); })[0] || rests[0];
+        body += '<div class="ico-say"' + ptAttr + '>' + mesc(one) + '</div>';
+        if (rests.length > 1) body += '<button type="button" class="ico-more" data-ico-hist="1">more</button>';
+      }
+      el.querySelector('.ico-body').innerHTML = body;
+      var bEl = el.querySelector('.ico-btns');
+      bEl.innerHTML = btnHtml; bEl.hidden = !btnHtml.trim();
+      var hist = el.querySelector('.ico-hist');
+      hist.hidden = !callout.histOpen;
+      el.querySelector('[data-ico-hist]').classList.toggle('on', callout.histOpen);
+      if (callout.histOpen) {
+        var log = $('chatLog');
+        hist.innerHTML = log ? log.innerHTML : '';
+        hist.scrollTop = hist.scrollHeight;
+      }
+      el.querySelector('.ico-who').textContent = 'Instructor';
+      callout.points = pts;
+      callout.kind = acts.length ? 'act' : 'observe';
+      el.setAttribute('data-kind', callout.kind);
+      el.hidden = !(body || btnHtml.trim());
+    }
+    calloutPlace();
+    if (!callout.timer) callout.timer = setInterval(calloutPlace, 400);   // the board can move under it (splitters)
+  }
+  function calloutSyncSoon() {
+    if (callout.raf) return;
+    callout.raf = requestAnimationFrame(function () { callout.raf = 0; calloutSync(); });
+  }
+  function calloutPlaceSoon() { if (callout.el && !callout.el.hidden) requestAnimationFrame(calloutPlace); }
+  /* PLACEMENT (iteration 2, OWNER 2026-10-10: "it blocks part of the diagram and it might block
+   * important info"). The card no longer sits flush against the control: it goes in the board's
+   * LOW-VALUE space and a thin leader line runs to the anchor.
+   *
+   * KEEP-OUT (hard): the six top tiles (REACTOR POWER … STEAM GENERATOR LEVEL), the highlighted
+   * control's PANEL, every item the line points at. SOFT: any other board tile it covers (by
+   * area), and ×6 for a tile whose readout text changed in the last 4 s (a moving number is the
+   * thing being watched). Plus distance to the anchor, so it stays near. A grid search over the
+   * board area takes the least cost; a spot that still touches a keep-out shrinks the card to its
+   * action line and searches again. The current spot is kept unless a new one is clearly better
+   * (no jitter as readouts tick). No anchor -> the same search with no distance pull, from the
+   * bottom centre. */
+  var CALLOUT_TOP_TILES = ['reactor power', 'avg coolant temperature', 'subcooling margin', 'primary pressure', 'pressurizer level', 'steam generator level'];
+  function calloutStage() { return document.querySelector('#viewArea .pwr-board-stage'); }
+  // The smallest board tile whose text names the gauge. Cached per mounted stage.
+  function calloutTopTiles() {
+    var st = calloutStage();
+    if (!st) return [];
+    if (callout.topFor === st && callout.top && callout.top.every(function (t) { return t.isConnected; })) return callout.top;
+    var kids = [].slice.call(st.children), out = [];
+    CALLOUT_TOP_TILES.forEach(function (lab) {
+      var best = null, ba = Infinity;
+      kids.forEach(function (t) {
+        var tx = (t.textContent || '').toLowerCase();
+        if (tx.indexOf(lab) === -1) return;
+        var q = t.getBoundingClientRect(), a = q.width * q.height;
+        if (a > 0 && a < ba) { best = t; ba = a; }
+      });
+      if (best) out.push(best);
+    });
+    callout.topFor = st; callout.top = out;
+    return out;
+  }
+  // Readouts that just changed: one observer on the stage while the callout is up.
+  function calloutWatchBoard() {
+    var st = calloutStage();
+    if (!st || !window.MutationObserver) return;
+    if (callout.boardObs && callout.boardFor === st) return;
+    if (callout.boardObs) callout.boardObs.disconnect();
+    callout.changed = new Map();
+    callout.boardFor = st;
+    callout.boardObs = new MutationObserver(function (recs) {
+      var now = Date.now();
+      for (var i = 0; i < recs.length; i++) {
+        var n = recs[i].target;
+        while (n && n.parentNode !== st) n = n.parentNode;
+        if (n) callout.changed.set(n, now);
+      }
+    });
+    callout.boardObs.observe(st, { subtree: true, characterData: true, childList: true });
+  }
+  function rectOk(r) { return r && r.width > 2 && r.height > 2; }
+  function overlapArea(a, b) {
+    var w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return w > 0 && h > 0 ? w * h : 0;
+  }
+  function rectGap(a, b) {
+    var dx = Math.max(0, b.left - a.right, a.left - b.right), dy = Math.max(0, b.top - a.bottom, a.top - b.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  // The smallest board tile containing a rect (and not most of the board): a control's PANEL.
+  function calloutPanelOf(r) {
+    var st = calloutStage();
+    if (!r || !st) return r;
+    var S = st.getBoundingClientRect(), best = null, ba = Infinity;
+    [].forEach.call(st.children, function (t) {
+      var q = t.getBoundingClientRect(), a = q.width * q.height;
+      if (a < S.width * S.height / 6 && a < ba && a > r.width * r.height * 1.05 && q.left <= r.left + 1 && q.top <= r.top + 1 && q.right >= r.right - 1 && q.bottom >= r.bottom - 1) { best = q; ba = a; }
+    });
+    return best ? { left: Math.min(best.left, r.left), top: Math.min(best.top, r.top), right: Math.max(best.right, r.right), bottom: Math.max(best.bottom, r.bottom) } : r;
+  }
+  // What the placement must not cover, and what it points at.
+  function calloutKeepOut() {
+    if (callout.mode === 'ckl') return cklCalloutKeepOut();
+    var glow = null;
+    [].some.call(document.querySelectorAll('#viewArea .instr-glow'), function (g) {
+      var r = g.getBoundingClientRect(); if (rectOk(r)) { glow = r; return true; } return false;
+    });
+    var panel = glow ? calloutPanelOf(glow) : null;
+    var pts = [];
+    var PB = scopeBoard();
+    if (PB && PB.pointTargets && callout.points && callout.points.length) {
+      PB.pointTargets(callout.points).forEach(function (t) { var r = t.getBoundingClientRect(); if (rectOk(r)) pts.push(r); });
+    }
+    var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
+    var hard = top.concat(panel ? [panel] : [], pts);
+    var anchor = (callout.kind === 'observe' && pts[0]) ? pts[0] : panel;
+    return { hard: hard, top: top, panel: panel, points: pts, anchor: anchor };
+  }
+  function calloutPlace() {
+    var el = callout.el;
+    if (!el || el.hidden) return;
+    var host = $('viewArea'), st = calloutStage();
+    var vw = window.innerWidth, vh = window.innerHeight, M = 8;
+    var hb = host ? host.getBoundingClientRect() : { left: 0, top: 0, right: vw, bottom: vh };
+    var B = { left: Math.max(M, hb.left + M), top: Math.max(M, hb.top + M), right: Math.min(vw - M, hb.right - M), bottom: Math.min(vh - M, hb.bottom - M) };
+    el.style.maxWidth = Math.max(230, Math.min(340, Math.round((B.right - B.left) * 0.3))) + 'px';
+    var K = calloutKeepOut();
+    var A = K.anchor;
+    var S = st ? st.getBoundingClientRect() : null, soft = [], now = Date.now();
+    var dimming = !!(st && st.classList.contains('bd-dimming'));
+    if (st) [].forEach.call(st.children, function (t) {
+      var q = t.getBoundingClientRect();
+      if (!rectOk(q)) return;
+      var ch = callout.changed && callout.changed.get(t);
+      // A big tile (the vessel, the steam generator art) is still the plant: covered at a quarter
+      // of the cost of a panel or readout, so the card prefers the gaps between components.
+      // Under a beat's SCOPE the dimmed board is, by the instructor's own say, not what matters
+      // now: the cheapest place for the card. A lit tile costs double.
+      var big = q.width * q.height > S.width * S.height / 6;
+      var wt = big ? 0.25 : 1;
+      if (dimming) wt *= t.classList.contains('bd-lit') ? 2 : 0.3;
+      if (ch && now - ch < 4000) wt *= 4;
+      soft.push({ r: q, wt: wt });
+    });
+    function search(w, h, HK) {
+      HK = HK || K.hard;
+      var best = null, STEP = 16;
+      for (var y = B.top; y <= B.bottom - h; y += STEP) {
+        for (var x = B.left; x <= B.right - w; x += STEP) {
+          var R = { left: x, top: y, right: x + w, bottom: y + h };
+          var hard = 0, s2 = 0, i;
+          for (i = 0; i < HK.length; i++) hard += overlapArea(R, HK[i]);
+          for (i = 0; i < soft.length; i++) s2 += soft[i].wt * overlapArea(R, soft[i].r);
+          var d = A ? rectGap(R, A) : Math.abs((y + h) - B.bottom) + Math.abs(x + w / 2 - (B.left + B.right) / 2) * 0.5;
+          var c = hard * 1000 + s2 + d * 60;
+          if (!best || c < best.c) best = { x: x, y: y, c: c, hard: hard };
+        }
+      }
+      return best;
+    }
+    el.classList.remove('ico-compact', 'ico-tight');
+    var w = el.offsetWidth, h = el.offsetHeight;
+    var pick = search(w, h);
+    // the acted-on control's margin is wanted, not required: full size without it beats compact
+    if (pick && pick.hard > 0 && K.hardTight) pick = search(w, h, K.hardTight);
+    /* No pick at all = the full card is TALLER than the board area: that is the case compact exists for,
+     * not a reason to skip it (CI fonts, run 38652572708: step 9 at 444 px fell to the top-left corner
+     * over the top tiles and the pressurizer). */
+    if (!pick || pick.hard > 0) {              // nothing clear at full size: action line only
+      el.classList.add('ico-compact');
+      w = el.offsetWidth; h = el.offsetHeight;
+      var pc = search(w, h);
+      if (pc && pc.hard > 0 && K.hardTight) pc = search(w, h, K.hardTight);
+      if (!pc || pc.hard > 0) {                // still no room: drop the step note too
+        el.classList.add('ico-tight');
+        w = el.offsetWidth; h = el.offsetHeight;
+        var pt = search(w, h);
+        if (pt && pt.hard > 0 && K.hardTight) pt = search(w, h, K.hardTight);
+        /* ...and still colliding: WIDEN it, which shortens every wrapped line (CI run 38685630351,
+         * verify_tmi_callout 26/27). MEASURED at 1366x768, board area 458 px tall: step 9 tight is
+         * 346 px on Windows fonts and 397 px on Verdana (the CI stand-in) at the 242 px width, so it
+         * sat on the top tiles (9,655 px2). Kept only if it buys a clear spot. */
+        if (!pt || pt.hard > 0) {
+          var mw0 = el.style.maxWidth;
+          el.style.maxWidth = Math.min(340, Math.round(w * 1.3)) + 'px';
+          var w2 = el.offsetWidth, h2 = el.offsetHeight, pw = search(w2, h2);
+          if (pw && pw.hard > 0 && K.hardTight) pw = search(w2, h2, K.hardTight);
+          if (pw && pw.hard === 0) { pt = pw; w = w2; h = h2; }
+          else { el.style.maxWidth = mw0; }
+        }
+        if (pt) pc = pt;
+        else if (pc) { el.classList.remove('ico-tight'); w = el.offsetWidth; h = el.offsetHeight; }
+      }
+      pick = pc || pick;
+    }
+    if (!pick) pick = { x: B.left, y: B.top, c: 0, hard: 0 };
+    // Hysteresis: stay put unless the new spot is clearly better (a ticking readout must not
+    // make the card hop).
+    var P = callout.pos;
+    if (P && P.w === w && P.h === h && P.key === callout.key) {
+      var R0 = { left: P.x, top: P.y, right: P.x + w, bottom: P.y + h };
+      var hard0 = 0;
+      K.hard.forEach(function (r) { hard0 += overlapArea(R0, r); });
+      var s0 = 0;
+      soft.forEach(function (o) { s0 += o.wt * overlapArea(R0, o.r); });
+      var c0 = hard0 * 1000 + s0 + (A ? rectGap(R0, A) : 0) * 60;
+      if (hard0 === 0 && R0.left >= B.left && R0.right <= B.right && R0.top >= B.top && R0.bottom <= B.bottom && c0 <= pick.c * 1.25 + 4000) pick = { x: P.x, y: P.y };
+    }
+    callout.pos = { x: pick.x, y: pick.y, w: w, h: h, key: callout.key };
+    el.style.left = Math.round(pick.x) + 'px';
+    el.style.top = Math.round(pick.y) + 'px';
+    el.setAttribute('data-side', 'none');
+    calloutLead(A, { left: pick.x, top: pick.y, right: pick.x + w, bottom: pick.y + h });
+  }
+  // The LEADER: a thin line from the card's nearest edge to the anchor's nearest edge, with a dot.
+  function calloutLead(A, R) {
+    var ln = callout.lead;
+    if (!ln || !ln.isConnected) {
+      ln = document.createElement('div');
+      ln.className = 'ico-lead'; ln.id = 'instrCalloutLead';
+      ln.innerHTML = '<i></i>';
+      document.body.appendChild(ln);
+      callout.lead = ln;
+    }
+    if (!A) { ln.hidden = true; return; }
+    var ax = Math.max(A.left, Math.min(A.right, (R.left + R.right) / 2)), ay = Math.max(A.top, Math.min(A.bottom, (R.top + R.bottom) / 2));
+    var bx = Math.max(R.left, Math.min(R.right, ax)), by = Math.max(R.top, Math.min(R.bottom, ay));
+    var dx = ax - bx, dy = ay - by, len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 4) { ln.hidden = true; return; }
+    ln.hidden = false;
+    ln.style.left = Math.round(bx) + 'px'; ln.style.top = Math.round(by) + 'px';
+    ln.style.width = Math.round(len) + 'px';
+    ln.style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad)';
+  }
+
+  /* ---- THE WALKTHROUGH CALLOUT (2026-10-10, OWNER: "We should build TMI with the concise
+   * callouts like the starting instruction.") ------------------------------------------------
+   * The opener's card, driven by the ACTIVE WALKTHROUGH STEP instead of the chat log. Only a
+   * procedure that authors `callout: true` (the TMI-2 incident) gets it — its steps are written
+   * for it (one action line, one short why); the other legs' step prose is not, so they never
+   * draw it. The player's Settings > Instructor callout = Off turns it off here too.
+   *
+   *   step with `hl` (a control to act on) -> ACTION card: the step line big, its `why` behind
+   *     "why?", anchored to the control's panel.
+   *   otherwise (verify / watch / narrated)  -> OBSERVATION card: the step line and its `why`
+   *     small beneath it, dashed, anchored to the first watched item.
+   * Both carry the story clock in the head, the event's one `story.line`, a `note` only where the
+   * step cannot be done without it, the done-when rows when there are several, and Rewind /
+   * Continue — forwarded to the real buttons in #cklRun, so each keeps exactly one handler.
+   * History lists the morning so far (clock + saw / knew / did) — the long form lives there. */
+  function cklCalloutOn(pr) {
+    return !!(pr && pr.callout && ui.plant === 'pwr' && ui.calloutSet !== false);
+  }
+  function cklCalloutActive() {
+    var a = latest && cklActiveStep(latest);
+    return !!(a && cklState.view === 'run' && cklCalloutOn(a.pr));
+  }
+  /* THE LIVE PAIR on the TMI-2 deception beats (#670 redesign, OWNER RULING 2026-10-14). A step that
+   * authors `pair: true` draws PRESSURIZER LEVEL (the board's gauge) beside RCS INVENTORY (the
+   * plant's true coolant mass) with the direction each is moving, so the deciding card shows the
+   * two disagreeing. HARD RULE 1, instruments vs truth: RCS INVENTORY has no instrument on this
+   * board, so it is the explicit diagnostic overlay and is drawn only where the strip chart draws
+   * truth (`chartTruth()`, Learning mode). In Realistic mode the row keeps the gauge alone and
+   * says where the other number lives: the strip chart, which traces RCS INVENTORY (a series with
+   * no instrument) as truth in both modes — so the card must not call it Learning-only while the
+   * chart below it draws it (quality pass 2026-10-14). Direction is read over the last 30 plant-seconds; while a
+   * pause holds the clock, the last direction stands. */
+  var cklPairHist = { gk: null, rows: [], dir: {} };
+  function cklPairRow(s, gk, spec, st) {
+    if (Array.isArray(spec)) return cklPairSeries(s, gk, spec, st);   // `pair: [seriesA, seriesB]` (2026-10-14) -- `pair: true` below is untouched
+    var ins = s && s.instruments, tru = s && s.true_state;
+    if (!ins || ins.pzr_level == null) return null;
+    var t = (s.metadata && s.metadata.sim_time) || 0, lvl = +ins.pzr_level;
+    var inv = (tru && tru.core_inventory_pct != null) ? +tru.core_inventory_pct : null;
+    if (cklPairHist.gk !== gk) cklPairHist = { gk: gk, rows: [], dir: {} };
+    var H = cklPairHist.rows;
+    if (H.length && t < H[H.length - 1].t) { H.length = 0; cklPairHist.dir = {}; }   // a rewind inside the step: the clock went back, the old direction is stale
+    if (!H.length || t > H[H.length - 1].t) H.push({ t: t, l: lvl, i: inv });
+    while (H.length > 2 && t - H[1].t >= 30) H.shift();
+    function dir(key, now) {
+      var o = H[0], pegL = now != null && (now >= 99 || now <= 1);
+      if (o && t - o.t >= 5 && now != null && o[key] != null) {
+        var d = now - o[key];
+        /* RCS INVENTORY is the true-state mass, so it carries no gauge noise and is judged on its
+         * RATE (#670, 2026-10-14). MEASURED, routes gate typical route, step 9: inventory falls
+         * 0.6 %/plant-min (25.8 -> 22.7 % over 51-56 plant-min), i.e. 0.3 % per 30 s, the old fixed
+         * band's edge, so the card read "21 % steady" while it fell. 0.1 %/min still calls the
+         * 20.5-21.6 % plateau after the block valve (0.014 %/min) steady. The gauge keeps the band. */
+        var rate = d / (t - o.t) * 60;
+        cklPairHist.dir[key] = key === 'i'
+          ?(t - o.t >= 10 ? (rate > 0.1 ? 'rising' : rate < -0.1 ? 'falling' : 'steady') : (cklPairHist.dir[key] || ''))
+          : (d > 0.3 && !(pegL && Math.round(now) === Math.round(o[key])) ? 'rising' : d < -0.3 && !(pegL && Math.round(now) === Math.round(o[key])) ? 'falling' : 'steady');
+        /* the GAUGE half says "steady" AT ITS PEG while its drawn (rounded) number has not changed (TMI-2 layman
+         * pass 4): PRESSURIZER LEVEL dipping 100 -> 99.5 at the top of its scale read "100 % falling" in 7
+         * samples. Only at the scale ends (`pegL`): elsewhere a clear move keeps its word even inside one drawn
+         * unit. RCS INVENTORY keeps its rate rule above. */
+      }
+      return cklPairHist.dir[key] || '';
+    }
+    var dl = dir('l', lvl), di = dir('i', inv);
+    var showInv = chartTruth() && inv != null;
+    return 'PRESSURIZER LEVEL ' + Math.round(lvl) + ' %' + (dl ? ' ' + dl : '') + '  |  ' +
+      (showInv ? 'RCS INVENTORY ' + Math.round(inv) + ' %' + (di ? ' ' + di : '')
+        // the strip chart traces a no-instrument series as truth in BOTH modes (sideOf), and this
+        // walkthrough plots RCS INVENTORY there, so point at it rather than call it unavailable
+        : ui.series.inventory ? 'RCS INVENTORY: on the strip chart' : 'RCS INVENTORY: Learning mode only');
+  }
+  /* THE GENERAL PAIR (2026-10-14, OWNER RULING: a walkthrough leg grades ONE plant relationship, chart-led).
+   * `pair: [idA, idB]` names two strip-chart series; the row reads `LABEL A nn unit direction  |  LABEL B ...`
+   * off the SAME series definitions the chart draws: their label, their fmt (US units first, as the board
+   * shows) and their side -- the instrument where one exists, truth where the chart traces truth
+   * (sideOf), so Hard Rule 1 is the chart's own and not re-decided here. Direction is the change over a
+   * trailing window (60 plant-seconds, or the graded row's own `window`) against 0.25 % of the series' own range (instrument noise sits below that on
+   * the PWR2 channels); under 5 s of history the last direction stands. History is keyed to the step
+   * (`gk`) and dropped on a step change or when the clock goes back (Rewind). An id that is not a
+   * series on this plant, or has no reading yet, draws no row at all rather than half of one. */
+  /* THE GRADED SIDE WINS (heatup step 11 review, 2026-10-15, browser-measured): in Learning mode sideOf() traces
+   * TRUTH, so the row read the TRUE margin (297 degF "falling" at step entry) beside a SUBCOOLING MARGIN tile pegged
+   * at 149 degF -- and the step's `moves` row grades that pegged instrument. A series whose instrument channel a
+   * `moves` row on this step grades (its `p` or `with.p`) is read off that instrument, so the card's two numbers are
+   * the ones the row ticks on. Rows graded on true state (TMI-2 step 9's RCS INVENTORY, `pair: true` above) and
+   * every other series keep sideOf; the chart's own Learning-mode truth is not touched. Pure, so the browser gate
+   * calls it directly. */
+  function cklGradedIns(s, st) {
+    var IL = RD.InstructorLayer, out = {};
+    if (!st || !s || !IL || !IL.gradedInstrument) return out;
+    (st.accs || []).forEach(function (e) {
+      if (!e || e.op !== 'moves') return;
+      [e.p, e.with && e.with.p].forEach(function (p) { var iid = p ? IL.gradedInstrument(s, p) : null; if (iid) out[iid] = Math.max(out[iid] || 0, e.window > 0 ? e.window : 1); });   /* value = the row's window (plant s): cklPairSeries' direction span */
+    });
+    return out;
+  }
+  /* The BOARD's name for a pair series (review item 3): the tile engraving the step text uses, not the strip-chart
+   * lane label ("TAVG", "SUBCOOL"). Ids not listed fall back to the lane label. */
+  var CKL_PAIR_NAMES = { tavg: 'AVG COOLANT TEMPERATURE', subcool: 'SUBCOOLING MARGIN', pressure: 'PRIMARY PRESSURE',
+    steam_p: 'STEAM PRESS', power: 'REACTOR POWER', sur: 'STARTUP RATE', pzr_level: 'PRESSURIZER LEVEL',
+    inventory: 'RCS INVENTORY', dump_valve: 'STEAM DUMP' };
+  var cklSerHist = { gk: null, rows: [], dir: {} };
+  /* THE DIRECTION WORD IS TAKEN OVER A FIXED PLANT-TIME SPAN (lower power 2 / cooldown 4 reviews, 2026-10-15), not
+   * against the previous broadcast: at 600x broadcasts land 43-60 plant-s apart, and cooldown's STEAM PRESS (15 psi
+   * per 600 s, band 3.6 psi) read 'steady' in 44 % of samples while falling. A series a `moves` row grades (either
+   * side) uses THAT row's window, so the word agrees with the tick beside it; any other series CKL_PAIR_SPAN_S. The
+   * value at the span's trailing edge is interpolated; until the history reaches it, the oldest sample (>= 5 s). */
+  var CKL_PAIR_SPAN_S = 60;
+  function cklPairSeries(s, gk, ids, st) {
+    if (!s || ids.length < 2) return null;
+    var sers = [seriesById(ids[0]), seriesById(ids[1])];
+    if (!sers[0] || !sers[1]) return null;
+    var gIns = cklGradedIns(s, st);
+    function read(ser) {
+      var side = sideSolid(sideOf(ser, true)), v = null;
+      if (ser.instr && gIns[ser.instr] && ser.get) side = 'ind';
+      try {
+        if (side === 'phys' && ser.tru && s.true_state) v = ser.tru(s.true_state);
+        else if (ser.get && s.instruments) v = ser.get(s.instruments);
+        else if (ser.ctl) v = ser.ctl(s.control_state || {});
+      } catch (e) { v = null; }
+      return (v == null || !isFinite(v)) ? null : +v;
+    }
+    var vals = [read(sers[0]), read(sers[1])];
+    if (vals[0] == null || vals[1] == null) return null;
+    var t = (s.metadata && s.metadata.sim_time) || 0;
+    if (cklSerHist.gk !== gk) cklSerHist = { gk: gk, rows: [], dir: {} };
+    var H = cklSerHist.rows;
+    if (H.length && t < H[H.length - 1].t) { H.length = 0; cklSerHist.dir = {}; }
+    if (!H.length || t > H[H.length - 1].t) H.push({ t: t, v: vals });
+    var span = [0, 1].map(function (k) { return (sers[k].instr && gIns[sers[k].instr]) || CKL_PAIR_SPAN_S; });
+    var spanMax = Math.max(span[0], span[1]);
+    while (H.length > 2 && t - H[1].t >= spanMax) H.shift();
+    function baseAt(k) {   // the reading `span[k]` plant-s ago, interpolated; the oldest sample while the history is shorter
+      var te = t - span[k], i0 = -1;
+      for (var i = 0; i < H.length; i++) if (H[i].t <= te) i0 = i;
+      if (i0 < 0 || i0 >= H.length - 1) return H[Math.max(0, i0)].v[k];
+      var a = H[i0], b = H[i0 + 1], f = (b.t > a.t) ? (te - a.t) / (b.t - a.t) : 0;
+      return a.v[k] + (b.v[k] - a.v[k]) * f;
+    }
+    return [0, 1].map(function (k) {
+      var ser = sers[k], o = H[0];
+      if (o && t - o.t >= 5) {
+        var r = serRange(ser), band = Math.abs(r[1] - r[0]) * 0.0025, d = vals[k] - baseAt(k);
+        var dw = d > band ? 'rising' : d < -band ? 'falling' : 'steady';
+        /* "steady" AT A SCALE END while the DRAWN number has not changed over the span (TMI-2 layman pass 4): a
+         * pegged gauge dipping inside one drawn unit read "falling" beside digits that never moved. ONLY within 1 %
+         * of the range's ends (review, 2026-10-15): applied everywhere it turned cooldown 4's TAVG, whole-°F
+         * display, ~1 °F/min fall, "steady" in 8 % of samples with 46 word toggles over the step. */
+        var span0 = Math.abs(r[1] - r[0]), lo = Math.min(r[0], r[1]), hi = Math.max(r[0], r[1]);
+        var pegS = (vals[k] >= hi - 0.01 * span0 && vals[k] <= hi) || (vals[k] <= lo + 0.01 * span0 && vals[k] >= lo);
+        if (dw !== 'steady' && pegS) { try { var f0 = ser.fmt ? ser.fmt(baseAt(k)) : baseAt(k).toFixed(1), f1 = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); if (f0 === f1) dw = 'steady'; } catch (e) {} }
+        cklSerHist.dir[k] = dw;
+      }
+      var txt;
+      try { txt = ser.fmt ? ser.fmt(vals[k]) : vals[k].toFixed(1); } catch (e) { txt = vals[k].toFixed(1); }
+      return (CKL_PAIR_NAMES[ser.id] || String(ser.label).toUpperCase()) + ' ' + txt + (cklSerHist.dir[k] ? ' ' + cklSerHist.dir[k] : '');
+    }).join('  |  ');
+  }
+  /* The side-panel half: one line under the ACTIVE step, filled IN PLACE every broadcast (its text moves
+   * with the plant, so it stays out of the render key -- the whole column rebuilding per broadcast would
+   * reset scroll). The history is fed every call, drawn or not, so a step's first paint already has a
+   * direction. Callout legs draw the row on the card instead (cklCalloutFill). */
+  function cklPairPanel(s, ck, pr) {
+    var cur = $('cklRun'), el = cur && cur.querySelector('[data-ckl-pair]');
+    var st = pr && !ck.complete ? pr.steps[ck.step_index] : null;
+    if (!st || !Array.isArray(st.pair) || cklCalloutOn(pr)) { if (el) el.hidden = true; return; }
+    var txt = cklPairRow(s, pr.id + '#' + ck.step_index, st.pair, st);
+    if (el) { el.textContent = txt || ''; el.hidden = !txt; }
+  }
+  RD.CklPairRow = cklPairRow;
+  function cklCalloutFill(el) {
+    var s = latest, a = cklActiveStep(s);
+    if (!a) { el.hidden = true; return; }
+    var st = a.st, ck = a.ck, pr = a.pr, idx = ck.step_index;
+    // the AUTHORED kind: once its rows are met the step lights nothing, but it is still an ask
+    var act = !!((st.hl && st.hl.length) || (stepHlLabels(st, ck) || []).length);
+    var rc = document.querySelector('#cklRun [data-ckl-check]'), rw = document.querySelector('#cklRun [data-wt-rewind]');
+    var sp = (cklIsWaitStep(st) && !ck.awaiting_ack && !ck.acc_met) ? cklStepSpeed(s, a) : 1;
+    /* THE WAIT LINE NAMES THE CLOCK THE PLANT IS ON, NOT THE RUNG AUTO ASKED FOR (TMI layman pass,
+     * 2026-10-10, S-2). It printed `sp` — the step's wanted rung — so after a WARP drop the card
+     * read "Waiting at 600×" beside a speed bar on 60× and a red "actual 6×" badge, for 7.5 min of
+     * wall time on step 18. The drop is the service's (`_dropWarp`) and auto does not re-raise it:
+     * the player does, which is what the speed-bar flash is for, so the card says which button.
+     * MEASURED (inbox/tmi_review2/route2.js, re-pressing after each drop): 600× on step 16 kept
+     * 1560 of 1855 plant-s at 600× through 124 drops; 3600× on step 18 held 3600 of 3604 plant-s.
+     * "actual" (the board badge's own word) only when the computer delivers under half the clock. */
+    var spCur = (s.metadata && s.metadata.time_acceleration) || 1, spTxt = '';
+    if (sp > 1) {
+      var spAch = s.metadata && s.metadata.pacing ? s.metadata.pacing.achieved : null;
+      spTxt = '⏩ Waiting at ' + spCur + '×' + (spCur < sp ? ' — press ' + sp + '× to skip ahead'
+        : (spAch != null && spAch < spCur / 2 ? ' · actual ' + (spAch >= 100 ? Math.round(spAch / 10) * 10 : Math.max(1, Math.round(spAch))) + '×' : ''));
+    }
+    var gk = pr.id + '#' + idx;
+    if (gk !== callout.groupKey) { callout.groupKey = gk; callout.whyOpen = false; }
+    var pairTxt = st.pair ? cklPairRow(s, gk, st.pair, st) : null;
+    /* THE PLANT MOVED THE LEG ON, SO SAY WHY ON THE CARD (#670, 2026-10-14). MEASURED in the browser on
+     * the never-STOP route: step 6's and step 9's overtaken text reached only the column's bottom line,
+     * under the card's own step 7 / step 10 text. The overtaken `label`, on a step that authors
+     * `on_card` (6 and 9: a branch the rest of the leg reads), while the instructor still holds the full
+     * line. Not every overtake: step 5's put step 6's card 6 px from its control at 1366x768 (needs 10).
+     * Only this text joins the key (any other message repainting the card moved it off its placement). */
+    var prevSt = idx > 0 ? pr.steps[idx - 1] : null;
+    var overTxt = (prevSt && prevSt.overtaken && prevSt.overtaken.on_card && ck.done_by && ck.done_by[idx - 1] === 'overtaken' &&
+        s.instructor && s.instructor.message === prevSt.overtaken.text) ? 'Skipped step ' + idx + ' (' + (prevSt.overtaken.label || 'the plant moved past it') + ')' : '';
+    var key = JSON.stringify(['ckl', gk, pairTxt, (ck.accs || []).map(function (x) { return x && x.met ? (x.overtaken ? 4 : x.implied ? 2 : 1) : 0; }), !!ck.acc_met,
+      !!ck.awaiting_ack, !!ck.rewind_ready, rc ? rc.disabled : null, spTxt, callout.whyOpen, callout.histOpen,
+      overTxt]);
+    if (key === callout.key) return;
+    callout.key = key;
+    var sy = st.story || {};
+    el.querySelector('.ico-who').textContent = 'Step ' + (idx + 1) + ' of ' + pr.steps.length + (sy.clock ? ' · ' + sy.clock + (pr.story_year ? ' (' + pr.story_year + ')' : '') : '');
+    var b = '';
+    /* ACTION FIRST (#670 redesign; OWNER 2026-10-10: players read only the action line). The
+     * event's one line follows it; a pair step draws its two numbers there instead, which keeps the
+     * card small enough to clear the control it asks for at 1366x768 (verify_tmi_callout). */
+    if (act) {
+      b += '<div class="ico-act">' + mesc(st.text) + '</div>';
+      if (sy.line && !pairTxt) b += '<div class="ico-story">' + mesc(sy.line) + '</div>';   // a pair step trades it for the two numbers (it stays in History)
+      if (pairTxt) b += '<div class="ico-pair">' + mesc(pairTxt) + '</div>';
+      // the deciding beat's reason is drawn, not hidden behind "why?" (plan §1 item 3)
+      if (st.why && pairTxt) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+      else if (st.why) {
+        b += '<button type="button" class="ico-more" data-ico-why="1">' + (callout.whyOpen ? 'hide' : 'why?') + '</button>';
+        if (callout.whyOpen) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+      }
+    } else {
+      b += '<div class="ico-say">' + mesc(st.text) + '</div>';
+      if (sy.line && !pairTxt) b += '<div class="ico-story">' + mesc(sy.line) + '</div>';   // a pair step trades it for the two numbers (it stays in History)
+      if (pairTxt) b += '<div class="ico-pair">' + mesc(pairTxt) + '</div>';
+      if (st.why) b += '<div class="ico-why">' + mesc(st.why) + '</div>';
+    }
+    if (st.crew) b += '<div class="ico-crew">The crew\'s action, as taken — not a recommendation.</div>';
+    if (overTxt) b += '<div class="ico-tip ico-over">' + mesc(overTxt) + '</div>';
+    var stNote = cklRouteField(st, ck, 'note');
+    if (stNote) b += '<div class="ico-tip">' + mesc(stNote) + '</div>';
+    var rows = (st.accs || []).map(function (en, k) { var v = (ck.accs && ck.accs[k]) || {}; return { en: en, av: v, met: !!v.met, implied: !!(v.met && v.implied), overtaken: !!(v.met && v.overtaken) }; })
+      .filter(function (r) { return !r.en.hidden && !r.en.cont; });
+    if (rows.length > 1) {
+      b += rows.map(function (r) {
+        /* A ROW TICKED BY ITS `implied_by` SIBLING IS NOT A PLAIN ✓ (#670 review, 2026-10-14). MEASURED, routes
+         * afw_late seed 42: TMI-2 step 9's relation row latched by the -50 °F peg at 17.75 plant-min with PRESSURIZER
+         * LEVEL reading 74 %, so a ✓ beside "...while PRESSURIZER LEVEL still reads 90 % or more" stood for a reading
+         * the board was not showing. Same `implied` verdict and wording as the side card's row. */
+        /* A ROW STOOD DOWN BY ITS OWN `overtaken` (2026-10-15) IS NOT A PLAIN ✓ EITHER: it names the condition. */
+        if (r.overtaken) return '<div class="ico-crit met implied">↳ ' + mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) +
+          '<div class="ico-impl">' + mesc(cklOvertakenSay(r.en)) + '</div></div>';
+        if (r.implied) return '<div class="ico-crit met implied">↳ ' + mesc(r.en.ask || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) +
+          '<div class="ico-impl">Covered by ' + mesc(impliedSay(st, r.en, idx + 1, true)) + ' — not checked on its own.</div></div>';
+        return '<div class="ico-crit' + (r.met ? ' met' : '') + '">' + (r.met ? '✓ ' : '○ ') +
+          mesc(cklAskText(r.en, r.av) || r.en.label || (r.en.p ? fmtPredicate(r.en) : '')) + '</div>';
+      }).join('');
+    }
+    /* THE STEP'S OWN `wait_hint` RIDES WITH THE WAIT LINE (TMI-2 layman pass 4, S-2): the card built
+     * `spTxt` itself and never read the field, so step 9's "reaches the bottom of its scale about an hour
+     * in" reached only the Instructor-tab card and the floating card printed "⏩ Waiting at 60×" alone.
+     * Same route-true read and same condition (a wait step still waiting) as the side card's line. */
+    var spHint = spTxt ? cklRouteField(st, ck, 'wait_hint') : null;
+    if (spTxt) b += '<div class="ico-wait">' + mesc(spTxt + (typeof spHint === 'string' ? ' · ' + spHint : '')) + '</div>';
+    el.querySelector('.ico-body').innerHTML = b;
+    var bEl = el.querySelector('.ico-btns');
+    bEl.innerHTML =
+      '<button type="button" class="btn ico-rw" data-ico-fwd="[data-wt-rewind]"' + (rw && !rw.disabled ? '' : ' disabled') + '>⏪ Rewind</button>' +
+      '<button type="button" class="btn ico-cont' + (ck.awaiting_ack ? ' ready' : '') + '" data-ico-fwd="[data-ckl-check]"' +
+        (rc && !rc.disabled ? '' : ' disabled') + '>Continue ▶</button>';
+    bEl.hidden = false;
+    var hist = el.querySelector('.ico-hist');
+    hist.hidden = !callout.histOpen;
+    el.querySelector('[data-ico-hist]').classList.toggle('on', callout.histOpen);
+    if (callout.histOpen) {
+      var hh = '';
+      for (var k = 0; k <= idx && k < pr.steps.length; k++) {
+        // a step that folds several sourced beats lists them all (`history`, #670 redesign)
+        var ys = pr.steps[k].history || (pr.steps[k].story ? [pr.steps[k].story] : []);
+        for (var yi = 0; yi < ys.length; yi++) { var y = ys[yi];
+        hh += '<div class="ico-h"><b>' + mesc(y.clock || '') + '</b> ' + mesc(y.saw || y.line || '') +
+          (y.knew ? '<div><i>They knew:</i> ' + mesc(y.knew) + '</div>' : '') +
+          (y.did ? '<div><i>They did:</i> ' + mesc(y.did) + '</div>' : '') + '</div>';
+        }
+      }
+      hist.innerHTML = hh;
+      hist.scrollTop = hist.scrollHeight;
+    }
+    callout.points = [];
+    callout.kind = act ? 'act' : 'observe';
+    el.setAttribute('data-kind', callout.kind);
+    el.hidden = false;
+  }
+  /* THE PLANT ITSELF IS A KEEP-OUT on a callout walkthrough (2026-10-10, OWNER: "it blocks part of the
+   * diagram and it might block important info"). On TMI-2 the pressurizer's level and the vessel's
+   * water are the lesson, and the opener's placement treats a big drawing as cheap to cover. Board
+   * item ids (pwr_board_data.js): the two component drawings and the PZR SPRAY / PZR TEMP / HTR PWR
+   * label+value pairs beside the pressurizer. PRESSURIZER LEVEL and PRIMARY PRESSURE are top tiles.
+   * verify_tmi_callout asserts all eight resolve, so a board re-export that renames one goes red. */
+  var CKL_CALLOUT_PLANT = ['pressurizer', 'reactorVessel', 'imsgt6tl11c', 'imsgt6qmdgx', 'ims5gp0aicx', 'ims5gq44zgr', 'ims5gpdv96m', 'ims5gprvl7n'];
+  RD.CklCalloutPlant = CKL_CALLOUT_PLANT;
+  function cklCalloutPlantRects() {
+    var st = calloutStage(), out = [];
+    if (!st) return out;
+    CKL_CALLOUT_PLANT.forEach(function (id) {
+      var t = st.querySelector('[data-item="' + id + '"]');
+      var r = t && t.getBoundingClientRect();
+      if (r && rectOk(r)) out.push(r);
+    });
+    return out;
+  }
+  // Keep-outs for a walkthrough step: the six top tiles, every lit control / watched item / lit
+  // card on the board, and the acted-on control's panel. Anchor: that panel (action) or the
+  // first watched item (observation).
+  function cklCalloutKeepOut() {
+    function rects(sel) {
+      var out = [];
+      [].forEach.call(document.querySelectorAll(sel), function (g) { var r = g.getBoundingClientRect(); if (rectOk(r)) out.push(r); });
+      return out;
+    }
+    var acts = rects('#viewArea .ckl-step-glow');
+    var watches = rects('#viewArea .ckl-watch-glow, #viewArea .ckl-check-glow');
+    var cards = rects('#viewArea .ckl-panel-glow');
+    var panel = acts[0] ? calloutPanelOf(acts[0]) : null;
+    var top = calloutTopTiles().map(function (t) { return t.getBoundingClientRect(); }).filter(rectOk);
+    var plant = cklCalloutPlantRects();
+    /* THE ACTED-ON CONTROL GETS A 12 px MARGIN (TMI layman pass, 2026-10-10, S-10). Measured on step
+     * 14 at 1366x768: the card stood 7 px right of the AFW block valve's halo (0 px2 overlap) with
+     * the leader's dot on the halo's corner, and the reviewer read that as the card covering the
+     * symbol. A control the player must find and click wants clear air round it, not a tangent. */
+    var PAD = 12;
+    var actsPad = acts.map(function (r) { return { left: r.left - PAD, top: r.top - PAD, right: r.right + PAD, bottom: r.bottom + PAD }; });
+    var hard = top.concat(plant, panel ? [panel] : [], actsPad, watches, cards);
+    /* The fallback keeps the REQUIRED floor: 10 px clear (verify_tmi_callout), +1 px for the rounding of
+     * left/top and offsetWidth. At 0 px it placed step 6 7 px off STOP on CI fonts (run 38652572708). */
+    var actsMin = acts.map(function (r) { return { left: r.left - 11, top: r.top - 11, right: r.right + 11, bottom: r.bottom + 11 }; });
+    var hardTight = top.concat(plant, panel ? [panel] : [], actsMin, watches, cards);
+    /* ACTION: THE CONTROL ITSELF, NOT ITS PANEL (review 2026-10-10). The panel is the smallest board
+     * tile around the lit control; for a valve drawn ON a component that tile is the component, so
+     * on step 18 the leader ran to the pressurizer's edge and ended on PZR SPRAY, 50 px from the
+     * block valve the step is about. The panel stays a hard keep-out above. */
+    var anchor = callout.kind === 'act' ? (acts[0] || panel || null) : (watches[0] || cards[0] || null);
+    return { hard: hard, hardTight: hardTight, top: top, panel: panel, points: watches, anchor: anchor };
   }
 
   // ============================================================ auto-checklists (Path 3)
@@ -4190,11 +5052,34 @@
    * (#686) — one fact, one formatter, so the two can never disagree. `wait_est_s: false` drops
    * the number and keeps the rung, for a step whose duration is genuinely route-dependent (the
    * speed advice is right even with no honest number; see the call site in `renderChecklist`). */
-  function cklWaitSpan(st, holdS) {
-    if (st.wait_est_s === false) return null;
-    var mins = holdS / 60;
-    return mins < 90 ? Math.round(mins) + ' plant-minutes'
-                     : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours';
+  /* THE SPAN IS A MEASURED ESTIMATE OR NOTHING (TMI-2 layman pass 3, V-1, 2026-10-15). It printed
+   * `hold / 60` — the replay's dwell, a gate fixture — as "About N plant-minutes left", and never
+   * counted down. MEASURED, typical route in the browser: TMI-2 step 7 printed 3 against 1.1, step
+   * 8 65 against 9.0 after the click, step 11 60 against 102.6, step 12 7 against 0.6. Now only a
+   * step that authors a number (`wait_est_s`, plant-seconds, measured on the typical route) prints
+   * one; `wait_est_from: 'cmd'` counts it from the step's own command instead of from step entry.
+   * The bar counts down from the anchor; the card prints the whole estimate (its render key does not
+   * move with the clock). Past the estimate, or with none, it says the length depends on the plant. */
+  var cklEstAnchor = { key: null, t0: 0, tc: null };
+  function cklSpanText(sec) {
+    var mins = sec / 60;
+    if (mins < 1) return 'Under a plant-minute';
+    if (mins < 1.5) return 'About a plant-minute';
+    return 'About ' + (mins < 90 ? Math.round(mins) + ' plant-minutes'
+                     : (mins / 60).toFixed(mins / 60 < 10 ? 1 : 0) + ' plant-hours');
+  }
+  function cklWaitSpan(s, a, forBar) {
+    var st = a.st, est = cklRouteField(st, a.ck, 'wait_est_s'), estFrom = cklRouteField(st, a.ck, 'wait_est_from');   // route-true (#670 route_alt)
+    if (typeof est !== 'number' || !(est > 0)) return null;
+    var now = (s && s.metadata && s.metadata.sim_time) || 0, key = a.ck.procedure_id + '#' + a.ck.step_index;
+    if (cklEstAnchor.key !== key || now < cklEstAnchor.t0) cklEstAnchor = { key: key, t0: now, tc: null };
+    if (a.ck.cmd_seen && cklEstAnchor.tc == null) cklEstAnchor.tc = now;
+    if (!a.ck.cmd_seen) cklEstAnchor.tc = null;   // a rewind un-sees the command
+    if (!forBar) return { text: cklSpanText(est), left: false };
+    var from = estFrom === 'cmd' ? cklEstAnchor.tc : cklEstAnchor.t0;
+    if (from == null) return { text: cklSpanText(est), left: false };
+    var rem = est - (now - from);
+    return rem > 0 ? { text: cklSpanText(rem), left: true } : null;
   }
 
   /* ---- THE WALKTHROUGH DRIVES THE CLOCK (#796) ------------------------------------------------
@@ -4283,6 +5168,22 @@
     var st = pr ? pr.steps[ck.step_index] : null;
     return st ? { ck: ck, pr: pr, st: st } : null;
   }
+  /* ROUTE-TRUE TEXT (#670, 2026-10-14). A step or leg may author `route_alt: [{ overtaken: [n, …],
+   * <field>: '…' }]`: when every named step (1-based) was checked off 'overtaken' on THIS run
+   * (`done_by`), the alternate's field replaces the authored one. MEASURED (routes gate, seed 42):
+   * on the keep-injection route the static step 7 note ("Injection stays off") and the recap
+   * ("Injection was stopped") were false — injection ran the whole leg and the plant ended solid
+   * near 2,500 psi. Read at the draw sites (note, wait_hint, outcome), never folded into the step. */
+  function cklRouteField(obj, ck, f) {
+    var alts = obj && obj.route_alt, by = ck && ck.done_by;
+    if (alts && by) for (var i = 0; i < alts.length; i++) {
+      var a = alts[i];
+      if (a[f] !== undefined && a.overtaken && a.overtaken.length &&
+          a.overtaken.every(function (n) { return by[n - 1] === 'overtaken'; })) return a[f];
+    }
+    return obj ? obj[f] : undefined;
+  }
+  RD.CklRouteField = cklRouteField;
   // Does the card PRINT a fast-forward line for this step? The #628/#686/#743 condition, once.
   function cklIsWaitStep(st) {
     return !!st && (+st.hold || 0) >= 180 && st.wait_hint !== false;
@@ -4430,8 +5331,23 @@
      * the "exact key it always did" claim above was false for every other walkthrough. */
     var subRungs = !!a.st.accs && a.st.accs.some(function (e) { return e && +e.wait_speed > 0; });
     var head = subRungs ? cklActiveAccsHead(a.st, a.ck) : -1;
+    /* ...AND EVEN THERE, ONLY A ROW THAT CARRIES ITS OWN RUNG GETS ITS OWN KEY (review, 2026-10-15).
+     * Keyed `|s<head>` on every head of such a step, TMI-2 step 9 (a 60x step with one 1x OFF row)
+     * changed key when RCS INVENTORY latched and the head moved 0 -> 1 at the same wanted 60x, so
+     * auto re-forced 60x over the player's speed. A head without its own rung is keyed by the
+     * SEGMENT it sits in, counted in rung rows before it (`|step`, then `|step@k`): a row ticking
+     * inside a segment keeps the override, and the rows after a rung row are a new moment. */
+    var suffix = '';
+    if (subRungs) {
+      if (head >= 0 && +a.st.accs[head].wait_speed > 0) suffix = '|s' + head;
+      else {
+        var seg = 0, end = head >= 0 ? head : a.st.accs.length;
+        for (var k = 0; k < end; k++) if (a.st.accs[k] && +a.st.accs[k].wait_speed > 0) seg++;
+        suffix = '|step' + (seg ? '@' + seg : '');
+      }
+    }
     return a.ck.procedure_id + '#' + a.ck.step_index + '|' + want +
-           (head >= 0 ? '|s' + head : '') +
+           suffix +
            ((s.true_state && s.true_state.speed_hold) ? '|h' : '');
   }
   function cklAutoKey(s) {
@@ -4505,14 +5421,40 @@
      * rather than by this latch. */
     if (idle) { cklAuto.key = null; return; }
     if (cklAuto.over === key) return;        // the player took this step's clock; it is theirs
-    if (key === cklAuto.key) return;
+    /* ---- A BRIEF-SWING DROP IS PUT BACK (TMI-2 layman pass 2026-10-14, S-2) ----
+     * The service's in-loop WARP watch drops the clock to 60x on a half-second pressure or power
+     * rate and reports it as a `transient` speed_snap. When that rate is gone by the next
+     * broadcast, `warp_available` is true again, so `want` never left the rung and the KEY never
+     * changed — auto believed it had already acted, and #warpInfo said "it has passed" over a
+     * clock left at 60x. MEASURED (live runtime, seed 42): pwr_tmi2_incident steps 10-11, three
+     * such drops with warp_available true on the broadcast after; one re-request at 600x landed
+     * with no second drop on the route that took it. So: once, on the broadcast after a transient
+     * drop on this key, ask for the rung again — capped at three per key so a plant that keeps
+     * swinging cannot make the clock chatter. Alarm, trip and failure drops (to 1x) are the plant
+     * calling the player and are never put back. */
+    if (key === cklAuto.key) {
+      var sn = s.metadata && s.metadata.speed_snap, pcg = s.metadata && s.metadata.pacing;
+      /* RATE reasons only — the test `syncWarpInfo` uses for "it has passed". The in-loop watch also
+       * reports a reactor trip, a new failure or a new alarm as `transient`: those are events, and
+       * the clock stays where the plant put it. */
+      if (sn) { cklAuto.drop = isRateSnap(sn) ? key : null; return; }
+      if (cklAuto.drop === key && cklAuto.set === want && cur < want && pcg && pcg.warp_available === true &&
+          !(s.true_state && s.true_state.speed_hold) && (cklAuto.rearms || 0) < 3) {
+        cklAuto.drop = null; cklAuto.rearms = (cklAuto.rearms || 0) + 1;
+        try { service.handleCommand({ action: 'set_speed', value: want }); } catch (e) { return; }
+        if (s.metadata) s.metadata.time_acceleration = service.timeAcceleration;
+      }
+      return;
+    }
     cklAuto.key = key;
     cklAuto.set = want;
+    cklAuto.drop = null; cklAuto.rearms = 0;
     if ((s.true_state && s.true_state.speed_hold) && want > 1) return;  // refused; retries when it lifts
     if (cur === want) return;
     try { service.handleCommand({ action: 'set_speed', value: want }); }
     catch (e) { return; }                                 // a refusal is not a crash (#505/#506)
     if (want > cur) autoSpeedNote = { rate: want, step: cklNoteStepKey(s) };   // announce it in #warpInfo (#818)
+    else if (a.ck && (a.ck.acc_met || a.ck.awaiting_ack)) autoSpeedNote = { rate: want, step: cklNoteStepKey(s), done: true };   // ...and the hand-back on a met step (#825 S-10)
     /* …and this snapshot was assembled before the change, so restamp it — the speed segment,
      * the ⚡ badge and the chart windows all read `metadata.time_acceleration` off the snapshot
      * being drawn. Same shape as the `metadata.running` restamp the walkthrough pause needs. */
@@ -4525,13 +5467,16 @@
    * carry, and the player who overrode wants to know what they overrode. */
   function cklWaitAdvice(s, a, forBar) {
     var holdS = +a.st.hold || 0;
-    var span = cklWaitSpan(a.st, holdS);
+    var span = cklWaitSpan(s, a, forBar);
     var rung = cklRungFor(a.st, a.ck) || RD.CklSpeedHint(holdS);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
+    /* a HELD step (#694 `pause`, `pause_on_met`) has stopped the clock: say so, not the rung it is "back at"
+     * (review of the TMI-2 layman pass 4 fix: step 7 held read "Wait complete — back at 10×") */
+    if (a.ck.paused && a.ck.awaiting_ack) return 'Wait complete — the clock is held until you press Continue.';
     if (a.ck.acc_met || a.ck.awaiting_ack) {
       return 'Wait complete — back at ' + cur + '× (this step fast-forwards at ' + rung.speed + '×).';
     }
-    var lead = span ? 'About ' + span + (forBar ? ' left' : '') + ' at 1× — '
+    var lead = span ? span.text + (span.left ? ' left' : '') + ' at 1× — '
                     : 'A wait whose length depends on the plant — ';
     var want = cklStepSpeed(s, a);
     /* NEVER "fast-forwarding at 1×" (layman pass 4): that sentence contradicts itself, and it is
@@ -4573,6 +5518,12 @@
    * scroller. Resolve it rather than naming one, so the scroll-preservation above cannot be
    * silently pointed at an element that never scrolls — which would read as "the fix works"
    * while the panel jumped exactly as before. */
+  /* The row that stands for the active step in the log: on a callout leg the step card is hidden
+   * (display:none, so its offsets read 0) and the progress list's row is what the reader sees
+   * (review 2026-10-10: at 1366x768 step 20 fell off the bottom of the list unscrolled). */
+  function cklActiveRow(log) {
+    return log.querySelector('#cklRun.ckl-co .ckl-prog-list li.active') || log.querySelector('.ckl-active');
+  }
   function cklScroller() {
     var el = $('cklLog');
     while (el && el !== document.body) {
@@ -4638,6 +5589,7 @@
     pressure_mpa:           { label: 'PRIMARY PRESSURE', dim: 'pressure' },
     steam_pressure_mpa:     { label: 'STEAM PRESS', dim: 'pressure' },
     subcooling_c:           { label: 'SUBCOOLING MARGIN', dim: 'tempdiff' },
+    tavg_tref_dev_c:        { label: 'TAVG − TREF', dim: 'tempdiff' },   /* the board's ΔREF, Tavg against its program (raise power 4, 2026-10-15) */
     tavg_rate_c_per_hr:     { label: 'Heatup/cooldown rate', dim: 'tempdiff', suffix: '/hr' },
     /* #735 / #724 item 6 — the count rate renders the way the meter writes it: "7.0e2
      * (700 counts per second)". See `sci` in fmtPredValue. */
@@ -4652,6 +5604,7 @@
     reactivity_pcm:         { label: 'Net reactivity', u: 'pcm' },
     boron_ppm:              { label: 'Boron in the loop (BORON CHEM after a sample)', u: 'ppm' },
     mwe_output:             { label: 'OUTPUT', u: 'MWe' },
+    load_target_mwe:        { label: 'LOAD', u: 'MWe' },   /* #825: the machine's LOAD reference, graded `stopped` in pwr_lower_power 2-5 */
     core_inventory_pct:     { label: 'Core coolant inventory', u: '%' },
     decay_heat_pct:         { label: 'Decay heat', u: '%' },
     sg_level_pct:           { label: 'STEAM GENERATOR LEVEL', u: '%' },
@@ -4668,7 +5621,7 @@
     shutdown_bank_pct:      { label: 'SHUTDOWN ROD POSITION', u: '%' },
     shutdown_bank_steps:    { label: 'SHUTDOWN ROD POSITION', u: 'steps' },
     feed_coupled:           { bool: 'SG FEED is in AUTO' },
-    afw_pump_running:       { bool: 'AUX FEED WATER reads RUNNING' },   // #808: heatup 5, startup 3a/13c (13c grades it off)
+    afw_pump_running:       { bool: 'AUX FEED WATER reads RUNNING' },   // #808: heatup 4 (5 before #823), startup 3a/13c (13c grades it off)
     /* THE TRIP BLOCKS (#731). Resolved out of `rps_state.trip_blocks` by the instructor layer
      * (RPS_BLOCK_PARAMS there) — an operator lineup the board draws as a lit row, not an
      * instrument. The labels are the panel's own row captions, so the done-when line names what
@@ -4679,8 +5632,8 @@
     lo_press_blocked:        { bool: 'PZR PRESS LO-LO is blocked on the TRIP BLOCKS panel' },
     si_trip_blocked:         { bool: 'SI REACTOR TRIP is blocked on the TRIP BLOCKS panel' },
     steam_dump_setpoint:    { label: 'DUMP SETPOINT', dim: 'pressure' },
-    pressure_setpoint:      { label: 'SET PZR PRESSURE', dim: 'pressure' },   // #809: pwr_heatup 14a
-    letdown_orifices_ab:    { bool: 'A+B 7 % is lit on the LETDOWN card' },   // #809: pwr_heatup 7a, derived by the instructor layer
+    pressure_setpoint:      { label: 'SET PZR PRESSURE', dim: 'pressure' },   // #809: pwr_heatup 13a (14a before #823)
+    letdown_orifices_ab:    { bool: 'A+B 7 % is lit on the LETDOWN card' },   // #809: pwr_heatup 6a (7a before #823), derived by the instructor layer
     accumulator_volume_pct: { label: 'ACCUMULATORS', u: '%' },
     steam_dump_valve_pct:   { label: 'STEAM DUMP opening', u: '%' },
     /* the dump SELECTION and the atmospheric dump valve (#629) — the heatup's Mode 3
@@ -4691,7 +5644,7 @@
      * mode") — derived by the instructor layer from `control_state.steam_dump_mode` */
     steam_dump_press_mode:  { bool: 'STEAM DUMP status reads STM PRESS or RAMPING' },
     steam_dump_tavg_mode:   { bool: 'STEAM DUMP status reads TAVG' },
-    /* the BORON card's status word (#807 item 5, pwr_heatup 16d) — derived by the instructor layer
+    /* the BORON card's status word (#807 item 5, pwr_heatup 15d; 16d before #823) — derived by the instructor layer
      * from `control_state.boron_adjust` with the tile's own test */
     boron_status_hold:      { bool: 'BORON STATUS reads HOLD' },
     /* the BORON card's ON lamp and target box (2026-09-25, pwr_startup 2a/2b) — read off the
@@ -4749,6 +5702,7 @@
      * names; with `op:'<'` it renders "the pump cavitation alarm is not standing". */
     porv_tailpipe_temp_c:   { label: 'PORV tailpipe temperature', dim: 'temp' },
     rcp_cavitating:         { bool: 'the pump cavitation alarm is standing' },
+    block_valve_open:       { bool: 'the PORV block valve is open' },   // TMI 9 overtake / TMI 10 position row (quality pass 2026-10-14)
   };
   var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
                      4: 'Mode 4, Hot Shutdown', 5: 'Mode 5, Cold Shutdown' };
@@ -4907,10 +5861,16 @@
   }
 
 
+  /* A row the runtime stood down by its own `overtaken` (2026-10-15): the authored condition, said as the
+   * reason, never as a tick. `label` is the condition in the player's words (e.g. rods led the load). */
+  function cklOvertakenSay(en) {
+    var o = en && en.overtaken;
+    return 'Overtaken: ' + ((o && o.label) || 'the plant moved past this line') + ' — not checked on its own.';
+  }
   /* The sibling an `implied_by` row was covered by, as the player sees it: its own letter when
    * the step draws letters, else its done-when line. Mirrors the out-of-turn line's derivation
    * (#759) — letters count VISIBLE entries, so a hidden cmd twin does not consume one. */
-  function impliedSay(st, en, stepNo) {
+  function impliedSay(st, en, stepNo, bare) {   // bare: no letter (the callout card draws none)
     // `cont` rows are skipped from the letter count here too (walkthrough-step-format project) —
     // the same non-letter, non-group-starting entries the render loop above excludes, so this
     // function's `j`-th letter cannot drift from the one actually printed on the card.
@@ -4921,7 +5881,7 @@
     }
     if (j === -1) return 'another line on this step';
     var lbl = accs[j].label || (accs[j].p ? fmtPredicate(accs[j]) : String(accs[j].cmd || ''));
-    if (visN > 1 && !accs[j].hidden && !accs[j].cont) {
+    if (!bare && visN > 1 && !accs[j].hidden && !accs[j].cont) {
       var seen = 0;
       for (i = 0; i < j; i++) if (!accs[i].hidden && !accs[i].cont) seen++;
       return String(stepNo) + String.fromCharCode(97 + seen) + ': ' + lbl;
@@ -4971,6 +5931,19 @@
    * player watching SOURCE RANGE sit on 7.0e2 saw a dark row and no reason. This prints the count
    * the runtime is keeping (`prog`, InstructorLayer.holdProgress: plant-seconds off the grader's own
    * bag) and says so when it starts again. Unmet rows only; a met row has nothing left to count. */
+  /* A ROW'S ACTION LINE. `ask_1m` (pwr_startup 10a, layman chain pass 2 S-3, 2026-10-15) is the ask with the
+   * 1/M stop written in as a number: drawn when the runtime has a prediction for the row (`pred_1m`, never
+   * re-derived here), with {stop} = prediction minus the row's `reach_1m` margin rounded down and {pred} = the
+   * prediction. No prediction: the plain `ask`, which says to work it out. A `show_1m` row (pwr_startup 11b,
+   * 2026-11-06-develop-a) has no margin and so no {stop}: its `ask_1m` names {pred} only. Every placeholder is
+   * replaced, not the first (a line may name the prediction twice). */
+  function cklAskText(en, av) {
+    if (en && en.ask_1m && av && typeof av.pred_1m === 'number' && (en.reach_1m != null || en.show_1m)) {
+      var pr = av.pred_1m, s = en.ask_1m.split('{pred}').join(String(pr));
+      return en.reach_1m != null ? s.split('{stop}').join(String(pr - Math.floor(en.reach_1m))) : s;
+    }
+    return en ? en.ask : '';
+  }
   function cklProgLine(en, av) {
     var p = av && av.prog;
     if (!p || av.met || !(p.need > 0)) return '';
@@ -5030,6 +6003,8 @@
      * one bit that still changes the output: whether the checklist is underway. */
     var pcKey = (ck.step_index > 0 || (ck.steps_done || []).some(Boolean)) ? 'go' : 'entry';
     var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
+      (ck.done_by || []).join(','),   // route-true text (#670) reads how each step was done
+
       ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
       // #244 additions: per-entry check-off states, the why-toggle states, and the display
       // units all change what the card shows, so they join the render key.
@@ -5044,9 +6019,16 @@
        * with the 1/M table (a Clear, a rewind) while `met` need not move. */
       /* ...and so does a `below_1m` row's prediction and reading (quality pass, 2026-09-24): the
        * "past the mark" line below appears when the rods step past prediction-minus-N while
-       * `met` stays 0. Only a `below_1m` row carries a non-null `pred_1m`. */
-      (ck.accs || []).map(function (a) { return (a.voided ? 3 : (a.met ? (a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
-        (a.pred_1m != null ? 'p' + a.pred_1m + ':' + a.obs : '') + cklProgKey(a); }).join(','),
+       * `met` stays 0. A `below_1m` or `reach_1m` row carries a non-null `pred_1m` (the latter
+       * since develop-k; it also draws 10a's `ask_1m` stop, so a moved prediction must repaint). */
+      /* ...EXCEPT A `show_1m` ROW (pwr_startup 11b, critic round 1, 2026-11-06-develop-a): it draws no "past the mark"
+       * line, only the prediction in its ask, so it keys on `pred_1m` alone. Its `obs` is the raw STARTUP RATE float,
+       * and keying on it rebuilt the card every broadcast (94 rebuilds in 9.4 plant-s, the #687 blink class). */
+      (ck.accs || []).map(function (a, k) {
+        var stE = !ck.complete && pr.steps && pr.steps[ck.step_index], en1 = stE && stE.accs && stE.accs[k];
+        var show1 = !!(en1 && en1.show_1m && en1.reach_1m == null && en1.below_1m == null);
+        return (a.voided ? 3 : (a.met ? (a.overtaken ? 4 : a.implied ? 2 : 1) : 0)) + (a.no_1m ? 'n' : '') +
+        (a.pred_1m != null ? 'p' + a.pred_1m + (show1 ? '' : ':' + a.obs) : '') + cklProgKey(a); }).join(','),
       ck.acc_voided || '', ck.saw_voided || '',
       /* THE REACTOR-TRIP BANNER JOINS THE KEY (#709) — this file's four-times-learned lesson
        * (#392's precondition banner, #653 defect 4's mode line, #759's out-of-turn note,
@@ -5094,8 +6076,9 @@
        * churn: `time_acceleration` moves only when the player, this walkthrough, or an attention
        * stop moves it, which is a handful of times in a whole leg. */
       (s && s.metadata && s.metadata.time_acceleration) || 1,
+      cklCalloutOn(pr) ? 'co' : '',
       cklState.view].join('|');
-    if (key === cklState.key) return;
+    if (key === cklState.key) { cklPairPanel(s, ck, pr); return; }
     var firstBuild = !cklState.key;
     cklState.key = key;
     /* ONE STEP AT A TIME *(OWNER, 2026-09-08, #660 items 15-16)*: the card is the current step
@@ -5110,7 +6093,7 @@
     var headClock = (headSt && headSt.story && headSt.story.clock) ? headSt.story.clock : null;
     h += '<div class="ckl-head"><b>' + mesc(legPart(ui.engineKey, pr.id) ? legName(ui.engineKey, pr) + ' — ' + pr.title : pr.title) + '</b>' +
       '<span class="ckl-stepno">' + (ck.complete ? 'Complete' : ('Step ' + (ck.step_index + 1) + ' of ' + pr.steps.length)) +
-      (headClock ? ' · ' + mesc(headClock) : '') + '</span></div>';
+      (headClock ? ' · ' + mesc(headClock) + (pr.story_year ? ' (' + mesc(String(pr.story_year)) + ')' : '') : '') + '</span></div>';   // V-4 (TMI-2 layman pass 3): the story's clock, labelled with its year so it does not read as the sim's
     /* THE WALKTHROUGH SAYS SO WHEN THE REACTOR TRIPS UNDER IT (#709, layman playthrough
      * 2026-09-07 finding S-15: "The checklist does not react to a reactor trip.")
      *
@@ -5239,11 +6222,39 @@
         }).join('') : '') +
         '</div>';
     }
+    /* THE CALLOUT LEG'S COLUMN IS A PROGRESS LIST (2026-10-10, OWNER: "We should build TMI with the
+     * concise callouts like the starting instruction."). The step itself is drawn on the board by
+     * cklCalloutFill; the step card below is still built (the engine of record: its Continue and
+     * Rewind are the buttons the callout forwards to) and hidden by `#cklRun.ckl-co`. */
+    var coOn = cklCalloutOn(pr);
+    if (coOn) {
+      h += '<ol class="ckl-prog-list">' + pr.steps.map(function (sx, k) {
+        var dn = !!(ck.steps_done && ck.steps_done[k]), ac = !ck.complete && k === ck.step_index;
+        return '<li class="' + (dn ? 'done' : ac ? 'active' : 'pend') + '"><span class="ckl-pl-ico">' + (dn ? '✓' : ac ? '▸' : '○') +
+          '</span><span class="ckl-pl-n">' + (k + 1) + '</span><span class="ckl-pl-t">' + mesc(sx.text) + '</span></li>';
+      }).join('') + '</ol>';
+    }
+    /* THE COMPLETION LINE SITS ABOVE THE KEPT STEP (#825 layman pass, S-3). With the banner only BELOW the kept last
+     * step, MEASURED (verify_quickwins_ui finishLeg idiom): its title fell outside the log on lower power and raise power
+     * at 1366x768 (title top 516 / 472 px into a 467 px log) and sat on the floor at 1600x1000 on the layman's own
+     * route (box top 930 px = log bottom). The title moves here, one line, in view whenever the head is; the recap
+     * (`.ckl-complete`, below the step) keeps the outcome. */
+    /* ...and the #715 mismatch rides IN this line (critic L-4, e4949322): below the kept step it fell under the fold, under a
+     * green tick. `outcome_verified === false` = the leg's `outcome_guard` fails on the live plant: the line turns amber and says so. */
+    if (ck.complete) h += ck.outcome_verified === false
+      ? '<div class="ckl-complete-head ckl-complete-warn">⚠ Walkthrough complete, but the board does not match this leg\'s expected finish. Read the board.</div>'
+      : '<div class="ckl-complete-head">✓ Walkthrough complete</div>';
     for (var i = 0; i < pr.steps.length; i++) {
       var st = pr.steps[i];
       var done = !!(ck.steps_done && ck.steps_done[i]);
       var active = !ck.complete && i === ck.step_index;
-      if (!active) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
+      /* ON COMPLETION THE LAST STEP STAYS (#825, owner playtest 2026-11-03: "no time to read the last step. It should still
+       * show the last step when the walkthrough has been completed ... still show the walkthrough complete banner"). It is
+       * drawn as the active card would be -- instruction, ticked rows, why -- but marked done, with the banner BELOW it
+       * rather than replacing it. Only the final step: one step at a time still holds. */
+      var lastShown = ck.complete && i === pr.steps.length - 1;
+      if (!active && !lastShown) continue;   // ONE STEP AT A TIME (#660 item 15): done and pending steps are not drawn
+      if (lastShown) { active = true; done = true; }
       var cls = done ? 'ckl-done' : active ? 'ckl-active' : 'ckl-pend';
       var hoverable = (stepHlLabels(st) || stepWatchLabels(st)) ? ' ckl-hoverable' : '';   /* #685 */
       /* Per-iteration, NOT hoisted by accident: `var` is function-scoped, so a flag set on one
@@ -5251,7 +6262,7 @@
        * at the top of every step. */
       var waitLineShown = false;
       var ackRow = '';   /* same reason — #687 item 3 builds it above and emits it below the why */
-      h += '<div class="ckl-step ' + cls + hoverable + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      h += '<div class="ckl-step ' + cls + hoverable + (lastShown ? ' ckl-last-kept' : '') + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
        * #628: "move the numbered step to always be the first part of the stack. then the rest of
        * the step that appears when its active goes below it.")*.
@@ -5282,7 +6293,7 @@
        * gates and headless probes (instructor_layer's checklist block); the card never uses it. */
       if (st.story) {
         var sy = st.story, syH = '';
-        if (sy.clock) syH += '<div class="ckl-story-l"><span>Clock</span>' + mesc(sy.clock) + '</div>';
+        if (sy.clock) syH += '<div class="ckl-story-l"><span>' + (pr.story_year ? 'Clock in ' + mesc(String(pr.story_year)) : 'Clock') + '</span>' + mesc(sy.clock) + '</div>';
         if (sy.saw)   syH += '<div class="ckl-story-l"><span>The crew saw</span>' + mesc(sy.saw) + '</div>';
         if (sy.knew)  syH += '<div class="ckl-story-l"><span>They knew</span>' + mesc(sy.knew) + '</div>';
         if (sy.did)   syH += '<div class="ckl-story-l"><span>They did</span>' + mesc(sy.did) + '</div>';
@@ -5369,6 +6380,9 @@
           var pendTail = '';
           for (var ai = 0; ai < st.accs.length; ai++) {
             var en = st.accs[ai], av = (ck.accs && ck.accs[ai]) || {};
+            /* the finished leg's kept last step: the instructor has already cleared its per-entry state at completion, so every row
+             * would read 'not met'. The step IS complete -- draw each row met (#825). */
+            if (lastShown) av = { met: true };
             /* `hidden: true` — a cmd-kind entry the replay needs (it is how the harness presses
              * the button) whose twin predicate entry already draws the lamp; drawing both put
              * "spray" on the card twice (#660 item 6). Still graded; just not printed. */
@@ -5377,7 +6391,7 @@
             var enTxt = en.label ? en.label : (en.p ? fmtPredicate(en) + modeLiveNote(en, s) : mesc(en.cmd || ''));
             var tag = '';
             if (!en.cont) { tag = visN > 1 ? ((i + 1) + String.fromCharCode(97 + visSeen)) : ''; visSeen++; }
-            var ordWait = st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
+            var ordWait = !lastShown && st.accs_ordered && ordBlock >= 0 && ai > ordBlock;
             /* THE SUBSTEP'S OWN NOTE AND SPEED, ON ITS HEAD ENTRY (the walkthrough-step-format
              * project — the owner's per-substep Note + "Suggested time warp" line). Neither is
              * drawn on a `cont` row: it is the same substep as its head, so the head already
@@ -5416,7 +6430,7 @@
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
                * and an unescaped insert would swallow the rest of the line as a tag. */
-              (av.met ? '✓ ' : ordWait ? '· ' : '○ ') + mesc(en.ask || enTxt) +
+              (av.met ? (av.overtaken ? '↳ ' : '✓ ') : ordWait ? '· ' : '○ ') + mesc(cklAskText(en, av) || enTxt) +   /* overtaken: never a plain tick */
               /* BOTH THE ASK AND THE DONE-WHEN, when the entry carries an instruction: the
                * player needs to know what to do AND what the sim is waiting for. Quieter, on
                * its own line, so the imperative is what the eye lands on. Not on a row that is
@@ -5433,8 +6447,9 @@
                * a re-worded or re-ordered step cannot leave a stale one behind. Drawn only when
                * the runtime actually latched it that way: `implied` is a snapshot verdict, not
                * a re-derivation here. */
+              (av.overtaken ? '<div class="ckl-crit-when">' + mesc(cklOvertakenSay(en)) + '</div>' : '') +
               (av.implied ? '<div class="ckl-crit-when">Covered by ' +
-                 mesc(impliedSay(st, en, i + 1)) + ' — this gauge did not get there.</div>' : '') +
+                 mesc(impliedSay(st, en, i + 1)) + ' — not checked on its own.</div>' : '') +
               /* A ROW STOOD DOWN BY THE PLAYER'S OWN CASUALTY SAYS SO, AND SAYING SO IS THE
                * CONDITION THE RULING ATTACHED TO IT (#773/#788, OWNER RULING 2026-09-19:
                * "A"). The step advances with this row unverified, which is only acceptable
@@ -5507,8 +6522,8 @@
               (bTag ? mesc(bTag) + ' comes first: ' : 'this comes first: ') + mesc(bTxt) + '</div>';
           }
         } else if (st.acc) {
-          h += '<div class="ckl-crit' + (ck.acc_met ? ' ckl-crit-met' : '') + '">' +
-            (ck.acc_met ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
+          h += '<div class="ckl-crit' + ((ck.acc_met || lastShown) ? ' ckl-crit-met' : '') + '">' +
+            ((ck.acc_met || lastShown) ? '✓ ' : '○ ') + 'When ' + mesc(fmtPredicate(st.acc) + modeLiveNote(st.acc, s)) +
             /* THE SOLE-ROW VOID (#773/#788) — the case the ruling accepted WITH THIS
              * SENTENCE AS THE CONDITION. There is no sibling here, so the step completes
              * with nothing at all asserting it; the card must not let that pass unsaid. */
@@ -5574,7 +6589,7 @@
         /* `wait_hint: false` SUPPRESSES the generated line (#653 S9, layman playtest 2026-09-07):
          * the startup's criticality steps carry 240-900 s dwells, so the hint offered 60x, and
          * at 60x the reactor went 0 -> 12 % between two glances. A step may author the hint away. */
-        if (holdS >= 180 && st.wait_hint !== false) {
+        if (holdS >= 180 && st.wait_hint !== false && !lastShown) {   /* a finished step has nothing left to wait for (#825) */
           /* `hold` IS THE REPLAY'S DWELL, NOT A MEASUREMENT OF THE PLAYER'S STEP (#670 operator
            * pass 2, S-1). It is how long `procedures_harness` sits on the step so the plant has
            * settled before the next command, and it has been printed to the player as "About N
@@ -5605,7 +6620,7 @@
           var rungTxt = (cklRungFor(st, ck) || RD.CklSpeedHint(holdS)).speed + '×';
           h += '<div class="ckl-sub ckl-wait">⏩ ' +
             mesc(cklWaitAdvice(s, { ck: ck, pr: pr, st: st }, false)).replace(rungTxt, '<b>' + rungTxt + '</b>') +
-            (typeof st.wait_hint === 'string' ? ' ' + mesc(st.wait_hint) : '') + '</div>';
+            (typeof cklRouteField(st, ck, 'wait_hint') === 'string' ? ' ' + mesc(cklRouteField(st, ck, 'wait_hint')) : '') + '</div>';
           waitLineShown = true;
         }
         /* ACKNOWLEDGE *(OWNER, 2026-09-03, #619 item 4: "add an acknowledge button to the step.,
@@ -5646,8 +6661,9 @@
                 ? 'Rewind is not available here — this step\'s saved plant state is not in memory (loading a saved game clears it)'
                 : 'This is the first step — there is nothing to go back to') +
             '">⏪ Rewind step</button>' +
-          '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
-            (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>' +
+          (ck.complete ? '' :   /* the finished leg's last step keeps Rewind (go back a step) but has nothing to continue to (#825) */
+            '<button class="btn ckl-ack wt-continue' + (ck.awaiting_ack ? ' ready' : '') + '" data-ckl-check="' + i + '"' +
+              (ck.awaiting_ack ? '' : ' disabled') + '>Continue ▶</button>') +
           (ck.awaiting_ack ? '<span class="ckl-ack-note">Step done — press Continue.</span>' : '') +
           /* the "more above" cue (#818): drawn always, shown by CSS only while #cklLog has text
            * hidden behind this pinned row (`.ckl-more`, set by cklMoreCue) */
@@ -5655,11 +6671,12 @@
         h += '</div>';
       }
       var det = '';
-      if (st.note) det += '<div class="ckl-sub muted ckl-step-note">' + mesc(st.note) + '</div>';
-      if (st.wait_hint && !waitLineShown) {
-        det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(st.wait_hint === true
+      var stNoteR = cklRouteField(st, ck, 'note'), stHintR = cklRouteField(st, ck, 'wait_hint');   // route-true (#670)
+      if (stNoteR) det += '<div class="ckl-sub muted ckl-step-note">' + mesc(stNoteR) + '</div>';
+      if (stHintR && !waitLineShown) {
+        det += '<div class="ckl-sub ckl-wait">⏩ ' + mesc(stHintR === true
           ? 'This takes a while in plant time — use time acceleration (the speed control, top bar).'
-          : st.wait_hint) + '</div>';
+          : stHintR) + '</div>';
       }
       /* #819 (2026-10-03): restored after 8052485b removed it — OWNER: "Where did the background boxes go? I didn't want to lose those." */
       /* THE DETAILS PARAGRAPH IS LABELLED, SO IT READS AS EXTRA (#692 item 3, from the owner's
@@ -5705,6 +6722,7 @@
         det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
           mesc(st.why) + '</div>';
       }
+      if (active && Array.isArray(st.pair) && !coOn) h += '<div class="ckl-pair" data-ckl-pair="1" hidden></div>';   // filled in place by cklPairPanel
       if (det) {
         /* THE ACTIVE STEP'S DETAILS ARE ALWAYS OPEN *(OWNER, 2026-09-08, #660: "The current step
          * should have the why section automatically open.")*. The "other steps keep the toggle"
@@ -5729,12 +6747,10 @@
        * `false` only when a guard is authored AND fails; `null`/`true` draw the claim as
        * before, so every leg without one is unaffected. */
       var outcomeOk = ck.outcome_verified !== false;
-      h += '<div class="ckl-complete"><b>Walkthrough complete</b>' +
-        (pr.outcome
-          ? (outcomeOk ? '<div class="m-note">' + mesc(pr.outcome) + '</div>'
-                       : '<div class="m-note">Steps checked off, but the board does not match ' +
-                         'this leg\'s expected finish. Read the board, not this note.</div>')
-          : '') + '</div>';
+      var outTxt = cklRouteField(pr, ck, 'outcome');   // the recap of the route this run took (#670)
+      /* the recap; titled by `.ckl-complete-head` above the kept step (#825 S-3). On a failed guard the recap's claim is
+       * withheld here and the warning is the head line's (critic L-4). */
+      if (outTxt && outcomeOk) h += '<div class="ckl-complete"><div class="m-note' + (outTxt.indexOf('\n') >= 0 ? ' m-note-list' : '') + '">' + mesc(outTxt) + '</div></div>';   /* a multi-line recap reads as a left-aligned list (quality pass 2026-10-14) */
     }
     h += '</div>';
     // Chain handoff (#244, the Mode 5 → full power → Mode 5 round trip): a finished leg
@@ -5773,6 +6789,8 @@
     var prevLog = cklScroller();
     var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
+    cur.classList.toggle('ckl-co', coOn);
+    cklPairPanel(s, ck, pr);
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
     // change so it survives step advances and hover churn; cleared when the run ends.
     var actSt = !ck.complete && pr.steps[ck.step_index] ? pr.steps[ck.step_index] : null;
@@ -5835,7 +6853,7 @@
         log.addEventListener('scroll', function () {
           cklMoreCue(log);                           /* #818: before the early return, every scroll */
           if (cklAutoScroll) return;                 /* our write, not theirs */
-          var act = log.querySelector('.ckl-active');
+          var act = cklActiveRow(log);
           if (!act) { cklState.userScrolled = true; return; }
           /* Back at the active step = back in step with the checklist; let it drive again. */
           var top = act.offsetTop - log.offsetTop;
@@ -5857,8 +6875,19 @@
        * the report that made the panel "unusable". */
       var advanced = cklState.step !== ck.step_index;
       cklState.step = ck.step_index;
+      if (!ck.complete) cklState.completeScrolled = false;
       if (!pointerInside(log)) {
-        if (ck.complete) log.scrollTop = log.scrollHeight;
+        if (ck.complete) {
+          /* ONCE, ON THE COMPLETION EVENT, NEVER ON A REPAINT (#605; critic round 3): the render key still moves after completion (speed bar, rewind_ready,
+           * plant mode), and a rebuild that re-scrolled snapped a reader back from the banner to the step head. `completeScrolled` latches until the run un-completes. */
+          if (!cklState.completeScrolled) {
+          cklState.completeScrolled = true;
+          /* ON COMPLETION SHOW THE KEPT LAST STEP FROM ITS HEAD (#825, critic M-A): scrolling to the bottom put a tall banner (the TMI-2 recap,
+           * ~760 px) in view and the kept step with its Rewind above the fold. The banner is below the step, so it still scrolls into reach. */
+          var keptEl = log.querySelector('.ckl-complete-head') || log.querySelector('.ckl-last-kept');   // the completion line, then the step head under it (#825 S-3)
+          log.scrollTop = keptEl ? Math.max(0, keptEl.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 4) : log.scrollHeight;
+          }
+        }
         else if (!firstBuild && advanced && !cklState.userScrolled) {
           /* SCROLL THE LOG, NOTHING ELSE (#612). `scrollIntoView` walks up and scrolls EVERY
            * scrollable ancestor, so with the checklist hosted in a content-sized pane it moved
@@ -5866,7 +6895,7 @@
            * so the outer container snapped to the top. The pane owns its height (the instructor pane, wt-headerless),
            * which removes the outer scroller; this makes the step-advance scroll incapable of
            * reaching an ancestor even if a future layout reintroduces one. */
-          var act = log.querySelector('.ckl-active');
+          var act = cklActiveRow(log);
           if (act) {
             var top = act.offsetTop - log.offsetTop;
             var bot = top + act.offsetHeight;
@@ -6021,11 +7050,21 @@
   var cklWhenLatch = Object.create(null);
   function cklHlWhenMet(st, ck, head) {
     var e = st.accs[head], k = ck.procedure_id + '#' + ck.step_index + '/' + head;
+    /* NO CUE WHILE RODS MOVE, AND A MOVE TAKES THE LATCH BACK (#824 critic round 1). Every `hl_when` is a 1/M plot
+     * cue, and a point taken with the bank moving is not a point. MEASURED (routes harness, startup 8a recovery,
+     * seed 42): the STARTUP RATE tile swings through +0.017 mid-INSERT at bank 210 with SOURCE RANGE 28,626, and a
+     * latch taken there pulsed Plot point for the whole recovery (a plot on it predicted 212 against a true 207).
+     * Gated by verify_e2e_ui (#824 glow-probe step 5): dark while the bank moves, and still dark after it stops where
+     * the cue reads false — each half of this line, deleted, turns its own assert red. */
+    var rg = cklSnap && cklSnap.control_state && cklSnap.control_state.rod_groups;
+    if (rg && rg.some(function (g) { return g && g.moving; })) { delete cklWhenLatch[k]; return false; }
     if (cklWhenLatch[k]) return true;
     var IL = RD.InstructorLayer;
     if (!cklSnap || !IL || !IL.prototype._grade) return true;   // cannot tell: never hide a press
     var met = false;
-    try { met = !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, cklSnap, e.hl_when).met; }
+    /* AN ARRAY IS AN AND (#824): every condition must hold. No pool row uses an array today — startup 8b is the single
+     * band STARTUP RATE 0 to +0.035; the motion rule above is what keeps its pulse dark through 8a's recovery insert. */
+    try { met = [].concat(e.hl_when).every(function (c) { return !!IL.prototype._grade.call({ _predMet: IL.prototype._predMet }, cklSnap, c).met; }); }
     catch (x) { return true; }
     if (met) cklWhenLatch[k] = true;
     return met;
@@ -6447,6 +7486,70 @@
     var lg = document.querySelector('.strip-chart'); if (lg) lg.classList.add('instr-glow');   // cleared with the beat's highlight
   }
 
+  /* ---- WALKTHROUGH CHART PRESET (#670 redesign, OWNER RULING 2026-10-14). A walkthrough step may
+   * author `trend: [series ids]` and/or `window: <seconds>`; from that step on (the latest step at
+   * or before the current one wins) the strip chart shows those series and that window, pinned
+   * against the speed ladder until the player picks a rung themselves. Borrowed like
+   * applyInstrTrend: saved on the first preset, put back when the walkthrough ends. A procedure
+   * that authors neither field is untouched. */
+  var cklChart = { saved: null, key: null, pin: 0 };
+  /* THE LIT RUNG FOLLOWS THE PIN (quality pass 2026-10-14). The ladder's `on` button is what the
+   * player reads as the chart's width, and syncChartWindows takes the rung from it. Pinning 30 min
+   * at 10x/60x (no 30 min rung there) left 5m or 15m lit over a 30-minute axis, and restore then
+   * picked whichever rung that was. Light the rung equal to `win` (none when there is none), and
+   * return the index lit before, so restore can put the player's rung back. */
+  function cklLightRung(win, idx) {
+    var btns = document.querySelectorAll('#graphWindow [data-win], #chartOptsWin [data-win]'), was = -1, seg = $('graphWindow');
+    if (seg) [].forEach.call(seg.querySelectorAll('[data-win]'), function (b, i) { if (b.classList.contains('on')) was = i; });
+    [].forEach.call(btns, function (b) {
+      var i = [].indexOf.call(b.parentNode.querySelectorAll('[data-win]'), b);
+      b.classList.toggle('on', idx != null ? i === idx : +b.getAttribute('data-win') === win);
+    });
+    return was;
+  }
+  function restoreCklChart() {
+    var sv = cklChart.saved;
+    cklChart = { saved: null, key: null, pin: 0 };
+    if (!sv) return;
+    ui.series = sv.series; ui.seriesSide = sv.side; ui.window = sv.window; ui.windowAuto = sv.windowAuto;
+    if (sv.rung != null && sv.rung >= 0) cklLightRung(0, sv.rung);   // the player's rung, before the pin moved the light
+    lastWinSpeed = null;
+    syncChartWindows((latest && latest.metadata && latest.metadata.time_acceleration) || 1);
+    instrTrendRedraw();
+  }
+  function applyCklChart(s) {
+    var ck = s && s.instructor && s.instructor.checklist;
+    var pr = ck && ((RD.MANUAL_PROCEDURES || {})[ui.engineKey] || []).filter(function (x) { return x.id === ck.procedure_id; })[0];
+    var tr = null, win = 0;
+    if (pr && pr.steps) {
+      var last = ck.complete ? pr.steps.length - 1 : Math.min(ck.step_index, pr.steps.length - 1);
+      for (var k = 0; k <= last; k++) { if (pr.steps[k].trend) tr = pr.steps[k].trend; if (pr.steps[k].window) win = pr.steps[k].window; }
+    }
+    /* THE ACTIVE STEP'S `pair: [a, b]` OWNS THE TOP TWO LANES (lower power 2 review, 2026-10-15): drawChart never
+     * demotes a pair series to a numeric row while another can go, and stacks the pair first, in pair order. MEASURED,
+     * Edge 1600x1000: two lanes fit, so lower power 2's Tavg and raise power 4's TAVG / TREF drew no trace. */
+    var stNow = pr && pr.steps && !ck.complete ? pr.steps[Math.min(ck.step_index, pr.steps.length - 1)] : null;
+    var pairNow = stNow && Array.isArray(stNow.pair) ? stNow.pair.slice(0, 2) : null;
+    if (String(pairNow) !== String(cklChart.pair || null)) { cklChart.pair = pairNow; if (tr || win) instrTrendRedraw(); }
+    if (!tr && !win) { if (cklChart.saved) restoreCklChart(); return; }
+    var key = pr.id + '|' + (tr || []).join(',') + '|' + win;
+    if (key === cklChart.key) return;
+    if (!cklChart.saved) cklChart.saved = { series: Object.assign({}, ui.series), side: Object.assign({}, ui.seriesSide), window: ui.window, windowAuto: ui.windowAuto, rung: null };
+    cklChart.key = key;
+    if (tr) {
+      var next = {};
+      tr.forEach(function (id) { if (seriesById(id)) next[id] = true; });
+      ui.series = next; ui.seriesSide = {};
+    }
+    if (win) {
+      cklChart.pin = win; ui.window = win; ui.windowAuto = false;
+      var was = cklLightRung(win);
+      if (cklChart.saved.rung == null) cklChart.saved.rung = was;
+      CHART_RECORD_SEC = Math.max(CHART_RECORD_SEC, win);
+    }
+    instrTrendRedraw();
+  }
+
   // ---- Instructor highlight (Gameplay §5) — glow the control the current beat /
   // follow step points at, auto-revealing the tab or view that hides it (F8 fix).
   var lastHighlightKey = null;
@@ -6763,9 +7866,16 @@
     var b = $('mainMenuBtn'); if (!b || !tip) return;
     var bb = b.getBoundingClientRect(), tb = tip.getBoundingClientRect();
     if (!bb.width || !tb.width) return;
-    tip.style.setProperty('--mm-arrow-x', Math.round(bb.left + bb.width / 2 - tb.left) + 'px');
-    var par = tip.offsetParent;   // the tip is an overlay (#818): sit it right under the button row
-    if (par) tip.style.top = Math.round(bb.bottom - par.getBoundingClientRect().top + 2) + 'px';
+    /* The ▲ is hidden (CSS): below the speed bar it sat under 600x and read as pointing at it. Main Menu wears a ring instead. */
+    var par = tip.offsetParent;   // the tip is an overlay (#818): sit it under the button row
+    /* ...AND UNDER THE SPEED BAR (S-4, #653). The speed bar starts ~10 px below the tools row and
+     * Main Menu sits right above its 60x / 600x buttons, so a bubble hugging the tools row covered
+     * ▶ and all six [data-speed] buttons for 6 s (MEASURED 1600x1000: tip 1243,93 338x34 over
+     * y 98-128); a layman read the running 1x clock as stopped, pressed ▶, and paused the plant.
+     * The ▲ keeps the button's column; the bubble clears the transport controls. */
+    var bottom = bb.bottom, sel = '#playBtn,[data-speed]', ctl = document.querySelectorAll(sel);
+    for (var i = 0; i < ctl.length; i++) { var cb = ctl[i].getBoundingClientRect(); if (cb.width && cb.bottom > bottom) bottom = cb.bottom; }
+    if (par) tip.style.top = Math.round(bottom - par.getBoundingClientRect().top + 2) + 'px';
   }
   function closeMissionSelect() {
     closeModal('missionOverlay');
@@ -6774,8 +7884,9 @@
     var tip = $('mainMenuTip'); if (!tip) return;
     tip.hidden = false;
     aimMainMenuTip(tip);
+    var mmb = $('mainMenuBtn'); if (mmb) mmb.classList.add('mm-ring');
     clearTimeout(missionTipT);
-    missionTipT = setTimeout(function () { tip.hidden = true; }, 6000);
+    missionTipT = setTimeout(function () { tip.hidden = true; if (mmb) mmb.classList.remove('mm-ring'); }, 6000);
     markSeen('session');
   }
   // Called whenever something that the mission window displays has changed
@@ -8073,10 +9184,26 @@
   // through, every reachable checkpoint sat off the left edge and the picker had
   // nothing to click. The traces then occupy only the right-hand sliver, which is
   // honest: chartBuf keeps CHART_RECORD_SEC of trend and no more.
+  /* THE WINDOW FITS THE DATA (quick win 3, owner 2026-10-10: at 60x the rung jumped to 1 h and a
+   * change a minute old was a hairline). Until the player clicks a rung, the shown window is the
+   * smallest step that keeps the time since their last command at or under half the width
+   * (>= 1 min), CAPPED by the rung the speed rule picked (ui.window) -- so it opens at 1 min and
+   * widens as the plant is watched. A click on 1m/5m/10m/30m (or in chart settings) sets
+   * ui.windowAuto = false and that choice stands. Steps, not a continuous slide, so the axis
+   * labels move only when the window does. */
+  var CHART_AUTO_STEPS = [60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200];
+  var chartLastActSim = 0;     // sim time of the player's last command (set in cmd())
+  function chartWindowEff(t1) {
+    if (!ui.windowAuto) return ui.window;
+    if (chartLastActSim > t1) chartLastActSim = 0;     // a rewind or a new plant: the clock went backwards
+    var want = Math.max(60, 2 * (t1 - chartLastActSim)), w = CHART_AUTO_STEPS[CHART_AUTO_STEPS.length - 1];
+    for (var i = 0; i < CHART_AUTO_STEPS.length; i++) if (CHART_AUTO_STEPS[i] >= want) { w = CHART_AUTO_STEPS[i]; break; }
+    return Math.min(ui.window, w);
+  }
   function chartExtent() {
     if (!chartBuf.length) return { t0: 0, t1: 0, span: 1 };
     var t1 = chartBuf[chartBuf.length - 1].t;
-    var t0 = t1 - ui.window;
+    var t0 = t1 - chartWindowEff(t1);
     var cps = ui.rewindPick && service ? (service.checkpoints || []) : [];
     if (cps.length) {
       var oldest = cps[0].metadata.sim_time;
@@ -8103,11 +9230,12 @@
   var chartDrawnKey = '';
   function chartDrawKey() {
     return chartBuf.length + ':' + (chartBuf.length ? chartBuf[chartBuf.length - 1].t : -1) +
-           ':' + ui.window + ':' + (RD.Events ? RD.Events.count() : 0) +
+           ':' + (chartBuf.length ? chartWindowEff(chartBuf[chartBuf.length - 1].t) : ui.window) + ':' + (RD.Events ? RD.Events.count() : 0) +
            ':' + (ui.rewindPick ? 1 : 0);
   }
   function drawChart() {
     chartDrawnKey = chartDrawKey();
+    var gwSeg = $('graphWindow'); if (gwSeg) gwSeg.classList.toggle('win-auto', !!ui.windowAuto);
     var svg = $('chartCanvas'), floats = $('chartFloats'), W = 400, H = 120;
     var active = prof().series.filter(function (s) { return ui.series[s.id]; });
     if (chartBuf.length < 2) {
@@ -8297,13 +9425,19 @@
     var order = pinOrder();
     var demoted = {};
     if (split.rows > 0) {
-      var over = split.rows;
-      for (var oi = order.length - 1; oi >= 0 && over > 0; oi--) {
-        if (!ui.series[order[oi]]) continue;
-        demoted[order[oi]] = true; over--;
-      }
+      var over = split.rows, keepPair = {};
+      (cklChart.pair || []).forEach(function (id) { keepPair[id] = true; });   // the active walkthrough step's pair (applyCklChart)
+      for (var pass = 0; pass < 2 && over > 0; pass++)   // pass 0 spares the pair; pass 1 only if the floor still needs it
+        for (var oi = order.length - 1; oi >= 0 && over > 0; oi--) {
+          if (!ui.series[order[oi]] || demoted[order[oi]] || (pass === 0 && keepPair[order[oi]])) continue;
+          demoted[order[oi]] = true; over--;
+        }
     }
     var traced = active.filter(function (s) { return !demoted[s.id]; });
+    if (cklChart.pair) {   // the pair stacks on top, in pair order, so its two traces sit adjacent
+      var pRank = function (s) { var i = cklChart.pair.indexOf(s.id); return i < 0 ? 99 : i; };
+      traced = traced.map(function (s, i) { return [s, i]; }).sort(function (a, b) { return (pRank(a[0]) - pRank(b[0])) || (a[1] - b[1]); }).map(function (x) { return x[0]; });
+    }
     var numeric = active.filter(function (s) { return demoted[s.id]; });
     var N = traced.length;
     var lastY = [], laneChrome = [], numRows = [];
@@ -8811,13 +9945,38 @@
       if (speedSeg) speedSeg.querySelectorAll('[data-speed].on').forEach(function (x) { x.classList.remove('on'); });
       lastSpeedSync = null;
     }
+    updatePausedVeil();
+  }
+  /* THE PAUSED VEIL (quick win 4, owner 2026-10-10). A stopped clock was a small amber icon:
+   * leaving the Quick tour with Escape left the plant frozen (measured: simTime 1.4 s and
+   * not moving, play button 'play paused') with nothing on the board to say so. The veil is a
+   * big "PAUSED" over the board whose Resume button presses the play button (the one source of
+   * truth). It shows ONLY for a plain stop -- the player's own pause, the tour's hold, a stop with
+   * no named reason. It stays off for a hold that already explains itself or covers the board:
+   * the walkthrough step's pause (its card says so), a modal, a rewind review, scenario content,
+   * a plant rebuild -- and while the tour is up. The veil passes clicks through except its
+   * button, so a paused plant can still be inspected and commanded. The 2026-08-11 removal of
+   * the old full-board curtain was about a pause the plant no longer starts in; it loads running. */
+  function updatePausedVeil() {
+    var area = $('viewArea'); if (!area || !service) return;
+    var el = $('pausedVeil');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'pausedVeil'; el.className = 'paused-veil';
+      el.innerHTML = '<button type="button" class="paused-veil-btn" id="pausedVeilBtn" aria-label="Paused. Resume the simulation">' +
+        '<span class="pv-word">PAUSED</span><span class="pv-go">▶ Resume</span></button>';
+      el.querySelector('button').addEventListener('click', function () { if (!service.running) $('playBtn').click(); });
+      area.appendChild(el);
+    }
+    var plain = Object.keys(pauseWhy).every(function (k) { return k === 'user'; });
+    el.classList.toggle('on', !service.running && plain && !tourOn);
   }
   function pauseSim(reason) {
     pauseWhy[reason || 'user'] = true;
     if (service.running) service.stop();
     syncPlayBtn();
   }
-  function clearPause(reason) { delete pauseWhy[reason || 'user']; }   // NOT a resume — see above
+  function clearPause(reason) { delete pauseWhy[reason || 'user']; updatePausedVeil(); }   // NOT a resume — see above
   function pausedFor(reason) { return !!pauseWhy[reason]; }
   function resumeSim() {
     pauseWhy = {};                       // the player said go: every hold is released
@@ -8987,6 +10146,20 @@
   function blockedText(m) {
     if (/ROD DRIVE BLOCKED/.test(m) && /LATCHED/.test(m))
       return "Rods can't move: the reactor trip is latched. Reset it first — press the SCRAM button on the ROD CONTROL card once it reads PRESS TO RESET.";
+    /* THE RESET-RELAY REFUSALS, IN THE PLAYER'S WORDS (TMI-2 layman pass 2026-10-14, S-3). The
+     * engine's text names the relay class, the source section and the actuating bistable's id
+     * ("Actuated on si_lo_pzr_press") — right for the Industry register and the gates, a riddle
+     * in Learning. What the player needs is how long, and to press it again. */
+    if (ui.register !== 'industry') {
+      var rly = /^(ECCS STOP|AFW STOP|MFW RESTORE) BLOCKED\b[\s\S]*?time-delay relay has (\d+) s to run/.exec(m);
+      if (rly) {
+        var btn = rly[1] === 'MFW RESTORE' ? 'RESTORE' : 'STOP';
+        var sig = rly[1] === 'ECCS STOP' ? 'Safety injection' : rly[1] === 'AFW STOP' ? 'The automatic aux feed start' : 'The feedwater isolation';
+        return 'Not yet: ' + btn + ' works in ' + rly[2] + ' s. ' + sig + ' cannot be reset in its first minute. Press ' + btn + ' again then.';
+      }
+      if (/^ECCS STOP BLOCKED\b[\s\S]*P-4/.test(m))
+        return 'Not yet: STOP works only once the reactor has tripped. Safety injection cannot be reset before that.';
+    }
     m = m.replace(/\s*\[sourced[^\]]*\]/g, '').replace(/\s{2,}/g, ' ').trim();
     return ui.register === 'industry' ? m : spellCodes(m);
   }
@@ -9011,6 +10184,7 @@
                                   : { type: 'error', code: 'COMMAND_ERROR', message: em };
     }
     var cmdT = latest && latest.metadata ? latest.metadata.sim_time : 0;
+    if (c && c.action !== 'instructor_interact' && !(r && (r.type === 'blocked' || r.type === 'error'))) chartLastActSim = cmdT;   // QW3: the player acted
     diag.command(cmdT, c, !!(r && r.type === 'blocked'), !!(r && r.type === 'error'));
     // The operator half of the SOE stream (#437). Actor is KNOWN here, not inferred:
     // this is the player acting. Blocked commands are dropped inside command().
@@ -9429,7 +10603,13 @@
       end: function () {
         if (ended) return;
         ended = true;
-        if (mission) ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: 0 });
+        // An opener files the beat it came to rest on, as End does: beat 0 here hid where 12 of
+        // the first 21 opener abandons happened (all tab closes, 2026-10).
+        if (mission) {
+          var op = mission.openerBeat && RD.OPENERS && RD.OPENERS[mission.id];
+          var beat = op ? Math.max(0, op.beats.map(function (b) { return b.id; }).indexOf(mission.openerBeat)) : 0;
+          ev('mission_abandon', { id: mission.id, seconds: since(mission.at), beat: beat });
+        }
         // A walkthrough still running when the tab goes away never sees another tick, so
         // without this the most interesting runs — the abandoned ones — end in silence.
         this.walkthroughEnd('left');
@@ -9824,16 +11004,15 @@
       document.querySelector('.plant-area').appendChild(t);
     }
     t.textContent = msg;
-    /* ABOVE THE SCANNER, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
+    /* INSIDE THE BOTTOM ROW, NOT OVER THE TILES (#818 review). At the top of the plant area it covered
      * the average-temperature, pressurizer-level, pressure and subcooling tiles (measured at
-     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It
-     * now sits just above the scanner bar, over the lower end of the alarm list; measured, it
-     * overlaps no board item at those three sizes. Re-read on every show: the scanner can grow. */
+     * 1366x768, 1600x1000 and 1920x1080) — the readings a player checks right after a refusal. It sat
+     * just above the scanner bar when the scanner was the plant area's last child; the scanner moved
+     * above .bottom-row on 2026-11-05 (owner), so the toast now rides the plant area's floor, over the
+     * lower end of the chart / alarm list, and above the (expanded) scanner it overlays. */
     try {
-      var pa = t.parentNode.getBoundingClientRect(), sc = $('scannerPanel');
-      var scTop = sc && sc.offsetParent ? sc.getBoundingClientRect().top : pa.bottom;
       t.style.top = 'auto';
-      t.style.bottom = Math.max(8, Math.round(pa.bottom - scTop + 8)) + 'px';
+      t.style.bottom = '8px';
     } catch (e) { /* layout unavailable: the stylesheet's top placement stands */ }
     t.className = 'app-toast show' + (kind === 'error' ? ' error' : '');
     if (toastTimer) clearTimeout(toastTimer);
@@ -9962,7 +11141,17 @@
       var seg = btn.closest('.seg'); seg.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); btn.classList.add('on');
     });
     $('playBtn').addEventListener('click', function () {
-      if (service.running) pauseSim('user'); else resumeSim();
+      /* PLAY ON A HELD WALKTHROUGH STEP IS CONTINUE (TMI-2 layman pass 4 review, 2026-10-15). The step's
+       * hold (#694 `pause`, `pause_on_met`) exists so the next event does not play out under this card, and
+       * resumeSim() escaped it: it clears every hold, its set_speed render re-took 'walkthrough' while the
+       * clock was still stopped, then start() ran the plant with the hold still named (measured: 9.0
+       * plant-s in 10 s at 1x on step 2, `paused` true throughout). Playing a held step now does what its
+       * lit Continue does, so the card moves on with the clock. */
+      var heldCont = !service.running && pausedFor('walkthrough') && document.querySelector('#cklRun [data-ckl-check]');
+      if (service.running) pauseSim('user');
+      else if (heldCont && !heldCont.disabled) { clearPause('user'); heldCont.click(); }
+      else if (pausedFor('walkthrough')) { /* held, and nothing to continue: stay held */ }
+      else resumeSim();
     });
     $('speed').addEventListener('click', function (e) {
       var b = e.target.closest('[data-speed]'); if (!b) return;
@@ -9999,6 +11188,11 @@
     // the plant display itself (#pdOverlaySeg). Register + physOverlay keep
     // their defaults; stack still accepts set_register for tests.
     $('unitsSeg').addEventListener('click', function (e) { var b = e.target.closest('[data-units]'); if (!b) return; applyUnitsMode(b.getAttribute('data-units')); });
+    ui.calloutSet = calloutPref();
+    ui.callout = ui.calloutSet === true;
+    syncCalloutSeg();
+    var cseg = $('calloutSeg');
+    if (cseg) cseg.addEventListener('click', function (e) { var b = e.target.closest('[data-callout]'); if (b) { var cv = b.getAttribute('data-callout'); setCalloutPref(cv === 'on' ? true : cv === 'off' ? false : null); } });
     var aseg = $('attnSeg');
     if (aseg) aseg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-attn]'); if (!b) return;
@@ -10030,7 +11224,7 @@
     if (tabBody) tabBody.addEventListener('click', function (e) {
       if (e.target.closest('.plot-cell')) e.stopPropagation();
     }, true);
-    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); chartRange = {}; drawChart(); });
+    $('graphWindow').addEventListener('click', function (e) { var b = e.target.closest('[data-win]'); if (!b) return; ui.window = +b.getAttribute('data-win'); ui.windowAuto = false; chartRange = {}; drawChart(); });
 
     /* Redraw on RESIZE — the lane split reads the live plot height, but drawChart only ran
      * on the next snapshot tick (never, if paused), so a splitter drag or window resize
@@ -10053,7 +11247,7 @@
     $('coFilter').addEventListener('input', applyCsFilter);
     $('chartOptsWin').addEventListener('click', function (e) {
       var b = e.target.closest('[data-win]'); if (!b) return;
-      ui.window = +b.getAttribute('data-win');
+      ui.window = +b.getAttribute('data-win'); ui.windowAuto = false;
       chartRange = {};
       // Keep the on-chart ladder in step — they are two views of one setting.
       var src = $('graphWindow').querySelectorAll('[data-win]');
@@ -10217,7 +11411,21 @@
     // Level Complete actions (Continue / Retry / Rewind) render inside the card.
     $('instructorCard').addEventListener('click', function (e) {
       var cb = e.target.closest('[data-chatbtn]');
-      if (cb) { chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return; }
+      if (cb) {
+        /* "SHOW ME" ANSWERS AT ONCE (quick win 7): the do-it-for-me step takes ~1.5 s of plant time
+         * before the instructor's next line appears, and until then the press looked dead. Acknowledge
+         * on the press itself -- the button (and the callout's mirror of it) reads "Doing it..." and
+         * goes inert. The next render re-keys the buttons and replaces them; if nothing does within 4 s
+         * (a refused step) the label is handed back so it can never strand. */
+        if (cb.getAttribute('data-chatbtn') === 'show_me') {
+          [].forEach.call(document.querySelectorAll('[data-chatbtn="show_me"]'), function (sb) {
+            var was = sb.textContent;
+            sb.textContent = 'Doing it…'; sb.disabled = true; sb.setAttribute('aria-busy', 'true');
+            setTimeout(function () { if (sb.isConnected && sb.disabled) { sb.disabled = false; sb.textContent = was; sb.removeAttribute('aria-busy'); } }, 4000);
+          });
+        }
+        chatButtonAction(cb.getAttribute('data-chatbtn'), +cb.getAttribute('data-chatspeed') || 60); return;
+      }
       var pl = e.target.closest('.chat-line[data-point]');
       if (pl) { chatPoint(pl.getAttribute('data-point').split('|')); return; }   // re-show the line's pointer (#811)
       var ra = e.target.closest('[data-chatrevealall]');
@@ -11214,6 +12422,7 @@
     tourClearLive();
     if ($('tourRoot')) $('tourRoot').hidden = true;
     document.body.classList.remove('tour-active');
+    updatePausedVeil();   // the tour holds the clock and leaves it held (#818): say so once the tour is gone
   }
   /* `r` is a RECT, not an element, since #720 — a group step's spotlight is the union of its
    * members and there is no element whose box that is. */
@@ -12403,6 +13612,11 @@
         buildCsv: buildCsv,
         cmd: cmd,   /* #818 — a PLAYER command (service.handleCommand directly would skip the untouched-boot clear) */
         readAutosave: readAutosave,
+        /* #670 redesign — the walkthrough chart preset as the chart holds it, and the synoptic mode the
+         * live pair keys its Hard Rule 1 gate on; verify_tmi_callout reads and drives them. */
+        chart: function () { return { series: Object.keys(ui.series).filter(function (k) { return ui.series[k]; }).sort(), window: ui.window, windowAuto: ui.windowAuto, record: CHART_RECORD_SEC,
+          lit: (function () { var b = document.querySelector('#graphWindow [data-win].on'); return b ? +b.getAttribute('data-win') : null; })() }; },   // the ladder rung the player reads as the width
+        setDiagMode: function (m) { ui.diagMode = m; callout.key = null; },
       };
     }
     // Fine strip-chart sampling. The service calls this on a fixed SIM-time interval inside

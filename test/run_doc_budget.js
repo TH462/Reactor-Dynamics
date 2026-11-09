@@ -35,7 +35,10 @@ var path = require('path');
 var GREEN = '\x1b[32m', RED = '\x1b[31m', DIM = '\x1b[2m', BOLD = '\x1b[1m', RST = '\x1b[0m';
 
 var FILE = path.join(__dirname, '..', 'CLAUDE.md');
-var MAX_WORDS = 15000;   // measured 13,455 on 2026-08-06 (was 42,065 before the cut)
+var MAX_WORDS = 5700;    // measured 4,968 on 2026-10-18 after the prune (+~15 % headroom); was
+                         // 15,000 against 14,998 measured that morning, 13,455 on 2026-08-06,
+                         // 42,065 before the first cut. Lowering is allowed; raising is not —
+                         // the quotes live in Blueprint/RULINGS.md and procedure in .claude/skills/.
 var MAX_LINE  = 400;     // measured 164 (was 5,310 — the prose gate-baselines paragraph)
 var MAX_THEMES = 5;      // the file's own documented cap; it was running 7
 /* MAX_STANDING — the standing-procedure trap list *(OWNER RULING, 2026-08-10: selected "Cap at

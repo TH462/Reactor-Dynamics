@@ -44,7 +44,7 @@ Both startup trips must be blocked. Left live, the climb trips the reactor at 25
 
 ()2a. Check the TURBINE-GENERATOR card shows LATCH lit and TRIP not lit. If it reads TRIP, press LATCH.
 
-()2b. Check OUTPUT reads above 8 MW. If it stays at 0.0 MW, set LOAD to 10 MW.
+()2b. Check OUTPUT reads 8 MW or more. If it stays at 0 MW, set LOAD to 10 MW.
 
 Suggested time warp: 1×.
 
@@ -150,6 +150,8 @@ Suggested time warp: 1×.
 
 ()6b. Wait for OUTPUT to reach 75 MW. AVG COOLANT TEMPERATURE sags meanwhile; the next line answers it.
 
+Note: Pressurizer Pressure Low can light here too: expected. It clears as the pulls warm the water.
+
 Suggested time warp: 10×, while OUTPUT climbs.
 
 ()6c. If AVG COOLANT TEMPERATURE reads below 566 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 566 °F or more, about 30 steps. Otherwise leave the rods.
@@ -196,9 +198,9 @@ Above 103 % power the plant stops the rods; at 115 % it trips the reactor. 100 M
 
 
 
-8. Take the last stage to full load and settle the temperature on 578 °F.
+8. Take the last stage to full load and settle the temperature near 580 °F.
 
-*578 °F is this plant's full-power temperature.*
+*580 °F is this plant's full-power program temperature.*
 
 ()8a. Set LOAD to 100 MW.
 
@@ -212,7 +214,7 @@ Suggested time warp: 10×, while OUTPUT climbs.
 
 Suggested time warp: 5×.
 
-Note: Stop at 573 °F: the boron still arriving takes it to about 578 °F in step 9. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
+Note: Stop at 573 °F: the boron still arriving takes it to about 580 °F in step 9. After a slow climb the boron has already arrived, and step 9 has you withdraw to 577 °F. If CONTROL ROD POSITION stops moving during a pull, power passed the 103 % rod stop: wait for REACTOR POWER to settle under 103 %, then pull again.
 
 ()8d. Check CONTROL ROD POSITION reads below 600, not on its top stop.
 
@@ -234,7 +236,9 @@ REACTOR POWER settles near 101 %. The control bank ends part-way out, because bo
 
 ()9b. Check BORON CHEM reads 663 ppm or below.
 
-()9c. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
+()9c. If BORON CHEM reads 663 ppm or below and AVG COOLANT TEMPERATURE under 577 °F, withdraw 5 steps at MED a plant-minute apart until it reads 577 °F.
+
+()9d. Hold INSERT 3 steps at a time whenever AVG COOLANT TEMPERATURE rises above its band, until it holds between 563 and 592 °F.
 
 Suggested time warp: 5×.
 
@@ -271,7 +275,7 @@ each step's `a` action, word for word):
 5. Take the second stage to 50 MWe the same way.
 6. Take the third stage to 75 MWe the same way.
 7. Take the fourth stage to 90 MWe with a smaller pull.
-8. Take the last stage to full load and settle the temperature on 578 °F.
+8. Take the last stage to full load and settle the temperature near 580 °F.
 9. Confirm full power, with the boron dilution done.
 10. Start giving back the reactivity xenon takes, rods first.
 11. Give boron its first small dose as xenon builds.

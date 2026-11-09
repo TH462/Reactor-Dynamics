@@ -102,6 +102,15 @@
       desc: 'The passive 📋 walkthrough: a procedure ticked off against the plant as it sits.',
       soon: 'Live walkthroughs are in final review. The procedures themselves are readable now in the operator\'s manual.',
     },
+    /* The HOME-PAGE link to lab/ (the Atomic Sandbox, separately built; owner 2026-11-06: on the home page,
+     * not in the simulator's Main Menu). Only the link is gated: /lab/ itself is served on every channel.
+     * Preview until the owner has played it. */
+    lab: {
+      label: 'Atomic Sandbox',
+      stage: 'preview',
+      desc: 'The home-page link (index.html) to the experimental neutron lab at /lab/.',
+      soon: 'The Atomic Sandbox, an experimental neutron lab, is in review and is not yet linked from the home page.',
+    },
   };
 
   // ITEMS — one entry per piece of playable content, `kind:id`. `kind` matters:

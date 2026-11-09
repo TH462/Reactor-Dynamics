@@ -4514,6 +4514,11 @@ time rather than summarized:
 - After a reset, "**all automatic SI actuation signals are blocked**" — the re-arm block.
   (The manual-actuation pushbutton that re-arms the real circuit is declared unmodeled;
   the block clears here when the live signal drops — a recovered plant re-arms.)
+  **SUPERSEDED for SI by `a06c449c` (2026-10-14):** the same paragraph of WTSM 12.3.2.3 goes on
+  "*... until the reactor trip input to the reset circuit (permissive P-4) is cleared by closing the
+  reactor trip breakers*". The SI block now clears only on `!pr.reactor_trip`; a containment-pressure
+  noise dip under 3.5 psig had been clearing it and re-latching SI 2.0 s later (5 of 5 seeds).
+  AFAS, FWI and CSE keep the live-signal re-arm described above.
 
 **The build.** `pwr2_protection` grows, per function (SI / AFAS / FWI): a LIVE-signal flag
 (the actuating condition now, latch aside), a latch-age timer against `RESET.delay_s = 60`
