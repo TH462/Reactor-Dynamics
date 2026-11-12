@@ -1,5 +1,37 @@
 /* run_pwr2_coredamage_stack.js — DOES THE PLANT A PLAYER IS HANDED REACH CORE DAMAGE? (#802)
  *
+ * ⚠⚠ RE-STATED 2026-11-12 FOR THE CORE HEAT-UP PHYSICS (owner: "add a proper meltdown ability to
+ * the physics"). READ THIS BLOCK FIRST; the notes below it describe the gate as it stood until
+ * then and are kept as the record of what was measured on the homogeneous plant.
+ *
+ * WHAT THE OLD GATE ASSERTED: leg A (large break + station blackout + auxiliary-feed failure)
+ * dries its generator, loses its heat sink, and only THEN heats and damages (~5,450 s); leg B
+ * (the same break and blackout with auxiliary feed) "never dries and never damages", so the
+ * turbine-driven auxiliary feed pump is "the entire difference".
+ * WHAT WAS WRONG WITH THAT PLANT, not with the gate: a tripped pump never came to rest and the
+ * homogeneous loop thermosiphoned STEAM through the generator, so a core with 0.3 % of its
+ * inventory left was cooled like a gas reactor for as long as the secondary stayed wet.
+ * MEASURED on the new physics, same fixture, same seed: BOTH old legs latch damage at 676 s,
+ * with the generator's bundle still fully wetted (mass fraction 1.06). A large break with no
+ * alternating current has no injection and no water; whether its generator is fed is not what
+ * decides it. Contrasts 1, 2 and 5 of the old leg B, and links 1 and 2 of the old leg A, are
+ * WITHDRAWN as artifacts of that circulation -- not re-banded.
+ * THE OLD FORM AGAINST THE OLD BEHAVIOUR: it passed 11/11 on the tree before this change
+ * (BASELINES), so the rewrite is of the claim, not of a gate that was already failing.
+ *
+ * WHAT IT ASSERTS NOW. LEG A, the unmitigated break (large_loca + station_blackout): the loop
+ * empties -> the loop STALLS (rotor at rest, flow under 1 % of rated) -> the cladding reaches
+ * the 1800 degF on-ramp and the reaction ignites -> damage latches; the order holds and the
+ * plant is still being stepped at the latch. LEG B, the contrast (large_loca alone, the buses
+ * live): injection keeps the cladding under the on-ramp and cooling, and nothing damages. THE
+ * STATION BLACKOUT IS NOW THE WHOLE DIFFERENCE, which is the claim a large break supports.
+ * NOT ASSERTED ANY MORE, and owed its own ride: that losing the HEAT SINK alone (blackout +
+ * auxiliary-feed failure, no break) reaches damage. On an intact loop that is hours of
+ * boil-down, past this runner's budget.
+ * The on-ramp and the ignition bar are 25 s apart on this ride and their order is not asserted:
+ * the 0.5 % bar was swept on the old trajectory and the reacting surface is now the hot region's
+ * temperature on the whole core's area (pwr2_reactor, declared).
+ *
  * The full-stack counterpart to `run_pwr2_coredamage.js`, and the pair is the same split
  * `run_meltdown` / `run_meltdown_stack` draws on the retired engine. That gate is Layer 5,
  * library-direct: it wires a break, a reactor and a damage model by hand, with NO SECONDARY AT
@@ -164,6 +196,12 @@ if (!(DG.TMI.onset_f < ONRAMP_F && ONRAMP_F < DG.LIM.pct_limit_f)) {
  * rated at 5,231.3 s, so the bar is nowhere near the top of the range either. */
 var IGNITE_PCT = 0.5;
 
+/* THE NEW CHAIN'S TWO BARS (2026-11-12). EMPTY: 20 % of nominal inventory -- MEASURED on this ride,
+ * 40.5 % at 60 s and 8.4 % at 120 s, so 20 sits mid-fall and is not near either leg's floor.
+ * STALL: the rotor at rest AND the loop flow under 1 % of rated -- the lower edge of pwr2_fuel's
+ * own separation band (`froth_flow.lo`), read from that module rather than retyped. */
+var EMPTY_PCT = 20;
+var STALL_FRAC = RD.pwr2.fuel.OPEN.froth_flow.lo;
 var RATED_KW = RX.RATED_THERMAL_KW;
 var DRYOUT_MF = SG.SG.dryout_mass_frac;       /* read, never retyped */
 
@@ -213,7 +251,7 @@ function ride(failures) {
 
   var M = {}, lastRatioAbove1 = null, minRatioLate = Infinity, minWet = 1;
   var maxZirc = 0, maxZircAt = null, cladLatePeak = -Infinity;
-  var ratioEnd = null, wetEnd = 1, mfEnd = 1, cladEnd = 0, held = false;
+  var ratioEnd = null, wetEnd = 1, mfEnd = 1, cladEnd = 0, held = false, invNow = 100;
   function mark(k, t) { if (M[k] === undefined) M[k] = t; }
 
   /* settle, then inject. The loop guard carries an epsilon because `simTime` accumulates in
@@ -229,6 +267,11 @@ function ride(failures) {
     var t = svc.simTime;
     var ratio = obs.decay > 0 ? obs.duty / obs.decay : Infinity;
     if (obs.wet < 1) mark('dry', t);
+    var sysN = svc.engine.eng.sys;
+    invNow = 100 * sysN.M_total / svc.engine.eng.M_nominal;
+    if (invNow < EMPTY_PCT) mark('empty', t);
+    if (sysN.pumpTripped && sysN.omega <= 0 && sysN.mdot_loop < STALL_FRAC * RX.MDOT_RATED) mark('stall', t);
+    if (sysN.beyond_model === true) mark('held', t);
     if (ratio >= 1.0) lastRatioAbove1 = t;
     if (obs.cladPeak >= ONRAMP_C) mark('onramp', t);
     if (obs.zirc >= IGNITE_PCT) mark('ignite', t);
@@ -247,32 +290,27 @@ function ride(failures) {
   return { M: M, t_inj: t_inj, lastRatioAbove1: lastRatioAbove1, minRatioLate: minRatioLate,
            minWet: minWet, maxZirc: maxZirc, maxZircAt: maxZircAt, cladPeak: obs.cladPeak,
            cladLatePeak: cladLatePeak, ratioEnd: ratioEnd, wetEnd: wetEnd, mfEnd: mfEnd,
-           cladEnd: cladEnd, damaged: obs.damaged, held: held };
+           cladEnd: cladEnd, damaged: obs.damaged, held: held, invEnd: invNow };
 }
 
-/* ================= LEG A — the three-failure ride ======================================== */
-head('LEG A  large_loca + station_blackout + afw_failure, severity 1, ' + HORIZON + ' s ' +
-     '[the chain, link by link]');
-var A = ride(['large_loca', 'station_blackout', 'afw_failure']);
+/* ================= LEG A — the unmitigated break ======================================== */
+head('LEG A  large_loca + station_blackout, severity 1, ' + HORIZON + ' s [the chain, link by link]');
+var A = ride(['large_loca', 'station_blackout']);
 console.log('  injected at ' + A.t_inj.toFixed(2) + ' s   ' +
-            'dry ' + s1(A.M.dry) + ' | sink ' + s1(A.lastRatioAbove1) + ' | on-ramp ' +
-            s1(A.M.onramp) + ' | ignition ' + s1(A.M.ignite) + ' | latch ' + s1(A.M.latch));
+            'empty ' + s1(A.M.empty) + ' | stall ' + s1(A.M.stall) + ' | on-ramp ' +
+            s1(A.M.onramp) + ' | ignition ' + s1(A.M.ignite) + ' | latch ' + s1(A.M.latch) +
+            ' | held ' + s1(A.M.held));
 
-ck('LINK 1 — THE SECONDARY DRIES. The wetted fraction of the tube bundle falls below 1, which ' +
-   'is `pwr2_sg.js` reporting that the generator has boiled below its ' +
-   DRYOUT_MF.toFixed(5) + ' dryout mass fraction and the bundle is uncovering',
-   A.M.dry !== undefined && A.M.dry < HORIZON,
-   'wet < 1 first at ' + s1(A.M.dry) + ', reaching ' + A.minWet.toFixed(4) +
-   ' (mass fraction ' + A.mfEnd.toFixed(4) + ' at the horizon)');
+ck('LINK 1 — THE LOOP EMPTIES. Reactor coolant inventory falls below ' + EMPTY_PCT + ' % of nominal: ' +
+   'the break has the water, and with no alternating current nothing is putting it back',
+   A.M.empty !== undefined && A.M.empty < HORIZON,
+   'below ' + EMPTY_PCT + ' % at ' + s1(A.M.empty) + '; ' + A.invEnd.toFixed(2) + ' % at the horizon');
 
-ck('LINK 2 — THE HEAT SINK FAILS, AND DOES NOT COME BACK. Steam-generator duty divided by the ' +
-   'decay load crosses below 1.0 AFTER dryout has begun, and is still below it at the horizon ' +
-   '— the generator stops carrying the core\'s heat',
-   A.lastRatioAbove1 !== null && A.M.dry !== undefined &&
-   A.lastRatioAbove1 > A.M.dry && A.lastRatioAbove1 < HORIZON && A.ratioEnd < 1.0,
-   'last at or above 1.0 at ' + s1(A.lastRatioAbove1) + ' (dryout began ' +
-   (A.M.dry !== undefined ? (A.lastRatioAbove1 - A.M.dry).toFixed(1) + ' s earlier' : 'never') +
-   '); ratio ' + (A.ratioEnd === null ? '-' : A.ratioEnd.toFixed(4)) + ' at the horizon');
+ck('LINK 2 — THE LOOP STALLS. The tripped rotor comes to REST and the loop flow falls under ' +
+   (STALL_FRAC * 100) + ' % of rated: no pump, and no thermosiphon through a loop whose high point is steam ' +
+   '(pwr2_sources ROTOR_FRICTION / SIPHON) -- the two things that used to keep this core cold',
+   A.M.stall !== undefined && A.M.stall < HORIZON,
+   'rotor at rest and flow under ' + (STALL_FRAC * 100) + ' % at ' + s1(A.M.stall));
 
 ck('LINK 3 — THE CLADDING REACHES THE OXIDATION ON-RAMP. It crosses ' + ONRAMP_F + ' degF (' +
    ONRAMP_C.toFixed(1) + ' degC), the temperature Ginna UFSAR ch15 names as where the ' +
@@ -294,54 +332,44 @@ ck('LINK 5 — DAMAGE LATCHES. `fuel_damaged` goes true, which in `pwr2_damage.j
    'latched at ' + s1(A.M.latch) + ', ' + ((HORIZON - (A.M.latch || 0)) / 60).toFixed(1) +
    ' min inside the ' + (HORIZON / 60).toFixed(0) + '-minute horizon');
 
-ck('LINK 6 — THE ORDER HOLDS, and the plant is still being STEPPED when it does. Dryout precedes ' +
-   'the heat-sink failure, which precedes the on-ramp, which precedes ignition, which precedes ' +
-   'the latch — the chain is causal, not five things that happened to occur',
-   A.M.dry !== undefined && A.lastRatioAbove1 !== null && A.M.onramp !== undefined &&
+ck('LINK 6 — THE ORDER HOLDS, and the plant is still being STEPPED when it latches. The loop ' +
+   'empties, then stalls, then the cladding reaches the on-ramp and the reaction ignites, then ' +
+   'the latch — and the beyond-model hold, if it comes at all, comes AFTER the latch',
+   A.M.empty !== undefined && A.M.stall !== undefined && A.M.onramp !== undefined &&
    A.M.ignite !== undefined && A.M.latch !== undefined &&
-   A.M.dry < A.lastRatioAbove1 && A.lastRatioAbove1 < A.M.onramp &&
-   A.M.onramp < A.M.ignite && A.M.ignite < A.M.latch && A.M.latch < HORIZON && !A.held,
-   s1(A.M.dry) + ' -> ' + s1(A.lastRatioAbove1) + ' -> ' + s1(A.M.onramp) + ' -> ' +
-   s1(A.M.ignite) + ' -> ' + s1(A.M.latch) + '; beyond_model ' + (A.held ? 'LATCHED' : 'never'));
+   A.M.empty < A.M.stall && A.M.stall < A.M.onramp && A.M.stall < A.M.ignite &&
+   A.M.onramp < A.M.latch && A.M.ignite < A.M.latch && A.M.latch < HORIZON &&
+   (A.M.held === undefined || A.M.held > A.M.latch),
+   s1(A.M.empty) + ' -> ' + s1(A.M.stall) + ' -> ' + s1(A.M.onramp) + ' / ' +
+   s1(A.M.ignite) + ' -> ' + s1(A.M.latch) + '; beyond_model ' + (A.M.held === undefined ? 'never' : 'at ' + s1(A.M.held)));
 
 /* ================= LEG B — the contrast ================================================= */
-head('LEG B  large_loca + station_blackout ONLY, same seed, same horizon ' +
-     '[the auxiliary feedwater failure is the whole difference]');
-var B = ride(['large_loca', 'station_blackout']);
+head('LEG B  large_loca ONLY, same seed, same horizon [the station blackout is the whole difference]');
+var B = ride(['large_loca']);
 
-ck('CONTRAST 1 — IT NEVER DRIES. The wetted fraction never leaves 1 and the generator holds a ' +
-   'mass fraction far above the ' + DRYOUT_MF.toFixed(5) + ' dryout threshold: the turbine-driven ' +
-   'auxiliary feed pump a blackout leaves running replaces the boil-off',
-   B.minWet >= 1 && B.M.dry === undefined && B.mfEnd > DRYOUT_MF * 1.5,
-   'minimum wetted fraction ' + B.minWet.toFixed(4) + '; mass fraction ' + B.mfEnd.toFixed(4) +
-   ' at the horizon against a ' + DRYOUT_MF.toFixed(5) + ' threshold');
+ck('CONTRAST 1 — THE SAME LOOP EMPTIES. The break is the same break: inventory falls below ' +
+   EMPTY_PCT + ' % here too, so what follows is not a smaller casualty',
+   B.M.empty !== undefined && B.M.empty < HORIZON,
+   'below ' + EMPTY_PCT + ' % at ' + s1(B.M.empty) + '; ' + B.invEnd.toFixed(2) + ' % at the horizon');
 
-ck('CONTRAST 2 — THE HEAT SINK HOLDS. Past the reactor trip\'s own transient the duty never ' +
-   'falls below the decay load, for the whole ride: an equilibrium, not a slow loss',
-   B.minRatioLate >= 1.0 && B.ratioEnd >= 1.0,
-   'lowest duty/decay after 1,200 s is ' + B.minRatioLate.toFixed(4) + '; ' +
-   B.ratioEnd.toFixed(4) + ' at the horizon');
-
-ck('CONTRAST 3 — THE CLADDING NEVER REACHES THE ON-RAMP, and is COOLING. Its engine-step peak ' +
+ck('CONTRAST 2 — THE CLADDING NEVER REACHES THE ON-RAMP, and is COOLING. Its engine-step peak ' +
    'stays under ' + ONRAMP_F + ' degF and the second half of the ride is cooler than the peak ' +
    '— the positive half of the claim, so this is not a bare absence',
    B.cladPeak < ONRAMP_C && B.cladLatePeak < B.cladPeak,
    'peak ' + F(B.cladPeak) + ' degF; hottest after ' + (HORIZON / 2 / 60).toFixed(0) + ' min is ' +
    F(B.cladLatePeak) + ' degF, ending at ' + F(B.cladEnd) + ' degF');
 
-ck('CONTRAST 4 — NOTHING DAMAGES. `fuel_damaged` never latches, and the oxidation stays at its ' +
+ck('CONTRAST 3 — NOTHING DAMAGES. `fuel_damaged` never latches, and the oxidation stays at its ' +
    'intact-core background rather than merely failing to be measured',
    B.damaged === false && B.M.latch === undefined && B.maxZirc < IGNITE_PCT,
    'fuel_damaged ' + B.damaged + '; oxidation peaks at ' + B.maxZirc.toExponential(3) +
    ' % of rated, ' + (IGNITE_PCT / B.maxZirc).toFixed(0) + 'x under the ignition bar');
 
-ck('CONTRAST 5 — ONE FAILURE IS THE WHOLE DIFFERENCE. Same initial condition, same seed, same ' +
-   'horizon, same two casualties; adding `afw_failure` is what turns a plant that holds its ' +
-   'heat sink for two hours into one that reaches core damage',
-   A.M.dry !== undefined && A.damaged === true &&
-   B.M.dry === undefined && B.damaged === false,
-   'leg A dried at ' + s1(A.M.dry) + ' and latched at ' + s1(A.M.latch) +
-   '; leg B did neither in ' + (HORIZON / 60).toFixed(0) + ' minutes');
+ck('CONTRAST 4 — ONE FAILURE IS THE WHOLE DIFFERENCE. Same initial condition, same seed, same ' +
+   'horizon, same break; adding `station_blackout` -- no pumps to circulate, none to inject -- is ' +
+   'what turns a plant that rides the break out into one that reaches core damage',
+   A.damaged === true && B.damaged === false && A.M.empty !== undefined && B.M.empty !== undefined,
+   'leg A latched at ' + s1(A.M.latch) + '; leg B did not in ' + (HORIZON / 60).toFixed(0) + ' minutes');
 
 /* ================= verdict ============================================================== */
 console.log('\n' + '='.repeat(70));
