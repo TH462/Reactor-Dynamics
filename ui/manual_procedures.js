@@ -6623,8 +6623,8 @@
      *
      * A SECOND LEG ON THE SAME NIGHT, NOT A REWRITE OF `pwr_tmi2_incident`. That one is the
      * crew's four hours and the recovery, drawn as a board callout; this one is the causal
-     * chain only, in the right column (no `callout`), and it STOPS where the 1979 core damage
-     * began: relief valve open, injection off, pumps off. No block valve, no recovery.
+     * chain only, in the right column (no `callout`), and it STOPS at core damage: relief valve
+     * open, injection off, pumps off, cladding past 2,200 degF. No block valve, no recovery.
      *
      * EVERY CARD IS WHAT / WHY / NEXT: `text` (the action or the thing to watch), `why` (the
      * card's always-drawn Background, one or two sentences; no `aim`, so the reason is said once)
@@ -6637,17 +6637,18 @@
      * and Vol. I): the source corpus is not in the tree this was authored in, so no new
      * historical claim was added. Clocks are that chapter's.
      *
-     * ⚠ THE PLANT DOES NOT SHOW THE LAST LINK, AND THE LAST CARD SAYS SO. Measured full-stack
-     * 2026-11-12 (measure_stack, seed 4242, the crew's actions, block valve never closed, six
-     * plant-hours): core uncovered 93-96 % from one hour on, RCS inventory down to 7 %, and the
-     * cladding never above 626 degF (330 degC). The core is one homogeneous node and the loop
-     * keeps carrying steam through it (chapter 08 section 6.0). Step 10 states the 1979 outcome
-     * as history and the board's reading as the board's. */
+     * THE PLANT SHOWS THE LAST LINK SINCE THE CORE HEAT-UP PHYSICS (2026-11-12, OWNER: "add a
+     * proper meltdown ability to the physics"). Before it, the crew's actions left the core 93-96 %
+     * uncovered and the cladding at 626 degF for six plant-hours (a tripped pump never stopped and
+     * the homogeneous loop kept carrying steam through the generator). Now the pumps coast to
+     * rest, the siphon is broken by steam, and the uncovered fuel heats: step 11 is graded on it.
+     * TWO DECLARED DEPARTURES, both on the cards: the P-9 defeat (step 1) and the isolated
+     * accumulators (step 8). */
     {
       id: 'pwr_tmi2_meltdown', category: 'incident', manual_ref: 'PWR-E08',
       story_year: 1979,
       title: 'Three Mile Island Unit 2 — the chain of events to core damage',
-      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to the point serious core damage began. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 50 plant-minutes.',
+      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to the point serious core damage began. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 85 plant-minutes.',
       from: 'hot_full_power',
       prereq: [
         'Plant at Mode 1, At Power: REACTOR POWER near 100 % with the turbine on line (auto-checked).',
@@ -6729,14 +6730,28 @@
         { text: 'Open the AFW block valves: click the valve symbol above the AFW card.',
           control: 'AFW', target: 'STEAM GENERATOR LEVEL back above 5 %',
           why: 'Feedwater gives the heat a way out again. It does nothing about the stuck relief valve.',
-          ahead: 'For the next 40 plant-minutes the plant drains through the relief valve. The pumps keep a froth of steam and water moving through the core.',   // MEASURED 2026-11-12: step 8 lasts 42 plant-min on the typical route, 31 entered 120 s late per step
+          ahead: 'One thing is set up before the drain: this plant\'s accumulators are isolated.',
           story: { clock: '04:08:37' },
           cmd: { action: 'set_afw_block', open: true }, hold: 700,
           wait_speed: 60,
           accs: [{ cmd: { action: 'set_afw_block', open: true }, p: 'afw_blocked', op: '<', v: 1, label: 'AFW block valves open' },   // press OR position (#697)
                  { p: 'sg_level_pct', op: '>', v: 5, label: 'STEAM GENERATOR LEVEL back above 5 %' }],
           hl: ['AFW — Block Valve'], hl_watch: ['AFW', 'SG Level'] },
-        /* 8 — 04:10:37 (E56, first pump vibration alarm) to 05:13:37 (E99: "increasing vibration and
+        /* 8 — A SET-UP STEP, DECLARED, NOT A 1979 ACTION. MEASURED 2026-11-12 (full stack, the crew's actions,
+         * pumps secured at 50 plant-min): with the accumulators in service PRIMARY PRESSURE dips under their
+         * 665 psi each time the uncovered core stops making steam, they dump, and the cladding cycles
+         * 900-1,700 degF for eight plant-hours without reaching 2,200; isolated, the damage latch trips 34
+         * plant-min after the pumps stop. ⚠ "TMI-2's did not inject" is NOT in Manuals/08 and the corpus is
+         * not in this tree: UNVERIFIED, an evidence pass is owed before this card ships public. */
+        { text: 'Set-up, not a 1979 action: close the accumulator valve, the symbol just above the ACCUMULATORS tile.',
+          why: 'This plant\'s accumulators dump into the loop whenever pressure dips under 665 psi, and would re-wet the core for hours. TMI-2\'s flood tanks stayed out of it. Isolating them lets the 1979 outcome be seen.',
+          ahead: 'For the next 40 plant-minutes the plant drains through the relief valve. The pumps keep a froth of steam and water moving through the core.',   // MEASURED 2026-11-12: the drain step lasts 42 plant-min on the typical route
+          story: { clock: '04:08:37' },
+          control: 'Accumulator valve', target: 'ACCUMULATORS tile reads ISOLATED',
+          cmd: { action: 'close_accumulator_valve' }, hold: 20,
+          accs: [{ cmd: { action: 'close_accumulator_valve' }, p: 'accumulator_valve_open', op: '<', v: 0.5, label: 'ACCUMULATORS tile reads ISOLATED' }],
+          hl: ['Accumulator valve'], hl_watch: ['Accumulators'] },
+        /* 9 — 04:10:37 (E56, first pump vibration alarm) to 05:13:37 (E99: "increasing vibration and
          * decreasing flow and amperage"). The drain, watched at 60x. */
         { text: 'Watch RCS INVENTORY on the chart fall while PRESSURIZER LEVEL reads full, then RCP FLOW fall below 25 %.',
           why: 'Soon half the water is gone, and the one gauge the crew trusts for it says full. The pumps are moving more steam than water.',
@@ -6755,37 +6770,42 @@
           accs: [{ p: 'core_inventory_pct', op: '<', v: 50, label: 'RCS INVENTORY on the chart below 50 %' },
                  { p: 'pump_flow_pct', op: '<', v: 24.5, label: 'RCP FLOW below 25 %' }],   // 24.5: the tile rounds, so it reads 24 when this ticks. MEASURED 2026-11-12: the tile (the flow tap, not mass flow) reads 90 % at entry, 60 % at 30 plant-min, 24 % near 50, and levels off near 16 %
           hl_watch: ['Pressurizer Level', 'RCP ON/OFF', 'Reactor Vessel'] },
-        /* 9 — 05:13:37 and 05:41:37, E99/E111. One handswitch on this board. */
+        /* 10 — 05:13:37 and 05:41:37, E99/E111. One handswitch on this board. */
         { text: 'Press OFF on the RCP FLOW card, as the crew did.',
           crew: true,
           control: 'RCP ON/OFF', target: 'the reactor coolant pumps stopped',
-          why: 'Stopping the pumps was right for the pumps. It also ended the only forced flow through the core.',
-          ahead: 'In 1979 steam and water now separated: "natural circulation was blocked by steam", and the top of the core stood in steam.',
+          why: 'Stopping the pumps was right for the pumps. It also ended the only flow cooling the core.',
+          ahead: 'The pumps coast to a stop. With no flow, "natural circulation was blocked by steam": nothing carries the heat away, and the cladding starts to climb.',
           story: { clock: '05:41:37' },
           cmd: { action: 'set_rcp', running: false }, hold: 120,
           accs: [{ cmd: { action: 'set_rcp', running: false }, p: 'rcp_running', op: '<', v: 1, label: 'the reactor coolant pumps are OFF' },   // press OR the handswitch lamp (#697)
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'the pump cavitation alarm clears' }],
           hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF'] },
-        /* 10 — the end state. 06:18:37 E122 (block valve), E136 (radiation alarms), Vol. I p. 18. */
-        { text: 'Read the end state, then press Continue: relief valve open, injection off, pumps off, core uncovered.',
-          why: 'In 1979 serious core damage began here. The block valve that stops the leak was closed 2 hours 18 minutes in, too late for the fuel.',
-          note: 'This plant does not show the fuel heating: its core is modelled as one mixed volume, so Peak Clad Temp on the chart stays below 650 °F.',   // MEASURED 2026-11-12: 556-585 °F at this step on the routes played; 626 °F the six-hour maximum with the valve never closed
-          story: { clock: '06:11:37' },   // E119, the loop A hot leg off the top of its scale
-          trend: ['inventory', 'uncovered', 'clad_temp', 'pzr_level', 'porv'],
-          hold: 60,
-          /* THE PLAYER WHO DOES WHAT THE CREW DID NOT (critic round 1, 2026-11-12). MEASURED, routes gate,
-           * WR_OVERRIDE: block valve closed at step 8 entry -> RCS INVENTORY flattens at 85-88 % and this step
-           * stranded 150 plant-min; injection restarted -> inventory bottoms at 32 %, RCP FLOW never under 24.5 %. */
-          overtaken: { p: 'block_valve_open', op: '<', v: 1, or: [{ p: 'hpi_flow_normalized', op: '>', v: 0.02 }],   // the FLOW: a manual START delivers 0.13 with `hpi_active` still false (MEASURED 2026-11-12)
+        /* 11 — THE LAST LINK, AND THE PLANT NOW SHOWS IT (the core heat-up physics, 2026-11-12). 06:45:37 is
+         * E136, "Radiation alarms are now indicative of extensive fuel damage". 1,200 degF is GEND-061's
+         * onset of significant hydrogen generation; 2,200 degF is 10 CFR 50.46's cladding limit and this
+         * plant's fuel-damage latch (both in pwr2_damage.js). TIMES ARE THE PLANT'S: MEASURED on the routes
+         * below, not real-plant figures. */
+        { text: 'Watch Peak Clad Temp on the chart and the fuel in the vessel drawing pass 1,200 °F, then 2,200 °F.',
+          why: 'Above 1,200 °F the cladding reacts with the steam: it makes hydrogen and more heat, so the climb speeds up. 2,200 °F is the limit past which the fuel is counted as damaged.',
+          note: 'In 1979 the block valve was closed 2 hours 18 minutes in. The core was already damaged.',
+          story: { clock: '06:45:37' },
+          trend: ['clad_temp', 'uncovered', 'inventory', 'pzr_level', 'porv'],
+          hold: 2700,
+          wait_speed: 60,
+          wait_est_s: 2060,   // MEASURED 2026-11-12, live runtime, seed 42, typical route: 1,200 °F 879 s after entry (14.7 plant-min), the damage latch 2064 s (34.4)
+          /* THE TWO RECOVERIES, TAKEN HERE (critic round 1): the leak isolated or injection restarted -- the heat-up stops */
+          overtaken: { p: 'block_valve_open', op: '<', v: 1, or: [{ p: 'hpi_flow_normalized', op: '>', v: 0.02 }],
             label: 'the leak is isolated or injection is back on', on_card: true,
-            text: 'Overtaken: you closed the PORV block valve or restarted injection, and this core stays covered. The 1979 crew did neither for more than two hours.' },
-          accs: [{ p: 'core_uncovered_frac', op: '>', v: 0.8, label: 'Core Uncovered on the chart above 80 %' }],   // MEASURED 2026-11-12: 89-90 % at entry on the typical route, 92 % entered 120 s late; 90 % was the edge (#543)
+            text: 'Overtaken: you closed the PORV block valve or restarted injection. That is the recovery the 1979 crew reached too late.' },
+          accs: [{ p: 'clad_temp_c', op: '>', v: 648.9, label: 'Peak Clad Temp above 1,200 °F: hydrogen is being made' },
+                 { p: 'fuel_damaged', op: '>', v: 0, label: 'Peak Clad Temp above 2,200 °F: the fuel is damaged' }],
           hl_watch: ['Reactor Vessel', 'Relief Valve (PORV)', 'PORV Block Valve'] },
       ],
       guard: { never_melted: true },
-      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. Forced flow through the core ended.\n7. In 1979 the core then stood in steam and serious core damage began. The block valve was closed at 2 hours 18 minutes.\nNot shown on this plant: the fuel heating up. Its core is one mixed volume (manual chapter 08, section 6.0).',
-      route_alt: [{ overtaken: [8], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' },
-        { overtaken: [10], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' }],
+      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\nTwo things differ from 1979, both stated on the cards: this plant\'s turbine trip was kept from tripping the reactor, and its accumulators were isolated.',
+      route_alt: [{ overtaken: [9], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' },
+        { overtaken: [11], outcome: 'You broke the chain at its last link. With the leak isolated or injection restored, the cladding stops climbing. In 1979 the block valve was closed 2 hours 18 minutes in, after the damage had begun.' }],
     },
   ];
 
