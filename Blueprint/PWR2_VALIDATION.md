@@ -11025,3 +11025,110 @@ One line, and the field it needs now exists.
 checks are added: **P-7 === P-10** (the ruling's substance — two separately-correct literals is
 exactly how the pair drifted apart) and a 9 %-power high-level trip, which is the band the ruling
 opened. Injection-proved: `P7.frac` back to 0.10 turns those three red and nothing else.
+
+## 135. THE CORE HEATS WHEN FORCED FLOW IS LOST — A TRIPPED PUMP THAT NEVER STOPPED, A SIPHON THAT NEVER BROKE, AND ONE FUEL NODE THAT COULD NOT UNCOVER — 2026-11-12
+
+*(OWNER, 2026-11-12: "Once you are done with the walkthrough I want you to add a proper meltdown
+ability to the physics.")* This closes §83's "what is still missing after both: the cladding
+never heats while uncovered" on the path it was written about. Every number below is a full-stack
+ride from Hot Full Power (service → control layer → engine, seed 42 unless named) taken on
+2026-11-12; US customary first.
+
+### 135.1 What was measured before
+
+The TMI-2 sequence (anticipatory-trip defeat, loss of feedwater, stuck relief valve, auxiliary
+feed blocked then opened at 3.4 min, injection stopped at 2.8 min, pumps secured at 50 min, block
+valve never closed), six plant-hours: core **93–96 % uncovered**, inventory down to **7 %**,
+cladding never above **626 °F (330 °C)**. The cause was not the fuel model:
+
+| | measured |
+|---|---|
+| rotor speed, 40 min after the pump trip | **124 → 107 rad/s** — the coastdown was hydraulic only, and in steam the hydraulic load is gone |
+| loop flow with the pumps "off" | **33–60 kg/s (73–132 lb/s)** of steam, round the whole loop |
+| every loop node's void | **1.000** — the remaining water was in the pressurizer |
+| where the decay heat went | the steam generator, by single-phase steam circulation |
+
+A tripped pump that never comes to rest, pumping steam through a fed steam generator, is a
+gas-cooled reactor. Nothing downstream of that could heat.
+
+### 135.2 The four terms, and what each rests on
+
+All four are **exactly neutral in a single-phase plant at power** — by construction, and gated.
+
+| term | file | basis | what it does |
+|---|---|---|---|
+| rotor mechanical loss, **0.02** of rated torque | `pwr2_sources.js` `ROTOR_FRICTION` | **[open]** — no corpus figure for an RCP friction torque or time to rest | a tripped rotor stops: **132 s** in water, **656 s** in steam (was: never) |
+| the siphon factor, void **0.35 → 0.65** at the loop high point | `pwr2_sources.js` `SIPHON` | mechanism **sourced** — NUREG/CR-1250 Vol. II Pt 2 §II.A: *"As soon as all the pumps were stopped, circulation of coolant decreased drastically, because natural circulation was blocked by steam."* The band is **[open]** | the thermal-centre buoyancy head is multiplied by 1 → 0 as the steam generator primary node voids |
+| the vessel manometer | `pwr2_sources.js` `VESSEL` | **[derived]** — liquid in the downcomer against the core, over the active height `pwr2_fuel` derives (12.02 ft, 3.664 m) | carries the broken share of the head, weighted by the downcomer's liquid fraction, so injected water reaches a dry core and two columns of steam drive nothing |
+| the wet floor, **3,000 W/m²K** × liquid fraction | `pwr2_fuel.js` `h_wet` | **[derived, coefficients UNVERIFIED]** — Jens–Lottes at decay-heat flux; the corpus names the correlation and does not print it | a rod under water with no loop flow boils on its own surface instead of falling to the still-gas floor |
+
+Then the fuel itself, because one node cannot uncover (measured with only the four terms above:
+core node 98–100 % void and the single node cycling **900–1,060 °F (482–571 °C)** for ten
+plant-hours, 2 % of liquid cooling every rod):
+
+| term | file | basis |
+|---|---|---|
+| two regions of one core, split by `uncoveredFrac(flow, void)` | `pwr2_fuel.js` | the swell offset **0.5** is the one `core_uncovered_frac` has always used; the separation band **1–3 % of rated flow** is **[open]** |
+| the uncovered length sees the boil-off steam, not the loop's mass flow | `pwr2_fuel.js` / `pwr2_reactor.js` `steamFrac` | **[derived]** — covered-length heat over latent heat |
+| the flow is judged over **60 s**, the level settles over **120 s** | `pwr2_reactor.js`, `OPEN.froth_flow.tau_s`, `OPEN.level_tau_s` | **[open]**, numerical: a slug is not a restored circulation, and void flutter across a lumped split is a heat pump (measured: 250 °F in 100 min where the heat balance gives that in five) |
+
+With nothing uncovered the second region has no length and the step is **bit-identical** to the
+one it replaced (gated).
+
+### 135.3 What the plant does now
+
+| ride | result |
+|---|---|
+| TMI-2 sequence, accumulators **isolated** | rotor at rest 12 min after the trip; cladding **1,200 °F (649 °C) at +15 min**; **fuel-damage latch (2,200 °F, 1,204 °C) at 84 min, 34 min after the pumps stop**; peak **3,363 °F (1,851 °C)**; 34 % of the cladding oxidised; containment hydrogen 4.7–5.9 % |
+| same, accumulators **in service** | pressure dips under their 665 psi (4.59 MPa) each time the dry core stops making steam; they dump and part-quench it; cladding cycles **900–1,700 °F (482–927 °C)** for eight plant-hours, **no latch** |
+| same, injection restarted at 90 min | cladding **1,619 → 725 °F (882 → 385 °C) in 5 min**, inventory rising |
+| leak isolated at 25 min, pumps off | siphon factor settles at 0.17–0.35, loop flow 54–80 kg/s, cladding **555 °F (291 °C)** for 2.5 h — the factor is self-correcting where there is water to condense |
+| block valve closed at 80 min (1979's action) | charging refills the loop; natural circulation back by 130 min; no latch |
+| large break + station blackout | empty 91 s → stall 219 s → on-ramp 595 s → **latch 676 s**; hold at 4,387 s, after the latch |
+| large break, buses live | peak **801 °F (427 °C)**, no latch in two hours |
+
+**The accumulators are the difference between this plant and the 1979 outcome**, and that is a
+property of this plant (665 psi cover gas against a primary that follows a cold, fed steam
+generator down), not a tuning. The walkthrough isolates them and says so on the card.
+
+### 135.4 The sweep — minutes to the fuel-damage latch, accumulators isolated
+
+Shipped: **84.0** (seed 42), **81.1** (seed 7).
+
+| constant | low | high |
+|---|---|---|
+| rotor friction 0.01 / 0.04 | 78.3 | 87.9 |
+| siphon band 0.20–0.50 / 0.50–0.80 | 80.2 | 84.0 |
+| wet floor 1,500 / 6,000 W/m²K | 82.9 | 79.2 |
+| level settling 60 / 240 s | 72.8 | 98.5 |
+| flow lag 30 / 120 s | 80.6 | 97.6 |
+| **separation band 0.5–1.5 % / 2–6 % of rated** | **never (peak 2,047 °F, 1,119 °C)** | 70.7 |
+| swell offset 0.3 / 0.7 | 84.5 | 88.0 |
+
+**One constant decides whether the latch trips at all: the separation band.** Halve it and a
+trickle of a few kg/s counts as froth, and the core peaks 150 °F short of the limit. It is the
+least-supported number here and the first an evidence pass should replace.
+
+### 135.5 What is declared, with its direction
+
+- **The reacting surface is the whole core's at the uncovered region's temperature.** Overstates
+  hydrogen and oxidation heat by 1/u at partial uncovery; on the stalled rides u is 0.9–1.0.
+- **The collapsed level ignores froth swell beyond the fixed 0.5 offset**, and the wet floor is
+  low for any flux above decay heat: both toward earlier dry-out.
+- **No melt progression.** The clad-melt cut-off and the fuel-melt latch are unchanged
+  (§ on `pwr2_damage.js`); on the TMI-2 ride the fuel-melt latch is not reached.
+- **`core_uncovered_frac` is unchanged** — still the void proxy, so it reads 89 % with the pumps
+  running and the cladding cold. What the rods are handed is the separated fraction; the published
+  proxy and the fuel can therefore disagree while the pumps run. Not reconciled here.
+- **Timing is not a claim**, for `pwr2_fuel.js`'s standing reason plus the four [open] numbers.
+
+### 135.6 Gates
+
+`run_pwr2_sources` 35 → **42** (24/24 mutations), `run_pwr2_fuel` 73 → **84** (46/46),
+`run_pwr2_reactor` 46 → **51** (28/28), `run_pwr2_board` 112 → **116** (46/46).
+`run_pwr2_coredamage_stack` **re-stated**, 11 → **10**: both old legs latch at 676 s with the
+generator fully wetted, so "auxiliary feed is the entire difference" on a large break with no
+alternating current is withdrawn as the steam thermosiphon; the contrast is now the same break
+with the buses live. The other 49 `run_pwr2_*` runners and five neighbours passed unchanged on
+the tree before the level lag; the final pass is recorded in `Diagnostic/TUNING_LOG.md`.
+

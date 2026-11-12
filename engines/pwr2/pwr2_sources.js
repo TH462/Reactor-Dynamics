@@ -121,7 +121,7 @@
    * [open] the two void fractions. No corpus document gives the inventory at which two-phase
    * natural circulation gives way; the homogeneous model also spreads void evenly round the
    * loop, where a real loop collects steam at the top first, so the band is a property of THIS
-   * model and not a real-plant figure. Swept and published in Diagnostic/TUNING_LOG.md.
+   * model and not a real-plant figure. Swept and published in Blueprint/PWR2_VALIDATION.md section 135.4.
    * IT IS SELF-CORRECTING WHERE THERE IS WATER TO CORRECT IT: with the flow stopped the steam
    * generator goes on condensing, its node's void falls, and the head comes back. A loop with
    * no water left in it has nothing to condense into a column, and stays blocked. */

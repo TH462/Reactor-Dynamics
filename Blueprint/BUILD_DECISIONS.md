@@ -45,6 +45,15 @@ where the two differ or where judgment was exercised.
 
 ---
 
+## 2026-11-12-develop-a — the core heat-up physics, a second TMI-2 leg, and two declared departures
+
+*(OWNER, 2026-11-12: "add a proper meltdown ability to the physics."; "add a core melting animation to the diagram.")*
+
+1. **The stratified vessel was not built; a split FUEL was.** The loop stays homogeneous. What changed is what stops it circulating (rotor losses, the siphon factor) and what the rods are handed (a covered and an uncovered region). `core_uncovered_frac` is still the void proxy. Record and sweep: `PWR2_VALIDATION.md` §135.
+2. **The walkthrough isolates the accumulators, on the card, as a player step** — not a scripted failure. A new scripted-only failure would have hidden a plant line-up change behind the scenes; the P-9 defeat is hidden because it is a relay nobody could operate. Flag: `procedure:pwr_tmi2_meltdown` is `preview`.
+3. **A gate's claim was withdrawn rather than re-banded**: `run_pwr2_coredamage_stack` no longer says auxiliary feed decides a large break with no alternating current.
+4. **Open, his to rule:** whether the separation band (1–3 % of rated flow) gets an evidence pass before this ships public; whether `core_uncovered_frac` should become the separated fraction; the `Manuals/08` edit.
+
 ## 2026-09-14-develop-b — #750: the 1/M ladder loses its last burst, and everything that inherited it is re-derived
 
 **The decision.** *(OWNER RULING, 2026-09-14: "I think there's one too many 1/m plot steps. If we

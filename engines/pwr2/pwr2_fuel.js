@@ -237,7 +237,7 @@
            'it). A homogeneous node has no free surface and its void flutters step to step; ' +
            'without the lag that flutter pumps heat across the split. No source: it is a ' +
            'numerical settling time, long against the flutter and short against any boil-down ' +
-           '(tens of minutes on this plant). Swept in Diagnostic/TUNING_LOG.md.'
+           '(tens of minutes on this plant). Swept in Blueprint/PWR2_VALIDATION.md section 135.4.'
     },
     q_to_fuel: {
       value: 0.974,

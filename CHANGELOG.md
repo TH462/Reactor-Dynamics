@@ -30,22 +30,39 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — the core heats when forced flow is lost (PWR)
+
+- **A tripped reactor coolant pump now comes to rest** (about two minutes in water, eleven in
+  steam). Before, it never did, and in a voided loop it kept circulating steam through the steam
+  generator: an uncovered core stayed at 626 °F (330 °C) for six plant-hours.
+- **Natural circulation stops when the top of the loop is steam**, and the water left in the
+  vessel still drains from the downcomer into the core.
+- **The fuel uncovers.** Rods above the mixture are cooled only by the steam boiled off below
+  them; peak cladding temperature is the uncovered region's.
+- **What it changes for a player:** a stuck-open relief valve with injection off and the pumps
+  stopped now heats the core. With the accumulators in service it cycles 900–1,700 °F
+  (482–927 °C) for hours; isolated, cladding passes 2,200 °F (1,204 °C) and fuel damage latches
+  about 34 plant-minutes after the pumps stop. A large break with a station blackout damages the
+  core in about 11 plant-minutes.
+- **The reactor vessel drawing shows it:** the rods glow as the cladding heats, shorten and shed
+  debris as it oxidises, and a molten pool appears on fuel melt.
+- Record: `Blueprint/PWR2_VALIDATION.md` §135.
+
 ### Added — a second Three Mile Island walkthrough: the chain of events to core damage (preview)
 
-- **`pwr_tmi2_meltdown`** (Main Menu → Walkthroughs → Incidents; preview channel). Ten steps in the
-  right column, no board callout: the feed loss, the relief valve that sticks open, automatic
+- **`pwr_tmi2_meltdown`** (Main Menu → Walkthroughs → Incidents; preview channel). Eleven steps in
+  the right column, no board callout: the feed loss, the relief valve that sticks open, automatic
   injection, the rising pressurizer level and the crew's STOP, the level pegged while the plant
-  drains, the late auxiliary feed, the pumps secured. It ends where the 1979 core damage began and
-  does not play the recovery. About 50 plant-minutes on the typical route.
+  drains, the late auxiliary feed, the pumps secured, and the cladding climbing past 1,200 °F and
+  then 2,200 °F. It stops at core damage and does not play the recovery. About 85 plant-minutes.
 - **Every card forecasts.** A new step field, `ahead`, draws a **Next** line above Continue saying
-  what the next Continue lets happen; the clock is held whenever Continue lights on a fast beat, so
-  it is read first.
-- **Highlights.** Each step lights what to watch; the reactor vessel drawing is a new watch target
-  (`Reactor Vessel` joins the board's highlight vocabulary).
-- **Stated plainly on the last card and in the recap:** this plant does not show the fuel heating
-  up. Measured over six plant-hours of the crew's actions with the block valve never closed, the
-  core reads 93-96 % uncovered and the cladding never passes 626 °F (330 °C). The core is one
-  mixed volume (manual chapter 08, section 6.0).
+  what the next Continue lets happen; the clock is held whenever Continue lights on a fast beat.
+- **Highlights.** Each step lights what to watch; the reactor vessel drawing is a new watch target.
+- **Two departures from 1979, both stated on the cards:** the reactor is kept from tripping with
+  the turbine, and this plant's accumulators are isolated (in service they would re-wet the core
+  for hours).
+- The older TMI-2 walkthrough follows the changed plant: it completes in about 107 plant-minutes
+  and its recap no longer says core damage is not modelled.
 
 ## [Alpha 1.8.4] — 2026-11-08
 
