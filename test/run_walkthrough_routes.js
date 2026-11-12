@@ -605,9 +605,11 @@ var MUTATIONS = [
   { id: 'tmi_relation_unreachable_9', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'own_row',
     why: 'step 9 relation row asking a 20-point fall in 600 s (the plant gives 17.0 at most): it only ever ticks by its relief',
     mutate: function (P) { P.steps[8].accs.filter(function (e) { return e.op === 'moves'; })[0].v = 20; } },
-  { id: 'tmi_no_implied_9', leg: 'pwr_tmi2_incident', route: 'afw_late', expect: 'invariant',
-    why: 'step 9 relation row without its implied_by (the drain already happened on step 8): 195 plant-min strand',
-    mutate: function (P) { delete P.steps[8].accs.filter(function (e) { return e.op === 'moves'; })[0].implied_by; } },
+  /* `tmi_no_implied_9` RETIRED 2026-11-12 (the core heat-up physics). It removed step 9's `implied_by` and expected the
+   * afw_late route to strand 195 plant-min. MEASURED on the new plant: that route completes WITHOUT the relief (231.6
+   * plant-min) -- the accumulators now inject after the pumps stop and the relation row finds its own drain. The relief
+   * stays authored (it costs nothing and the 1x late player may still need it); what is gone is the proof that it is
+   * load-bearing, and this note is where that is said rather than a green injection that proves nothing. */
   /* V-1 (layman pass 3, 2026-10-15): the estimate check reads the step's authored number, not the hold */
   { id: 'tmi_est_is_hold_7', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'est',
     why: 'step 7 wait estimate set back to its replay hold (192 s against a measured 1.1 plant-min)',
@@ -616,9 +618,10 @@ var MUTATIONS = [
   { id: 'tmi_est_from_entry_8', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'est',
     why: 'step 8 wait estimate counted from step entry, not from the click (`wait_est_from` dropped)',
     mutate: function (P) { delete P.steps[7].wait_est_from; } },
-  { id: 'tmi_old_step10', leg: 'pwr_tmi2_incident', route: 'typical', expect: 'complete',
-    why: 'step 10 back on PRIMARY PRESSURE above 750 psi (the plateau is ~741 psia: the typical route strands)',
-    mutate: function (P) { P.steps[9].accs.splice(0, 1, { p: 'pressure_mpa', op: '>', v: 5.17, label: 'PRIMARY PRESSURE above 750 psi' }); } },
+  /* `tmi_old_step10` RETIRED 2026-11-12 (the core heat-up physics). It put step 10 back on PRIMARY PRESSURE above 750 psi
+   * and expected the typical route to strand on the ~741 psia plateau. MEASURED on the new plant: the plateau is gone
+   * (pressure 1064 psia at the leg's end) and the mutated route completes in 114.0 plant-min. The row stays off the card
+   * for the reason it left; the injection no longer has a defect to re-open. */
   { id: 'no_overtaken_10', route: 'overshoot_235', expect: 'invariant',
     why: 'step 10 (the approach) and 11 (the level-off) without their `overtaken` (the pull to bank 235 stranded the 2026-09-23 layman)',
     /* #808: on the aux-feed Mode 3 lineup a plant stranded at 7 % TRIPS on SG lo-lo at ~28 plant-min
