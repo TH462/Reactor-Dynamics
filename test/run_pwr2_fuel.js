@@ -201,6 +201,16 @@ function runSuite(F, rec, quiet) {
    * convection. */
   ck('a stagnant, voided core floors at the natural-convection value, not at zero',
      F.filmCoefficient(0, 1), F.OPEN.h_stagnant.value, 1e-12, 'W/m2K');
+  /* THE WET FLOOR (2026-11-12). A rod under WATER with no loop flow boils on its own surface; it
+   * was falling to the stagnant-GAS floor, which nothing could reach until a tripped pump was
+   * made to stop. Scaled by the liquid fraction, so it hands over to the gas floor as the core dries. */
+  ck('a FLOODED core with no flow at all boils on its rods: the wet floor, not the gas floor',
+     F.filmCoefficient(0, 0), F.OPEN.h_wet.value, 1e-12, 'W/m2K');
+  ck('...scaled by the liquid fraction: half voided, half of it',
+     F.filmCoefficient(0, 0.5), 0.5 * F.OPEN.h_wet.value, 1e-9, 'W/m2K');
+  ckT('...and it never binds at rated: the forced term is still the whole coefficient there',
+      F.filmCoefficient(1, 0) === F.OPEN.h_film.value && F.OPEN.h_wet.value < F.OPEN.h_film.value,
+      F.filmCoefficient(1, 0).toFixed(0) + ' W/m2K at rated against a wet floor of ' + F.OPEN.h_wet.value);
   /* vapor_ratio IS NOW DERIVED FROM SOURCED DATA (audit #488 D12 refuted the "corpus has
    * neither" claim), and the derivation is pinned here with the source's own rows: WCAP-16009
    * Table 10-3, read from the page image. The Dittus-Boelter property group evaluated on
@@ -634,8 +644,11 @@ var MUTATIONS = [
    '    var forced = OPEN.h_film.value * Math.pow(f, OPEN.dittus_exp.value) * phase;',
    '    var forced = OPEN.h_film.value;'],
   ['the film coefficient loses its stagnant FLOOR (no heat sink at all at zero flow)',
-   '    return forced > OPEN.h_stagnant.value ? forced : OPEN.h_stagnant.value;',
-   '    return forced;'],
+   '    return h > OPEN.h_stagnant.value ? h : OPEN.h_stagnant.value;',
+   '    return h;'],
+  ['the wet floor is deleted (a flooded core in a stalled loop cools like a rod in still gas)',
+   '    var wet    = OPEN.h_wet.value * (1 - v);        /* boiling on the covered length; 0 when dry */',
+   '    var wet    = 0;'],
   ['the stack is no longer split at the clad -- the clad node gets ALL the resistance',
    '    var r_fc = r_pellet + r_gap + r_clad / 2;', '    var r_fc = r_pellet + r_gap + r_clad;'],
   ['the clad stores no energy (its temperature slaves instantly, so oxidation sees a STEP)',

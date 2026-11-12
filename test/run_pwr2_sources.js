@@ -105,6 +105,24 @@ function runSuite(S, rec, quiet, only) {
       (at90 === null ? '' : '; at 90 s ' + (at90 / expAt90).toFixed(1) + 'x'));
   ckT('...and it is monotone all the way down', at30 > at60 && (at90 === null || at60 > at90),
       at30.toFixed(3) + ' > ' + at60.toFixed(3) + (at90 === null ? '' : ' > ' + at90.toFixed(3)));
+  /* THE ROTOR COMES TO REST (2026-11-12). A hydraulic-only coastdown is w0/(1+t/tau): it never
+   * stops in water, and in steam it barely slows -- MEASURED full-stack on the TMI-2 sequence,
+   * 124 -> 107 rad/s in forty plant-minutes, which is what kept an uncovered core cold. The
+   * constant mechanical loss ends both. Times are REPORTED; only "it stops" is asserted, with a
+   * generous horizon, because the loss fraction is [open]. */
+  function restTime(h, P, horizon) {
+    var r = S.createPlant({ h: h, P: P }), tt = 0;
+    for (var kk = 0; kk < horizon / 0.02; kk++) {
+      S.stepPlant(r, 0.02, { pumpTrip: kk === 0 }); tt += 0.02;
+      if (r.omega <= 0) return tt;
+    }
+    return null;
+  }
+  var restW = restTime(1250, 15.41, 600), restS = restTime(2900, 7.0, 1200);
+  ckT('a tripped rotor comes to REST in water, in a finite time (a hydraulic-only coastdown never does)',
+      restW !== null, restW === null ? 'still turning at 600 s' : 'at rest ' + restW.toFixed(0) + ' s after the trip');
+  ckT('...and in STEAM, where the hydraulic load has all but gone',
+      restS !== null, restS === null ? 'still turning at 1200 s' : 'at rest ' + restS.toFixed(0) + ' s after the trip');
   }
 
   if (grp('C')) {
@@ -153,6 +171,37 @@ function runSuite(S, rec, quiet, only) {
       n9.mdot_loop.toFixed(1) + ' kg/s at 9 MW, core h ' + core9.h.toFixed(0) + ' vs h_f ' +
       W.h_f(n9.P).toFixed(0) + ' kJ/kg -- a loop that boils its core at 3 % RTP fails the ' +
       'sourced capability');
+  }
+
+  if (grp('C')) {
+  /* ---- 3b. THE SIPHON AND THE VESSEL MANOMETER (2026-11-12) --------------------------- */
+  if (!quiet) console.log('\nTHE SIPHON  [a loop whose high point is steam does not thermosiphon; the vessel still drains into its core]');
+  function plantWith(P, hMap, hRest) {
+    var hm = {}; GEO.NODES.forEach(function (n) { hm[n.id] = hMap[n.id] === undefined ? hRest : hMap[n.id]; });
+    return S.createPlant({ h: hm, P: P, mdot: 0, omega: 0, pumpTripped: true });
+  }
+  var gz = 9.80665;
+  /* liquid loop: the factor is EXACTLY 1 -- nothing about a single-phase plant may move */
+  var liq = plantWith(15.41, { core: 1400 }, 1250), bLiq = S.buoyancy(liq);
+  ckT('a liquid loop keeps its whole thermal-centre head: the siphon factor is EXACTLY 1',
+      liq.siphon === 1 && bLiq > 0, 'factor ' + liq.siphon + ', head ' + (bLiq * 1e6).toFixed(0) + ' Pa');
+  /* steam everywhere, hot in the core and cooler in the generator: the old formula drives a gas loop */
+  var gas = plantWith(7.0, { core: 3300 }, 2850), bGas = S.buoyancy(gas);
+  ckT('a loop of STEAM has no thermosiphon and no manometer: the head is exactly 0',
+      gas.siphon === 0 && bGas === 0,
+      'factor ' + gas.siphon + ', head ' + (bGas * 1e6).toFixed(1) + ' Pa (the unblocked formula gives ' +
+      ((W.rho_from_h(2850, 7.0) - W.rho_from_h(3300, 7.0)) * gz * 8).toFixed(0) + ' Pa)');
+  /* a flooded downcomer beside a dry core, steam at the top: the vessel manometer is what is left */
+  var man = plantWith(7.0, { core: 3300, downcomer: 1100 }, 2850), bMan = S.buoyancy(man);
+  var wantMan = (W.rho_from_h(1100, 7.0) - W.rho_from_h(3300, 7.0)) * gz * S.VESSEL.H_core_m / 1e6;
+  ck('water standing in the downcomer pushes into a dry core with the full column head', bMan, wantMan, wantMan * 1e-6, 'MPa');
+  ckT('...and that head moves the loop flow off zero',
+      (function () { for (var q = 0; q < 50; q++) S.stepPlant(man, 0.02, {}); return man.mdot_loop > 1; })(),
+      man.mdot_loop.toFixed(1) + ' kg/s after 1 s from rest');
+  /* the active height is pwr2_fuel's own derived figure, mirrored: tie the two */
+  if (!RD.fuel) require(path.join(E, 'pwr2_fuel.js'));
+  ck('the manometer height is the active fuel height pwr2_fuel derives', S.VESSEL.H_core_m,
+     globalThis.RD.pwr2.fuel.deriveGeometry().H_m, 0.005, 'm');
   }
 
   if (grp('D')) {
@@ -430,8 +479,17 @@ var MUTATIONS = [
   ['pump inertia replaced by a round number (fitted, not sourced)',
    'inertia_kgm2: 80000 * 0.0421401,', 'inertia_kgm2: 5000,', { grp: 'A' }],
   ['coastdown made EXPONENTIAL (the thing momentum was kept to avoid)',
-   'sys.omega = Math.max(0, sys.omega - dt * hyd / PUMP.inertia);',
+   'sys.omega = Math.max(0, sys.omega - dt * (hyd + fric) / PUMP.inertia);',
    'sys.omega = sys.omega * (1 - dt / 20);', { grp: 'B' }],
+  ['the rotor loses its mechanical loss (hydraulic-only: it never comes to rest)',
+   'sys.omega = Math.max(0, sys.omega - dt * (hyd + fric) / PUMP.inertia);',
+   'sys.omega = Math.max(0, sys.omega - dt * hyd / PUMP.inertia);', { grp: 'B' }],
+  ['the siphon factor is dropped (a loop of steam thermosiphons through the generator again)',
+   '    dP *= sys.siphon;', '', { grp: 'C' }],
+  ['the vessel manometer is deleted (water in the downcomer never reaches a dry core)',
+   "        if (wetDc > 0) dP += (1 - sys.siphon) * wetDc * (rd - rc) * g * VESSEL.H_core_m;", '', { grp: 'C' }],
+  ['the manometer loses its liquid weighting (two columns of steam drive a flow)',
+   '        var wetDc = 1 - W.voidFraction(dcN.h, sys.P);', '        var wetDc = 1;', { grp: 'C' }],
   ['pump work smeared away instead of located at the RCP',
    "heats.rcp = (heats.rcp || 0) + pumpKW;", '', { grp: 'D' }],
   ['pump keeps working after the trip',

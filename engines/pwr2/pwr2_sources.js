@@ -88,6 +88,67 @@
    * pulls in and the clamp holds rated, at bounded (not infinite) torque. */
   var MOTOR_BREAKDOWN_TORQUE = 2.0;
 
+  /* ---- ROTOR MECHANICAL LOSSES (owner, 2026-11-12: "add a proper meltdown ability to the physics") ----
+   * The coastdown below was HYDRAULIC ONLY: I*dw/dt = -T_hyd, and T_hyd goes as w^2 * density. Two
+   * consequences, one a property of the form and one MEASURED:
+   *   - in water w(t) = w0/(1 + t/tau): the rotor NEVER reaches rest;
+   *   - in steam the hydraulic load all but vanishes. MEASURED 2026-11-12, full stack, the TMI-2
+   *     sequence with the pumps secured at 50 plant-min into a fully voided loop: w 124 -> 107
+   *     rad/s over the next FORTY minutes, the "stopped" pump still moving 33-60 kg/s of steam
+   *     round the loop, the steam generator cooling it, and the cladding at 605 degF for six
+   *     hours. A tripped pump that never stops is why core damage was unreachable on that path.
+   * A real machine has bearing, seal and windage losses that do not scale with the fluid. They
+   * are carried as ONE constant torque, a fraction of the rated hydraulic torque.
+   * [open] 0.02 -- no document in the corpus gives an RCP friction torque or a time-to-rest; this
+   * is a small-machine-loss class figure, not a sourced one. WHAT IT MOVES, so it can be judged:
+   * at rated speed the hydraulic torque is 1.00 of rated, so the early coastdown (the part the
+   * sourced inertia was adopted to derive, and the part a loss-of-flow trip sees) changes by 2 %
+   * at t=0 and less after; the END of the coastdown changes in kind -- rest in a finite time
+   * (about I*w0/(0.02*T_rated) = 380 s in steam, about 100 s in water) instead of never. */
+  var ROTOR_FRICTION = { kind: '[open]', frac_of_rated_torque: 0.02 };
+
+  /* ---- THE SIPHON BREAKS WHEN THE TOP OF THE LOOP IS STEAM (same ruling) ----
+   * `buoyancy()` is the thermal-centre head of a LIQUID-CONTINUOUS loop: a cold dense column
+   * falling on one side lifts a hot light one on the other. The homogeneous model applies the
+   * same formula to a loop full of steam, where it drives a single-phase GAS circulation through
+   * the steam generator that carries the decay heat away. The source is explicit that the real
+   * plant does not do that -- NUREG/CR-1250 Vol. II Pt 2 section II.A, verbatim (quoted in
+   * Manuals/08 section 4.0): *"As soon as all the pumps were stopped, circulation of coolant
+   * decreased drastically, because natural circulation was blocked by steam."*
+   * So the buoyancy head is multiplied by a factor that is EXACTLY 1 while the loop's high point
+   * (the steam generator primary node, z = 8.0 m) is liquid or bubbly and falls to 0 as it
+   * voids. Exactly neutral in every single-phase state, by construction.
+   * [open] the two void fractions. No corpus document gives the inventory at which two-phase
+   * natural circulation gives way; the homogeneous model also spreads void evenly round the
+   * loop, where a real loop collects steam at the top first, so the band is a property of THIS
+   * model and not a real-plant figure. Swept and published in Diagnostic/TUNING_LOG.md.
+   * IT IS SELF-CORRECTING WHERE THERE IS WATER TO CORRECT IT: with the flow stopped the steam
+   * generator goes on condensing, its node's void falls, and the head comes back. A loop with
+   * no water left in it has nothing to condense into a column, and stays blocked. */
+  var SIPHON = { kind: '[open]', void_lo: 0.35, void_hi: 0.65, rho_gate: 560 };
+  /* ...AND WHAT IS LEFT WHEN IT BREAKS IS THE VESSEL'S OWN MANOMETER. The downcomer and the core
+   * are two legs of one U inside the vessel: water standing in the downcomer pushes into a core
+   * that holds less, whatever the top of the loop is doing. The single thermal-centre term above
+   * cannot carry that once it is switched off, and MEASURED without it (2026-11-12, injection
+   * restarted at 75 plant-min into a dry core): the cold leg and downcomer filled to void 0.00,
+   * the loop flow stayed at 0.1 kg/s, and the core re-dried and climbed to 2,960 degF beside a
+   * full downcomer. So the broken share of the head is replaced by
+   *     (1 - siphon) * (1 - void_downcomer) * (rho_downcomer - rho_core) * g * H_core
+   * -- weighted by the downcomer's LIQUID fraction so that two columns of steam drive nothing
+   * (a steam-on-steam density difference circulating through the generator is exactly the
+   * artifact the siphon factor removes), and inward only (the loop flow has no reverse).
+   * H_core [derived]: the active fuel height pwr2_fuel derives from the sourced lattice, 12.02 ft.
+   * Mirrored here because this layer loads before the fuel; `run_pwr2_sources` ties the two. */
+  var VESSEL = { kind: '[derived]', H_core_m: 3.664 };
+  function siphonFactor(sys, sgNode, rho_sg) {
+    if (!(rho_sg < SIPHON.rho_gate) || !W || !W.voidFraction) return 1;   /* liquid: one compare, no property call */
+    var a = W.voidFraction(sgNode.h, sys.P);
+    if (!(a > SIPHON.void_lo)) return 1;
+    if (a >= SIPHON.void_hi) return 0;
+    var x = (a - SIPHON.void_lo) / (SIPHON.void_hi - SIPHON.void_lo);
+    return 1 - x * x * (3 - 2 * x);                                       /* smoothstep, C1 at both ends */
+  }
+
   /* Loop inertia SUM(L/A), from Layer 1's sourced flow lengths only. */
   function loopInertia() {
     var sum = 0;
@@ -239,11 +300,12 @@
   }
   function buoyancy(sys) {
     var g = 9.80665, dP = 0, z = elevations();
-    var zc = null, zh = null, rc = null, rh = null;
+    var zc = null, zh = null, rc = null, rh = null, sgN = null, dcN = null;
     for (var i = 0; i < sys.nodes.length; i++) {
       var n = sys.nodes[i];
       if (n.id === 'core') { zc = z.core; rc = RHO(n.h, sys.P); }
-      else if (n.id === 'sg_primary') { zh = z.sg_primary; rh = RHO(n.h, sys.P); }
+      else if (n.id === 'sg_primary') { zh = z.sg_primary; rh = RHO(n.h, sys.P); sgN = n; }
+      else if (n.id === 'downcomer') dcN = n;
     }
     if (zc === null || zh === null) return 0;
     /* SIGN: the DESCENDING leg is the dense one. Fluid heated in the core rises to the SG,
@@ -253,6 +315,15 @@
      * term was fighting the flow instead of driving it. A sign error here does not blow up,
      * it quietly produces a plant with no natural circulation at all. */
     dP = (rh - rc) * g * (zh - zc);                 // Pa
+    sys.siphon = siphonFactor(sys, sgN, rh);        // 1 liquid-continuous ... 0 steam at the loop's high point
+    dP *= sys.siphon;
+    if (sys.siphon < 1 && dcN) {                    // the vessel manometer carries the broken share
+      var rd = RHO(dcN.h, sys.P);
+      if (rd > rc) {
+        var wetDc = 1 - W.voidFraction(dcN.h, sys.P);
+        if (wetDc > 0) dP += (1 - sys.siphon) * wetDc * (rd - rc) * g * VESSEL.H_core_m;
+      }
+    }
     return dP / 1e6;                                // MPa
   }
 
@@ -290,7 +361,9 @@
     /* ---- rotor: coastdown derived from inertia, not fitted ---- */
     if (sys.pumpTripped && sys.omega > 0) {
       var hyd = pumpHead(sys) * 1e6 * (sys.mdot_loop / 700) / Math.max(sys.omega, 1e-6);  // N*m
-      sys.omega = Math.max(0, sys.omega - dt * hyd / PUMP.inertia);
+      var fric = ROTOR_FRICTION.frac_of_rated_torque *
+                 PUMP.dP_rated * 1e6 * (PUMP.mdot_rated / 700) / PUMP.w_rated;            // N*m, constant
+      sys.omega = Math.max(0, sys.omega - dt * (hyd + fric) / PUMP.inertia);
     }
     /* ---- rotor: START (#507 wave 9) — the motor accelerates the SAME rotor the coastdown
      * decelerates, against the same hydraulic load, with the same sourced inertia. The
@@ -414,6 +487,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.sources = {
     PUMP: PUMP, REF: REF, DESIGN: DESIGN,
+    ROTOR_FRICTION: ROTOR_FRICTION, SIPHON: SIPHON, VESSEL: VESSEL,
     createPlant: createPlant, stepPlant: stepPlant,
     loopInertia: loopInertia, pumpHead: pumpHead, buoyancy: buoyancy,
     densityRatio: densityRatio, rhoRated: rhoRated,

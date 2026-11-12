@@ -309,10 +309,18 @@ function runSuite(R, rec, quiet) {
   rgHot.sys.mdot_loop = S.PUMP.mdot_rated * 0.01;
   var rgSlow = ride(rgHot, 1);
   ckT('the regime reaches the fuel -- collapsing the loop flow collapses the film coefficient',
-      rgSlow.h_film_W_per_m2K < rgCold.h_film_W_per_m2K / 10,
+      /* RE-STATED 2026-11-12, and the old form validated against the old behaviour: it asserted
+       * "below a tenth", which the forced term alone gave (30000 * 0.01^0.8 = 754). This fixture's
+       * core is LIQUID, and a rod under water now keeps the wet floor (pwr2_fuel `h_wet`, 3000) --
+       * exactly a tenth, so the strict inequality reddened on a coincidence of two constants. The
+       * claim is unchanged -- the collapsed flow REACHED the fuel -- and it is now asserted as
+       * what the fuel must hand back for a flooded core at 1 % flow: the wet floor itself, and a
+       * collapse of at least five-fold. */
+      rgSlow.h_film_W_per_m2K <= rgCold.h_film_W_per_m2K / 5 &&
+      Math.abs(rgSlow.h_film_W_per_m2K - RD.fuel.OPEN.h_wet.value) < 1e-6,
       rgCold.h_film_W_per_m2K.toFixed(0) + ' -> ' + rgSlow.h_film_W_per_m2K.toFixed(0) +
-      ' W/m2K when the loop drops to 1 % of rated -- a computed regime that never reached ' +
-      'pwr2_fuel would leave this unmoved');
+      ' W/m2K when the loop drops to 1 % of rated (the wet floor of a flooded core) -- a computed ' +
+      'regime that never reached pwr2_fuel would leave this unmoved');
   /* ...AND SO MUST THE COOLANT TEMPERATURE, which is the other half of what pwr2_fuel refuses to
    * invent and was BLIND until #657. The temperature the fuel is handed is the sink in
    * q = hA(T_clad - T_cool), so the only witness that cannot be faked is the HEAT: cool the whole

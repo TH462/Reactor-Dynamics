@@ -178,6 +178,24 @@
            'coefficient is h_film * flowFrac^dittus_exp * phase at that residual flow -- i.e. ' +
            'dittus_exp, vapor_ratio and the pump density coupling, not this number.'
     },
+    h_wet: {
+      value: 3000,                 /* W/m2K */
+      why: 'What a rod standing in WATER gets with no forced flow at all: boiling on its own ' +
+           'surface. It exists because the forced term goes to zero with the loop flow, so a ' +
+           'flooded core in a stalled loop fell to h_stagnant -- a rod under water cooled like a ' +
+           'rod in still gas -- which nothing could reach while a tripped pump never stopped and ' +
+           'the homogeneous loop always circulated (pwr2_sources ROTOR_FRICTION / SIPHON, ' +
+           '2026-11-12). Scaled by the LIQUID volume fraction of the core node, the collapsed ' +
+           'level a homogeneous node can honestly report, so it vanishes as the core dries. ' +
+           '[derived, coefficients UNVERIFIED] The corpus NAMES the correlation (Ginna UFSAR ' +
+           'ch15: "Dittus-Boelter or Jens-Lottes ... before DNB") and does not print it; the ' +
+           'standard Jens-Lottes form, wall superheat = 25 (q/1e6)^0.25 exp(-P/62) K with q in ' +
+           'W/m2 and P in bar, gives 2.2 K at decay heat flux (5.9 kW/m2, 70 bar), i.e. about ' +
+           '2,700 W/m2K, and far more at higher flux. 3,000 is that figure, rounded. DIRECTION: ' +
+           'low for a covered rod at any flux above decay heat, and the collapsed level ignores ' +
+           'froth swell, so both err toward EARLIER dry-out. Below the forced term at any loop ' +
+           'flow above 5.6 % of rated, so it never binds at power.'
+    },
     q_to_fuel: {
       value: 0.974,
       why: 'Fraction of fission energy deposited in the fuel; the balance is prompt gamma and ' +
@@ -295,7 +313,8 @@
    * constant. Two multiplicative factors on the rated anchor, plus a floor:
    *
    *     forced = h_rated * flowFrac^0.8 * [ (1-void) + void*vapor_ratio ]
-   *     h      = max(h_stagnant, forced)
+   *     wet    = h_wet * (1-void)            (2026-11-12: a rod under water boils with no flow)
+   *     h      = max(h_stagnant, forced, wet)
    *
    * ⚠ EXACTLY THE RATED VALUE AT RATED, by construction: flowFrac = 1 and voidFrac = 0 give
    * 30000 * 1 * 1, and the floor is far below it. That is what lets this be added to a resistance
@@ -367,7 +386,9 @@
     var v = voidFrac < 0 ? 0 : (voidFrac > 1 ? 1 : voidFrac);
     var phase  = (1 - v) + v * OPEN.vapor_ratio.value * superheatFactor(superheat_c, P_MPa);
     var forced = OPEN.h_film.value * Math.pow(f, OPEN.dittus_exp.value) * phase;
-    return forced > OPEN.h_stagnant.value ? forced : OPEN.h_stagnant.value;
+    var wet    = OPEN.h_wet.value * (1 - v);        /* boiling on the covered length; 0 when dry */
+    var h      = forced > wet ? forced : wet;
+    return h > OPEN.h_stagnant.value ? h : OPEN.h_stagnant.value;
   }
 
   /* ---- THE RESISTANCE STACK -----------------------------------------------------------------
