@@ -174,7 +174,19 @@
     var fuelS = rx.fuel, tauS = F.OPEN.froth_flow.tau_s;
     if (fuelS.f_sep === undefined || !(tauS > 0)) fuelS.f_sep = reg.flowFrac;
     else fuelS.f_sep += (reg.flowFrac - fuelS.f_sep) * (dt < tauS ? dt / tauS : 1);
-    var unc = F.uncoveredFrac(fuelS.f_sep, reg.voidFrac);
+    var uncNow = F.uncoveredFrac(fuelS.f_sep, reg.voidFrac);
+    /* THE LEVEL THE RODS SEE IS SETTLED, NOT INSTANTANEOUS (`level_tau_s`). The core node's void
+     * flutters from step to step, and every flutter moves a sliver of fuel across the split and
+     * back: cold length into the hot region, hot length into the cold. On a LUMPED hot region
+     * that is a heat pump -- MEASURED 2026-11-12 (block valve closed at 80 plant-min, core 75-80 %
+     * uncovered, boil-off steam under 1 kg/s): the uncovered rods rose 250 degF in a hundred
+     * minutes where the heat balance alone gives that in five. A real level has inertia; the
+     * split follows the settled level. Exactly 0 while nothing has been uncovered. */
+    var tauL = F.OPEN.level_tau_s.value;
+    if (fuelS.u_lvl === undefined || !(tauL > 0)) fuelS.u_lvl = uncNow;
+    else fuelS.u_lvl += (uncNow - fuelS.u_lvl) * (dt < tauL ? dt / tauL : 1);
+    if (fuelS.u_lvl < 1e-9 && uncNow === 0) fuelS.u_lvl = 0;
+    var unc = fuelS.u_lvl;
     /* the boil-off steam past the uncovered length, over rated loop flow: the covered length's
      * heat over the latent heat. Computed only when something is uncovered. */
     var steamFrac;

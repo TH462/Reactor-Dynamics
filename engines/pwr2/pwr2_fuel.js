@@ -231,6 +231,14 @@
            'carry 5.6 % of rated at their lowest, two-phase natural circulation with the leak ' +
            'isolated 3.3-5 %, a stalled loop under 1 %. The band sits between the last two.'
     },
+    level_tau_s: {
+      value: 120,                  /* s */
+      why: '[open] The time over which the level the rods see settles (pwr2_reactor applies ' +
+           'it). A homogeneous node has no free surface and its void flutters step to step; ' +
+           'without the lag that flutter pumps heat across the split. No source: it is a ' +
+           'numerical settling time, long against the flutter and short against any boil-down ' +
+           '(tens of minutes on this plant). Swept in Diagnostic/TUNING_LOG.md.'
+    },
     q_to_fuel: {
       value: 0.974,
       why: 'Fraction of fission energy deposited in the fuel; the balance is prompt gamma and ' +

@@ -1806,7 +1806,11 @@
         boil: Math.min(100, Math.max(voidFrac * 400, (sub != null && sub < 0) ? -sub * 3 : 0)),
         // coolant water color = live leg temperatures (fuel/glow stay power-driven)
         tcold: IN(s).tcold, thot: IN(s).thot,
-        glow: true, showFlow: IN(s).rcp_running
+        glow: true, showFlow: IN(s).rcp_running,
+        /* CORE DAMAGE (OWNER, 2026-11-12): the four things the plant publishes about its fuel, passed
+         * straight through. True state, like the level above -- there is no instrument inside the
+         * cladding -- and drawn only in the vessel art, never on a gauge (Hard Rule 1). */
+        cladC: t.clad_temp_c, oxFrac: t.oxidation_frac, damaged: t.fuel_damaged === true, melted: t.melted === true
       };
     },
     steamGenerator: function (s) {

@@ -6,6 +6,19 @@
  * callback were not ported (external panels exist elsewhere on the board).
  * The internal rod-worth/power rAF loop is stripped — update() drives display:
  *   update({ regFrac, shutFrac, power, coreInv, boil, glow, showFlow })
+ * CORE DAMAGE (2026-11-12, OWNER: "add a core melting animation to the diagram"), all four
+ * read off the plant and none of them latched or advanced here, so the drawing cannot show
+ * a melt the plant is not having (rewind the plant and the drawing rewinds with it):
+ *   update({ cladC, oxFrac, damaged, melted })
+ *   cladC    peak cladding temperature, degC. Above 400 the rods take a heat colour of their
+ *            own (dull red -> orange -> yellow-white by 1850) whatever the fission power is,
+ *            and an overheat halo grows behind them.
+ *   oxFrac   fraction of the cladding thickness oxidised, 0..1. The rods lose their shape as
+ *            it approaches 0.17, the 10 CFR 50.46 embrittlement criterion the engine carries:
+ *            they shorten from the top and a debris bed builds on the lower core plate.
+ *   damaged  the engine's fuel-damage latch (cladding past 2200 degF): the halo pulses.
+ *   melted   the engine's fuel-melt latch: the rods are stubs and a molten pool lies in the
+ *            core and the lower plenum.
  * Rod motion arrives at snapshot cadence, so rod position is applied as a CSS
  * transform on moving groups instead of per-frame geometry rebuilds; bubble
  * rise / flow dashes are pausable CSS keyframes. The transform carried a
@@ -60,7 +73,9 @@
       '@keyframes bubbleRiseS{0%{transform:translateY(0);opacity:0}14%{opacity:1}82%{opacity:1}100%{transform:translateY(-80px);opacity:0}}' +
       '@keyframes bubbleRiseM{0%{transform:translateY(0);opacity:0}12%{opacity:1}85%{opacity:1}100%{transform:translateY(-130px);opacity:0}}' +
       '@keyframes bubbleRiseL{0%{transform:translateY(0);opacity:0}10%{opacity:1}88%{opacity:1}100%{transform:translateY(-180px);opacity:0}}' +
-      '@keyframes cherBreathe{0%,100%{opacity:0.82}50%{opacity:1}}';
+      '@keyframes cherBreathe{0%,100%{opacity:0.82}50%{opacity:1}}' +
+      '@keyframes corePulse{0%,100%{opacity:0.7}50%{opacity:1}}' +
+      '@media (prefers-reduced-motion: reduce){.rv-core-pulse{animation:none!important}}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -82,7 +97,8 @@
       cher: gid + 'Cher', cherCore: gid + 'CherCore'
     };
     var R = {};   // refs to dynamic elements
-    var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true, tcold: 290, thot: 320, cherenkov: 70 };
+    var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true, tcold: 290, thot: 320, cherenkov: 70,
+               cladC: 300, oxFrac: 0, damaged: false, melted: false };
     var last = {};
     var lastBoil = -1;
     /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. `glow` used to be ONE blur
@@ -91,6 +107,7 @@
     var gFlux = RD.BoardH.softGlow(ids.glow2, '#22d8c4');
     var gTherm = RD.BoardH.softGlow(ids.glow, 'rgb(44,88,152)');
     var gFuel = RD.BoardH.softGlow(gid + 'FuelGlow', 'rgb(61,38,22)');
+    var gMelt = RD.BoardH.softGlow(gid + 'MeltGlow', 'rgb(255,96,30)');   // the overheat halo (core damage)
 
     // ---- defs (all ids per-instance unique) ----
     var defs = h('defs', null,
@@ -123,7 +140,9 @@
        * is where the blur's light actually reached — RD.BoardH.softGlow carries the numbers.
        * The thermal and fuel halos recolour through setColor(); writing `fill` on the rect
        * would now paint over the gradient reference and kill the glow outright. */
-      gFlux.def, gTherm.def, gFuel.def,
+      gFlux.def, gTherm.def, gFuel.def, gMelt.def,
+      h('linearGradient', { id: gid + 'Corium', x1: '0', y1: '0', x2: '0', y2: '1' },
+        h('stop', { offset: '0', stopColor: '#ffe9a8' }), h('stop', { offset: '0.35', stopColor: '#ff9a2e' }), h('stop', { offset: '1', stopColor: '#a8260f' })),
       // CHERENKOV: electric-blue radiance from the core. Both gradients keep the default
       // objectBoundingBox units so they stretch with the ellipse they fill — that way the
       // falloff stays a true width-wise oval instead of a circle clipped to an oval.
@@ -311,10 +330,16 @@
     }());
     // fuel rods (fuelXs is the module-level array, above)
     svgKids.push(R.fuelglow = h('rect', { x: coreL - 24, y: coreTop - 26, width: coreW + 48, height: coreH + 52, rx: 28, fill: gFuel.paint }));
+    /* CORE DAMAGE, behind the rods: the overheat halo, then (in front, below) the debris bed and the pool */
+    svgKids.push(R.meltGlow = h('rect', { 'class': 'rv-core-pulse', x: coreL - 30, y: coreTop - 30, width: coreW + 60, height: coreH + 70, rx: 30,
+      fill: gMelt.paint, opacity: 0, display: 'none', style: { pointerEvents: 'none' } }));
     R.fuelRods = fuelXs.map(function (x) {
       return h('rect', { x: x - 7, y: coreTop, width: 14, height: coreH, rx: 3, fill: 'url(#' + ids.fuel + ')', strokeWidth: 0.6 });
     });
     svgKids.push(h('g', null, R.fuelRods));
+    /* the debris bed on the lower core plate and the molten pool in the lower plenum, drawn OVER the rods' feet */
+    svgKids.push(R.debris = h('path', { 'class': 'rv-core-pulse', fill: 'url(#' + gid + 'Corium)', stroke: '#5a1a0c', strokeWidth: 1, display: 'none', style: { pointerEvents: 'none' } }));
+    svgKids.push(R.corium = h('ellipse', { 'class': 'rv-core-pulse', cx: cx, cy: 549, rx: 0, ry: 0, fill: 'url(#' + gid + 'Corium)', stroke: '#5a1a0c', strokeWidth: 1, display: 'none', style: { pointerEvents: 'none' } }));
     // ---- standardized connectors + uniform circulation flow ----
     // Drawn inside a scale(1/s) group with coordinates pre-multiplied by s, so every
     // diameter/dash renders at constant canvas px (watchScale pattern from the source).
@@ -363,8 +388,9 @@
     // color tracks TEMPERATURE (see applyFluidTemp) — the fuel glowing hot in a hot-but-
     // low-power state, or a cool pool at power, is exactly the intended reading.
     function applyColors(force) {
-      if (!force && last.power === st.power && last.glow === st.glow) return;
-      last.power = st.power; last.glow = st.glow;
+      var heat = heatOf(st.cladC);
+      if (!force && last.power === st.power && last.glow === st.glow && last.heat === heat) return;
+      last.power = st.power; last.glow = st.glow; last.heat = heat;
       var p = st.power, glowOn = st.glow;
       var COOL = [44, 88, 152], HOT = [176, 56, 34];
       var cTopA = mixArr(COOL, HOT, p * 1.05);
@@ -374,6 +400,12 @@
       if (p <= 1) fuelBaseArr = mixArr(fuelBrown, fuelOrange, p);
       else if (p <= 1.25) fuelBaseArr = mixArr(fuelOrange, fuelYellow, (p - 1) / 0.25);
       else fuelBaseArr = mixArr(fuelYellow, fuelWhite, Math.min(1, (p - 1.25) / 0.25));
+      /* HEAT OF ITS OWN (core damage): an overheated rod glows whatever the fission power -- a
+       * tripped, uncovered core is at zero power and climbing. Dull red, orange, yellow-white. */
+      if (heat > 0) {
+        var hot = heat < 0.5 ? mixArr([150, 34, 22], [255, 122, 30], heat / 0.5) : mixArr([255, 122, 30], [255, 240, 190], (heat - 0.5) / 0.5);
+        fuelBaseArr = mixArr(fuelBaseArr, hot, Math.min(1, 0.35 + heat * 1.3));
+      }
       var fuelBase = rgbStr(fuelBaseArr);
       var fuelGlowOpacity = clamp((p - 0.03) / 0.5, 0, 1);
       var fuelEdge = rgbStr(mixArr(fuelBaseArr, [0, 0, 0], 0.48));
@@ -522,7 +554,48 @@
       (R.connFlows || []).forEach(function (l) { l.style.animationPlayState = ps; });
     }
 
+    /* 0 below 400 degC (normal cladding peaks near 350), 1 at 1850 degC -- the display's own scale */
+    function heatOf(c) { return c > 400 ? clamp((c - 400) / 1450, 0, 1) : 0; }
+    /* CORE DAMAGE GEOMETRY. `slump` 0..1 is the oxidised fraction against the 0.17 embrittlement
+     * criterion; `melted` takes the rods to stubs. Each rod loses a slightly different height (a
+     * fixed pattern, no randomness: the same plant state always draws the same core). */
+    function applyDamage(force) {
+      var heat = heatOf(st.cladC);
+      var slump = clamp(st.oxFrac / 0.17, 0, 1), melted = !!st.melted, dmg = !!st.damaged;
+      var key = Math.round(heat * 50) + '|' + Math.round(slump * 50) + '|' + (melted ? 1 : 0) + '|' + (dmg ? 1 : 0);
+      if (!force && last.dmgKey === key) return;
+      last.dmgKey = key;
+      var haloOp = Math.min(0.85, heat * 1.1);
+      show(R.meltGlow, haloOp > 0.02);
+      R.meltGlow.setAttribute('opacity', haloOp.toFixed(3));
+      R.meltGlow.style.animation = (dmg || melted) ? 'corePulse 1.6s ease-in-out infinite' : '';
+      var coreBotY = coreTop + coreH;
+      R.fuelRods.forEach(function (r, i) {
+        var lose = melted ? 0.82 + 0.05 * ((i * 7) % 3) : slump * (0.34 + 0.09 * ((i * 5) % 4));
+        var hh = coreH * (1 - clamp(lose, 0, 0.94));
+        r.setAttribute('y', String(coreBotY - hh));
+        r.setAttribute('height', String(hh));
+      });
+      /* the debris bed: a mound across the core's floor, as tall as what the rods lost on average */
+      var bedH = coreH * (melted ? 0.2 : slump * 0.16);
+      if (bedH > 1) {
+        var x0 = coreL + 2, x1 = coreL + coreW - 2, yB = coreBotY, yT = yB - bedH, xm = (x0 + x1) / 2;
+        R.debris.setAttribute('d', 'M' + x0 + ',' + yB + ' L' + x0 + ',' + (yT + bedH * 0.45).toFixed(1) +
+          ' Q' + ((x0 + xm) / 2).toFixed(1) + ',' + (yT - bedH * 0.15).toFixed(1) + ' ' + xm.toFixed(1) + ',' + (yT + bedH * 0.1).toFixed(1) +
+          ' Q' + ((xm + x1) / 2).toFixed(1) + ',' + (yT + bedH * 0.3).toFixed(1) + ' ' + x1 + ',' + (yT + bedH * 0.5).toFixed(1) + ' L' + x1 + ',' + yB + ' Z');
+        /* hot debris glows and pulses; quenched debris is slag -- the damage stays, the light does not */
+        var bedHot = heat > 0.08 || melted;
+        R.debris.setAttribute('fill', bedHot ? 'url(#' + gid + 'Corium)' : '#3b2b24');
+        R.debris.style.animation = bedHot ? 'corePulse 2.2s ease-in-out infinite' : '';
+      }
+      show(R.debris, bedH > 1);
+      /* the pool in the lower plenum: only on the engine's melt latch */
+      show(R.corium, melted);
+      if (melted) { R.corium.setAttribute('rx', '84'); R.corium.setAttribute('ry', '20'); R.corium.style.animation = 'corePulse 2.8s ease-in-out infinite'; }
+    }
+
     function applyAll(force) {
+      applyDamage(force);
       applyRods(force);
       applyColors(force);
       applyFluidTemp(force);
@@ -588,6 +661,10 @@
       if (props.tcold != null) st.tcold = props.tcold;
       if (props.thot != null) st.thot = props.thot;
       if (props.cherenkov != null) st.cherenkov = clamp(props.cherenkov, 0, 100);
+      if (props.cladC != null && isFinite(props.cladC)) st.cladC = props.cladC;
+      if (props.oxFrac != null && isFinite(props.oxFrac)) st.oxFrac = clamp(props.oxFrac, 0, 1);
+      if (props.damaged != null) st.damaged = !!props.damaged;
+      if (props.melted != null) st.melted = !!props.melted;
       applyAll(false);
     }
 
