@@ -783,9 +783,9 @@ function runSuite(quietRec) {
   /* the component itself, read as source: the geometry is a function of the props and holds no latch */
   var RVSRC = fs.readFileSync(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_reactor_vessel.js'), 'utf8');
   q('the vessel component keeps no damage state of its own: the rods\' height is recomputed from the props every update (rewind the plant and the drawing rewinds)',
-    /var slump = clamp\(st\.oxFrac \/ 0\.17, 0, 1\), melted = !!st\.melted, dmg = !!st\.damaged;/.test(RVSRC) &&
+    /var slump = \(dmg \|\| melted\) \? clamp\(st\.oxFrac \/ 0\.17, 0, 1\) : 0;/.test(RVSRC) &&
     !/Math\.max\(\s*last\.(slump|melted|dmg)/.test(RVSRC) && /prefers-reduced-motion: reduce\)\{\.rv-core-pulse\{animation:none/.test(RVSRC),
-    'slump from oxFrac against the 0.17 criterion; reduced-motion rule present');
+    'slump from oxFrac against the 0.17 criterion, and only once the plant has latched damage; reduced-motion rule present');
 
   /* ---- 2e. THE PIPES SAY WHAT IS IN THEM (#516 item 7) --------------------------------------
    * The primary runs declared `contents: 'water'` unconditionally, so the board drew liquid

@@ -100,11 +100,15 @@
    * A real machine has bearing, seal and windage losses that do not scale with the fluid. They
    * are carried as ONE constant torque, a fraction of the rated hydraulic torque.
    * [open] 0.02 -- no document in the corpus gives an RCP friction torque or a time-to-rest; this
-   * is a small-machine-loss class figure, not a sourced one. WHAT IT MOVES, so it can be judged:
-   * at rated speed the hydraulic torque is 1.00 of rated, so the early coastdown (the part the
-   * sourced inertia was adopted to derive, and the part a loss-of-flow trip sees) changes by 2 %
-   * at t=0 and less after; the END of the coastdown changes in kind -- rest in a finite time
-   * (about I*w0/(0.02*T_rated) = 380 s in steam, about 100 s in water) instead of never. */
+   * is a small-machine-loss class figure, not a sourced one. WHAT IT MOVES, MEASURED (critic
+   * round 2, full stack from hot full power, friction 0 against 0.02; this comment first said
+   * "2 % at t=0 and less after", which had the direction backwards -- the loss is constant while
+   * the hydraulic torque falls with speed squared, so the gap GROWS): loop flow -0.11 % at 1 s,
+   * -0.68 % at 5 s, -1.7 % at 10 s, -3.7 % at 20 s, -6.5 % at 30 s, -18 % at 60 s, -30 % at 90 s.
+   * So the window a low-flow trip sees moves under 1 %, and the 20-90 s hand-over to natural
+   * circulation moves 4-30 %: that part of the coastdown is no longer "derived from sourced
+   * inertia" alone. The END changes in kind -- rest in a finite time (MEASURED 132 s in water,
+   * 656 s in steam) instead of never. */
   var ROTOR_FRICTION = { kind: '[open]', frac_of_rated_torque: 0.02 };
 
   /* ---- THE SIPHON BREAKS WHEN THE TOP OF THE LOOP IS STEAM (same ruling) ----

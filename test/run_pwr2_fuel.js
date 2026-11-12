@@ -345,6 +345,30 @@ function runSuite(F, rec, quiet) {
   var heldU = (gU.M_fuel_kg * cpU / 1000) * (0.1 * (uHot.fx.T_fuel_c - (T_COOL + 40)) + 0.9 * (uHot.fx.T_fuel_hot_c - (T_COOL + 40))) +
               (gU.M_clad_kg * F.CP_ZR / 1000) * (0.1 * (uHot.fx.T_clad_c - (T_COOL + 5)) + 0.9 * (uHot.fx.T_clad_hot_c - (T_COOL + 5)));
   ck('...and no heat is invented by the split: the rods hold what was not passed to the coolant', uHot.kept_kJ / heldU, 1, 0.03, '(ratio; cp taken at the mid temperature)');
+  /* THE LEVEL MOVES ON EVERY STEP OF A BOIL-DOWN, AND THE LEDGER ABOVE NEVER MOVED IT (critic round 2, M1:
+   * with either mix deleted this file stayed 84/84). Zero power, an adiabatic-in-the-limit ride is not
+   * available (the film never reaches 0), so the claim is the one that needs no heat balance: at ZERO
+   * power and a coolant AT the rods' own temperature nothing may change, however the level moves. Both
+   * regions start apart only because the split was held first under power. */
+  function levelRide(seq) {
+    var fx = F.createFuel({ T_fuel_c: T_COOL, T_clad_c: T_COOL });
+    function st(u, Q, n, Tc) { for (var q = 0; q < n; q++) F.stepFuel(fx, 0.02, { Q_core_kW: Q, coolTemp_c: Tc, flowFrac: 0, voidFrac: 0.95, superheat_c: 0, P_MPa: 7.0, uncovered: u, steamFrac: 0 }); }
+    st(0.5, Q_RATED * 0.012, 6000, T_COOL);                       /* open the two regions apart */
+    function held() { return (1 - fx.u) * fx.T_fuel_c + fx.u * fx.T_fuel_hot_c; }
+    function heldC() { return (1 - fx.u) * fx.T_clad_c + fx.u * fx.T_clad_hot_c; }
+    var f0 = held(), c0 = heldC(), gap = fx.T_clad_hot_c - fx.T_clad_c;
+    /* one step at each new level with NO time (dt 0): only the mix can act */
+    seq.forEach(function (u) { F.stepFuel(fx, 0, { Q_core_kW: 0, coolTemp_c: T_COOL, flowFrac: 0, voidFrac: 0.95, superheat_c: 0, P_MPa: 7.0, uncovered: u, steamFrac: 0 }); });
+    return { dFuel: held() - f0, dClad: heldC() - c0, gap: gap };
+  }
+  var lvUp = levelRide([0.6, 0.75, 0.9]), lvDn = levelRide([0.4, 0.25, 0.1]), lvBoth = levelRide([0.9, 0.2, 0.7, 0.05]);
+  ckT('a level that FALLS moves length into the hot region without creating or destroying stored heat (fuel and cladding, length-weighted)',
+      lvUp.gap > 50 && Math.abs(lvUp.dFuel) < 1e-6 && Math.abs(lvUp.dClad) < 1e-6,
+      'regions ' + lvUp.gap.toFixed(0) + ' degC apart; length-weighted change ' + lvUp.dFuel.toExponential(1) + ' / ' + lvUp.dClad.toExponential(1) + ' degC');
+  ckT('...a level that RISES likewise, cladding included',
+      Math.abs(lvDn.dFuel) < 1e-6 && Math.abs(lvDn.dClad) < 1e-6, lvDn.dFuel.toExponential(1) + ' / ' + lvDn.dClad.toExponential(1) + ' degC');
+  ckT('...and a level that goes up, down, up and down again',
+      Math.abs(lvBoth.dFuel) < 1e-6 && Math.abs(lvBoth.dClad) < 1e-6, lvBoth.dFuel.toExponential(1) + ' / ' + lvBoth.dClad.toExponential(1) + ' degC');
   /* reflood: the hot length is quenched INTO the wet region, carrying its heat */
   var uMix = rideU(function (q) { return q < 5000 ? 0.4 : 0; }, 0, 5001, { steamFrac: 0 });
   var uPre = rideU(0.4, 0, 5000, { steamFrac: 0 });
@@ -706,6 +730,12 @@ var MUTATIONS = [
    '      hDry = filmCoefficient(fDry, 1, drivers.superheat_c', '      hDry = filmCoefficient(fDry, drivers.voidFrac, drivers.superheat_c'],
   ['the uncovered length is credited with the loop flow instead of the boil-off steam',
    '      if (drivers.steamFrac !== undefined && drivers.steamFrac < fDry) fDry = drivers.steamFrac;', ''],
+  ['a falling level moves length into the hot region without its heat (the hot fuel does not mix)',
+   '      fuel.T_fuel_hot_c += wUp * (fuel.T_fuel_c - fuel.T_fuel_hot_c);', ''],
+  ['a falling level moves length into the hot region without its heat (the hot cladding does not mix)',
+   '      fuel.T_clad_hot_c += wUp * (fuel.T_clad_c - fuel.T_clad_hot_c);', ''],
+  ['reflood forgets the hot CLADDING\'s heat',
+   '      fuel.T_clad_c += wDn * (fuel.T_clad_hot_c - fuel.T_clad_c);', ''],
   ['reflood forgets the hot length\'s heat (stored energy destroyed when the level rises)',
    '      fuel.T_fuel_c += wDn * (fuel.T_fuel_hot_c - fuel.T_fuel_c);', ''],
   ['the reported clad temperature is the covered region\'s (the peak is hidden)',

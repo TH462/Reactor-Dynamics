@@ -512,7 +512,7 @@ var ROUTES = {
       { id: 'rewind_3_to_2', kind: 'rewind back a step', at: '#3', set: { rewind_on_lit: true } },
     ],
   },
-  /* THE SECOND TMI-2 LEG (OWNER, 2026-11-12): the chain to core damage, ten steps, right column.
+  /* THE SECOND TMI-2 LEG (OWNER, 2026-11-12): the chain to core damage, eleven steps, right column.
    * Step 1 PAUSES on its injections and steps 2-6 hold the clock when Continue lights; the harness
    * resumes on Continue, as ui/app.js does. Step 10 is the end-state read: its one row is true on
    * arrival by design (MEASURED 2026-11-12: Core Uncovered 89-92 % at entry). */

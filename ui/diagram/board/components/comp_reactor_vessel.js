@@ -13,8 +13,8 @@
  *   cladC    peak cladding temperature, degC. Above 400 the rods take a heat colour of their
  *            own (dull red -> orange -> yellow-white by 1850) whatever the fission power is,
  *            and an overheat halo grows behind them.
- *   oxFrac   fraction of the cladding thickness oxidised, 0..1. The rods lose their shape as
- *            it approaches 0.17, the 10 CFR 50.46 embrittlement criterion the engine carries:
+ *   oxFrac   fraction of the cladding thickness oxidised, 0..1. ONCE `damaged` IS SET (never
+ *            before) the rods lose their shape as it approaches 0.17, the 10 CFR 50.46 embrittlement criterion the engine carries:
  *            they shorten from the top and a debris bed builds on the lower core plate.
  *   damaged  the engine's fuel-damage latch (cladding past 2200 degF): the halo pulses.
  *   melted   the engine's fuel-melt latch: the rods are stubs and a molten pool lies in the
@@ -561,7 +561,12 @@
      * fixed pattern, no randomness: the same plant state always draws the same core). */
     function applyDamage(force) {
       var heat = heatOf(st.cladC);
-      var slump = clamp(st.oxFrac / 0.17, 0, 1), melted = !!st.melted, dmg = !!st.damaged;
+      var melted = !!st.melted, dmg = !!st.damaged;
+      /* NO SHAPE CHANGE BEFORE THE PLANT SAYS DAMAGE (critic round 2, M4a). The oxidised fraction only ever rises,
+       * and MEASURED on a ride that never latches (accumulators in service) it reaches 7.6 % in five plant-hours:
+       * keyed on it alone the drawing lost a quarter of its rods on a core the plant calls intact. Before the
+       * latch, heat shows as colour and halo only. */
+      var slump = (dmg || melted) ? clamp(st.oxFrac / 0.17, 0, 1) : 0;
       var key = Math.round(heat * 50) + '|' + Math.round(slump * 50) + '|' + (melted ? 1 : 0) + '|' + (dmg ? 1 : 0);
       if (!force && last.dmgKey === key) return;
       last.dmgKey = key;
