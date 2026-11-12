@@ -167,11 +167,28 @@
     });
 
     var reg = coreRegime(sys);
+    /* THE UNCOVERED FRACTION (2026-11-12) -- pwr2_fuel owns the law; this file supplies what it
+     * is evaluated on. The flow it separates on is LAGGED (`froth_flow.tau_s`), carried on the
+     * fuel so a save carries it; seeded at the flow the plant is at, so a plant at power starts
+     * at 1 and nothing is uncovered. */
+    var fuelS = rx.fuel, tauS = F.OPEN.froth_flow.tau_s;
+    if (fuelS.f_sep === undefined || !(tauS > 0)) fuelS.f_sep = reg.flowFrac;
+    else fuelS.f_sep += (reg.flowFrac - fuelS.f_sep) * (dt < tauS ? dt / tauS : 1);
+    var unc = F.uncoveredFrac(fuelS.f_sep, reg.voidFrac);
+    /* the boil-off steam past the uncovered length, over rated loop flow: the covered length's
+     * heat over the latent heat. Computed only when something is uncovered. */
+    var steamFrac;
+    if (unc > 0) {
+      var hfg = W.h_g(sys.P) - W.h_f(sys.P);
+      steamFrac = hfg > 0 ? (kr.Q_total_frac * rx.rated_thermal_kW * (1 - unc) / hfg) / MDOT_RATED : 0;
+    }
     var fr = F.stepFuel(rx.fuel, dt, {
       Q_core_kW:  kr.Q_total_frac * rx.rated_thermal_kW,
       coolTemp_c: cool,
       voidFrac:   reg.voidFrac,
       flowFrac:   reg.flowFrac,
+      uncovered:  unc,
+      steamFrac:  steamFrac,
       superheat_c: reg.superheat_c,          /* #517 — the fuel REFUSES these at void 1 */
       P_MPa:      reg.P_MPa,
       /* Oxidation heat, when a damage model is supplying it. `pwr2_damage.js` IS built and the
@@ -200,7 +217,8 @@
       decay_pct:      kr.decay_frac * 100,
       rho_pcm:        kr.rho_pcm,
       xenon_pct_eq:   kr.xenon_pct_eq,
-      T_fuel_c:       fr.T_fuel_c,
+      T_fuel_c:       fr.T_fuel_peak_c,      /* the peak: the uncovered region's while any fuel is uncovered */
+      core_uncovered: fr.uncovered,
       T_fuel_rise_c:  fr.T_fuel_rise_c,
       /* THE CLADDING'S OWN TEMPERATURE, which is what `pwr2_damage.js` reacts on and what the
        * contract's `clad_temp_c` means. It comes from HERE and not from the damage model, because

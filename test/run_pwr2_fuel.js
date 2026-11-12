@@ -306,6 +306,58 @@ function runSuite(F, rec, quiet) {
     }
     return rx;
   }
+  /* ---- THE UNCOVERED REGION (2026-11-12) -------------------------------------------------
+   * One node cannot uncover; two regions of one core can. Every check below is an invariant of
+   * the split, none of them a temperature anyone chose. */
+  if (!quiet) console.log('\nTHE UNCOVERED REGION  [a rod is under the mixture or above it]');
+  ckT('nothing is uncovered at power, whatever the void: a driven loop is full of moving froth',
+      F.uncoveredFrac(1, 0) === 0 && F.uncoveredFrac(1, 1) === 0 && F.uncoveredFrac(F.OPEN.froth_flow.hi, 1) === 0,
+      'rated/liquid ' + F.uncoveredFrac(1, 0) + ', rated/steam ' + F.uncoveredFrac(1, 1));
+  ckT('...nothing is uncovered in a stalled core the mixture still covers (void at or under the swell offset)',
+      F.uncoveredFrac(0, F.OPEN.swell_void.value) === 0 && F.uncoveredFrac(0, 0.2) === 0, 'void 0.5 -> ' + F.uncoveredFrac(0, 0.5));
+  ckT('...and a stalled, dry core is uncovered from end to end',
+      F.uncoveredFrac(0, 1) === 1 && Math.abs(F.uncoveredFrac(0, 0.75) - 0.5) < 1e-12,
+      'void 1 -> ' + F.uncoveredFrac(0, 1) + ', void 0.75 -> ' + F.uncoveredFrac(0, 0.75));
+  function rideU(uSeq, Q, n, drv) {
+    var fx = F.createFuel({ T_fuel_c: T_COOL + 40, T_clad_c: T_COOL + 5 }), out = null, led = 0;
+    for (var q = 0; q < n; q++) {
+      var d = { Q_core_kW: Q, coolTemp_c: T_COOL, flowFrac: 0, voidFrac: 0.95, superheat_c: 0, P_MPa: 7.0 };
+      var uq = typeof uSeq === 'function' ? uSeq(q) : uSeq;
+      if (uq !== null) d.uncovered = uq;
+      if (drv) for (var kk in drv) d[kk] = drv[kk];
+      out = F.stepFuel(fx, 0.02, d);
+      led += (Q * F.OPEN.q_to_fuel.value - out.Q_through_gap_kW) * 0.02;      /* kJ kept in the rods */
+    }
+    return { fx: fx, out: out, kept_kJ: led };
+  }
+  var uNone = rideU(null, Q_RATED * 0.012, 3000), uZero = rideU(0, Q_RATED * 0.012, 3000);
+  ckT('with nothing uncovered the second region has no length: the step is the one it always was, to the bit',
+      uNone.fx.T_fuel_c === uZero.fx.T_fuel_c && uNone.fx.T_clad_c === uZero.fx.T_clad_c &&
+      uNone.out.T_clad_c === uNone.fx.T_clad_c && uNone.out.Q_through_gap_kW === uZero.out.Q_through_gap_kW,
+      'fuel ' + uNone.fx.T_fuel_c + ' / ' + uZero.fx.T_fuel_c);
+  var uHot = rideU(0.9, Q_RATED * 0.012, 15000, { steamFrac: 0 });   /* 300 s, decay heat, 90 % uncovered */
+  ckT('the uncovered length HEATS while the covered length sits at the coolant: the peak is the uncovered region\'s',
+      uHot.out.T_clad_c > uHot.out.T_clad_wet_c + 150 && uHot.out.T_clad_wet_c < T_COOL + 20 &&
+      uHot.out.T_clad_c === uHot.fx.T_clad_hot_c,
+      'peak ' + uHot.out.T_clad_c.toFixed(0) + ' degC against ' + uHot.out.T_clad_wet_c.toFixed(1) + ' degC under the mixture, after 300 s at 1.2 % of rated');
+  /* the ledger: what the rods kept is what the two regions' own temperatures say they hold */
+  var gU = uHot.fx.geom, cpU = F.cp_uo2((0.1 * uHot.fx.T_fuel_c + 0.9 * uHot.fx.T_fuel_hot_c + T_COOL + 40) / 2 + 273.15);
+  var heldU = (gU.M_fuel_kg * cpU / 1000) * (0.1 * (uHot.fx.T_fuel_c - (T_COOL + 40)) + 0.9 * (uHot.fx.T_fuel_hot_c - (T_COOL + 40))) +
+              (gU.M_clad_kg * F.CP_ZR / 1000) * (0.1 * (uHot.fx.T_clad_c - (T_COOL + 5)) + 0.9 * (uHot.fx.T_clad_hot_c - (T_COOL + 5)));
+  ck('...and no heat is invented by the split: the rods hold what was not passed to the coolant', uHot.kept_kJ / heldU, 1, 0.03, '(ratio; cp taken at the mid temperature)');
+  /* reflood: the hot length is quenched INTO the wet region, carrying its heat */
+  var uMix = rideU(function (q) { return q < 5000 ? 0.4 : 0; }, 0, 5001, { steamFrac: 0 });
+  var uPre = rideU(0.4, 0, 5000, { steamFrac: 0 });
+  var mixWant = 0.6 * uPre.fx.T_fuel_c + 0.4 * uPre.fx.T_fuel_hot_c;
+  ck('a level that rises carries the hot length\'s stored heat into the covered region (a length-weighted mix)',
+     uMix.fx.T_fuel_c, mixWant, 0.5, 'degC');
+  /* the steam past an uncovered rod is the boil-off, not the loop's flow */
+  var uSteam = rideU(0.9, Q_RATED * 0.012, 3000, { flowFrac: 0.008, steamFrac: 0 });
+  var uLoop  = rideU(0.9, Q_RATED * 0.012, 3000, { flowFrac: 0.008 });
+  ckT('an uncovered rod is cooled by the steam boiled off below it, not by the loop\'s whole mass flow',
+      uSteam.out.h_dry_W_per_m2K < uLoop.out.h_dry_W_per_m2K / 5,
+      uSteam.out.h_dry_W_per_m2K.toFixed(0) + ' W/m2K on the boil-off against ' + uLoop.out.h_dry_W_per_m2K.toFixed(0) + ' if the loop flow were credited');
+
   var cooled = settleClad(1, 0, Q_RATED * 0.03);          /* decay heat, rods cooled */
   var dry    = settleClad(0, 1, Q_RATED * 0.03);          /* decay heat, stagnant and voided */
   ckT('at the SAME decay power, a stagnant voided core runs the clad hundreds of degrees hotter',
@@ -646,19 +698,34 @@ var MUTATIONS = [
   ['the film coefficient loses its stagnant FLOOR (no heat sink at all at zero flow)',
    '    return h > OPEN.h_stagnant.value ? h : OPEN.h_stagnant.value;',
    '    return h;'],
+  ['separation ignores the loop flow (a core full of pumped froth reads uncovered)',
+   '    if (f >= hi) return 0;\n    var sep = f <= lo ? 1 : (hi - f) / (hi - lo);', '    var sep = 1;'],
+  ['the swell offset is dropped (a covered, boiling core reads uncovered)',
+   '    if (!(v > a0)) return 0;', '    a0 = 0;'],
+  ['the uncovered length keeps the wet floor (2 % of liquid cools every rod again)',
+   '      hDry = filmCoefficient(fDry, 1, drivers.superheat_c', '      hDry = filmCoefficient(fDry, drivers.voidFrac, drivers.superheat_c'],
+  ['the uncovered length is credited with the loop flow instead of the boil-off steam',
+   '      if (drivers.steamFrac !== undefined && drivers.steamFrac < fDry) fDry = drivers.steamFrac;', ''],
+  ['reflood forgets the hot length\'s heat (stored energy destroyed when the level rises)',
+   '      fuel.T_fuel_c += wDn * (fuel.T_fuel_hot_c - fuel.T_fuel_c);', ''],
+  ['the reported clad temperature is the covered region\'s (the peak is hidden)',
+   '    var T_clad_peak = u1 > 0 ? Math.max(fuel.T_clad_hot_c, fuel.T_clad_c) : fuel.T_clad_c;',
+   '    var T_clad_peak = fuel.T_clad_c;'],
+  ['the uncovered region\'s stored heat leaves the ledger (energy created at the coolant)',
+   '      stored += u1 * (CcapAll * (fuel.T_fuel_hot_c - hF0) + CcladAll * (fuel.T_clad_hot_c - hC0));', ''],
   ['the wet floor is deleted (a flooded core in a stalled loop cools like a rod in still gas)',
    '    var wet    = OPEN.h_wet.value * (1 - v);        /* boiling on the covered length; 0 when dry */',
    '    var wet    = 0;'],
   ['the stack is no longer split at the clad -- the clad node gets ALL the resistance',
    '    var r_fc = r_pellet + r_gap + r_clad / 2;', '    var r_fc = r_pellet + r_gap + r_clad;'],
   ['the clad stores no energy (its temperature slaves instantly, so oxidation sees a STEP)',
-   '    var T_cnew  = T_c_eq + adv[1];', '    var T_cnew  = T_c_eq;'],
+   '      T_cnew  = T_c_eq + adv[1];', '      T_cnew  = T_c_eq;'],
   ['oxidation heat is generated but never reaches the coolant (energy destroyed)',
    '    var Q_out  = dt > 0 ? (Q_fuel + Q_ox) - stored / dt : Q_fuel + Q_ox;',
    '    var Q_out  = dt > 0 ? Q_fuel - stored / dt : Q_fuel;'],
   ['the clad mass is taken as the FUEL mass (a 50x time constant)',
-   '    var Cclad = fuel.geom.M_clad_kg * CP_ZR / 1000;         /* kJ/K */',
-   '    var Cclad = fuel.geom.M_fuel_kg * CP_ZR / 1000;'],
+   '    var CcladAll = fuel.geom.M_clad_kg * CP_ZR / 1000;      /* kJ/K, whole core */',
+   '    var CcladAll = fuel.geom.M_fuel_kg * CP_ZR / 1000;'],
   ['Zircaloy density moved off its value (clad mass and the Zr inventory both wrong)',
    '  var RHO_ZR = 6560;', '  var RHO_ZR = 4000;'],
   ['the steady solve returns the STALE inherited reference instead of deriving one',
@@ -673,7 +740,7 @@ var MUTATIONS = [
    * (D1 section 35), so this mutation now tests that the solve VALUE is what the file carries. */
   ['gap conductance moved off its SOLVED value', 'value: 3000,', 'value: 6000,'],
   ['the fuel stores no energy (temperature slaved to equilibrium, no time constant)',
-   '    var T_new   = T_eq + adv[0];', '    var T_new   = T_eq;'],
+   '      T_new   = T_eq + adv[0];', '      T_new   = T_eq;'],
   ['the rod OD moved off its sourced value', 'rod_od_in:   0.374,', 'rod_od_in:   0.400,'],
   ['the rod pitch moved off its sourced value', 'rod_pitch_in:0.496,', 'rod_pitch_in:0.530,'],
   /* CONSTRUCTION */

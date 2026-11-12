@@ -196,6 +196,41 @@
            'froth swell, so both err toward EARLIER dry-out. Below the forced term at any loop ' +
            'flow above 5.6 % of rated, so it never binds at power.'
     },
+    /* ---- THE UNCOVERED REGION (owner, 2026-11-12: "add a proper meltdown ability") ----------
+     * ONE fuel node cannot uncover: MEASURED 2026-11-12 on the TMI-2 sequence with the loop
+     * stalled, the core node 98-100 % void and the single node cycling at 900-1,060 degF for TEN
+     * plant-hours, because the wet floor above let 2 % of liquid cool every rod in the core.
+     * A rod is either under the mixture or above it. So the fuel is carried as TWO regions of one
+     * core, split by `uncoveredFrac()`: the covered length is cooled as before, the uncovered
+     * length sees vapour only, and length moves between them (carrying its stored heat) as the
+     * level moves. With nothing uncovered the second region has no length and every number is
+     * what it was. */
+    swell_void: {
+      value: 0.5,
+      why: 'The core-node void fraction at which the boiling mixture first fails to cover the ' +
+           'top of the fuel. NOT A NEW NUMBER: it is the offset pwr2_true_state has always used ' +
+           'for `core_uncovered_frac` (void 0.5 -> 1.0 maps onto 0 -> 100 % uncovered), a ' +
+           'declared homogeneous-model proxy for froth swell, adopted here so the rods and the ' +
+           'published level cannot disagree. UNSOURCED as a level.'
+    },
+    froth_flow: {
+      lo: 0.01, hi: 0.03,          /* loop flow / rated */
+      tau_s: 60,                   /* [open] the flow is judged over this long, not instant by
+                                    * instant: MEASURED 2026-11-12, an accumulator slug crossing the
+                                    * stalled loop reads 146 kg/s for seconds and leaves the core 95 %
+                                    * void -- a surge is not a restored circulation, and without the
+                                    * lag each one re-wet every rod in the core */
+      why: 'Whether the phases SEPARATE. With the pumps driving the loop the core is full of a ' +
+           'moving froth and no rod is uncovered whatever the void; with the loop stalled the ' +
+           'water settles and the top of the core stands in steam. The history is the anchor ' +
+           'for the mechanism -- the TMI-2 core was cooled for 100 minutes by pumps passing a ' +
+           'steam-water mixture and uncovered when they were stopped (NUREG/CR-1250 App. II.1 ' +
+           'E99/E111 and section II.A, quoted in Manuals/08 section 4.0) -- and NOT for the ' +
+           'numbers: [open] the two flow fractions between which separation goes from complete ' +
+           'to none. MEASURED on this plant, for scale: pumps running on a fully voided loop ' +
+           'carry 5.6 % of rated at their lowest, two-phase natural circulation with the leak ' +
+           'isolated 3.3-5 %, a stalled loop under 1 %. The band sits between the last two.'
+    },
     q_to_fuel: {
       value: 0.974,
       why: 'Fraction of fission energy deposited in the fuel; the balance is prompt gamma and ' +
@@ -379,6 +414,19 @@
     if (!(g0 > 0)) return 1;
     var f = W.vaporFilmGroup(Ts + superheat_c, P_MPa) / g0;
     return f < 1 ? f : 1;                    /* degrade only — see the cap note above */
+  }
+
+  /* uncoveredFrac(flowFrac, voidFrac) -> 0..1, the fraction of the fuel's length above the mixture.
+   * separation(flow) * swell(void): both factors are 0 at power and the product is EXACTLY 0
+   * whenever the loop flow is above `froth_flow.hi` or the core void is below `swell_void`. */
+  function uncoveredFrac(flowFrac, voidFrac) {
+    var v = voidFrac < 0 ? 0 : (voidFrac > 1 ? 1 : voidFrac);
+    var a0 = OPEN.swell_void.value;
+    if (!(v > a0)) return 0;
+    var f = flowFrac > 0 ? flowFrac : 0, lo = OPEN.froth_flow.lo, hi = OPEN.froth_flow.hi;
+    if (f >= hi) return 0;
+    var sep = f <= lo ? 1 : (hi - f) / (hi - lo);
+    return sep * (v - a0) / (1 - a0);
   }
 
   function filmCoefficient(flowFrac, voidFrac, superheat_c, P_MPa) {
@@ -582,37 +630,97 @@
      * reaction it cannot see. */
     var Q_ox     = drivers.Q_ox_kW === undefined ? 0 : drivers.Q_ox_kW;
 
-    var T_f_k = fuel.T_fuel_c + 273.15;
-    var hFilm = filmCoefficient(drivers.flowFrac, drivers.voidFrac,
+    /* ---- THE SPLIT. `u` is the uncovered fraction of the fuel's length this step. Length that
+     * changes sides carries its temperature with it (a mass-weighted mix into the region it
+     * joins), so moving the level neither creates nor destroys stored heat. ---- */
+    var u1 = drivers.uncovered === undefined ? 0 : drivers.uncovered;
+    if (!(u1 > 1e-6)) u1 = 0; else if (u1 > 1) u1 = 1;
+    var u0 = fuel.u > 0 ? fuel.u : 0;
+    if (u0 === 0) { fuel.T_fuel_hot_c = fuel.T_fuel_c; fuel.T_clad_hot_c = fuel.T_clad_c; }
+    if (u1 > u0) {                                     /* the level fell: wet length joins the hot region */
+      var wUp = (u1 - u0) / u1;
+      fuel.T_fuel_hot_c += wUp * (fuel.T_fuel_c - fuel.T_fuel_hot_c);
+      fuel.T_clad_hot_c += wUp * (fuel.T_clad_c - fuel.T_clad_hot_c);
+    } else if (u1 < u0 && u1 < 1) {                    /* reflood: hot length is quenched into the wet region */
+      var wDn = (u0 - u1) / (1 - u1);
+      fuel.T_fuel_c += wDn * (fuel.T_fuel_hot_c - fuel.T_fuel_c);
+      fuel.T_clad_c += wDn * (fuel.T_clad_hot_c - fuel.T_clad_c);
+    }
+    if (u1 === 1 && u0 < 1) { fuel.T_fuel_c = fuel.T_fuel_hot_c; fuel.T_clad_c = fuel.T_clad_hot_c; }
+    fuel.u = u1;
+
+    /* ONE cp FOR BOTH REGIONS within a step, evaluated at the length-weighted mean, so the mix
+     * above and the stored-energy ledger below use the same capacity and close exactly. With
+     * nothing uncovered that mean IS the fuel temperature, as before. */
+    var T_mean  = (1 - u1) * fuel.T_fuel_c + u1 * fuel.T_fuel_hot_c;
+    var T_f_k   = T_mean + 273.15;
+    var cp      = cp_uo2(T_f_k);
+    var CcapAll = fuel.geom.M_fuel_kg * cp / 1000;          /* kJ/K, whole core */
+    var CcladAll = fuel.geom.M_clad_kg * CP_ZR / 1000;      /* kJ/K, whole core */
+    var stored = 0, Q_gap = 0;
+
+    /* the covered length: the liquid in the node is all below the level, so its local void is
+     * the node's void less the uncovered share */
+    var vWet  = u1 < 1 ? (drivers.voidFrac - u1) / (1 - u1) : drivers.voidFrac;
+    if (vWet < 0) vWet = 0;
+    var hFilm = filmCoefficient(drivers.flowFrac, u1 > 0 ? vWet : drivers.voidFrac,
                                 drivers.superheat_c, drivers.P_MPa);
-    var cond  = conductance(fuel.geom, T_f_k, hFilm);
+    var cond  = conductance(fuel.geom, fuel.T_fuel_c + 273.15, hFilm);
     var UA_kW = cond.UA_W_per_K / 1000;
     var UA_fc = cond.UA_fc_W_per_K / 1000;                  /* kW/K, fuel <-> clad  */
     var UA_cw = cond.UA_cw_W_per_K / 1000;                  /* kW/K, clad <-> water */
-    var cp    = cp_uo2(T_f_k);
-    var Ccap  = fuel.geom.M_fuel_kg * cp / 1000;            /* kJ/K */
-    var Cclad = fuel.geom.M_clad_kg * CP_ZR / 1000;         /* kJ/K */
+    var Ccap  = CcapAll, Cclad = CcladAll;
     var tau   = Ccap / UA_kW;                               /* s */
-
-    /* THE TWO EQUILIBRIA. Heat leaving the clad to the coolant is everything generated in the
-     * fuel plus everything generated by oxidation; heat crossing the gap is the fuel's alone. */
-    var T_c_eq  = drivers.coolTemp_c + (Q_fuel + Q_ox) / UA_cw;
-    var T_eq    = T_c_eq + Q_fuel / UA_fc;
     var T_f_old = fuel.T_fuel_c, T_c_old = fuel.T_clad_c;
-    var adv     = advance2(T_f_old - T_eq, T_c_old - T_c_eq,
-                           UA_fc / Ccap, UA_fc / Cclad, UA_cw / Cclad, dt);
-    var T_new   = T_eq + adv[0];
-    var T_cnew  = T_c_eq + adv[1];
-
-    /* WHAT THE COOLANT ACTUALLY RECEIVES over the step: the direct deposition, plus everything
-     * generated in fuel and clad that did not end up STORED in one of them. Taken from the two
-     * nodes' own energy CHANGE rather than from UA*(T_c - T_cool) at either endpoint, so both
-     * sides balance exactly and neither node can gain or lose energy through the integrator:
-     *     Q_out * dt = (Q_fuel + Q_ox) * dt - C_f*(dT_f) - C_c*(dT_c) */
-    var stored = Ccap * (T_new - T_f_old) + Cclad * (T_cnew - T_c_old);
-    var Q_out  = dt > 0 ? (Q_fuel + Q_ox) - stored / dt : Q_fuel + Q_ox;
+    var T_new = T_f_old, T_cnew = T_c_old;
+    if (u1 < 1) {
+      /* THE TWO EQUILIBRIA. Heat leaving the clad to the coolant is everything generated in the
+       * fuel plus everything generated by oxidation; heat crossing the gap is the fuel's alone.
+       * Per unit of core: power, capacity and conductance all carry the same (1-u), so the
+       * equilibria and the time constants are those of the whole core. */
+      var T_c_eq  = drivers.coolTemp_c + (Q_fuel + Q_ox) / UA_cw;
+      var T_eq    = T_c_eq + Q_fuel / UA_fc;
+      var adv     = advance2(T_f_old - T_eq, T_c_old - T_c_eq,
+                             UA_fc / Ccap, UA_fc / Cclad, UA_cw / Cclad, dt);
+      T_new   = T_eq + adv[0];
+      T_cnew  = T_c_eq + adv[1];
+      stored += (1 - u1) * (Ccap * (T_new - T_f_old) + Cclad * (T_cnew - T_c_old));
+    }
     fuel.T_fuel_c = T_new;
     fuel.T_clad_c = T_cnew;
+
+    /* the uncovered length: vapour only -- no wet floor, whatever liquid the node still holds */
+    var hDry = null;
+    if (u1 > 0) {
+      /* WHAT FLOWS PAST AN UNCOVERED ROD IS THE STEAM BOILED OFF BELOW IT, not the loop's mass
+       * flow: `steamFrac` is that boil-off over rated (pwr2_reactor supplies it from the heat the
+       * covered length makes and the latent heat). MEASURED without it, 2026-11-12: a 5-16 kg/s
+       * trickle of WATER into the bottom of a 90 %-uncovered core was credited as 250 W/m2K of
+       * steam cooling on the rods above it, and they sat at 500-600 degF. */
+      var fDry = drivers.flowFrac;
+      if (drivers.steamFrac !== undefined && drivers.steamFrac < fDry) fDry = drivers.steamFrac;
+      hDry = filmCoefficient(fDry, 1, drivers.superheat_c === undefined ? 0 : drivers.superheat_c,
+                             drivers.P_MPa === undefined ? 7.0 : drivers.P_MPa);
+      var condH = conductance(fuel.geom, fuel.T_fuel_hot_c + 273.15, hDry);
+      var hUA_fc = condH.UA_fc_W_per_K / 1000, hUA_cw = condH.UA_cw_W_per_K / 1000;
+      var hT_c_eq = drivers.coolTemp_c + (Q_fuel + Q_ox) / hUA_cw;
+      var hT_eq   = hT_c_eq + Q_fuel / hUA_fc;
+      var hF0 = fuel.T_fuel_hot_c, hC0 = fuel.T_clad_hot_c;
+      var hAdv = advance2(hF0 - hT_eq, hC0 - hT_c_eq,
+                          hUA_fc / CcapAll, hUA_fc / CcladAll, hUA_cw / CcladAll, dt);
+      fuel.T_fuel_hot_c = hT_eq + hAdv[0];
+      fuel.T_clad_hot_c = hT_c_eq + hAdv[1];
+      stored += u1 * (CcapAll * (fuel.T_fuel_hot_c - hF0) + CcladAll * (fuel.T_clad_hot_c - hC0));
+    } else { fuel.T_fuel_hot_c = fuel.T_fuel_c; fuel.T_clad_hot_c = fuel.T_clad_c; }
+
+    /* WHAT THE COOLANT ACTUALLY RECEIVES over the step: the direct deposition, plus everything
+     * generated in fuel and clad that did not end up STORED in either region. Taken from the
+     * nodes' own energy CHANGE rather than from UA*(T_c - T_cool) at either endpoint, so both
+     * sides balance exactly and no node can gain or lose energy through the integrator:
+     *     Q_out * dt = (Q_fuel + Q_ox) * dt - SUM over regions of share * (C_f*dT_f + C_c*dT_c) */
+    var Q_out  = dt > 0 ? (Q_fuel + Q_ox) - stored / dt : Q_fuel + Q_ox;
+    var T_fuel_peak = u1 > 0 ? Math.max(fuel.T_fuel_hot_c, fuel.T_fuel_c) : fuel.T_fuel_c;
+    var T_clad_peak = u1 > 0 ? Math.max(fuel.T_clad_hot_c, fuel.T_clad_c) : fuel.T_clad_c;
 
     /* Centerline, REPORTED so it cannot be confused with the average the model integrates.
      * T_center - T_surface = q' / (4*pi*k_f).
@@ -628,9 +736,15 @@
     return {
       T_fuel_c: fuel.T_fuel_c,
       T_fuel_rise_c: fuel.T_fuel_c - drivers.coolTemp_c,
-      T_clad_c: fuel.T_clad_c,
-      T_clad_rise_c: fuel.T_clad_c - drivers.coolTemp_c,
-      T_clad_f: fuel.T_clad_c * 9 / 5 + 32,
+      /* THE PEAK, which is what the contract's `clad_temp_c` and the 2200 degF criterion mean:
+       * the uncovered region's while any length is uncovered, the one node's otherwise. */
+      T_clad_c: T_clad_peak,
+      T_clad_rise_c: T_clad_peak - drivers.coolTemp_c,
+      T_clad_f: T_clad_peak * 9 / 5 + 32,
+      T_fuel_peak_c: T_fuel_peak,
+      T_clad_wet_c: fuel.T_clad_c,
+      uncovered: u1,
+      h_dry_W_per_m2K: hDry,
       T_surface_c: T_surf,
       T_centerline_c: T_ctr,
       T_centerline_f: T_ctr * 9 / 5 + 32,
@@ -660,7 +774,7 @@
     RHO_ZR: RHO_ZR, CP_ZR: CP_ZR,
     cp_uo2: cp_uo2, k_uo2: k_uo2,
     deriveGeometry: deriveGeometry, conductance: conductance,
-    filmCoefficient: filmCoefficient, superheatFactor: superheatFactor, advance2: advance2,
+    filmCoefficient: filmCoefficient, uncoveredFrac: uncoveredFrac, superheatFactor: superheatFactor, advance2: advance2,
     steadyFuelTemp: steadyFuelTemp, steadyCladTemp: steadyCladTemp,
     createFuel: createFuel, stepFuel: stepFuel
   };
