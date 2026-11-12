@@ -5246,7 +5246,7 @@ if (!only && RUN_LIVE) {
       var dS = diffSet(dr.strand, SUB_STRAND), dT = diffSet(dr.tick, SUB_TICK);
       var control = base.strand.length === 0 && base.tick.length === 0;
       ck('2ag.9 a DRIFTING T-avg breaks every SUBCOOLING MARGIN row, which 2ag.3’s channel filter cannot see (#788)',
-         mine.length === 4 && dS.ok && dT.ok && control,   // 5 -> 4: TMI-2 old step 17's row left in the #670 redesign (2026-10-14). 4 -> 5: cooldown 11b (#807 review item 4, 2026-09-26)
+         mine.length === 5 && dS.ok && dT.ok && control,   // 4 -> 5 MEASURED 2026-11-12: pwr_tmi2_meltdown 6's SUBCOOLING MARGIN row. // 5 -> 4: TMI-2 old step 17's row left in the #670 redesign (2026-10-14). 4 -> 5: cooldown 11b (#807 review item 4, 2026-09-26)
          dS.note + dT.note + mine.length + ' pool row(s) grade the derived channel, ' +
          dr.tick.length + ' false-tick and ' + dr.strand.length + ' strand under the drift; ' +
          (control ? 'control: the un-injected rig does neither on any of them. '
