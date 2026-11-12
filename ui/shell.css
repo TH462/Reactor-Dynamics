@@ -2566,6 +2566,18 @@ select.num-input { width: auto; }
   border-left: 2px solid var(--border);
   font-size: 12.5px; line-height: 1.45; color: var(--text-2);
 }
+/* `ahead` — the walkthrough's forecast line (OWNER 2026-11-12: "explain events before they happen"),
+   directly above the Continue row. The story block's left rule and legend idiom, in the live
+   row's cobalt so it reads as the thing Continue leads to rather than as one more note. */
+.ckl-ahead {
+  margin: 8px 0 2px; padding: 5px 0 5px 8px;
+  border-left: 2px solid #7fa8dd;
+  font-size: 12.5px; line-height: 1.45; color: var(--text);
+}
+.ckl-ahead > span {
+  display: block; color: var(--muted);
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+}
 .ckl-story-l { margin-bottom: 2px; }
 .ckl-story-l:last-child { margin-bottom: 0; }
 /* the label column: small caps-ish legend, so four lines scan as a table without being one */

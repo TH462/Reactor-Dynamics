@@ -276,6 +276,13 @@ var STEP_UI = {
     { i: 10, view: 'board', control: 'ECCS' },               // 07:20:37 — injection restored
     { i: 11, view: 'board', control: 'RCP ON/OFF' },         // 19:50:37 — the epilogue restart
   ],
+  /* THE SECOND TMI-2 LEG (OWNER, 2026-11-12), the chain to core damage. Its own block, appended.
+   * Three of its ten steps carry a `control`; the rest are watch beats and own no row. */
+  'pwr2:pwr_tmi2_meltdown': [
+    { i: 4, view: 'board', control: 'ECCS' },         // 04:05:07 — injection stopped
+    { i: 6, view: 'board', control: 'AFW' },          // 04:08:37 — the found block valves
+    { i: 8, view: 'board', control: 'RCP ON/OFF' },   // 05:41:37 — the pumps secured
+  ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },
     { i: 3,  view: 'board', control: '1/M Plot' },

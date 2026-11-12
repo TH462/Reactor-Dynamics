@@ -15,7 +15,13 @@
  *          wait_hint, wait_speed, wait_first, overtaken, pair, trend, window, hl, hl_watch, press_expected, expect_alarms, past, story, crew,
  *          inject, clear,
  *          pause, pause_on_met, wrong,
- *          wait_est_s, aim, speed_text }
+ *          wait_est_s, aim, speed_text, ahead }
+ *   ahead   OPTIONAL string — THE FORECAST *(OWNER, 2026-11-12: "It should explain events before
+ *           they happen (generally)")*: one or two sentences on what the NEXT Continue lets happen,
+ *           drawn as the card's "Next" line directly above the Continue row (`.ckl-ahead`,
+ *           ui/app.js). Display only. It is a claim about the plant like any other card text, so
+ *           it is measured on the route, and where it tells history the board does not show it
+ *           says "In 1979". `run_style` scans it like `aim`. First used by `pwr_tmi2_meltdown`.
  *   aim     OPTIONAL string — THE STEP'S ONE-LINE WHY *(OWNER RULING, 2026-09-24: "I like putting
  *           the why where you put it. i choose a.")*: the italic line directly under `text` and
  *           ABOVE the substep rows (`.ckl-aim`, ui/app.js), in the what / why / how format of
@@ -6607,6 +6613,165 @@
          * seed 42: block valve closed at 17.2 plant-min (RCS INVENTORY about 73 %), minimum inventory 73.2 %, core uncovered 0 %
          * throughout; START at 27.5, inventory above 100 % by about 62 (about 35 plant-min after START). */
         { overtaken: [9], outcome: 'What happened, link by link, as measured on this plant:\n1. Feed lost: the heat had nowhere to go. Pressure jumped past 2300 psi and the relief valve lifted, as designed.\n2. The valve stuck open. Its lamp read CLOSED, because the lamp shows the solenoid, while the pipe under it ran hot.\n3. Pressure fell and injection started by itself, within two minutes.\n4. Steam in the loop pushed water up into the pressurizer, so the level rose while the plant emptied. Injection was stopped with RCS inventory still above 90 %, and the level pegged at 100 % within two minutes.\n5. You closed the block valve early, with RCS INVENTORY still above 70 %. The leak stopped and the core never uncovered.\n6. Injection put the water back: inventory was above 100 % about 35 plant-minutes after START.\nIn 1979 the block valve stayed open for more than two hours, the fuel bundles boiled more than half dry, and serious core damage began. This sim does not model that damage (manual chapter 08, section 6.0).' }],
+    },
+    /* ============================ TMI-2: THE ROAD TO CORE DAMAGE ============================
+     * *(OWNER, 2026-11-12: "design and implement a three mile island incident walkthrough. This
+     * is different from the current scenario. This will not use the popup idea ... It should
+     * explain events before they happen (generally) and highlight the important sections of the
+     * diagram ... a player will walk away understanding the sequence of events that caused the
+     * meltdown up to the point of the meltdown. Be concise in your text.")*
+     *
+     * A SECOND LEG ON THE SAME NIGHT, NOT A REWRITE OF `pwr_tmi2_incident`. That one is the
+     * crew's four hours and the recovery, drawn as a board callout; this one is the causal
+     * chain only, in the right column (no `callout`), and it STOPS where the 1979 core damage
+     * began: relief valve open, injection off, pumps off. No block valve, no recovery.
+     *
+     * EVERY CARD IS WHAT / WHY / NEXT: `text` (the action or the thing to watch), `why` (the
+     * card's always-drawn Background, one or two sentences; no `aim`, so the reason is said once)
+     * and `ahead`.
+     * EVERY CARD FORECASTS (`ahead`, the "Next:" line): the clock is stopped whenever Continue
+     * lights on a rapid beat (`pause` / `pause_on_met`), so the player reads what the next
+     * Continue lets happen before it happens.
+     *
+     * HISTORY IS ONLY WHAT `Manuals/08_ACCIDENT_TMI.md` ALREADY SOURCES (NUREG/CR-1250 App. II.1
+     * and Vol. I): the source corpus is not in the tree this was authored in, so no new
+     * historical claim was added. Clocks are that chapter's.
+     *
+     * ⚠ THE PLANT DOES NOT SHOW THE LAST LINK, AND THE LAST CARD SAYS SO. Measured full-stack
+     * 2026-11-12 (measure_stack, seed 4242, the crew's actions, block valve never closed, six
+     * plant-hours): core uncovered 93-96 % from one hour on, RCS inventory down to 7 %, and the
+     * cladding never above 626 degF (330 degC). The core is one homogeneous node and the loop
+     * keeps carrying steam through it (chapter 08 section 6.0). Step 10 states the 1979 outcome
+     * as history and the board's reading as the board's. */
+    {
+      id: 'pwr_tmi2_meltdown', category: 'incident', manual_ref: 'PWR-E08',
+      story_year: 1979,
+      title: 'Three Mile Island Unit 2 — the chain of events to core damage',
+      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to the point serious core damage began. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 50 plant-minutes.',
+      from: 'hot_full_power',
+      prereq: [
+        'Plant at Mode 1, At Power: REACTOR POWER near 100 % with the turbine on line (auto-checked).',
+      ],
+      precond: [
+        { p: 'power_pct', op: '>', v: 90, text: 'Reactor at power: REACTOR POWER above 90 %' },
+      ],
+      steps: [
+        /* 1 — the plant before. The two latent conditions go in here, with the clock stopped:
+         * the shut AFW block valves (App. II.1 E4) and the P-9 defeat (chapter 08 section 1.1). */
+        { text: 'Read the starting plant, then press Continue: full power, with the auxiliary feedwater (AFW) block valves shut by mistake.',
+          why: 'AFW is the standby feed for the steam generator. It is not running, so the shut valves raise no alarm.',
+          note: 'Set up for this walkthrough: the reactor does not trip when the turbine trips. TMI-2 had no such trip. This plant has one, so it is switched off here.',
+          ahead: 'The main feedwater pumps trip. The steam generator stops taking the reactor\'s heat, so the reactor coolant heats up and its pressure climbs.',
+          story: { clock: '04:00' },
+          inject: [{ failure: 'afw_failure' }, { failure: 'anticipatory_trip_failure' }],
+          pause: true,
+          hold: 2,
+          trend: ['pressure', 'pzr_level', 'inventory', 'porv'], window: 1800,
+          hl_watch: ['AFW', 'Feed Pumps', 'Feed Flow'] },
+        /* 2 — 04:00:37, E1-E3. The stick is armed WITH the feed loss (21 s window, `pwr_tmi2_incident` header trap 1). */
+        { text: 'Watch FEED FLOW fall and PRIMARY PRESSURE climb until the relief valve (PORV) on the pressurizer opens.',
+          why: 'With no feedwater, the relief valve is the only way out for the heat.',
+          ahead: 'Pressure falls, the valve is told to close, and it sticks open. The reactor trips.',
+          story: { clock: '04:00:37' },
+          inject: [{ failure: 'condensate_polisher_trip' }, { failure: 'loss_of_feedwater' }, { failure: 'stuck_porv_open' }],
+          hold: 10,
+          pause_on_met: true,
+          accs: [{ p: 'porv_open', op: '>', v: 0, label: 'the relief valve (PORV) is open' }],
+          hl_watch: ['Polisher Status', 'Feed Flow', 'Plant Pressure', 'Relief Valve (PORV)'] },
+        /* 3 — 04:00:45, E6/E12/E20. NO LAMP FAILURE IS INJECTED: this plant's PORV lamp is the commanded
+         * state already (pwr_instruments `porv_indicator`). MEASURED 2026-11-12, live runtime, seed 42:
+         * it reads open at 5.2 s and closed from 21 s on with the valve stuck open; trip at 52 s. */
+        { text: 'Watch the reactor trip, then compare the PORV lamp with the orange temperature beside it.',
+          why: 'The lamp shows the signal sent to the valve, not the valve. The orange reading is the pipe leaving it: hot means steam is still passing.',
+          ahead: 'Coolant keeps leaving through the stuck valve. Pressure falls until emergency injection starts by itself.',
+          story: { clock: '04:00:45' },
+          hold: 60,
+          pause_on_met: true,
+          accs: [{ p: 'scrammed', op: '>', v: 0, label: 'the reactor has tripped' },
+                 { p: 'porv_tailpipe_temp_c', op: '>', v: 115.56, label: 'the pipe leaving the PORV is above 240 °F' }],
+          hl_watch: ['Relief Valve (PORV)', 'Plant Pressure'] },
+        /* 4 — 04:02:39, E31. */
+        { text: 'Watch PRIMARY PRESSURE fall until the START light comes on, on the ECCS (emergency core cooling) card.',
+          why: 'Injection pumps water in to replace what the stuck valve lets out.',
+          note: 'INJ FLOW reads 0 GPM until pressure falls below about 1380 psi: the pump cannot push against more.',
+          ahead: 'PRESSURIZER LEVEL rises. Steam forming in the hot coolant pushes water up into the pressurizer, so the level climbs while the plant loses water.',
+          story: { clock: '04:02:39' },
+          hold: 90,   // the replay's STOP on step 5 must land after the reset window opens (125.5 s, `pwr_tmi2_incident` 6)
+          pause_on_met: true,
+          accs: [{ p: 'hpi_active', op: '>', v: 0, label: 'ECCS START lit: injection running' }],
+          hl_watch: ['ECCS', 'HPI/LPI', 'Plant Pressure'] },
+        /* 5 — 04:05:07, E33-E35 and Vol. I ("going solid"). The crew's first wrong action. */
+        { text: 'Watch PRESSURIZER LEVEL climb, then press STOP on the ECCS card, as the crew did.',
+          crew: true,
+          control: 'ECCS', target: 'injection stopped with PRESSURIZER LEVEL climbing',
+          why: 'The crew had no gauge for the water in the reactor. They read the rising pressurizer level as a plant filling up, and stopped the filling.',
+          ahead: 'With injection off the coolant boils. PRESSURIZER LEVEL pegs at the top while RCS INVENTORY, the water really in the plant, keeps falling.',
+          story: { clock: '04:05:07' },
+          pair: ['pzr_level', 'inventory'],
+          cmd: { action: 'set_hpi', active: false }, hold: 120,
+          pause_on_met: true,   // MEASURED 2026-11-12, Continue pressed 120 s late: the level pegged under this card and step 6 opened already met
+          accs_ordered: true,
+          accs: [{ p: 'pzr_level_pct', op: '>', v: 65.5, label: 'PRESSURIZER LEVEL above 65 % and climbing' },   // 65.5: the tile's own rounding, so it reads 66 when this ticks
+                 { cmd: { action: 'set_hpi', active: false }, p: 'hpi_active', op: '<', v: 1, ask: 'Press STOP on the ECCS card.', label: 'injection stopped' }],
+          hl: ['ECCS — Stop'], hl_watch: ['Pressurizer Level', 'HPI/LPI'] },
+        /* 6 — 04:06:28, E42/E43. */
+        { text: 'Watch PRESSURIZER LEVEL peg at 100 % and SUBCOOLING MARGIN fall to zero: the coolant is boiling.',
+          why: 'The pressurizer is full because steam in the loop pushed the water there. Level is not inventory.',
+          ahead: 'In 1979, eight minutes in, an operator sees the steam generator boiled dry and finds the AFW block valves shut.',
+          story: { clock: '04:06:28' },
+          pair: ['pzr_level', 'inventory'],
+          hold: 200,
+          pause_on_met: true,
+          accs: [{ p: 'pzr_level_pct', op: '>=', v: 99, label: 'PRESSURIZER LEVEL pegged at the top of its scale' },
+                 { p: 'subcooling_c', op: '<=', v: 0.56, label: 'SUBCOOLING MARGIN at or below 1 °F' }],
+          hl_watch: ['Pressurizer Level', 'Subcooling Margin'] },
+        /* 7 — 04:08:37, E49. */
+        { text: 'Open the AFW block valves: click the valve symbol above the AFW card.',
+          control: 'AFW', target: 'STEAM GENERATOR LEVEL back above 5 %',
+          why: 'Feedwater gives the heat a way out again. It does nothing about the stuck relief valve.',
+          ahead: 'For the next 40 plant-minutes the plant drains through the relief valve. The pumps keep a froth of steam and water moving through the core.',   // MEASURED 2026-11-12: step 8 lasts 42 plant-min on the typical route, 31 entered 120 s late per step
+          story: { clock: '04:08:37' },
+          cmd: { action: 'set_afw_block', open: true }, hold: 700,
+          wait_speed: 60,
+          accs: [{ cmd: { action: 'set_afw_block', open: true }, p: 'afw_blocked', op: '<', v: 1, label: 'AFW block valves open' },   // press OR position (#697)
+                 { p: 'sg_level_pct', op: '>', v: 5, label: 'STEAM GENERATOR LEVEL back above 5 %' }],
+          hl: ['AFW — Block Valve'], hl_watch: ['AFW', 'SG Level'] },
+        /* 8 — 04:10:37 (E56, first pump vibration alarm) to 05:13:37 (E99: "increasing vibration and
+         * decreasing flow and amperage"). The drain, watched at 60x. */
+        { text: 'Watch RCS INVENTORY on the chart fall while PRESSURIZER LEVEL reads full, then RCP FLOW fall below 25 %.',
+          why: 'Half the water is gone, and the one gauge the crew trusts for it says full. The pumps are moving more steam than water.',
+          ahead: 'The pumps shake. The crew stops them to save them.',
+          story: { clock: '04:10:37' },
+          pair: ['pzr_level', 'inventory'],
+          trend: ['pressure', 'pzr_level', 'inventory', 'uncovered', 'porv'], window: 7200,
+          hold: 3000,
+          wait_speed: 60,
+          accs: [{ p: 'core_inventory_pct', op: '<', v: 50, label: 'RCS INVENTORY on the chart below 50 %' },
+                 { p: 'pump_flow_pct', op: '<', v: 24.5, label: 'RCP FLOW below 25 %' }],   // 24.5: the tile rounds, so it reads 24 when this ticks. MEASURED 2026-11-12: the tile (the flow tap, not mass flow) reads 90 % at entry, 60 % at 30 plant-min, 24 % near 50, and levels off near 16 %
+          hl_watch: ['Pressurizer Level', 'RCP ON/OFF', 'Reactor Vessel'] },
+        /* 9 — 05:13:37 and 05:41:37, E99/E111. One handswitch on this board. */
+        { text: 'Press OFF on the RCP FLOW card, as the crew did.',
+          crew: true,
+          control: 'RCP ON/OFF', target: 'the reactor coolant pumps stopped',
+          why: 'Stopping the pumps was right for the pumps. It also ended the only forced flow through the core.',
+          ahead: 'In 1979 steam and water now separated: "natural circulation was blocked by steam", and the top of the core stood in steam.',
+          story: { clock: '05:41:37' },
+          cmd: { action: 'set_rcp', running: false }, hold: 120,
+          accs: [{ cmd: { action: 'set_rcp', running: false }, p: 'rcp_running', op: '<', v: 1, label: 'the reactor coolant pumps are OFF' },   // press OR the handswitch lamp (#697)
+                 { p: 'rcp_cavitating', op: '<', v: 1, label: 'the pump cavitation alarm clears' }],
+          hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF'] },
+        /* 10 — the end state. 06:18:37 E122 (block valve), E136 (radiation alarms), Vol. I p. 18. */
+        { text: 'Read the end state, then press Continue: relief valve open, injection off, pumps off, core uncovered.',
+          why: 'In 1979 serious core damage began here. The block valve that stops the leak was closed 2 hours 18 minutes in, too late for the fuel.',
+          note: 'This plant does not show the fuel heating: its core is modelled as one mixed volume, so Peak Clad Temp on the chart stays below 650 °F.',   // MEASURED 2026-11-12: 556-585 °F at this step on the routes played; 626 °F the six-hour maximum with the valve never closed
+          story: { clock: '06:18:37' },
+          trend: ['inventory', 'uncovered', 'clad_temp', 'pzr_level', 'porv'],
+          hold: 60,
+          accs: [{ p: 'core_uncovered_frac', op: '>', v: 0.8, label: 'Core Uncovered on the chart above 80 %' }],   // MEASURED 2026-11-12: 89-90 % at entry on the typical route, 92 % entered 120 s late; 90 % was the edge (#543)
+          hl_watch: ['Reactor Vessel', 'Relief Valve (PORV)', 'PORV Block Valve'] },
+      ],
+      guard: { never_melted: true },
+      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and stopped injection.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. Forced flow through the core ended.\n7. In 1979 the core then stood in steam and serious core damage began. The block valve was closed at 2 hours 18 minutes.\nNot shown on this plant: the fuel heating up. Its core is one mixed volume (manual chapter 08, section 6.0).',
     },
   ];
 

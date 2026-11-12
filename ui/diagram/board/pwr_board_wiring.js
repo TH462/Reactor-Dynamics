@@ -3829,6 +3829,9 @@
     'Pressurizer Level': 'ims2immon9z', 'Subcooling Margin': 'ims2immxl2s',
     'Steam Flow': 'ims3wm0d0bu', 'Feed Flow': 'imrsgkz4lq0',
     'Polisher Status': 'imrqrouhrdr',   // the TMI-2 initiator's step (owner ruling 2026-10-10)
+    /* THE VESSEL DRAWING, as a WATCH target (OWNER, 2026-11-12: "highlight the important sections of
+     * the diagram"): `pwr_tmi2_meltdown` 8 and 10 point at the water dropping out of the core. */
+    'Reactor Vessel': 'reactorVessel',
     /* TWO LABELS THE CHECKLISTS HAVE ALWAYS USED AND THIS MAP NEVER CARRIED (#598 item 14).
      * `revealControl` returns null for an unknown label and the step then glows NOTHING —
      * silently, because a null highlight looks exactly like a step that asked for none. Twelve

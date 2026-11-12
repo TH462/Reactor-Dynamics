@@ -143,9 +143,13 @@ function readMenu(page) {
      * list is populated, in the operating-cycle order, the same at every plant, incident last. */
     ck('Mode 1 boot: the Main Menu walkthrough list is populated',
        atPower.length >= 5, atPower.length + ' rows');
-    ck('Mode 1 boot: the TMI-2 incident walkthrough is listed, LAST (#670)',
-       atPower.length > 0 && atPower[atPower.length - 1].id === 'pwr_tmi2_incident',
-       'position ' + (atPower.map(function (r) { return r.id; }).indexOf('pwr_tmi2_incident') + 1) +
+    /* TWO INCIDENT LEGS SINCE 2026-11-12 (`pwr_tmi2_meltdown`, the chain to core damage): the claim is
+     * unchanged -- the Incidents group follows the six cycle legs -- and it now names both, in order. */
+    ck('Mode 1 boot: the two TMI-2 incident walkthroughs are listed, LAST (#670)',
+       atPower.length > 1 && atPower[atPower.length - 2].id === 'pwr_tmi2_incident' &&
+       atPower[atPower.length - 1].id === 'pwr_tmi2_meltdown',
+       'positions ' + (atPower.map(function (r) { return r.id; }).indexOf('pwr_tmi2_incident') + 1) + ' and ' +
+       (atPower.map(function (r) { return r.id; }).indexOf('pwr_tmi2_meltdown') + 1) +
        ' of ' + atPower.length);
 
     /* ---- 2. the player switches to Cold Shutdown (Mode 5) ------------------------------ */
@@ -183,7 +187,7 @@ function readMenu(page) {
      * and Shutdown, so it cannot land between two cycle legs however the pool is later re-typed. Written into the literal for the reason the paragraph
      * above gives — reading the expected order off the pool would assert nothing. */
     var CYCLE = ['pwr_heatup', 'pwr_startup', 'pwr_raise_power', 'pwr_lower_power',
-                 'pwr_shutdown', 'pwr_cooldown', 'pwr_tmi2_incident'];
+                 'pwr_shutdown', 'pwr_cooldown', 'pwr_tmi2_incident', 'pwr_tmi2_meltdown'];
     var order = mode5.map(function (r) { return r.id; });
     ck('the list runs the plant operating cycle: Mode 5 -> Mode 3 first, Mode 3 -> Mode 5 last, the incident after all six',
        order.join(',') === CYCLE.join(','), order.join(' -> '));

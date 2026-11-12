@@ -206,6 +206,9 @@
      * so flipping it to 'public' is the deliberate act the ruling asks for, not a side effect
      * of someone registering ids in bulk. */
     'procedure:pwr_tmi2_incident': 'preview',
+    /* THE SECOND TMI-2 LEG (OWNER, 2026-11-12): the causal chain to core damage, in the right
+     * column. Preview like its sibling: no layman or operator playthrough has run on it yet. */
+    'procedure:pwr_tmi2_meltdown': 'preview',
     // ---- RBMK (plant on hold; its control room is not built) ----
     'scenario:rbmk_tour': 'preview',
     'scenario:rbmk_void': 'preview',

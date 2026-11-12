@@ -5702,6 +5702,8 @@
      * names; with `op:'<'` it renders "the pump cavitation alarm is not standing". */
     porv_tailpipe_temp_c:   { label: 'PORV tailpipe temperature', dim: 'temp' },
     rcp_cavitating:         { bool: 'the pump cavitation alarm is standing' },
+    afw_blocked:            { bool: 'the AFW block valves are shut' },   // pwr_tmi2_meltdown 7 (position half of the press row)
+    core_uncovered_frac:    { label: 'Core Uncovered', u: '%', scale: 100 },   // pwr_tmi2_meltdown 10 (a fraction on the wire)
     block_valve_open:       { bool: 'the PORV block valve is open' },   // TMI 9 overtake / TMI 10 position row (quality pass 2026-10-14)
   };
   var MODE_NAMES = { 1: 'Mode 1, At Power', 2: 'Mode 2, Startup', 3: 'Mode 3, Hot Standby',
@@ -6297,7 +6299,8 @@
         if (sy.saw)   syH += '<div class="ckl-story-l"><span>The crew saw</span>' + mesc(sy.saw) + '</div>';
         if (sy.knew)  syH += '<div class="ckl-story-l"><span>They knew</span>' + mesc(sy.knew) + '</div>';
         if (sy.did)   syH += '<div class="ckl-story-l"><span>They did</span>' + mesc(sy.did) + '</div>';
-        if (syH) h += '<div class="ckl-story">' + syH + '</div>';
+        /* a step that authors only the 1979 clock (`pwr_tmi2_meltdown`) draws no block: the card's head already carries it */
+        if (syH && (sy.saw || sy.knew || sy.did)) h += '<div class="ckl-story">' + syH + '</div>';
       }
       /* `crew: true` — THE STEP IS HISTORY, NOT ADVICE. It is what lets a walkthrough tell the
        * player to stop the safety injection pumps, as the TMI-2 crew did, without the sim
@@ -6735,6 +6738,10 @@
       /* #687 item 3: Rewind step + Continue, LAST — under the instruction, the criteria and the
        * labelled `why`, which is where the owner asked for them. Built in the active block above
        * (it reads `awaiting_ack` / `rewind_ready` beside the lamps those flags light). */
+      /* `ahead` — WHAT THE NEXT CONTINUE LETS HAPPEN *(OWNER, 2026-11-12: "It should explain events before
+       * they happen")*. The last thing above the Continue row, so it is read with the button; not drawn
+       * on a finished leg's kept last step, which has nothing ahead of it. */
+      if (active && st.ahead && !lastShown) h += '<div class="ckl-ahead"><span>Next</span>' + mesc(st.ahead) + '</div>';
       h += ackRow;
       h += '</div></div>';
     }
@@ -8242,7 +8249,7 @@
       { title: 'Shutdown', note: 'Full power back to Cold Shutdown.',
         ids: ['pwr_lower_power', 'pwr_shutdown', 'pwr_cooldown'] },
       { title: 'Incidents', note: 'Real events, replayed on this plant.',
-        ids: ['pwr_tmi2_incident'] }
+        ids: ['pwr_tmi2_incident', 'pwr_tmi2_meltdown'] }
     ] : [];
     function row(x) {
       var part = legPart(msel.engine, x.id), isNext = x.id === nextId;

@@ -30,6 +30,23 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Added — a second Three Mile Island walkthrough: the chain of events to core damage (preview)
+
+- **`pwr_tmi2_meltdown`** (Main Menu → Walkthroughs → Incidents; preview channel). Ten steps in the
+  right column, no board callout: the feed loss, the relief valve that sticks open, automatic
+  injection, the rising pressurizer level and the crew's STOP, the level pegged while the plant
+  drains, the late auxiliary feed, the pumps secured. It ends where the 1979 core damage began and
+  does not play the recovery. About 50 plant-minutes on the typical route.
+- **Every card forecasts.** A new step field, `ahead`, draws a **Next** line above Continue saying
+  what the next Continue lets happen; the clock is held whenever Continue lights on a fast beat, so
+  it is read first.
+- **Highlights.** Each step lights what to watch; the reactor vessel drawing is a new watch target
+  (`Reactor Vessel` joins the board's highlight vocabulary).
+- **Stated plainly on the last card and in the recap:** this plant does not show the fuel heating
+  up. Measured over six plant-hours of the crew's actions with the block valve never closed, the
+  core reads 93-96 % uncovered and the cladding never passes 626 °F (330 °C). The core is one
+  mixed volume (manual chapter 08, section 6.0).
+
 ## [Alpha 1.8.4] — 2026-11-08
 
 ### Changed — Atomic Sandbox stage 2a (site)

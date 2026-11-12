@@ -181,7 +181,7 @@ var CHECKS = [
   {
     id: 'checklist_vague',
     rule: 'W12 — no vague quantifier in a checklist step',
-    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
     /* `aim` (the step's one-line WHY, 2026-09-25) gets its OWN injection — a per-field harvest
      * needs a per-field proof, the #741 lesson on `checklist_no_si` below. So does each of the
      * four `accs` strings (workbench-f): delete any one from the harvest and its injection
@@ -196,7 +196,7 @@ var CHECKS = [
   {
     id: 'checklist_modal',
     rule: 'W16 — no shall/should/must in a checklist step (the step is an imperative)',
-    run: function (d) { return scanSteps(d, ['text', 'aim'], MODAL); },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead'], MODAL); },
     inject: [function (d) { d.steps[0].step.text = 'The operator must open the valve.'; },
              function (d) { d.steps[0].step.aim = 'The valve should be open before heat is added.'; }],
   },
@@ -209,7 +209,7 @@ var CHECKS = [
   {
     id: 'checklist_percent',
     rule: 'N4 — a space before the percent sign (house style is 629 spaced to 12)',
-    run: function (d) { return scanSteps(d, ['text', 'aim', 'target', 'note', 'story'], TIGHT_PCT); },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'target', 'note', 'story'], TIGHT_PCT); },
     inject: [function (d) { d.steps[0].step.target = 'level 40%'; },
              function (d) { d.steps[0].step.aim = 'Mode 1 begins at 5%.'; }],
   },
@@ -230,7 +230,7 @@ var CHECKS = [
     exempt: ['OUTPUT near 10 MW'],
     run: function (d) {
       var self = this;
-      var hits = scanSteps(d, ['text', 'aim', 'target', 'note', 'why', 'story'], BARE_MW)
+      var hits = scanSteps(d, ['text', 'aim', 'ahead', 'target', 'note', 'why', 'story'], BARE_MW)
         /* THE WHOLE FIELD MUST BE THE PHRASE (quality pass, 2026-09-24): a substring test let
          * any field whose first 90 chars merely CONTAINED it -- "OUTPUT near 10 MW, 30 MW
          * thermal" -- drop its other bare MW too. A hit ends `in: <field text sliced to 90>`, so
@@ -358,7 +358,7 @@ var CHECKS = [
         (p.precond || []).forEach(function (c, i) { chk(p.id + '.precond' + i, c.text); });
       });
       d.steps.forEach(function (s) {
-        ['text', 'aim', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
+        ['text', 'aim', 'ahead', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
         // the incident walkthrough's narrative block (#670) — four strings on the card, bound by
         // the ruling exactly as `why` is. It is prose ABOUT a plant, which is where an "(11 MPa)"
         // is most likely to be written without thinking.

@@ -512,6 +512,27 @@ var ROUTES = {
       { id: 'rewind_3_to_2', kind: 'rewind back a step', at: '#3', set: { rewind_on_lit: true } },
     ],
   },
+  /* THE SECOND TMI-2 LEG (OWNER, 2026-11-12): the chain to core damage, ten steps, right column.
+   * Step 1 PAUSES on its injections and steps 2-6 hold the clock when Continue lights; the harness
+   * resumes on Continue, as ui/app.js does. Step 10 is the end-state read: its one row is true on
+   * arrival by design (MEASURED 2026-11-12: Core Uncovered 89-92 % at entry). */
+  pwr_tmi2_meltdown: {
+    first_step_confirm: 'narrative opener: the starting plant, read with the clock stopped; its only ask is Continue',
+    final: true,
+    entry_met: ['#1', '#10'],
+    steps: {},
+    mistakes: [
+      /* the AFW valve opened five minutes late (TMI-2's own delay was eight): step 7 and the drain still finish.
+       * NOT twenty: MEASURED 2026-11-12, opened 1200 s late the cold feed into a dry generator drops PRIMARY
+       * PRESSURE to 188 psia, the accumulators refill the loop to 95 % and the drain starts over -- the leg still
+       * completes (102 plant-min) but it is a different ride, and past this gate's step bound. */
+      { id: 'afw_late', kind: 'press late', at: '#7', set: { delay_s: 300 } },
+      /* the pumps left running a quarter of an hour past the cue: step 9 waits for the OFF press */
+      { id: 'pumps_off_late', kind: 'press late', at: '#9', min_dur: { step: 9, s: 900 }, set: { delay_s: 900 } },
+      /* Rewind on step 3's lit Continue, back into step 2: the feed loss and the stick re-fire */
+      { id: 'rewind_3_to_2', kind: 'rewind back a step', at: '#3', set: { rewind_on_lit: true } },
+    ],
+  },
 };
 
 /* ================================ THE CHAIN ============================================== */
@@ -1870,7 +1891,7 @@ var PART_B = ['pwr_cooldown', 'pwr_raise_power', 'pwr_lower_power', 'pwr_heatup'
 var PART_C = ['pwr_cooldown_muts', 'chain'];
 /* PART D (CI run 38652572708, 2026-10-14): the TMI-2 leg left part A. MEASURED solo, 8-way: its 12
  * jobs cost 993 job-s beside pwr_startup's 1295 (part A 302 s wall, 2288 job-s), and shard 3 timed out. */
-var PART_D = ['pwr_tmi2_incident'];
+var PART_D = ['pwr_tmi2_incident', 'pwr_tmi2_meltdown'];
 PART_B.concat(PART_C, PART_D).forEach(function (g) {
   if (GROUPS.indexOf(g) < 0)
     throw new Error('run_walkthrough_routes: PART_B/PART_C/PART_D names group ' + g +
