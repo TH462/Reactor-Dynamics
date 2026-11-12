@@ -5702,6 +5702,7 @@
      * names; with `op:'<'` it renders "the pump cavitation alarm is not standing". */
     porv_tailpipe_temp_c:   { label: 'PORV tailpipe temperature', dim: 'temp' },
     rcp_cavitating:         { bool: 'the pump cavitation alarm is standing' },
+    hpi_flow_normalized:    { label: 'INJ FLOW', u: '% of rated', scale: 100 },   // pwr_tmi2_meltdown 8/10 `overtaken` (a fraction on the wire)
     afw_blocked:            { bool: 'the AFW block valves are shut' },   // pwr_tmi2_meltdown 7 (position half of the press row)
     core_uncovered_frac:    { label: 'Core Uncovered', u: '%', scale: 100 },   // pwr_tmi2_meltdown 10 (a fraction on the wire)
     block_valve_open:       { bool: 'the PORV block valve is open' },   // TMI 9 overtake / TMI 10 position row (quality pass 2026-10-14)

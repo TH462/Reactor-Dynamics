@@ -529,6 +529,12 @@ var ROUTES = {
       { id: 'afw_late', kind: 'press late', at: '#7', set: { delay_s: 300 } },
       /* the pumps left running a quarter of an hour past the cue: step 9 waits for the OFF press */
       { id: 'pumps_off_late', kind: 'press late', at: '#9', min_dur: { step: 9, s: 900 }, set: { delay_s: 900 } },
+      /* the two recoveries the sibling leg teaches, taken at step 8 entry (critic round 1): each strands step 8
+       * without its `overtaken` (MEASURED 150 plant-min) */
+      { id: 'block_closed_early', kind: 'press early', at: '#8', set: { policy: 'when', base_spec: { policy: 'observe' },
+          on: [{ p: 'pressure_mpa', op: '>', v: 0, cmd: { action: 'close_block_valve' } }] } },
+      { id: 'injection_restarted', kind: 'press early', at: '#8', set: { policy: 'when', base_spec: { policy: 'observe' },
+          on: [{ p: 'pressure_mpa', op: '>', v: 0, cmd: { action: 'set_hpi', active: true } }] } },
       /* Rewind on step 3's lit Continue, back into step 2: the feed loss and the stick re-fire */
       { id: 'rewind_3_to_2', kind: 'rewind back a step', at: '#3', set: { rewind_on_lit: true } },
     ],

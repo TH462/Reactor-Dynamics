@@ -188,6 +188,7 @@ var CHECKS = [
      * alone reports CAN'T FAIL. */
     inject: [function (d) { d.steps[0].step.text = 'Raise pressure slowly to the program point.'; },
              function (d) { d.steps[0].step.aim = 'Pressure comes up slowly here.'; },
+             function (d) { d.steps[0].step.ahead = 'Pressure comes up slowly next.'; },   // `ahead` (2026-11-12): its own injection in each check that harvests it
              function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', note: 'Wait a few plant-minutes.' }]; },
              function (d) { d.steps[0].step.accs = [{ label: 'Pressure steady', ask: 'Raise it slowly.' }]; },
              function (d) { d.steps[0].step.accs = [{ label: 'Adequate pressure' }]; },
@@ -198,7 +199,8 @@ var CHECKS = [
     rule: 'W16 — no shall/should/must in a checklist step (the step is an imperative)',
     run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead'], MODAL); },
     inject: [function (d) { d.steps[0].step.text = 'The operator must open the valve.'; },
-             function (d) { d.steps[0].step.aim = 'The valve should be open before heat is added.'; }],
+             function (d) { d.steps[0].step.aim = 'The valve should be open before heat is added.'; },
+             function (d) { d.steps[0].step.ahead = 'The valve should open next.'; }],
   },
   {
     id: 'checklist_reversal',
@@ -211,7 +213,8 @@ var CHECKS = [
     rule: 'N4 — a space before the percent sign (house style is 629 spaced to 12)',
     run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'target', 'note', 'story'], TIGHT_PCT); },
     inject: [function (d) { d.steps[0].step.target = 'level 40%'; },
-             function (d) { d.steps[0].step.aim = 'Mode 1 begins at 5%.'; }],
+             function (d) { d.steps[0].step.aim = 'Mode 1 begins at 5%.'; },
+             function (d) { d.steps[0].step.ahead = 'Level falls to 5% next.'; }],
   },
   {
     id: 'bare_megawatt',
@@ -244,7 +247,8 @@ var CHECKS = [
       return hits;
     },
     inject: [function (d) { d.manual[0].lines.push('The plant is rated 100 MW gross.'); },
-             function (d) { d.steps[0].step.aim = 'The generator carries 10 MW from here.'; }],
+             function (d) { d.steps[0].step.aim = 'The generator carries 10 MW from here.'; },
+             function (d) { d.steps[0].step.ahead = 'The generator picks up 10 MW next.'; }],
   },
   /* THE DETAILS PARAGRAPH IS SUPPLEMENTAL CONTEXT, NOT A CHAPTER *(OWNER, 2026-09-03, #619
    * item 12: "the click to expand description is way to verbose. nobody is going to read all
@@ -392,7 +396,8 @@ var CHECKS = [
     inject: [function (d) {
       d.steps[0].step.accs = [{ label: 'Load target set to 50 MWe',
                                 ask: 'Set LOAD to 50 MWe at 11.14 MPa.' }];
-    }, function (d) { d.steps[0].step.aim = 'Steam pressure holds at 7.03 MPa here.'; }],
+    }, function (d) { d.steps[0].step.aim = 'Steam pressure holds at 7.03 MPa here.'; },
+       function (d) { d.steps[0].step.ahead = 'Steam pressure falls to 7.03 MPa next.'; }],
   },
   /* THE NARRATIVE BLOCK IS FOUR LINES, NOT FOUR PARAGRAPHS (#670 Phase 1).
    *
