@@ -295,6 +295,41 @@ function runSuite(R, rec, quiet) {
       W.superheat_c(shX.nodes[0].h, shX.P).toFixed(2) + ' degC of superheat over a ' +
       (100 * W.quality(shXcore.h, shX.P)).toFixed(0) + ' % quality core; coreRegime reports ' +
       R.coreRegime(shX).superheat_c.toFixed(2) + ' degC');
+  /* ---- THE UNCOVERED FRACTION REACHES THE FUEL (2026-11-12) -------------------------------
+   * pwr2_fuel owns the law; this layer owns what it is evaluated on -- a LAGGED loop flow, a
+   * SETTLED level, and the boil-off steam. Each is a claim about what the rods are handed. */
+  function stalled(hCore, mdot) {
+    var sx = S.createPlant({ h: hCore, P: 7.0, mdot: mdot, omega: 0, pumpTripped: true });
+    return { sys: sx, rx: R.createReactor({ P: 0.012, coolTemp_c: 286 }), B: 1200 };
+  }
+  function rideRx(f, seconds, dt) {
+    var out = null;
+    for (var q = 0; q < seconds / dt; q++) out = R.stepReactor(f.rx, f.sys, dt, { boron_ppm: f.B, rodGroups: null });
+    return out;
+  }
+  var uPump = stalled(2900, S.PUMP.mdot_rated), rPump = rideRx(uPump, 600, 0.1);
+  ckT('a DRIVEN loop of steam uncovers nothing: the fuel is handed 0, and its peak is its one node',
+      rPump.core_uncovered === 0 && uPump.rx.fuel.u === 0, 'uncovered ' + rPump.core_uncovered);
+  var uStall = stalled(2900, 0), rStall = rideRx(uStall, 600, 0.1);
+  ckT('a STALLED loop over a dry core hands the fuel a core uncovered end to end (the settled level, 600 s on)',
+      rStall.core_uncovered > 0.98, 'uncovered ' + rStall.core_uncovered.toFixed(4));
+  ckT('...and the peak cladding it reports is the uncovered region\'s, climbing on decay heat alone',
+      rStall.T_clad_c > 286 + 20 && rStall.T_clad_c === uStall.rx.fuel.T_clad_hot_c,
+      rStall.T_clad_c.toFixed(0) + ' degC after 600 s at this fixture\'s low power, coolant 286');
+  /* a plant that WAS driven and then stalls: the flow is judged over `froth_flow.tau_s` and the level
+   * settles over `level_tau_s`, so the split neither jumps at the trip nor lags for ever */
+  var uEarly = stalled(2900, S.PUMP.mdot_rated); rideRx(uEarly, 30, 0.1);
+  uEarly.sys.mdot_loop = 0;
+  var rAt60 = rideRx(uEarly, 60, 0.1).core_uncovered, rAt360 = rideRx(uEarly, 300, 0.1).core_uncovered,
+      rAt1500 = rideRx(uEarly, 1140, 0.1).core_uncovered;
+  ckT('the level SETTLES rather than jumping: nothing uncovered a minute after the stall, part of the core at six, all of it by twenty-five',
+      rAt60 === 0 && rAt360 > 0.05 && rAt360 < 0.9 && rAt1500 > 0.98,
+      'uncovered ' + rAt60.toFixed(3) + ' at 60 s, ' + rAt360.toFixed(3) + ' at 360 s, ' + rAt1500.toFixed(3) + ' at 1500 s');
+  /* a surge is not a restored circulation: 5 s of rated flow through the settled, stalled core */
+  uStall.sys.mdot_loop = S.PUMP.mdot_rated; var rSurge = rideRx(uStall, 5, 0.1);
+  ckT('a five-second surge of flow does not re-cover the core: the flow is judged over time',
+      rSurge.core_uncovered > 0.9, 'uncovered ' + rSurge.core_uncovered.toFixed(3) + ' after 5 s at rated flow');
+
   /* AND THE REGIME MUST REACH pwr2_fuel, not merely be computable. A film coefficient that never
    * moves is the defect this whole chain exists to have fixed. */
   /* ⚠ READ ON THE FIRST STEP AFTER THE INJECTION, and the reason is real physics rather than a
@@ -690,6 +725,12 @@ runSuite(R, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['the uncovered fraction never reaches the fuel (one node again: a dry stalled core cannot heat a region)',
+   '      uncovered:  unc,\n', '      uncovered:  0,\n'],
+  ['the separation flow is not lagged (a surge re-covers the whole core at once)',
+   "    else fuelS.f_sep += (reg.flowFrac - fuelS.f_sep) * (dt < tauS ? dt / tauS : 1);", '    else fuelS.f_sep = reg.flowFrac;'],
+  ['the level is not settled (the split jumps with the instantaneous void)',
+   "    else fuelS.u_lvl += (uncNow - fuelS.u_lvl) * (dt < tauL ? dt / tauL : 1);", '    else fuelS.u_lvl = uncNow;'],
   /* THE COOLANT REGIME (2026-08-17). The first two are the failure this section exists for:
    * a regime that reports the rods are cooled whatever the plant is doing. Every fixture in
    * this file runs at rated flow on a subcooled core, so neither shows up without the

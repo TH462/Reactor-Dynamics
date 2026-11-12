@@ -759,6 +759,34 @@ function runSuite(quietRec) {
     Math.abs(vMid - 31.5) < 0.01 && Math.abs(vWet - 35) < 0.01,
     '37 % uncovered / 70 % void ' + vMid + ', 30 % uncovered / no void ' + vWet);
 
+  /* ---- 2d'. THE VESSEL DRAWS CORE DAMAGE FROM THE PLANT, AND ONLY FROM THE PLANT (2026-11-12) ----
+   * *(OWNER: "add a core melting animation to the diagram")*. The art advances nothing itself: the
+   * four props are the four things the engine publishes about its fuel, so a drawing that shows a
+   * melt the plant is not having is a wiring defect and reddens here. */
+  if (!rec) head('REACTOR VESSEL DAMAGE  [the art is fed the plant\'s fuel state and nothing else]');
+  function vesselDmg(ts) {
+    var t = { core_uncovered_frac: 1, primary_void_fraction: 1, core_inventory_pct: 10, core_void_fraction: 1 };
+    for (var k in ts) t[k] = ts[k];
+    return D.compProps({ id: 'reactorVessel' }, { true_state: t, instruments: {}, control_state: {}, rod_groups: [] });
+  }
+  var dOk = vesselDmg({ clad_temp_c: 346, oxidation_frac: 0, fuel_damaged: false, melted: false });
+  var dHot = vesselDmg({ clad_temp_c: 1310.5, oxidation_frac: 0.12, fuel_damaged: true, melted: false });
+  var dMelt = vesselDmg({ clad_temp_c: 2900, oxidation_frac: 0.22, fuel_damaged: true, melted: true });
+  q('an intact core hands the vessel an intact core: no damage, no melt, the cladding\'s own temperature',
+    dOk.cladC === 346 && dOk.oxFrac === 0 && dOk.damaged === false && dOk.melted === false,
+    JSON.stringify({ cladC: dOk.cladC, oxFrac: dOk.oxFrac, damaged: dOk.damaged, melted: dOk.melted }));
+  q('...a damaged core hands it the peak cladding temperature, the oxidised fraction and the damage latch — and NOT a melt',
+    dHot.cladC === 1310.5 && dHot.oxFrac === 0.12 && dHot.damaged === true && dHot.melted === false,
+    JSON.stringify({ cladC: dHot.cladC, oxFrac: dHot.oxFrac, damaged: dHot.damaged, melted: dHot.melted }));
+  q('...and the molten pool is drawn on the engine\'s melt latch alone',
+    dMelt.melted === true && dOk.melted === false && dHot.melted === false, 'melted ' + dMelt.melted);
+  /* the component itself, read as source: the geometry is a function of the props and holds no latch */
+  var RVSRC = fs.readFileSync(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_reactor_vessel.js'), 'utf8');
+  q('the vessel component keeps no damage state of its own: the rods\' height is recomputed from the props every update (rewind the plant and the drawing rewinds)',
+    /var slump = clamp\(st\.oxFrac \/ 0\.17, 0, 1\), melted = !!st\.melted, dmg = !!st\.damaged;/.test(RVSRC) &&
+    !/Math\.max\(\s*last\.(slump|melted|dmg)/.test(RVSRC) && /prefers-reduced-motion: reduce\)\{\.rv-core-pulse\{animation:none/.test(RVSRC),
+    'slump from oxFrac against the 0.17 criterion; reduced-motion rule present');
+
   /* ---- 2e. THE PIPES SAY WHAT IS IN THEM (#516 item 7) --------------------------------------
    * The primary runs declared `contents: 'water'` unconditionally, so the board drew liquid
    * coolant through a voided loop — and temperature could not say otherwise, because once the
@@ -1506,6 +1534,13 @@ var SVCSRC = fs.readFileSync(SVCPATH, 'utf8').replace(/\r\n/g, '\n');
 var MPPATH = path.join(__dirname, '..', 'ui', 'manual_procedures.js');
 var MPSRC = fs.readFileSync(MPPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* THE VESSEL'S CORE DAMAGE (2026-11-12) — one mutation per prop the art is fed */
+  ['the vessel is never told the cladding temperature (the rods never glow)', WIRING_PATH, WSRC,
+   'cladC: t.clad_temp_c, oxFrac: t.oxidation_frac,', 'oxFrac: t.oxidation_frac,'],
+  ['the vessel draws a melt on the DAMAGE latch (a pool the plant is not having)', WIRING_PATH, WSRC,
+   "melted: t.melted === true", "melted: t.fuel_damaged === true"],
+  ['the vessel never hears the damage latch', WIRING_PATH, WSRC,
+   "damaged: t.fuel_damaged === true,", "damaged: false,"],
   /* THE TMI-2 POLISHER (owner ruling 2026-10-10) — one mutation per claim */
   ['the polisher lamp ignores the scripted failure (step 2 lights nothing)', WIRING_PATH, WSRC,
    "if (af[i].id === 'condensate_polisher_trip') return", "if (false) return"],
