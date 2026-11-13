@@ -75,7 +75,7 @@
       '@keyframes bubbleRiseL{0%{transform:translateY(0);opacity:0}10%{opacity:1}88%{opacity:1}100%{transform:translateY(-180px);opacity:0}}' +
       '@keyframes cherBreathe{0%,100%{opacity:0.82}50%{opacity:1}}' +
       '@keyframes corePulse{0%,100%{opacity:0.7}50%{opacity:1}}' +
-      '@media (prefers-reduced-motion: reduce){.rv-core-pulse{animation:none!important}}';
+      '@media (prefers-reduced-motion: reduce){.rv-core-pulse{animation:none!important}.rv-froth-b{animation:none!important}}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -304,11 +304,14 @@
      * debris and the corium (all added below), so none of the damage art is ever under it. */
     var foam = [];
     for (var fi = 0; fi < 26; fi++) {
+      /* FILLED AND RISING (2026-11-13, live capture): hollow 0.7 rings on a 0.55 wash read as the same grey as the steam
+       * space after the pumps stop, so the one visual change idea 4 turns on was invisible. */
       foam.push(h('circle', { cx: coreL + 8 + ((fi * 47 + (fi % 4) * 19) % (coreW - 16)), cy: coreTop + 6 + ((fi * 29) % (coreH - 12)),
-        r: (2 + (fi % 4) * 1.4).toFixed(1), fill: 'none', stroke: '#eefafc', strokeWidth: 1, opacity: 0.7 }));
+        r: (2.4 + (fi % 4) * 1.5).toFixed(1), fill: '#ffffff', opacity: 0.9, class: 'rv-froth-b',
+        style: 'animation:' + (fi % 3 === 0 ? 'bubbleRiseS' : (fi % 3 === 1 ? 'bubbleRiseM' : 'bubbleRiseL')) + ' ' + (1.1 + (fi % 5) * 0.22).toFixed(2) + 's linear ' + (-(fi % 7) * 0.19).toFixed(2) + 's infinite' }));
     }
     svgKids.push(R.froth = h('g', { clipPath: 'url(#' + ids.coreClip + ')', 'data-rv-froth': '1', display: 'none' },
-      R.frothRect = h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH, fill: '#cfeaf0', opacity: 0.55 }), foam));
+      R.frothRect = h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH, fill: '#bdf2e2', opacity: 0.86 }), foam));
     // core channel water + upflow, clipped to the (dynamic) core pool level
     R.wideflow = h('line', {
       x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cdash + ')', strokeWidth: coreW,
@@ -521,8 +524,8 @@
       R.bodyClipRect.setAttribute('height', String(590 - bodyY));
       R.bodyTopClipRect.setAttribute('height', String(Math.max(0, bodyY - 240)));
       show(R.bodyTint, bodyY > 244 && (!!st.froth || !!st.steamHead));
-      R.bodyTint.setAttribute('fill', st.froth ? '#cfeaf0' : '#aab4ba');
-      R.bodyTint.setAttribute('opacity', st.froth ? '0.45' : '0.5');
+      R.bodyTint.setAttribute('fill', st.froth ? '#bdf2e2' : '#aab4ba');
+      R.bodyTint.setAttribute('opacity', st.froth ? '0.7' : '0.5');
       var surfY = Math.max(coreTop, Math.min(coreBot, waterY));
       var frothH = coreBot - coreTop - (coreBot - surfY);
       show(R.froth, !!st.froth && frothH > 2);
