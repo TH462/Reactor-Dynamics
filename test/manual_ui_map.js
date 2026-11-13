@@ -281,7 +281,7 @@ var STEP_UI = {
   'pwr2:pwr_tmi2_meltdown': [
     { i: 4, view: 'board', control: 'ECCS' },         // 04:05:07 — injection stopped
     { i: 6, view: 'board', control: 'AFW' },          // 04:08:37 — the found block valves
-    { i: 7, view: 'board', control: 'Accumulator valve' },   // the declared set-up step
+    { i: 7, view: 'board', control: 'Steam Dump' },   // AUTO after the trip = pressure mode
     { i: 9, view: 'board', control: 'RCP ON/OFF' },   // 05:41:37 — the pumps secured
   ],
   pwr_startup: [

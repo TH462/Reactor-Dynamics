@@ -6674,7 +6674,8 @@
           why: 'With no feedwater the steam generator boils down, so the heat stays in the reactor coolant and its pressure climbs to the relief valve setting.',
           ahead: 'Pressure falls, the valve is told to close, and it sticks open. The reactor trips.',
           story: { clock: '04:00:37' },
-          inject: [{ failure: 'condensate_polisher_trip' }, { failure: 'loss_of_feedwater' }, { failure: 'stuck_porv_open' }],
+          inject: [{ failure: 'condensate_polisher_trip' }, { failure: 'loss_of_feedwater' },
+                   { failure: 'stuck_porv_open', severity: 0.75 }],   // THREE-QUARTERS STUCK, see step 8's header
           hold: 10,
           pause_on_met: true,
           accs: [{ p: 'porv_open', op: '>', v: 0, label: 'the relief valve (PORV) is open' }],
@@ -6730,27 +6731,33 @@
         { text: 'Open the AFW block valves: click the valve symbol above the AFW card.',
           control: 'AFW', target: 'STEAM GENERATOR LEVEL back above 5 %',
           why: 'Feedwater gives the heat a way out again. It does nothing about the stuck relief valve.',
-          ahead: 'One thing is set up before the drain: this plant\'s accumulators are isolated.',
+          ahead: 'One line-up before the drain: the steam dump goes to holding steam pressure.',
           story: { clock: '04:08:37' },
           cmd: { action: 'set_afw_block', open: true }, hold: 700,
           wait_speed: 60,
           accs: [{ cmd: { action: 'set_afw_block', open: true }, p: 'afw_blocked', op: '<', v: 1, label: 'AFW block valves open' },   // press OR position (#697)
                  { p: 'sg_level_pct', op: '>', v: 5, label: 'STEAM GENERATOR LEVEL back above 5 %' }],
           hl: ['AFW — Block Valve'], hl_watch: ['AFW', 'SG Level'] },
-        /* 8 — A SET-UP STEP, DECLARED, NOT A 1979 ACTION. MEASURED 2026-11-12 (full stack, the crew's actions,
-         * pumps secured at 50 plant-min): with the accumulators in service PRIMARY PRESSURE dips under their
-         * 665 psi each time the uncovered core stops making steam, they dump, and the cladding cycles
-         * 900-1,700 degF for eight plant-hours without reaching 2,200; isolated, the damage latch trips 34
-         * plant-min after the pumps stop. ⚠ "TMI-2's did not inject" is NOT in Manuals/08 and the corpus is
-         * not in this tree: UNVERIFIED, an evidence pass is owed before this card ships public. */
-        { text: 'Set-up, not a 1979 action: close the accumulator valve, the symbol just above the ACCUMULATORS tile.',
-          why: 'This plant\'s accumulators dump into the loop whenever pressure dips under 665 psi, and would re-wet the core for hours. TMI-2\'s flood tanks stayed out of it. Isolating them lets the 1979 outcome be seen.',
-          ahead: 'For the next 40 plant-minutes the plant drains through the relief valve. The pumps keep a froth of steam and water moving through the core.',   // MEASURED 2026-11-12: the drain step lasts 42 plant-min on the typical route
+        /* 8 — THE STEAM DUMP TO PRESSURE MODE, and why the valve is stuck 75 %. Both MEASURED 2026-11-13,
+         * full stack, the crew's actions, on this plant:
+         *   THE DUMP. Left in TAVG after the trip it reads the superheated hot leg once the core is dry and
+         *   blows the steam generator down, 901 -> 397 psi in five plant-min; the primary follows it under
+         *   the accumulators' 665 psi and they re-wet the core. That blowdown, not the leak, was the dip the
+         *   old 'close the accumulator valve' step worked around. In PRESS the secondary holds 1,020 psi.
+         *   THE STICK. This plant's relief valve is Ginna's size (4.45 kg/s here); TMI-2's, scaled to this
+         *   plant, is 1.62 (Dresser letter ML19322C478, 118,909 lb/h -- quoted to us secondhand, not opened).
+         *   Stuck fraction against the outcome, dump in PRESS, accumulators IN SERVICE: 36 % holds 1,015-
+         *   1,190 psi and stalls at 1,450-1,620 degF, no damage in 3.5 h; 50 % 1,845 degF; 62 % 1,906 degF;
+         *   75 % latches damage; 100 % latches it sooner. 75 % is the smallest that reaches the 1979
+         *   outcome. The stall below it is the fuel model's, and is owed its own look. */
+        { text: 'Press AUTO on the STEAM DUMP card: its status changes from TAVG to STM PRESS.',
+          why: 'With the turbine tripped, AUTO holds steam pressure. Left following coolant temperature, the dump would later read the overheated coolant and blow the steam generator down.',
+          ahead: 'The plant now drains through the relief valve. The pumps keep a froth of steam and water moving through the core.',
           story: { clock: '04:08:37' },
-          control: 'Accumulator valve', target: 'ACCUMULATORS tile reads ISOLATED',
-          cmd: { action: 'close_accumulator_valve' }, hold: 20,
-          accs: [{ cmd: { action: 'close_accumulator_valve' }, p: 'accumulator_valve_open', op: '<', v: 0.5, label: 'ACCUMULATORS tile reads ISOLATED' }],
-          hl: ['Accumulator valve'], hl_watch: ['Accumulators'] },
+          control: 'Steam Dump', target: 'STEAM DUMP status reads STM PRESS',
+          cmd: { action: 'set_steam_dump', mode: 'auto' }, hold: 20,
+          accs: [{ cmd: { action: 'set_steam_dump', mode: 'auto' }, p: 'steam_dump_press_mode', op: '>', v: 0, label: 'STEAM DUMP status reads STM PRESS' }],
+          hl: ['Steam Dump — Auto'], hl_watch: ['Steam Dump Status'] },
         /* 9 — 04:10:37 (E56, first pump vibration alarm) to 05:13:37 (E99: "increasing vibration and
          * decreasing flow and amperage"). The drain, watched at 60x. */
         { text: 'Watch RCS INVENTORY on the chart fall while PRESSURIZER LEVEL reads full, then RCP FLOW fall below 25 %.',
@@ -6803,7 +6810,7 @@
           hl_watch: ['Reactor Vessel', 'Relief Valve (PORV)', 'PORV Block Valve'] },
       ],
       guard: { never_melted: true },
-      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\nTwo things differ from 1979, both stated on the cards: this plant\'s turbine trip was kept from tripping the reactor, and its accumulators were isolated.',
+      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is larger for the plant\'s size than TMI-2\'s, so it was stuck three-quarters open, and the drain still runs faster than it did in 1979.',
       route_alt: [{ overtaken: [9], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' },
         { overtaken: [11], outcome: 'You broke the chain at its last link. With the leak isolated or injection restored, the cladding stops climbing. In 1979 the block valve was closed 2 hours 18 minutes in, after the damage had begun.' }],
     },
