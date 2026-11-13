@@ -2,7 +2,7 @@
 
 **Document:** PWR-SIM-01  
 **Title:** Reactor⚛️Dynamics — PWR Trainer Operation  
-**Revision:** 25  
+**Revision:** 26  
 
 ---
 
