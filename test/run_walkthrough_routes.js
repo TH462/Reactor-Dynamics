@@ -512,12 +512,12 @@ var ROUTES = {
       { id: 'rewind_3_to_2', kind: 'rewind back a step', at: '#3', set: { rewind_on_lit: true } },
     ],
   },
-  /* THE SECOND TMI-2 LEG (OWNER, 2026-11-12): the chain to core damage, eleven steps, right column.
-   * Step 1 PAUSES on its injections and steps 2-6 hold the clock when Continue lights; the harness
-   * resumes on Continue, as ui/app.js does. Step 10 is the end-state read: its one row is true on
-   * arrival by design (MEASURED 2026-11-12: Core Uncovered 89-92 % at entry). */
+  /* THE SECOND TMI-2 LEG (OWNER, 2026-11-12; thirteen steps since his 2026-11-13 playtest): the chain to
+   * core damage and the two recovery actions, right column. Step 1 runs the clock (no `pause`); steps 2-6
+   * hold it when Continue lights; steps 5, 7, 8, 10, 12 and 13 stop it on a late press (`act_pause_s`). The
+   * harness resumes on Continue and after a press that released a hold, as ui/app.js does. */
   pwr_tmi2_meltdown: {
-    first_step_confirm: 'narrative opener: the starting plant, read with the clock stopped; its only ask is Continue',
+    first_step_confirm: 'narrative opener: the starting plant, read with the clock running; its only ask is Continue',
     final: true,
     entry_met: ['#1'],
     steps: {},

@@ -11,7 +11,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ### Changed — the stuck relief valve's severity now works, and the TMI-2 meltdown walkthrough uses it (2026-11-13)
 
 - **`stuck_porv_open` severity is the stuck fraction** of one valve's area (#408's ruled meaning). The PWR2 plant ignored it and always stuck the valve fully open. No severity is still fully stuck, so every existing scenario is unchanged.
-- **The meltdown walkthrough sticks the valve 75 % open and keeps the accumulators in service.** Its "close the accumulator valve" step is replaced by AUTO on the steam dump, which holds steam pressure once the turbine is tripped. Measured on the typical route: pumps off at 66 plant-min, 1200 °F (648.9 °C) 15.5 min later, damage latch 34.7 min later, accumulators at 83 %; 101 plant-min in all.
+- **The meltdown walkthrough sticks the valve 75 % open and keeps the accumulators in service.** Its "close the accumulator valve" step is replaced by AUTO on the steam dump, which holds steam pressure once the turbine is tripped. Measured on the typical route: pumps off at 66 plant-min, 1200 °F (648.9 °C) 15.5 min later, damage latch 34.7 min later, accumulators at 83 % (101 plant-min to that point; about 136 with the recovery steps added later the same day).
 - **Why:** the pressure dip that made the accumulators re-wet the core was the steam dump in average-temperature mode reading a superheated hot leg and blowing the steam generator down (901 → 397 psi (6.21 → 2.74 MPa) in five plant-min), not the leak.
 - **Known understatement:** at 36 % stuck (TMI-2's valve size for this plant's power, by a figure quoted to us and not yet opened), pressure holds near 1025 psi (7.07 MPa) as in 1979 but the cladding stalls at 1450–1620 °F (790–880 °C). 75 % is the smallest measured fraction that reaches damage.
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
@@ -39,6 +39,15 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Alpha 1.9.0-rc1] — 2026-11-13
 
+### Changed — the TMI-2 meltdown walkthrough after the owner's playtest (2026-11-13, preview)
+
+- **The board follows the lesson.** Each step dims the diagram to what it is about; highlighted components glow along their own outline (every walkthrough); the opening shows its events one at a time, each holding the clock four seconds with the board lit on that event alone.
+- **Cards.** A Watch or Your-action chip on every card; a key-idea block on the ten steps that carry one of the five ideas; the forecast is headed What happens next; text cut by about 40 %.
+- **Timing.** The plant runs under the opening card and the first failure lands 4 s after Continue; an action step stops the clock if the press is late; two recovery steps follow the damage.
+- **Diagram.** Coolant pipes, steam generator tubes and the pump draw as steam when more than half void; the reactor vessel shows solid water, froth and steam as three different things; the pump shakes when it cavitates; a relief tank lights while the relief valve discharges; the steam generator carries a narrow-range bracket; a CAUTION tag hangs on the auxiliary feed valve.
+- **New opt-in step fields:** `scope`, `step_kinds`, `tag`, `inject_delay_s`, per-entry `delay_s`, `act_pause_s`, `beat_s`, `say`, `ideas`, `idea`, `idea_text`, `ahead_label`, `why_fold`. A leg that sets none renders and times as before.
+- **Measured:** complete at about 136 plant-min; peak cladding about 3,300 °F (1,815 °C), never melted; block valve step 101 s; core covered again 20 to 33 plant-min after injection restarts.
+
 ### Changed — the core heats when forced flow is lost (PWR)
 
 - **A tripped reactor coolant pump now comes to rest** (about two minutes in water, eleven in
@@ -59,12 +68,12 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ### Added — a second Three Mile Island walkthrough: the chain of events to core damage (preview)
 
-- **`pwr_tmi2_meltdown`** (Main Menu → Walkthroughs → Incidents; preview channel). Eleven steps in
-  the right column, no board callout: the feed loss, the relief valve that sticks open, automatic
-  injection, the rising pressurizer level and the crew's STOP, the level pegged while the plant
-  drains, the late auxiliary feed, the pumps secured, and the cladding climbing past 1,200 °F and
-  then 2,200 °F. It stops at core damage and does not play the recovery. About 85 plant-minutes.
-- **Every card forecasts.** A new step field, `ahead`, draws a **Next** line above Continue saying
+- **`pwr_tmi2_meltdown`** (Main Menu → Walkthroughs → Incidents; preview channel). Thirteen steps in
+  the right column, no board callout, organised around five key ideas: a relief valve stuck open is a
+  leak; level is not inventory; right action, wrong picture; froth still cools; dry fuel heats itself.
+  It runs from the feed loss to the cladding passing 2,200 °F, then plays the block valve and the
+  injection restart. About 135 plant-minutes, 8 min 39 s of wall time for a player who never waits.
+- **Every card forecasts.** A new step field, `ahead`, draws a **What happens next** block above Continue saying
   what the next Continue lets happen; the clock is held whenever Continue lights on a fast beat.
 - **Highlights.** Each step lights what to watch; the reactor vessel drawing is a new watch target.
 - **Two departures from 1979, both stated on the cards:** the reactor is kept from tripping with

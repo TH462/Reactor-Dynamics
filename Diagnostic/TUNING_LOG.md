@@ -55,6 +55,20 @@ Owner question: *"Why does the pressure drop low enough to fire the accumulators
 
 **Sources:** TMI-2 valve capacity (118,909 lb/h, Dresser letter ML19322C478), flood-tank injection (about 100 ft³ at 8.5 h, EGG-TMI-6859 §5.1.6) and the 615 psia threshold are INHERITED — quoted by the owner's research assistant, not opened from this tree (network allowlist). TMI-2's 2772 MWt is recalled, unsourced. No plant constant was changed on them; the 75 % is chosen on our own measurements.
 
+### 2026-11-13-develop-a, continued — the owner's playtest of `pwr_tmi2_meltdown`
+
+Fifteen playtest items, then four more in conversation. What is worth keeping:
+
+- **The entries below that say "eleven steps", "Next line" and "stops at core damage" are superseded**: the leg is thirteen steps around five ideas and plays the recovery.
+- **A beat is wall time, the plant is not.** Events 0.1 to 13 s apart in the opening are separated by 4 wall-second holds with the board lit on one event (`beat_s`); sub-1x speed was measured and rejected (0.5x runs 0.6x, no rung lights).
+- **Feed flow is slow to fall**: half at 6.7 s after the pump trip, 5 % at 25 s, both after the relief valve opens at 5.1 s. A row graded on "feed flow at zero" fires last.
+- **Froth drew, in steam's grey.** The first froth layer (0.55 pale wash, hollow rings) was indistinguishable from the steam space on a live capture; forced-state screenshots had passed it.
+- **A harness that restarts the clock can hide a stuck clock.** The routes harness pressed on a held clock and restarted the service; with the release in `handleCommand` deleted it stayed green until it read the state the press left (proven: 65/69 with the release removed).
+- **Background stays open** (owner, 2026-10-02, #819): `why_fold` is built and unauthored. Six of thirteen cards overflowed at 1600x1000 before the text cuts.
+- **Valve shut during the heat-up, no injection** (shut at 78 plant-min): cladding 1,118 °F (603 °C) at 80, 1,912 °F (1,044 °C) at 90, 1,224 °F (662 °C) at 95, no damage latch, core covered again at 135 on the water left in the plant.
+- **Container note:** processes started with `nohup` die when the session's container restarts between turns; only tracked background tasks survive. Three browser rides and two gate loops were lost to this before it was understood.
+- **Wall time:** 519 s end to end for a scripted player pressing at once.
+
 ## Session log — 2026-11-12-develop-a (a second TMI-2 walkthrough to core damage; the core heat-up physics; the vessel draws the melt)
 
 Cloud session on branch `claude/inspiring-dijkstra-hmtne5` (= main 9c052b8, Alpha 1.8.4); `develop` is the nearest lane this log's labels allow. Owner's words, 2026-11-12, verbatim: "design and implement a three mile island incident walkthrough… It should explain events before they happen (generally) and highlight the important sections of the diagram… up to the point of the meltdown"; then "Once you are done with the walkthrough I want you to add a proper meltdown ability to the physics."; then "Can you also add a core melting animation to the diagram?". All numbers MEASURED 2026-11-12, full stack, seed 42 unless named. Engineering record: `Blueprint/PWR2_VALIDATION.md` §135.

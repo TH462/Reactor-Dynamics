@@ -1005,7 +1005,7 @@ If you expect one of these and cannot find it, it is not hidden — it does not 
 - Natural-circulation magnitude fitted rather than sourced (§12.4) — the mechanism itself IS modeled
 - No steam-table property model — correlations only (§5.1)
 - No boron plate-out, boron dilution accidents, or boil-off boron concentration (steam carries no boron in reality; the loss term here is lumped)
-- No pressurizer relief tank or rupture disk — the stuck PORV and the lying indicator are the lesson; the tank filling and rupturing is not modelled
+- No pressurizer relief tank or rupture disk in the plant model — the stuck PORV and the lying indicator are the lesson; the tank filling and rupturing is not modelled. The board draws a relief tank that lights while the valve discharges (2026-11-13); it carries no level
 
 **Balance of plant**
 - No turbine roll, no no-load speed hold, and no synchroscope — synchronising is one action and the generator breaker is not a separate control (§12.14, **04** PWR-N05)
