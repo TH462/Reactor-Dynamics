@@ -6701,10 +6701,12 @@
           beat_s: 4,
           hold: 10,
           pause_on_met: true,
-          accs: [{ p: 'fw_flow_normalized', op: '<', v: 0.9, label: 'FEED FLOW falling', say: 'The feed pumps trip. FEED FLOW is falling to zero.',   // 0.9: MEASURED 2026-11-13, the flow passes half 6.7 s after the trip and 5 % at 25 s, both AFTER the relief valve opens (4.7 s)
-                   hl_watch: ['Feed Flow', 'Feed Pumps'] },
-                 { p: 'turbine_tripped', op: '>', v: 0, label: 'the turbine has tripped', say: 'The turbine trips with them.',
+          /* ROW ORDER IS TICK ORDER (MEASURED 2026-11-13, browser): the turbine row ticks 1.6 sim-s before the feed row, and a
+           * 'now' marker that jumps back up a row reads as out of sequence. */
+          accs: [{ p: 'turbine_tripped', op: '>', v: 0, label: 'the turbine has tripped', say: 'With feedwater lost, the turbine trips.',
                    hl_watch: ['Turbine Load'] },
+                 { p: 'fw_flow_normalized', op: '<', v: 0.9, label: 'FEED FLOW falling', say: 'The feed pumps trip. FEED FLOW is falling to zero.',   // 0.9: MEASURED 2026-11-13, the flow passes half 6.7 s after the trip and 5 % at 25 s, both AFTER the relief valve opens (4.7 s)
+                   hl_watch: ['Feed Flow', 'Feed Pumps'] },
                  { p: 'porv_open', op: '>', v: 0, label: 'the relief valve (PORV) is open', say: 'Pressure reaches the relief valve setting and the valve opens.',
                    hl_watch: ['Relief Valve (PORV)', 'Plant Pressure'] }],
           hl_watch: ['Polisher Status', 'Feed Flow', 'Feed Pumps', 'Turbine Load', 'Steam Generator', 'Plant Pressure', 'Relief Valve (PORV)'] },
