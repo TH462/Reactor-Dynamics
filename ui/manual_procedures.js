@@ -6691,12 +6691,23 @@
           idea: 1, idea_text: 'With feedwater gone the steam generator stops taking heat. The heat stays in the reactor coolant: watch PRIMARY PRESSURE climb until the relief valve lifts.',
           scope: ['feed', 'secondary', 'pressurizer'], tag: true,
           inject_delay_s: 8,   // the failures land 8 s after Continue (owner playtest: 'a few seconds later the issues start')
-          inject: [{ failure: 'condensate_polisher_trip' }, { failure: 'loss_of_feedwater' },
+          /* THE OPENING, ONE EVENT AT A TIME (owner, 2026-11-13: "delay them so that they happen a few seconds after each
+           * other instead of all at once"; "dimming the board for a few seconds to show the important parts"). MEASURED
+           * 2026-11-13 from the feed loss: turbine trip +0.1 s, relief valve open +5.1, lamp CLOSED for good +10.2, tailpipe
+           * hot +12.6, reactor trip +63.4, injection +75.9. The polisher fault now leads the feed loss by 4 s, and each
+           * row that ticks holds the clock 4 wall-seconds with the board lit on that row alone (`beat_s`). */
+          inject: [{ failure: 'condensate_polisher_trip' }, { failure: 'loss_of_feedwater', delay_s: 4 },
                    { failure: 'stuck_porv_open', severity: 0.75 }],   // THREE-QUARTERS STUCK, see step 8's header
+          beat_s: 4,
           hold: 10,
           pause_on_met: true,
-          accs: [{ p: 'porv_open', op: '>', v: 0, label: 'the relief valve (PORV) is open' }],
-          hl_watch: ['Polisher Status', 'Feed Flow', 'Steam Generator', 'Plant Pressure', 'Relief Valve (PORV)'] },
+          accs: [{ p: 'fw_flow_normalized', op: '<', v: 0.9, label: 'FEED FLOW falling', say: 'The feed pumps trip. FEED FLOW is falling to zero.',   // 0.9: MEASURED 2026-11-13, the flow passes half 6.7 s after the trip and 5 % at 25 s, both AFTER the relief valve opens (4.7 s)
+                   hl_watch: ['Feed Flow', 'Feed Pumps'] },
+                 { p: 'turbine_tripped', op: '>', v: 0, label: 'the turbine has tripped', say: 'The turbine trips with them.',
+                   hl_watch: ['Turbine Load'] },
+                 { p: 'porv_open', op: '>', v: 0, label: 'the relief valve (PORV) is open', say: 'Pressure reaches the relief valve setting and the valve opens.',
+                   hl_watch: ['Relief Valve (PORV)', 'Plant Pressure'] }],
+          hl_watch: ['Polisher Status', 'Feed Flow', 'Feed Pumps', 'Turbine Load', 'Steam Generator', 'Plant Pressure', 'Relief Valve (PORV)'] },
         /* 3 — 04:00:45, E6/E12/E20. NO LAMP FAILURE IS INJECTED: this plant's PORV lamp is the commanded
          * state already (pwr_instruments `porv_indicator`). MEASURED 2026-11-12, live runtime, seed 42:
          * it reads open at 5.2 s and closed from 21 s on with the valve stuck open; trip at 52 s (RE-MEASURED 2026-11-13 at 75 % stuck: 64 s). */
@@ -6708,9 +6719,13 @@
           scope: ['pressurizer'], tag: true,
           hold: 90,   // 60 -> 90 (2026-11-13): at 75 % stuck the trip comes 59 s after entry, not 47 (MEASURED, live runtime, seed 42)
           pause_on_met: true,
-          accs: [{ p: 'scrammed', op: '>', v: 0, label: 'the reactor has tripped' },
-                 { p: 'porv_tailpipe_temp_c', op: '>', v: 115.56, label: 'the pipe leaving the PORV is above 240 °F' }],
-          hl_watch: ['Relief Valve (PORV)', 'Plant Pressure'] },
+          beat_s: 4,
+          accs: [{ p: 'porv_tailpipe_temp_c', op: '>', v: 115.56, label: 'the pipe leaving the PORV is above 240 °F',
+                   say: 'The lamp reads CLOSED. The pipe leaving the valve is hot: steam is still passing.',
+                   hl_watch: ['PORV Status', 'Relief Valve (PORV)'] },
+                 { p: 'scrammed', op: '>', v: 0, label: 'the reactor has tripped', say: 'The reactor trips on low pressure.',
+                   hl_watch: ['Reactor Power'] }],
+          hl_watch: ['PORV Status', 'Relief Valve (PORV)', 'Plant Pressure', 'Reactor Power'] },
         /* 4 — 04:02:39, E31. */
         { text: 'Watch PRIMARY PRESSURE fall until the START light comes on, on the ECCS (emergency core cooling) card.',
           why: 'Injection pumps water in to replace what the stuck valve lets out.',
