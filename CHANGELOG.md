@@ -37,7 +37,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.9.0-rc1] — 2026-11-13
+## [Alpha 1.9.0-rc2] — 2026-11-13
 
 ### Changed — the TMI-2 meltdown walkthrough after the owner's playtest (2026-11-13, preview)
 
