@@ -98,7 +98,7 @@
     };
     var R = {};   // refs to dynamic elements
     var st = { regFrac: 0.8333, shutFrac: 0.8333, power: 1, coreInv: 100, boil: 45, glow: true, showFlow: true, tcold: 290, thot: 320, cherenkov: 70,
-               cladC: 300, oxFrac: 0, damaged: false, melted: false };
+               cladC: 300, oxFrac: 0, damaged: false, melted: false, froth: false, steamHead: false };
     var last = {};
     var lastBoil = -1;
     /* filter-free halos (#613 wave 4) — see RD.BoardH.softGlow. `glow` used to be ONE blur
@@ -130,6 +130,11 @@
       h('linearGradient', { id: ids.ctrl, x1: '0', y1: '0', x2: '1', y2: '0' },
         h('stop', { offset: '0', stopColor: '#1c232a' }), h('stop', { offset: '0.5', stopColor: '#48535e' }), h('stop', { offset: '1', stopColor: '#1c232a' })),
       h('clipPath', { id: ids.coreClip }, h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH })),
+      /* the downcomer + lower-plenum water body is clipped to the SOLID-water surface (owner 2026-11-13: a drained vessel read as full
+       * because this body was always drawn to the brim). `bodyClipRect` is moved by applyInventory; `bodyTopClipRect` bounds the
+       * froth/steam tint over the same shape, from the brim down to that surface. */
+      h('clipPath', { id: gid + 'BodyClip' }, R.bodyClipRect = h('rect', { x: 150, y: 240, width: 260, height: 350 })),
+      h('clipPath', { id: gid + 'BodyTopClip' }, R.bodyTopClipRect = h('rect', { x: 150, y: 240, width: 260, height: 0 })),
       h('clipPath', { id: ids.poolClip }, R.poolClipRect = h('rect', { x: coreL, y: poolTop, width: coreW, height: poolH })),
       // stripClip: clip windows for the two moving indicator fills (one rect per bank tube)
       h('clipPath', { id: ids.stripClip },
@@ -253,10 +258,10 @@
     svgKids.push(R.hotresSteam = h('rect', { x: barrelL + 6, y: hotresFullTop, width: barrelR - barrelL - 12, height: hotresFullH, rx: 10, fill: '#d7e0e5', opacity: 0.16 }));
     svgKids.push(R.hotres = h('rect', { x: barrelL + 6, y: hotresFullTop, width: barrelR - barrelL - 12, height: hotresFullH, rx: 10, stroke: '#3a2320', strokeWidth: 1 }));
     // downcomer + lower plenum: one continuous water body (evenodd cut removes the barrel footprint)
-    svgKids.push(h('path', {
-      fillRule: 'evenodd', fill: 'url(#' + ids.pool + ')',
-      d: 'M155,244 L155,538 A125 50 0 0 0 405,538 L405,244 Z M177,244 L177,465 Q177,471 183,471 L377,471 Q383,471 383,465 L383,244 Z'
-    }));
+    var bodyD = 'M155,244 L155,538 A125 50 0 0 0 405,538 L405,244 Z M177,244 L177,465 Q177,471 183,471 L377,471 Q383,471 383,465 L383,244 Z';
+    svgKids.push(h('path', { fillRule: 'evenodd', fill: 'url(#' + ids.pool + ')', clipPath: 'url(#' + gid + 'BodyClip)', d: bodyD }));
+    /* above the solid-water surface in the downcomer: froth (pale) when the pumps are pushing a mixture, steam (grey) otherwise */
+    svgKids.push(R.bodyTint = h('path', { fillRule: 'evenodd', clipPath: 'url(#' + gid + 'BodyTopClip)', d: bodyD, fill: '#cfeaf0', opacity: 0.4, display: 'none' }));
     // outer casing liner, broken only at the cold-leg inlet on the right
     svgKids.push(h('path', { d: 'M152,240 L152,539 A128 51 0 0 0 408,539 L408,309 M408,281 L408,240', fill: 'none', stroke: '#2c3f4c', strokeWidth: 5, strokeLinecap: 'round', strokeLinejoin: 'round' }));
     // inner (core-barrel) walls, ending at the lower support plate
@@ -292,7 +297,18 @@
     svgKids.push(h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH, fill: '#07121a' }));
     // core steam space (visible as inventory drains below 50%)
     svgKids.push(R.coreSteam = h('g', { clipPath: 'url(#' + ids.coreClip + ')' },
-      h('rect', { x: coreL, y: 276, width: coreW, height: 180, fill: '#d7e0e5', opacity: 0.14 })));
+      R.coreSteamRect = h('rect', { x: coreL, y: 276, width: coreW, height: 180, fill: '#d7e0e5', opacity: 0.14 })));
+    /* FROTH (owner 2026-11-13: "the reactor vessel does not show steam inside it"). Pumps turning with a mostly-void core is a
+     * two-phase MIXTURE, not water: it is drawn paler and foamed, over the part of the core above the solid-water surface
+     * (applyInventory sizes it), so a vessel at 26 % inventory cannot read as full. Drawn BEFORE the rods, the heat glow, the
+     * debris and the corium (all added below), so none of the damage art is ever under it. */
+    var foam = [];
+    for (var fi = 0; fi < 26; fi++) {
+      foam.push(h('circle', { cx: coreL + 8 + ((fi * 47 + (fi % 4) * 19) % (coreW - 16)), cy: coreTop + 6 + ((fi * 29) % (coreH - 12)),
+        r: (2 + (fi % 4) * 1.4).toFixed(1), fill: 'none', stroke: '#eefafc', strokeWidth: 1, opacity: 0.7 }));
+    }
+    svgKids.push(R.froth = h('g', { clipPath: 'url(#' + ids.coreClip + ')', 'data-rv-froth': '1', display: 'none' },
+      R.frothRect = h('rect', { x: coreL, y: coreTop, width: coreW, height: coreH, fill: '#cfeaf0', opacity: 0.55 }), foam));
     // core channel water + upflow, clipped to the (dynamic) core pool level
     R.wideflow = h('line', {
       x1: cx, y1: poolBot, x2: cx, y2: poolTop, stroke: 'url(#' + ids.cdash + ')', strokeWidth: coreW,
@@ -483,8 +499,8 @@
     }
 
     function applyInventory(force) {
-      if (!force && last.coreInv === st.coreInv) return;
-      last.coreInv = st.coreInv;
+      if (!force && last.coreInv === st.coreInv && last.froth === st.froth && last.steamHead === st.steamHead) return;
+      last.coreInv = st.coreInv; last.froth = st.froth; last.steamHead = st.steamHead;
       var inv = clamp(st.coreInv, 0, 100) / 100;
       var hotresFrac = inv <= 0.5 ? 0 : (inv - 0.5) / 0.5;
       var corePoolFrac = inv >= 0.5 ? 1 : inv / 0.5;
@@ -497,6 +513,25 @@
       show(R.coreSteam, corePoolFrac < 0.999);
       R.poolClipRect.setAttribute('y', String(poolBot - poolH * corePoolFrac));
       R.poolClipRect.setAttribute('height', String(poolH * corePoolFrac));
+      /* the three states of the space above the solid water: steam (grey, the pipes' steam language), froth (pale, foamed),
+       * or nothing special. `steamHead` is the hot-leg void latch the pipes share; `froth` is pumps-turning + core void. */
+      var waterY = poolBot - poolH * corePoolFrac;          /* solid-water surface, canvas y */
+      var bodyY = corePoolFrac >= 0.999 ? 240 : Math.max(240, Math.min(590, waterY));
+      R.bodyClipRect.setAttribute('y', String(bodyY));
+      R.bodyClipRect.setAttribute('height', String(590 - bodyY));
+      R.bodyTopClipRect.setAttribute('height', String(Math.max(0, bodyY - 240)));
+      show(R.bodyTint, bodyY > 244 && (!!st.froth || !!st.steamHead));
+      R.bodyTint.setAttribute('fill', st.froth ? '#cfeaf0' : '#aab4ba');
+      R.bodyTint.setAttribute('opacity', st.froth ? '0.45' : '0.5');
+      var surfY = Math.max(coreTop, Math.min(coreBot, waterY));
+      var frothH = coreBot - coreTop - (coreBot - surfY);
+      show(R.froth, !!st.froth && frothH > 2);
+      R.frothRect.setAttribute('height', String(Math.max(0, frothH)));
+      var steamy = !!st.steamHead && !st.froth;
+      R.coreSteamRect.setAttribute('fill', steamy ? '#aab4ba' : '#d7e0e5');
+      R.coreSteamRect.setAttribute('opacity', steamy ? '0.5' : '0.14');
+      R.hotresSteam.setAttribute('fill', st.steamHead ? '#aab4ba' : '#d7e0e5');
+      R.hotresSteam.setAttribute('opacity', st.steamHead ? '0.5' : '0.16');
     }
 
     function applyBubbles(force) {
@@ -670,6 +705,8 @@
       if (props.oxFrac != null && isFinite(props.oxFrac)) st.oxFrac = clamp(props.oxFrac, 0, 1);
       if (props.damaged != null) st.damaged = !!props.damaged;
       if (props.melted != null) st.melted = !!props.melted;
+      if (props.froth != null) st.froth = !!props.froth;
+      if (props.steamHead != null) st.steamHead = !!props.steamHead;
       applyAll(false);
     }
 

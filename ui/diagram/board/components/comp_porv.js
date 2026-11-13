@@ -191,4 +191,50 @@
 
     return { el: svg, update: update, destroy: destroy };
   }
+
+  /* RELIEF (QUENCH) TANK -- the box the PORV tailpipe drops into (owner 2026-11-13: "the leak is nearly invisible").
+   * It was a bare box. The plant publishes NO relief-tank level or integrated relief mass, and none is added: this
+   * art shows only that coolant is ARRIVING (`receiving`, from true porv_open AND an open block valve) and what it is
+   * (`contents`, steam or water). So it is a RECEIVING treatment -- a wash in the arriving phase's own colour, a falling
+   * drip and an amber rim -- never a level, because a rising level would be a number nothing computed. CSS-driven, steady
+   * under any sim speed; reduced motion keeps the wash and rim and drops the drip. */
+  RD.BoardComps['Relief Tank'] = { build: buildTank };
+  function buildTank(cfg, env) {
+    var h = env.h;
+    if (!document.getElementById('bd-reliefTank-styles')) {
+      var st = document.createElement('style');
+      st.id = 'bd-reliefTank-styles';
+      st.textContent = '@keyframes rtDrip{0%{transform:translateY(0);opacity:0}15%{opacity:1}100%{transform:translateY(15px);opacity:0}}' +
+        '@keyframes rtRim{0%,100%{opacity:.55}50%{opacity:1}}' +
+        '.rt-recv .rt-drip{animation:rtDrip .7s linear infinite}.rt-recv .rt-drip2{animation-delay:.35s}' +
+        '.rt-recv .rt-rim{animation:rtRim 1s ease-in-out infinite}' +
+        '@media (prefers-reduced-motion: reduce){.rt-recv .rt-drip,.rt-recv .rt-rim{animation:none!important}.rt-recv .rt-rim{opacity:1}}';
+      (document.head || document.documentElement).appendChild(st);
+    }
+    var W = 50, H = 35, px = cfg.portOff != null ? cfg.portOff : 17;
+    var wash = h('rect', { x: 2, y: 14, width: W - 4, height: H - 16, rx: 5, fill: '#8a949a', opacity: 0.7, style: { display: 'none' } });
+    var rim = h('rect', { 'class': 'rt-rim', x: 0.5, y: 0.5, width: W - 1, height: H - 1, rx: 8, fill: 'none', stroke: '#f0a53b', strokeWidth: 2, style: { display: 'none' } });
+    var d1 = h('circle', { 'class': 'rt-drip', cx: px, cy: 3, r: 2.2, fill: '#cfd8dd', style: { display: 'none' } });
+    var d2 = h('circle', { 'class': 'rt-drip rt-drip2', cx: px, cy: 3, r: 1.6, fill: '#cfd8dd', style: { display: 'none' } });
+    var svg = h('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none', 'data-relief-tank': '1',
+      style: { width: '100%', height: '100%', overflow: 'visible', display: 'block' } },
+      h('rect', { x: 0.5, y: 0.5, width: W - 1, height: H - 1, rx: 8, fill: '#16202a', stroke: '#9fb3c4', strokeWidth: 1 }),
+      wash, rim, d1, d2,
+      h('circle', { cx: px, cy: 0, r: 0.75, fill: 'none', 'data-port': 'in', 'data-fluid': 'steam', 'data-dir': 'up', 'data-size': 'small', 'data-out': '0' }));
+    var lastRecv = null, lastContents = null;
+    function update(props) {
+      props = props || {};
+      var recv = props.receiving === true, contents = props.contents === 'water' ? 'water' : 'steam';
+      if (recv !== lastRecv) {
+        lastRecv = recv;
+        svg.setAttribute('class', recv ? 'rt-recv' : '');
+        [wash, rim, d1, d2].forEach(function (e) { e.style.display = recv ? '' : 'none'; });
+      }
+      if (contents !== lastContents) {
+        lastContents = contents;
+        wash.setAttribute('fill', contents === 'water' ? '#2a6fb8' : '#8a949a');
+      }
+    }
+    return { el: svg, update: update, destroy: function () {} };
+  }
 })();

@@ -1810,7 +1810,12 @@
         /* CORE DAMAGE (OWNER, 2026-11-12): the four things the plant publishes about its fuel, passed
          * straight through. True state, like the level above -- there is no instrument inside the
          * cladding -- and drawn only in the vessel art, never on a gauge (Hard Rule 1). */
-        cladC: t.clad_temp_c, oxFrac: t.oxidation_frac, damaged: t.fuel_damaged === true, melted: t.melted === true
+        cladC: t.clad_temp_c, oxFrac: t.oxidation_frac, damaged: t.fuel_damaged === true, melted: t.melted === true,
+        /* WHAT FILLS THE VESSEL (owner 2026-11-13: "the reactor vessel does not show steam inside it"). Existing true_state only.
+         * froth = the pumps are turning (or the rotor is still coasting) over a mostly-void core: a two-phase mixture, not water.
+         * steamHead = the hot-leg void latch the pipes use, so the plenum and the pipe it feeds cannot disagree. */
+        froth: (!!IN(s).rcp_running || ((pumpRec(s, 'rcp') || {}).speed_pct || 0) > 2) && voidFrac > 0.5,
+        steamHead: hotLegPhase(s) === 'steam'
       };
     },
     steamGenerator: function (s) {
@@ -1943,7 +1948,16 @@
      * rotor's own speed (`speed_pct`, omega/rated, the inertia coastdown) and stays turning while that is above 2 %. NOT flow_pct:
      * that is total loop flow and sits at ~4 % on natural circulation with the pump off, which spun a stopped pump. */
     var sp = p && p.speed_pct != null ? p.speed_pct : (p ? p.flow_pct : 100);
-    return pumpProps(!!IN(s).rcp_running || sp > 2, sp / 100, IN(s).tcold);
+    var turning = !!IN(s).rcp_running || sp > 2;
+    var pr = pumpProps(turning, sp / 100, IN(s).tcold);
+    /* CAVITATION (owner 2026-11-13: "a vibration effect or maybe like a cartoon indication around the RCP"). The plant's own flag,
+     * and only while the pump is actually turning -- a stopped pump cannot gulp steam, and the flag can outlive the rotor by a tick. */
+    pr.cavitating = ((s && s.true_state) || {}).rcp_cavitating === true && turning;
+    /* WHAT THE PUMP IS PUMPING (owner 2026-11-13: "the RCP does not show steam"). The cold-leg pipes' own latch (coldLegPhase), so the
+     * casing and the run it sits in can never disagree; steam takes the steam colour, not the temperature ramp (STEAM_PIPE_C). */
+    pr.contents = coldLegPhase(s);
+    if (pr.contents === 'steam') pr.temp = STEAM_PIPE_C;
+    return pr;
   },  // rcp (cold-leg coolant — live)
     // Charging: the pump runs at a steady speed and the FLOW is set by the charging valve, so
     // the impeller keys on running-and-powered rather than on flow magnitude. `charging_flow`
@@ -1964,6 +1978,9 @@
     // Flow gates on total steam actually leaving the SG (turbine + dump) — an open MSIV on
     // a steamless plant (Mode 5: 0 flow, 15 psi) is open but NOT flowing (#236).
     imrpp99kx2y: function (s) { return valveProps(IN(s).msiv_open ? 1 : 0, 'steam', satTempC(IN(s).steam_pressure), (IN(s).sg_steam_flow || 0) > 0.01, CS(s).msiv_fixed === true); },  // main steam isolation (non-operable on an engine with no MSIV model)
+    // The quench tank the PORV tailpipe drops into: RECEIVING while the relief line passes (true porv_open AND an open block valve);
+    // the plant publishes no tank level, so there is no level -- see comp_porv.js 'Relief Tank'. Phase follows the relief pipes.
+    imrsi2svtgn: function (s) { return { receiving: reliefFlowing(s), contents: pzrSolid(s) ? 'water' : 'steam' }; },
     // Flow gates on the PORV actually relieving — same true-state open×blockOpen the porv
     // comp uses for its plume. The block valve is normally open, but a dead-ended relief
     // line has no flow while the PORV is seated: without the gate the pressurizer→block
@@ -2962,6 +2979,10 @@
   var CHG_RATED = 30 / 450000;
   var DUMP_CAP = 0.40;      // steam dump capacity, fraction of rated steam (the #220 40 %)
   var ADV_CAP = (_SG.adv_max != null ? _SG.adv_max : 0.10);   // #371, from engine config
+  function reliefFlowing(s) {
+    var t = (s && s.true_state) || {};
+    return (t.porv_open != null ? !!t.porv_open : (IN(s).porv_indicator === 'open')) && CS(s).porv_block_open !== false;
+  }
   function lineFrac(s) {
     var i = IN(s), c = CS(s), t = s.true_state || {};
     var porvFlowing = (t.porv_open != null ? !!t.porv_open : (i.porv_indicator === 'open'))
@@ -4485,6 +4506,8 @@
       // overpower the backwards port semantics — with them corrected it is dropped and
       // the direction comes from the ports, like every other pipe.
       pms2kozvu94: { props: { to: 'imrobpq4a70/suction' } },
+      // the PORV tailpipe lands on the relief tank's own port now that the tank is a component (the box port was '~ptmrsi3kjfr5')
+      pms3tdwi5n9: { props: { to: 'imrsi2svtgn/in' } },
       pms2kp1148p: { props: { from: 'imrobpq4a70/discharge', flowDir: null } },
       // SG outlet → upstream steam tee, authored `phase: 'water'` in the 2026-08-05 re-export
       // *(OWNER, 2026-08-05: "the pipe coming off the SG is water green, it should be steam")*.
@@ -4502,7 +4525,7 @@
       imrpq29jo7t: { props: { label: '0-2500 ppm', labelSize: 14, labelColor: '#9fb3c4', labelWeight: 600 } },
       // PORV discharge → quench-tank box. The box's top port is authored 2 px left of the
       // PORV outlet above it, so the drop leans instead of falling straight in.
-      imrsi2svtgn: { ports: { ptmrsi3kjfr5: { off: 17 } } },
+      imrsi2svtgn: { props: { kind: 'component', comp: 'Relief Tank', portOff: 17, ports: [] } },
       // STEAM DUMP readout (#235): authored left 1410 / width 65 — 4 px under the dump
       // valve tile (ends 1414) and too narrow for its own label. 1416/72 clears the valve
       // and, with the .bd-ro-label letter-spacing fix, fits "STEAM DUMP" with room.
