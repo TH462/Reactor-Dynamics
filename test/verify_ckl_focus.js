@@ -23,6 +23,23 @@
  *   pwr_board.js setScope: the `spec.tag` seed removed                             -> 3
  *   ui/app.js: the `.ckl-held` line's `ck.act_hold` test made `false`              -> 12
  *   ui/app.js: `st.ahead_label ||` removed                                         -> 6
+ * `beat_s`, `say`, the spotlight, `idea` / `ideas` (2026-11-13, same method):
+ *   render: the `cklBeatSync(s)` call removed                                      -> 15, 16, 17, 18, 20, 21, 22
+ *   cklBeatSync: the queue filled in reverse row order                             -> 16
+ *   cklBeatSync: a row's own `beat_s` ignored (step value only)                    -> 16
+ *   the row text: `(beatNow && en.say) ||` removed                                 -> 17
+ *   renderScope: the `cklBeatSpot` branch made `if (false)`                        -> 18
+ *   cklSubstepHl: the beat row's own lists not taken                               -> 18
+ *   cklBeatStart: `cklBeat.row = -1` dropped at the end of the queue               -> 16, 19
+ *   syncPlayBtn: `&& !beatOnly` dropped from the paused class                      -> 20
+ *   syncPlayBtn: the rung cleared on a beat's pause again                          -> 20 (see the run below)
+ *   cklBeatSync: no cancel on a step change                                        -> 21, 22
+ *   the beat timer's body removed (never releases)                                 -> 15, 16, 17, 18
+ *   the idea block made `if (false)`                                               -> 23
+ *   the idea's range test dropped                                                  -> 24
+ *   the finished card's ideas list made `if (false)`                               -> 25
+ * NOT RED ALONE: syncSpeedUI's `k !== 'beat'` reverted to "any hold" — with syncPlayBtn no longer
+ * dropping `lastSpeedSync` on a beat, that repaint does not run during one. Kept as the second guard.
  *   pwr_board.css: `.bd-focus-sil *` pointer-events rule narrowed back to `> *`    -> 13 (the clone takes the valve's click)
  *   instructor_layer.js handleCommand: the act-hold release removed                -> 13
  */
@@ -96,6 +113,14 @@ function ck(name, ok, detail) {
         tagW: gr ? gr.width : 0, tagH: gr ? gr.height : 0, valveW: vr.width, tagOverValve: +ov.toFixed(3),
         ols: ols, silHalo: silHalo, rectHaloPainted: rectHalo,
         kind: kind ? kind.textContent : null, rule: act ? getComputedStyle(act).borderLeftStyle : null, ahead: ah ? ah.textContent : null,
+        idea: (function () {
+          var b = act && act.querySelector('.ckl-idea'); if (!b) return null;
+          var txt = act.querySelector('.ckl-txt'), next = act.querySelector('.ckl-crit, .ckl-ahead, .ckl-why, .ckl-ack-row');
+          var t = b.querySelector('.ckl-idea-t'), bg = act.querySelector('.ckl-why') || txt;
+          return { h: b.querySelector('.ckl-idea-h').textContent, t: t.textContent, x: (b.querySelector('.ckl-idea-x') || {}).textContent || null,
+            afterText: !!(txt && (txt.compareDocumentPosition(b) & 4)), beforeRest: !next || !!(b.compareDocumentPosition(next) & 4),
+            titlePx: parseFloat(getComputedStyle(t).fontSize), titleWeight: +getComputedStyle(t).fontWeight, otherPx: parseFloat(getComputedStyle(bg).fontSize) };
+        })(),
         held: held ? held.textContent : null, idx: c ? c.idx : -1 };
     }, VALVE);
   }
@@ -103,13 +128,13 @@ function ck(name, ok, detail) {
   // ---------------------------------------------------------------- control: the leg with none of the fields
   await page.evaluate(function (id) {
     var L = RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === id; })[0];
-    delete L.scope; delete L.step_kinds;
-    L.steps.forEach(function (s) { delete s.scope; delete s.tag; delete s.ahead_label; delete s.act_pause_s; delete s.inject_delay_s; (s.accs || []).forEach(function (a) { delete a.act_pause_s; }); });
+    delete L.scope; delete L.step_kinds; delete L.ideas;
+    L.steps.forEach(function (s) { delete s.idea; delete s.idea_text; delete s.beat_s; delete s.scope; delete s.tag; delete s.ahead_label; delete s.act_pause_s; delete s.inject_delay_s; (s.accs || []).forEach(function (a) { delete a.act_pause_s; }); });
   }, LEG);
   await start();
   var c0 = await read();
   ck('1. CONTROL — a leg that authors none of the fields: no dimming, no tag, no kind chip, solid rule',
-     !c0.dimming && c0.dim === 0 && !c0.tag && c0.kind == null && c0.rule === 'solid',
+     !c0.dimming && c0.dim === 0 && !c0.tag && c0.kind == null && c0.rule === 'solid' && c0.idea == null,
      JSON.stringify({ dimming: c0.dimming, dim: c0.dim, tag: c0.tag, kind: c0.kind, rule: c0.rule }));
   await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });
   await page.waitForTimeout(500);
@@ -121,6 +146,9 @@ function ck(name, ok, detail) {
     L.scope = [];                          // leg default: dim everything but what the step rings
     L.steps[0].tag = true;
     L.steps[0].ahead_label = 'Watch for';
+    L.ideas = ['Heat with nowhere to go', 'Level is not inventory'];
+    L.steps[0].idea = 2; L.steps[0].idea_text = 'The pressurizer can read full while the plant drains.';
+    L.steps[8].idea = 7;                   // out of range: draws nothing
     L.steps[8].scope = ['Steam Generator'];
     L.steps[6].scope = false;
   }, LEG);
@@ -139,8 +167,12 @@ function ck(name, ok, detail) {
   ck('6. `ahead_label` replaces the forecast heading on its step',
      a.ahead === 'Watch for', String(a.ahead));
 
+  ck('23. `idea`: the step carries a KEY IDEA block under its instruction line and above everything else: "Key idea 2 of 2", the leg\'s title, the step\'s text, in the card\'s largest type',
+     !!a.idea && a.idea.h === 'Key idea 2 of 2' && a.idea.t === 'Level is not inventory' && a.idea.x === 'The pressurizer can read full while the plant drains.' &&
+     a.idea.afterText && a.idea.beforeRest && a.idea.titleWeight >= 700 && a.idea.titlePx > a.idea.otherPx, JSON.stringify(a.idea));
   await jump(8);   // step 9: hl_watch names Reactor Vessel (component art) and two cards
   var b = await read();
+  ck('24. ...and a step without a valid `idea` draws none (step 9 here: `idea: 7` of 2)', b.idea == null && b.idx === 8, JSON.stringify(b.idea));
   var rv = b.ols.reactorVessel, rvHalo = b.silHalo.filter(function (h) { return h.id === 'reactorVessel'; })[0];
   ck('7. a WATCHED component is outlined on its own art: a standing, steady silhouette on the reactor vessel',
      !!rv && rv.kind === 'watch' && rv.anim === 'none' && rv.opacity > 0.9 && rv.w > 20, JSON.stringify(rv || null));
@@ -182,6 +214,121 @@ function ck(name, ok, detail) {
   var af = await page.evaluate(function () { var sv = RD.__dev.service(), c = sv.instructor.checklist; return { hold: !!c.actHold, run: sv.running, t: sv.simTime, row: !!(c.accsState && c.accsState[0] && c.accsState[0].met), line: !!document.querySelector('#cklRun .ckl-held') }; });
   ck('13. a BOARD press made with the clock held is delivered and graded, the hold lets go, the clock runs and the line is gone',
      !af.hold && af.run && af.row && af.t > t1 && !af.line, JSON.stringify(af) + ' from sim ' + t1.toFixed(1) + '; commands the click sent [' + seen.join(',') + '], element under the pointer ' + under);
+
+  // ---------------------------------------------------------------- `beat_s`: events that land together, one at a time
+  /* *(OWNER, 2026-11-13: "the events that happened within seconds of each other can you somehow delay them so
+   * that they happen a few seconds after each other instead of all at once not an actual slow motion" · "Should
+   * we consider dimming the board for a few seconds to show the important parts of what's happening in the
+   * moment?")* A step is given three rows in page memory, all unmeetable; two are then made true TOGETHER, so
+   * they tick on one broadcast. Sampled every 40 ms from inside the page. */
+  async function armBeat(k, sA, sStep) {
+    await page.evaluate(function (o) {
+      var st = RD.__dev.service().instructor.checklist.proc.steps[o.k];
+      ['pause_on_met', 'pause', 'inject', 'clear', 'cmd', 'hl', 'saw', 'overtaken', 'act_pause_s', 'inject_delay_s', 'accs_ordered', 'tag', 'wait_speed', 'acc'].forEach(function (f) { delete st[f]; });
+      st.scope = ['Steam Generator']; st.beat_s = o.sStep;   // one piece of un-ringed context, which the spotlight must drop
+      st.hl_watch = ['ECCS', 'Plant Pressure', 'Pressurizer Level'];
+      st.accs = [{ p: 'power_pct', op: '>', v: 9e9, label: 'event A', say: 'The first thing happens.', beat_s: o.sA },   // no targets of its own
+                 { p: 'power_pct', op: '>', v: 9e9, label: 'event B', hl_watch: ['Plant Pressure'] },             // its own target: the spotlight
+                 { p: 'power_pct', op: '>', v: 9e9, label: 'never' }];
+    }, { k: k, sA: sA, sStep: sStep });
+    await jump(k);
+  }
+  function sampler() {
+    return page.evaluate(function () {
+      window.__bt = [];
+      /* the rung going dark for ONE FRAME is invisible to a 40 ms sampler six times in seven (measured), so
+       * every class change on the speed bar is watched: a moment with the clock held by a beat and no rung lit counts */
+      window.__dark = 0;
+      if (window.__mo) window.__mo.disconnect();
+      window.__mo = new MutationObserver(function () {
+        if (RD.__dev.holds().join('+') === 'beat' && !document.querySelector('#speed [data-speed].on')) window.__dark++;
+      });
+      window.__mo.observe(document.getElementById('speed'), { attributes: true, attributeFilter: ['class'], subtree: true });
+      window.__btI = setInterval(function () {
+        var sv = RD.__dev.service(), c = sv.instructor.checklist, now = document.querySelector('#cklRun .ckl-crit-now');
+        var rows = now ? [].slice.call(now.parentNode.querySelectorAll('.ckl-crit')) : [];
+        var txt = now ? now.textContent.replace(/^now/, '').replace(/^\S*[✓○·↳]\s*/, '').trim() : null;
+        var play = document.getElementById('playBtn');
+        window.__bt.push({ w: performance.now(), run: sv.running, t: sv.simTime, idx: c ? c.idx : -1, x: sv.timeAcceleration,
+          row: now ? rows.indexOf(now) : -1, txt: txt, holds: RD.__dev.holds().join('+'),
+          sg: RD.PwrBoard.scopeState().lit.indexOf('steamGenerator') >= 0, lit: RD.PwrBoard.scopeState().lit.length, dimming: RD.PwrBoard.scopeState().dimming,
+          rings: document.querySelectorAll('#viewArea .bd-halo.ckl-watch-glow').length,
+          rung: !!document.querySelector('#speed [data-speed].on'), playPaused: play.classList.contains('paused') });
+      }, 40);
+    });
+  }
+  function fire() { return page.evaluate(function () { var a = RD.__dev.service().instructor.checklist; a = a.proc.steps[a.idx].accs; a[0].v = -1; a[1].v = -2; }); }
+  await armBeat(3, 1.5, 2);
+  /* settle the clock first: the step left behind was mid fast-forward, and the walkthrough's own hand-back to 1x
+   * can land a broadcast or two after the jump (seen once in seven runs as a speed that "moved" during the beat) */
+  await page.waitForFunction(function () { return RD.__dev.service().timeAcceleration === 1 && RD.__dev.service().running; }, null, { timeout: 5000 }).catch(function () {});
+  await page.waitForTimeout(400);
+  var base = await page.evaluate(function () { var q = RD.PwrBoard.scopeState(); return { lit: q.lit.length, dimming: q.dimming, x: RD.__dev.service().timeAcceleration, rings: document.querySelectorAll('#viewArea .bd-halo.ckl-watch-glow').length }; });
+  await sampler();
+  await page.waitForTimeout(300);
+  await fire();
+  await page.waitForTimeout(5600);
+  var bt = await page.evaluate(function () { clearInterval(window.__btI); window.__mo.disconnect(); return window.__bt; });
+  var dark = await page.evaluate(function () { return window.__dark; });
+  var heldS = bt.filter(function (q) { return !q.run; });
+  function span(list) { return list.length ? (list[list.length - 1].w - list[0].w) / 1000 : 0; }
+  var sA = bt.filter(function (q) { return q.row === 0; }), sB = bt.filter(function (q) { return q.row === 1; });
+  var tail = bt.slice(-10), after = bt[bt.length - 1];
+  ck('15. `beat_s`: two rows tick together and the clock is held ' + span(heldS).toFixed(2) + ' wall-s (1.5 + 2.0 asked), then RUNS AGAIN with no Continue: same step, sim_time frozen during the hold and moving after',
+     heldS.length > 10 && Math.abs(span(heldS) - 3.5) <= 0.7 && heldS.every(function (q) { return q.t === heldS[0].t && q.holds === 'beat'; }) &&
+     tail.every(function (q) { return q.run && q.idx === 3 && q.holds === ''; }) && after.t > heldS[0].t,
+     JSON.stringify({ held: +span(heldS).toFixed(2), holds: heldS[0] && heldS[0].holds, simHeld: heldS[0] && heldS[0].t, simAfter: after.t, idx: after.idx, run: after.run }));
+  ck('16. ...one at a time, in ROW ORDER: row 0 is "now" for its own 1.5 s, then row 1 for the step\'s 2.0 s, never both',
+     sA.length > 5 && sB.length > 5 && sA[sA.length - 1].w < sB[0].w && Math.abs(span(sA) - 1.5) <= 0.3 && Math.abs(span(sB) - 2.0) <= 0.3 && tail.every(function (q) { return q.row === -1; }),
+     'row 0 ' + span(sA).toFixed(2) + ' s, row 1 ' + span(sB).toFixed(2) + ' s');
+  ck('17. `say` is the row\'s text while its beat holds; a row without one keeps its label',
+     sA.length > 0 && sA.every(function (q) { return q.txt === 'The first thing happens.'; }) && sB.length > 0 && sB.every(function (q) { return q.txt === 'event B'; }),
+     JSON.stringify([sA[0] && sA[0].txt, sB[0] && sB[0].txt]));
+  var midA = sA[Math.floor(sA.length / 2)] || {}, midB = sB[Math.floor(sB.length / 2)] || {};
+  ck('18. SPOTLIGHT: during row 1\'s beat only ITS target is lit and ringed (fewer lit tiles than the step\'s own scope, one ring); row 0, with no targets of its own, keeps the step\'s scope',
+     base.dimming && base.rings >= 2 && midB.dimming && midB.lit > 0 && midB.lit < base.lit && midB.rings === 1 && midB.sg === false && midA.lit === base.lit && midA.rings === base.rings && midA.sg === true,
+     JSON.stringify({ stepScopeLit: base.lit, stepRings: base.rings, row0: midA.lit, row0Rings: midA.rings, row1: midB.lit, row1Rings: midB.rings, contextLitRow0: midA.sg, contextLitRow1: midB.sg }));
+  ck('19. ...and the step\'s own scope is back once the beat releases',
+     after.dimming && after.lit === base.lit && after.rings === base.rings && after.sg === true, JSON.stringify({ stepScopeLit: base.lit, after: after.lit, rings: after.rings }));
+  ck('20. a beat is not the player pausing: the speed rung stays lit, the play button does not flash paused, and the speed is what it was',
+     heldS.length > 0 && dark === 0 && heldS.every(function (q) { return q.rung && !q.playPaused && q.x === base.x; }) && after.x === base.x,
+     JSON.stringify({ samples: heldS.length, darkMoments: dark, noRung: heldS.filter(function (q) { return !q.rung; }).length, playPaused: heldS.filter(function (q) { return q.playPaused; }).length, xMoved: heldS.filter(function (q) { return q.x !== base.x; }).length, x: [base.x, after.x] }));
+
+  // Rewind and End, each pressed with a 6 s beat standing: the hold must go AT ONCE, not when its timer runs out
+  await armBeat(4, 6, 6);
+  await fire();
+  var tookR = await page.waitForFunction(function () { return RD.__dev.holds().indexOf('beat') >= 0; }, null, { timeout: 6000 }).then(function () { return true; }).catch(function () { return false; });
+  await page.evaluate(function () { RD.__dev.cmd({ action: 'rewind', steps: 1, scope: 'full', exact: true }); });
+  await page.waitForTimeout(700);
+  var rwS = await page.evaluate(function () { return { holds: RD.__dev.holds().join('+'), now: !!document.querySelector('#cklRun .ckl-crit-now'), idx: RD.__dev.service().instructor.checklist.idx }; });
+  ck('21. Rewind with a beat standing cancels it: 0.7 s later no `beat` hold and no "now" row (its timer had 5 s left)',
+     tookR && rwS.holds.indexOf('beat') === -1 && !rwS.now && rwS.idx !== 4, 'beat taken ' + tookR + '; after the rewind ' + JSON.stringify(rwS));
+  await armBeat(5, 6, 6);
+  await fire();
+  var tookE = await page.waitForFunction(function () { return RD.__dev.holds().indexOf('beat') >= 0; }, null, { timeout: 6000 }).then(function () { return true; }).catch(function () { return false; });
+  await page.click('[data-ckl-stop]');
+  await page.waitForTimeout(700);
+  var enS = await page.evaluate(function () { return { holds: RD.__dev.holds().join('+'), run: RD.__dev.service().running, ckl: !!RD.__dev.service().instructor.checklist }; });
+  ck('22. End walkthrough with a beat standing cancels it: 0.7 s later the clock is running with no hold left',
+     tookE && enS.holds === '' && enS.run && !enS.ckl, 'beat taken ' + tookE + '; after End ' + JSON.stringify(enS));
+  // the finished leg's card: the ideas, numbered, above the recap
+  await start();
+  await page.evaluate(function () {
+    var c = RD.__dev.service().instructor.checklist; c.idx = c.proc.steps.length - 1; c.paused = false;
+    RD.__dev.cmd({ action: 'checklist_check', index: c.idx });
+  });
+  await page.waitForTimeout(700);
+  var fin = await page.evaluate(function () {
+    var box = document.querySelector('#cklRun .ckl-ideas'), rec = document.querySelector('#cklRun .ckl-complete');
+    return { done: !!RD.__dev.service().instructor.checklist.complete, h: box && box.querySelector('.ckl-ideas-h').textContent,
+      li: box ? [].map.call(box.querySelectorAll('ol > li'), function (l) { return l.textContent; }) : [],
+      aboveRecap: !box ? false : (!rec || !!(box.compareDocumentPosition(rec) & 4)) };
+  });
+  ck('25. `ideas`: the finished leg lists them, numbered, under "The two key ideas", above the recap',
+     fin.done && fin.h === 'The two key ideas' && fin.li.join('|') === 'Heat with nowhere to go|Level is not inventory' && fin.aboveRecap, JSON.stringify(fin));
+  await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });
+  await page.waitForTimeout(400);
+  await start();   // check 14 below ends a RUNNING walkthrough
 
   await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });
   await page.waitForTimeout(700);

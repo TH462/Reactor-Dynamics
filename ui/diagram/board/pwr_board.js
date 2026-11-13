@@ -1460,7 +1460,7 @@
    * Deduped by content, so the UI calls it every broadcast for free. */
   function setScope(spec) {
     if (!stage) return;
-    var key = spec ? JSON.stringify([spec.names || [], spec.lit || [], spec.ids || [], !!spec.tag]) : null;
+    var key = spec ? JSON.stringify([spec.names || [], spec.lit || [], spec.ids || [], !!spec.tag, !!spec.spot]) : null;
     if (key === focus.key) return;
     focus.key = key;
     if (!halosMeasured) measureHalos();     // BEFORE any dimming: the art-box measure reads ink

@@ -2614,6 +2614,7 @@
     var _cklWt = s && s.instructor && s.instructor.checklist;
     if (_cklWt && _cklWt.paused) { if (!pausedFor('walkthrough')) pauseSim('walkthrough'); }
     else if (pausedFor('walkthrough')) releaseHold('walkthrough');
+    cklBeatSync(s);   // `beat_s`: before the auto-speed and the `running` restamp, like the hold above
     /* THE WALKTHROUGH'S OWN PACING (#796) — here, in the broadcast path, NOT in the rAF paint.
      * `renderNow` is one frame late and can be skipped entirely when paints coalesce (#432's
      * recorder: 1475 rows in, 35 out), and a speed change that lands a frame late at 600× is 600
@@ -3495,7 +3496,7 @@
      * stopped — a `!service.running` test here would suppress exactly that and break the resume
      * half of the same issue. A speed picked while paused is discarded by `resumeSim`'s own
      * drop to 1x anyway, so lighting it would be a lie in the other direction. */
-    var held = Object.keys(pauseWhy).length > 0;
+    var held = Object.keys(pauseWhy).some(function (k) { return k !== 'beat'; });   // a beat (`beat_s`) is not the player pausing: the rung stays lit
     if (seg) seg.querySelectorAll('[data-speed]').forEach(function (b) { b.classList.toggle('on', !held && +b.getAttribute('data-speed') === v); });
     var fb = $('ffBadge');
     if (fb) { var fast = v >= 600; fb.style.display = fast ? 'block' : 'none'; if (fast) fb.textContent = '⚡ ' + v + '×'; }
@@ -5180,13 +5181,95 @@
    *   leg   step_kinds: true     Every card of the leg wears its kind: WATCH (the plant does it) or YOUR
    *                              ACTION (the step asks for a press: `cmd`, or an `accs` row with a `cmd`).
    *   step  ahead_label: '...'   Replaces the forecast block's heading ("What happens next").
+   *   leg   ideas: ['title', …]  The leg's few key ideas, as short titles. On the finished leg's card they
+   *                              are listed, numbered, under "The N key ideas", above `outcome`.
+   *   step  idea: n              (1-based index into the leg's `ideas`) the card draws a KEY IDEA block
+   *                              directly under the instruction line: "Key idea n of N", the title, then
+   *         idea_text: '...'     one or two sentences tying the idea to what the board shows on this
+   *                              step. An `idea` outside 1..N draws nothing. Steps without one are
+   *                              unchanged, which is what makes the key ones stand out.
    *   step  inject_delay_s: N    (instructor) `inject` / `clear` fire N sim-seconds after step entry.
    *   step / accs row
    *         act_pause_s: N       (instructor) the clock is held if the asked-for press has not landed N
    *                              sim-seconds after it became the current ask; the card says so (`act_hold`).
    *
+   *   step / accs row
+   *         beat_s: N            (UI, WALL seconds) when an `accs` row of the active step ticks, the clock is
+   *                              held N wall-seconds and then released by itself, no Continue: the row is
+   *                              marked "now" on the card and its own `hl_watch` / `hl` is what the board
+   *                              rings. Rows that tick on one broadcast take their beats in row order. The
+   *                              row that completes a `pause_on_met` step takes none. See `cklBeatSync`.
+   *                              THE BOARD SPOTLIGHTS IT: for those N seconds everything is dimmed except
+   *                              that row's own targets (tighter than the step's `scope`, and on a step
+   *                              with no `scope` at all); the step's own dimming returns on release. A
+   *                              row with no targets of its own keeps the step's scope during its beat.
+   *   accs row  say: '...'       One short sentence shown as the row's text while its beat holds ("The
+   *                              relief valve opens."); without it the row's usual text stands.
+   *   inject / clear entry
+   *         delay_s: N           (instructor) that entry fires N sim-seconds after the step's injection time
+   *                              (step entry, plus `inject_delay_s`).
+   *
    * NOT A FIELD: the glow on component art (a vessel, a pump, a valve named in `hl` / `hl_watch`) is
    * drawn on the object's outline for every walkthrough (`cklSyncSil`). */
+  /* `beat_s` — EVENTS THAT LAND TOGETHER ARE SHOWN ONE AT A TIME (OWNER, 2026-11-13: "the events that
+   * happened within seconds of each other can you somehow delay them so that they happen a few
+   * seconds after each other instead of all at once not an actual slow motion").
+   *
+   * A UI HOLD ON A WALL TIMER, under its own name ('beat') in `pauseWhy`, so it stacks with the
+   * player's pause and the walkthrough's holds instead of replacing them: the timer only ever lets
+   * go of ITS reason, and the clock restarts when no reason is left. It is a `setTimeout`, which a
+   * hidden tab throttles but still fires, so a beat cannot hold the clock for good. Detected in
+   * the broadcast path (render), by comparing the active step's row ticks with the last broadcast's:
+   * a step seen for the first time beats nothing (rows already met at entry, or after a load), and
+   * a tick taken BACK (a Rewind, a restore) cancels whatever was queued, as does any step change. */
+  var cklBeat = { key: null, prev: null, queue: [], row: -1, timer: null };
+  function cklBeatRow(ck) {
+    return (ck && cklBeat.row >= 0 && cklBeat.key === ck.procedure_id + '#' + ck.step_index) ? cklBeat.row : -1;
+  }
+  function cklBeatCancel() {
+    if (cklBeat.timer != null) { clearTimeout(cklBeat.timer); cklBeat.timer = null; }
+    cklBeat.queue = []; cklBeat.row = -1;
+    if (pausedFor('beat')) releaseHold('beat');
+  }
+  function cklBeatStart() {
+    var nx = cklBeat.queue.shift();
+    if (!nx) { cklBeat.row = -1; if (pausedFor('beat')) releaseHold('beat'); return; }
+    cklBeat.row = nx.row;
+    if (!pausedFor('beat')) pauseSim('beat');
+    cklBeat.timer = setTimeout(function () {
+      cklBeat.timer = null;
+      cklBeatStart();
+      if (latest) render(latest);          // the clock may still be stopped for another reason: redraw the mark ourselves
+    }, nx.s * 1000);
+  }
+  function cklBeatSync(s) {
+    var a = cklActiveStep(s);
+    var key = a ? a.ck.procedure_id + '#' + a.ck.step_index : null;
+    var flags = (a && a.st.accs && a.ck.accs) ? a.ck.accs.map(function (x) { return !!(x && x.met); }) : null;
+    if (key !== cklBeat.key || !flags) { cklBeatCancel(); cklBeat.key = key; cklBeat.prev = flags; return; }
+    var prev = cklBeat.prev || [], fresh = [], undone = false, allMet = true;
+    for (var i = 0; i < flags.length; i++) {
+      var en = a.st.accs[i];
+      if (!en || en.hidden) continue;
+      if (flags[i] && !prev[i]) fresh.push(i);
+      if (!flags[i] && prev[i]) undone = true;
+      if (!flags[i]) allMet = false;
+    }
+    cklBeat.prev = flags;
+    if (undone) { cklBeatCancel(); return; }
+    if (!fresh.length) return;
+    if (allMet && a.st.pause_on_met) fresh.pop();   // the row that completes the step: `pause_on_met` already holds for Continue
+    fresh.forEach(function (r) {
+      var n = +a.st.accs[r].beat_s > 0 ? +a.st.accs[r].beat_s : (+a.st.beat_s > 0 ? +a.st.beat_s : 0);
+      if (n > 0) cklBeat.queue.push({ row: r, s: n });
+    });
+    if (cklBeat.queue.length && cklBeat.timer == null) cklBeatStart();
+  }
+  /* The row a beat is spotlighting, or null: the beat's row, when it authors targets of its own. */
+  function cklBeatSpot(s) {
+    var a = cklActiveStep(s), r = a ? cklBeatRow(a.ck) : -1, en = (r >= 0 && a.st.accs) ? a.st.accs[r] : null;
+    return (en && ((en.hl && en.hl.length) || (en.hl_watch && en.hl_watch.length))) ? en : null;
+  }
   function cklStepScope(s) {
     var a = cklActiveStep(s);
     if (!a) return null;
@@ -5440,6 +5523,10 @@
     if (busy && btn.classList.contains('on')) selectTab('instructor');
   }
   function syncCklAutoSpeed(s) {
+    /* A BEAT (`beat_s`) IS NOT A PAUSE AND NOT A STEP CHANGE: nothing here moves while one holds the
+     * clock. Without this the stopped clock dropped the latch below (`idle`), and the first broadcast
+     * after the beat re-applied the step's rung over a speed the player had since chosen. */
+    if (pausedFor('beat')) return;
     var a = cklActiveStep(s);
     var want = cklStepSpeed(s, a);
     var cur = (s.metadata && s.metadata.time_acceleration) || 1;
@@ -6077,7 +6164,7 @@
      * nothing the build renders, because the banner is latched at open. What replaces it is the
      * one bit that still changes the output: whether the checklist is underway. */
     var pcKey = (ck.step_index > 0 || (ck.steps_done || []).some(Boolean)) ? 'go' : 'entry';
-    var key = [ck.procedure_id, (ck.act_hold ? 'ah' + ck.act_hold_row : ''),   // `act_pause_s`: the held line
+    var key = [ck.procedure_id, 'bt' + cklBeatRow(ck), (ck.act_hold ? 'ah' + ck.act_hold_row : ''),   // `act_pause_s`: the held line
       (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
       (ck.done_by || []).join(','),   // route-true text (#670) reads how each step was done
 
@@ -6389,6 +6476,17 @@
         : '<div class="ckl-kind ckl-kind-event"><i aria-hidden="true"></i>Watch</div>';
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) +
         (st.crew ? ' <span class="ckl-crew">the crew\'s action, as taken — not a recommendation</span>' : '') + '</div>';
+      /* `idea` — WHAT TO UNDERSTAND, GIVEN MORE WEIGHT THAN WHAT TO DO NEXT *(OWNER RULING, 2026-11-13:
+       * "I agree with adjusting the steps and giving more weight to the important parts to help people
+       * understand")*. Three blocks, three jobs, three looks: the chip says what KIND of step this is,
+       * this says what to UNDERSTAND (a ruled panel, the card's largest type, no accent colour), the
+       * forecast says what comes NEXT (the blue-ruled box above Continue). Read off the pool. */
+      var ideaN = +st.idea, ideaAll = pr.ideas || [];
+      if (ideaN >= 1 && ideaN <= ideaAll.length) {
+        h += '<div class="ckl-idea" data-idea="' + ideaN + '"><div class="ckl-idea-h">Key idea ' + ideaN + ' of ' + ideaAll.length + '</div>' +
+          '<div class="ckl-idea-t">' + mesc(ideaAll[ideaN - 1]) + '</div>' +
+          (st.idea_text ? '<div class="ckl-idea-x">' + mesc(st.idea_text) + '</div>' : '') + '</div>';
+      }
       /* THE ONE-LINE WHY, DIRECTLY UNDER THE STEP'S FIRST LINE *(OWNER RULING, 2026-09-24: "I like
        * putting the why where you put it. i choose a.")* — the what / why / how format
        * (`Blueprint/CHECKLIST_WRITING_GUIDE.md` §16): line one says WHAT, this italic line says WHY,
@@ -6508,13 +6606,15 @@
                 (subNote ? '<div class="ckl-crit-note">' + subNote + '</div>' : '') +
                 '</div>';
             }
+            var beatNow = active && cklBeatRow(ck) === ai;   // `beat_s`: this row is the event on screen
             h += '<div class="ckl-crit' + (av.met ? ' ckl-crit-met' : '') +
-              (ordWait ? ' ckl-crit-wait' : '') + '">' +
+              (ordWait ? ' ckl-crit-wait' : '') + (beatNow ? ' ckl-crit-now' : '') + '">' +
+              (beatNow ? '<span class="ckl-now">now</span>' : '') +
               (tag ? '<span class="ckl-crit-n">' + tag + '</span>' : '') +
               /* mesc UNCONDITIONALLY (#670 operator pass, S-5): since OPSYM prints a strict
                * '<' / '>' rather than ≤ / ≥, fmtPredicate's output carries MARKUP characters
                * and an unescaped insert would swallow the rest of the line as a tag. */
-              (av.met ? (av.overtaken ? '↳ ' : '✓ ') : ordWait ? '· ' : '○ ') + mesc(cklAskText(en, av) || enTxt) +   /* overtaken: never a plain tick */
+              (av.met ? (av.overtaken ? '↳ ' : '✓ ') : ordWait ? '· ' : '○ ') + mesc((beatNow && en.say) || cklAskText(en, av) || enTxt) +   /* overtaken: never a plain tick; `say` is the row's caption while its beat holds */
               /* BOTH THE ASK AND THE DONE-WHEN, when the entry carries an instruction: the
                * player needs to know what to do AND what the sim is waiting for. Quieter, on
                * its own line, so the imperative is what the eye lands on. Not on a row that is
@@ -6842,6 +6942,13 @@
        * `false` only when a guard is authored AND fails; `null`/`true` draw the claim as
        * before, so every leg without one is unaffected. */
       var outcomeOk = ck.outcome_verified !== false;
+      /* `ideas` — the leg's key ideas, numbered, above the recap that expands them. Titles, not a
+       * plant-state claim, so they are drawn whether or not the outcome guard holds. */
+      if (pr.ideas && pr.ideas.length) {
+        var NWORD = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+        h += '<div class="ckl-ideas"><div class="ckl-ideas-h">The ' + (NWORD[pr.ideas.length] || pr.ideas.length) + ' key ideas</div><ol>' +
+          pr.ideas.map(function (t) { return '<li>' + mesc(t) + '</li>'; }).join('') + '</ol></div>';
+      }
       var outTxt = cklRouteField(pr, ck, 'outcome');   // the recap of the route this run took (#670)
       /* the recap; titled by `.ckl-complete-head` above the kept step (#825 S-3). On a failed guard the recap's claim is
        * withheld here and the warning is the head line's (critic L-4). */
@@ -7127,6 +7234,10 @@
    * already at +0.38 of a 1.0 limit. Every row met = nothing to press, whatever authored the list. */
   function cklSubstepHl(st, ck) {
     if (!ck || !st || !st.accs || !st.accs.length) return null;
+    /* DURING A BEAT (`beat_s`) THE ROW THAT JUST TICKED OWNS THE RINGS, if it authors any: both its
+     * lists drawn as WATCH (steady) — the row is already met, so nothing on it is still a press. */
+    var bRow = cklBeatRow(ck), bEn = bRow >= 0 ? st.accs[bRow] : null;
+    if (bEn && (bEn.hl || bEn.hl_watch)) return { head: 'b' + bRow, hl: [], hl_watch: (bEn.hl_watch || []).concat(bEn.hl || []) };
     var head = cklActiveAccsHead(st, ck);
     var e = head >= 0 ? st.accs[head] : null;
     if (!e) return { head: -2, hl: [], hl_watch: st.hl_watch || [] };
@@ -7691,6 +7802,15 @@
       /* A WALKTHROUGH STEP'S `scope` (see the field block above `cklStepScope`). Only when no beat
        * owns the dimming. The lit set is what the glow pass has ringed, by item id. */
       var cs = cklStepScope(s);
+      /* A BEAT'S SPOTLIGHT (OWNER, 2026-11-13: "Should we consider dimming the board for a few seconds
+       * to show the important parts of what's happening in the moment?"). The glow pass has ringed
+       * only the beat row's targets (`cklSubstepHl`), so lighting what is ringed and nothing else IS
+       * the spotlight: no `scope` context, no tag, and it applies on a step that authors no scope. */
+      if (cklBeatSpot(s)) {
+        var spot = cklLitItems();
+        B.setScope({ names: [], lit: [], ids: spot.press.concat(spot.steady, spot.panel), spot: 1 });
+        return;
+      }
       if (!cs) { B.setScope(null); return; }
       var litNow = cklLitItems();
       var csA = cklActiveStep(s);
@@ -10019,8 +10139,11 @@
   function syncPlayBtn() {
     var b = $('playBtn'); if (!b) return;
     var run = !!service.running;
-    b.textContent = run ? '⏸' : '▶';
-    b.classList.toggle('paused', !run);
+    /* a beat (`beat_s`) alone is the walkthrough holding a moment, not a pause to resume from: the
+     * button keeps its running face (the board still freezes, below, on the real `run`) */
+    var pk = Object.keys(pauseWhy), beatOnly = !run && pk.length > 0 && pk.every(function (k) { return k === 'beat'; });
+    b.textContent = (run || beatOnly) ? '⏸' : '▶';
+    b.classList.toggle('paused', !run && !beatOnly);
     if (run) b.classList.remove('attention');
     /* THE BOARD HAS TO BE TOLD, because pausing is exactly the moment it stops being
      * told anything *(OWNER DIRECTIVE, 2026-08-11: "All animations should stop when the
@@ -10048,7 +10171,7 @@
      * NEXT real snapshot always repaints — even if it lands back on the same number (a
      * pause/resume that never touched the speed dropdown at all, e.g. the chart-settings
      * modal), which the `v === lastSpeedSync` guard would otherwise skip silently. */
-    if (!run) {
+    if (!run && !beatOnly) {   // a beat keeps its rung lit (MEASURED: 1 of 88 samples 40 ms apart caught it dark before this)
       var speedSeg = $('speed');
       if (speedSeg) speedSeg.querySelectorAll('[data-speed].on').forEach(function (x) { x.classList.remove('on'); });
       lastSpeedSync = null;
@@ -13705,6 +13828,7 @@
       // a new cause and the test does not.
       RD.__dev = {
         service: function () { return service; },
+        holds: function () { return Object.keys(pauseWhy); },   // the named clock holds standing now (verify_ckl_focus: a beat is cancelled, not waited out)
         tripCauseLabel: tripCauseLabel,
         tripCauses: function () { return TRIP_CAUSE; },
         /* The finished card's chain handoff, as the renderer calls it — see nextLegFor.

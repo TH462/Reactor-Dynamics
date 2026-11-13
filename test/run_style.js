@@ -154,7 +154,7 @@ function stepFields(s, fields) {
      * not an imperative. */
     if (f === 'accs') {
       (s.step.accs || []).forEach(function (a) {
-        ['ask', 'ask_1m', 'label', 'note', 'speed_text'].forEach(function (k) { if (typeof a[k] === 'string') out.push(a[k]); });
+        ['ask', 'ask_1m', 'label', 'say', 'note', 'speed_text'].forEach(function (k) { if (typeof a[k] === 'string') out.push(a[k]); });
       });
       return;
     }
@@ -181,7 +181,7 @@ var CHECKS = [
   {
     id: 'checklist_vague',
     rule: 'W12 — no vague quantifier in a checklist step',
-    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'ahead_label', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'ahead_label', 'idea_text', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
     /* `aim` (the step's one-line WHY, 2026-09-25) gets its OWN injection — a per-field harvest
      * needs a per-field proof, the #741 lesson on `checklist_no_si` below. So does each of the
      * four `accs` strings (workbench-f): delete any one from the harvest and its injection
@@ -358,11 +358,12 @@ var CHECKS = [
         ['title', 'purpose', 'outcome'].forEach(function (k) { chk(p.id + '.' + k, p[k]); });
         (p.route_alt || []).forEach(function (a, i) { chk(p.id + '.route_alt' + i + '.outcome', a.outcome); });
         (p.prereq || []).forEach(function (s, i) { chk(p.id + '.prereq' + i, s); });
+        (p.ideas || []).forEach(function (s, i) { chk(p.id + '.ideas' + i, s); });
         (p.cautions || []).forEach(function (s, i) { chk(p.id + '.caution' + i, s); });
         (p.precond || []).forEach(function (c, i) { chk(p.id + '.precond' + i, c.text); });
       });
       d.steps.forEach(function (s) {
-        ['text', 'aim', 'ahead', 'ahead_label', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
+        ['text', 'aim', 'ahead', 'ahead_label', 'idea_text', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
         // the incident walkthrough's narrative block (#670) — four strings on the card, bound by
         // the ruling exactly as `why` is. It is prose ABOUT a plant, which is where an "(11 MPa)"
         // is most likely to be written without thinking.
@@ -379,6 +380,7 @@ var CHECKS = [
         (s.step.accs || []).forEach(function (a, j) {
           chk(s.proc + ' step ' + s.n + '.accs' + j, a.label);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.ask', a.ask);
+          chk(s.proc + ' step ' + s.n + '.accs' + j + '.say', a.say);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.ask_1m', a.ask_1m);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.note', a.note);
           chk(s.proc + ' step ' + s.n + '.accs' + j + '.speed_text', a.speed_text);
