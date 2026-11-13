@@ -7,6 +7,13 @@ For the dense engineering rationale behind each change (spec deviations, tuning,
 tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summary.
 
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
+
+### Changed — the stuck relief valve's severity now works, and the TMI-2 meltdown walkthrough uses it (2026-11-13)
+
+- **`stuck_porv_open` severity is the stuck fraction** of one valve's area (#408's ruled meaning). The PWR2 plant ignored it and always stuck the valve fully open. No severity is still fully stuck, so every existing scenario is unchanged.
+- **The meltdown walkthrough sticks the valve 75 % open and keeps the accumulators in service.** Its "close the accumulator valve" step is replaced by AUTO on the steam dump, which holds steam pressure once the turbine is tripped. Measured on the typical route: pumps off at 66 plant-min, 1200 °F (648.9 °C) 15.5 min later, damage latch 34.7 min later, accumulators at 83 %; 101 plant-min in all.
+- **Why:** the pressure dip that made the accumulators re-wet the core was the steam dump in average-temperature mode reading a superheated hot leg and blowing the steam generator down (901 → 397 psi (6.21 → 2.74 MPa) in five plant-min), not the leak.
+- **Known understatement:** at 36 % stuck, TMI-2's valve size for this plant's power, pressure holds near 1025 psi (7.07 MPa) as in 1979 but the cladding stalls at 1450–1620 °F (790–880 °C). 75 % is the smallest measured fraction that reaches damage.
 > below to the version being shipped (`## [Alpha X.Y.Z] — YYYY-MM-DD`) and open a fresh
 > empty `## [Unreleased]` above it. The version must match the top entry of
 > `changelog.html` and the string in `site/release.js`.

@@ -6648,7 +6648,7 @@
       id: 'pwr_tmi2_meltdown', category: 'incident', manual_ref: 'PWR-E08',
       story_year: 1979,
       title: 'Three Mile Island Unit 2 — the chain of events to core damage',
-      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to the point serious core damage began. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 85 plant-minutes.',
+      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to the point serious core damage began. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 100 plant-minutes.',
       from: 'hot_full_power',
       prereq: [
         'Plant at Mode 1, At Power: REACTOR POWER near 100 % with the turbine on line (auto-checked).',
@@ -6752,7 +6752,7 @@
          *   outcome. The stall below it is the fuel model's, and is owed its own look. */
         { text: 'Press AUTO on the STEAM DUMP card: its status changes from TAVG to STM PRESS.',
           why: 'With the turbine tripped, AUTO holds steam pressure. Left following coolant temperature, the dump would later read the overheated coolant and blow the steam generator down.',
-          ahead: 'The plant now drains through the relief valve. The pumps keep a froth of steam and water moving through the core.',
+          ahead: 'For the next 50 plant-minutes the plant drains through the relief valve. The pumps keep a froth of steam and water moving through the core.',   // MEASURED 2026-11-13: the drain step lasts 49.5 plant-min on the typical route
           story: { clock: '04:08:37' },
           control: 'Steam Dump', target: 'STEAM DUMP status reads STM PRESS',
           cmd: { action: 'set_steam_dump', mode: 'auto' }, hold: 20,
@@ -6766,7 +6766,7 @@
           story: { clock: '04:10:37' },
           pair: ['pzr_level', 'inventory'],
           trend: ['pressure', 'pzr_level', 'inventory', 'uncovered', 'porv'], window: 7200,
-          hold: 3000,
+          hold: 3600,   // MEASURED 2026-11-13, 75 % stuck: RCP FLOW row met 2967 s after entry on the typical route
           wait_speed: 60,
           /* THE PLAYER WHO DOES WHAT THE CREW DID NOT (critic round 1, 2026-11-12). MEASURED, routes gate,
            * WR_OVERRIDE: block valve closed at step 8 entry -> RCS INVENTORY flattens at 85-88 % and this step
@@ -6775,7 +6775,7 @@
             label: 'the leak is isolated or injection is back on', on_card: true,
             text: 'Overtaken: you closed the PORV block valve or restarted injection, and the drain this step watches has stopped. The 1979 crew did neither for more than two hours.' },
           accs: [{ p: 'core_inventory_pct', op: '<', v: 50, label: 'RCS INVENTORY on the chart below 50 %' },
-                 { p: 'pump_flow_pct', op: '<', v: 24.5, label: 'RCP FLOW below 25 %' }],   // 24.5: the tile rounds, so it reads 24 when this ticks. MEASURED 2026-11-12: the tile (the flow tap, not mass flow) reads 90 % at entry, 60 % at 30 plant-min, 24 % near 50, and levels off near 16 %
+                 { p: 'pump_flow_pct', op: '<', v: 24.5, label: 'RCP FLOW below 25 %' }],   // 24.5: the tile rounds, so it reads 24 when this ticks. MEASURED 2026-11-12: RE-MEASURED 2026-11-13 at 75 % stuck: the tile reads 85 % at entry, 58 % at 25 plant-min and 24 % at 49.5
           hl_watch: ['Pressurizer Level', 'RCP ON/OFF', 'Reactor Vessel'] },
         /* 10 — 05:13:37 and 05:41:37, E99/E111. One handswitch on this board. */
         { text: 'Press OFF on the RCP FLOW card, as the crew did.',
@@ -6795,12 +6795,12 @@
          * below, not real-plant figures. */
         { text: 'Watch Peak Clad Temp on the chart and the fuel in the vessel drawing pass 1,200 °F, then 2,200 °F.',
           why: 'Above 1,200 °F the cladding reacts with the steam: it makes hydrogen and adds its own heat to the decay heat. 2,200 °F is the limit past which the fuel is counted as damaged.',   // critic round 2 M2: MEASURED, the climb is SLOWER above 1,200 °F on this plant (about 100 °F a plant-minute just below it, 1,000 °F in the 20 minutes above), so the card no longer says it speeds up
-          note: 'In 1979 the block valve was closed 2 hours 18 minutes in. The core was already damaged.',
+          note: 'The accumulators add some water once pressure falls below 665 psi. It does not cover the core. In 1979 the block valve was closed 2 hours 18 minutes in, with the core already damaged.',   // MEASURED 2026-11-13: accumulators 100 -> 83 % by the latch, core 100 % uncovered throughout
           story: { clock: '06:45:37' },
           trend: ['clad_temp', 'uncovered', 'inventory', 'pzr_level', 'porv'],
           hold: 1500,   // the REPLAY's dwell: it grades at the end of the hold, and on its own clocks (pumps off at 70 plant-min) the latch comes 18 min later and the core is part-quenched by 125 min (MEASURED 2026-11-12)
           wait_speed: 60,
-          wait_est_s: 2060,   // MEASURED 2026-11-12, live runtime, seed 42, typical route: 1,200 °F 879 s after entry (14.7 plant-min), the damage latch 2064 s (34.4)
+          wait_est_s: 2080,   // MEASURED 2026-11-13, live runtime, seed 42, typical route, 75 % stuck, accumulators in service: 1,200 °F 930 s after entry (15.5 plant-min), the damage latch 2079 s (34.7)
           /* THE TWO RECOVERIES, TAKEN HERE (critic round 1): the leak isolated or injection restarted -- the heat-up stops */
           overtaken: { p: 'block_valve_open', op: '<', v: 1, or: [{ p: 'hpi_flow_normalized', op: '>', v: 0.02 }],
             label: 'the leak is isolated or injection is back on', on_card: true,

@@ -289,7 +289,7 @@ Break flow reduced; core covered; plant stabilized for “cooldown” narrative.
 ## PWR-E07 — PORV Stuck Open (Small-Break LOCA)
 
 ### Failure
-`stuck_porv_open` — close_porv overridden; PORV remains open.
+`stuck_porv_open` — close_porv overridden; PORV remains open. Its severity is the **stuck fraction**: how far open the one valve stays, 0 to 100 % of its area (100 % when no severity is given).
 
 ### Symptoms
 - Pressure falling; inventory loss  

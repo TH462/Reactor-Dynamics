@@ -29,6 +29,32 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-13-develop-a (why the accumulators fired on the TMI ride: the steam dump, not the leak; the stuck fraction wired)
+
+Owner question: *"Why does the pressure drop low enough to fire the accumulators in ours? I didn't think the real incident got low enough to fire them."* Three hypotheses, two refuted by measurement (full stack, the crew's actions, seed 42):
+
+| Hypothesis | Test | Result |
+|---|---|---|
+| Auxiliary feed over-cools the generator | secure it at the pump stop | REFUTED: same fall, 1011 → 666 psi (6.97 → 4.59 MPa) in 9 min |
+| Both relief valves stick | read `pwr2_pressurizer.js` | REFUTED: one valve was always the stick (two only while the controller demands) |
+| The steam dump blows the generator down | dump to pressure mode | CONFIRMED: secondary holds 1020 psi (7.03 MPa); in TAVG it falls 901 → 397 psi (6.21 → 2.74 MPa) in 5 min when the hot leg superheats, afw 0.16 → 1.00 |
+
+**The trap:** a post-trip dump in TAVG mode is a controller reading a temperature that stops meaning anything once the loop is steam. It opens fully on superheat and depressurises the primary through the generator. Every "the accumulators rescued it" ride before today had this in it.
+
+**Stuck fraction sweep** (dump in pressure mode, accumulators in service, injection stopped at 260 s):
+
+| Stuck | Stuck-valve rating | Outcome in 3–3.5 h |
+|---|---|---|
+| 36 % (TMI-2's proportion, 1.62 kg/s) | 1.62 kg/s (3.6 lb/s) | 1015–1190 psi (7.0–8.2 MPa) plateau, accumulators 100 %, cladding stalls 1450–1620 °F (790–880 °C), no damage |
+| 50 % | 2.2 kg/s (4.9 lb/s) | peak 1845 °F (1007 °C), accumulators 93 %, no damage |
+| 62 % | 2.8 kg/s (6.1 lb/s) | peak 1906 °F (1041 °C), accumulators 86 %, no damage |
+| 75 % | 3.3 kg/s (7.4 lb/s) | damage at 95.7 min (scripted pump stop 60 min), accumulators 82 % |
+| 100 % | 4.45 kg/s (9.8 lb/s) | damage at 75.3 min, accumulators 76 % |
+
+**Open, not fixed:** the stall below ~70 %. At the prototypical leak the real plant damaged its core; ours sits just under the oxidation on-ramp. The uncovered region's floor (`h_stagnant`) and the boil-off steam credit are the two [open] terms that set the stall temperature; neither was moved. `node tools/perturb_sweep.js` first.
+
+**Sources:** TMI-2 valve capacity (118,909 lb/h, Dresser letter ML19322C478), flood-tank injection (about 100 ft³ at 8.5 h, EGG-TMI-6859 §5.1.6) and the 615 psia threshold are INHERITED — quoted by the owner's research assistant, not opened from this tree (network allowlist). TMI-2's 2772 MWt is recalled, unsourced. No plant constant was changed on them; the 75 % is chosen on our own measurements.
+
 ## Session log — 2026-11-12-develop-a (a second TMI-2 walkthrough to core damage; the core heat-up physics; the vessel draws the melt)
 
 Cloud session on branch `claude/inspiring-dijkstra-hmtne5` (= main 9c052b8, Alpha 1.8.4); `develop` is the nearest lane this log's labels allow. Owner's words, 2026-11-12, verbatim: "design and implement a three mile island incident walkthrough… It should explain events before they happen (generally) and highlight the important sections of the diagram… up to the point of the meltdown"; then "Once you are done with the walkthrough I want you to add a proper meltdown ability to the physics."; then "Can you also add a core melting animation to the diagram?". All numbers MEASURED 2026-11-12, full stack, seed 42 unless named. Engineering record: `Blueprint/PWR2_VALIDATION.md` §135.
