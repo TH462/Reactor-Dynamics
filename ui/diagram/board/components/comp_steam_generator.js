@@ -359,7 +359,7 @@
 
     // ---- update: cache last-applied values, only touch DOM on change ----
     var last = {};
-    var hotSteam = false, coldSteam = false;
+    var hotSteam = false, coldSteam = false, lastSimT = null;
     // Steam styling's own colour, NOT the temperature ramp: a steam-filled primary side has
     // no meaningful "temperature" to paint (owner playtest 14). Same fixed point as the pipes.
     var STEAM_TUBE_C = 300;
@@ -376,6 +376,15 @@
       var thot = num(props.thot, 320), tcold = num(props.tcold, 290);
       // Steam on a side of the bundle: same 0.55 / 0.45 hysteresis as the leg pipes (the wiring
       // owns the pipe latch; this is the tube halves' copy of the same band).
+      // history reset (critic L-5): sim time going backwards (rewind) or jumping over a day (load) drops the latches
+      var st = props.simTime;
+      if (typeof st === 'number' && isFinite(st)) {
+        if (lastSimT != null && (st < lastSimT || st - lastSimT > 86400)) {
+          hotSteam = typeof props.hotVoid === 'number' && props.hotVoid > 0.5;
+          coldSteam = typeof props.coldVoid === 'number' && props.coldVoid > 0.5;
+        }
+        lastSimT = st;
+      }
       var hv = props.hotVoid, cv = props.coldVoid;
       if (typeof hv === 'number' && isFinite(hv)) { if (hv > 0.55) hotSteam = true; else if (hv < 0.45) hotSteam = false; } else hotSteam = false;
       if (typeof cv === 'number' && isFinite(cv)) { if (cv > 0.55) coldSteam = true; else if (cv < 0.45) coldSteam = false; } else coldSteam = false;

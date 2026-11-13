@@ -1830,6 +1830,7 @@
         thot: IN(s).thot, tcold: IN(s).tcold, showFlow: true, glow: true,
         // Hot-side / cold-side tube void: the same two true_state fields the leg pipes read.
         // A side drawn as steam takes the steam styling, not the temperature ramp.
+        simTime: (s && s.metadata && typeof s.metadata.sim_time === 'number') ? s.metadata.sim_time : null,
         hotVoid: (s && s.true_state || {}).primary_void_fraction,
         coldVoid: (s && s.true_state || {}).cold_leg_void_fraction };
     },
@@ -2158,8 +2159,23 @@
   // (owner playtest 14: the hot-leg node swings 494 -> 826 degF with void 1.00 throughout, and
   // a steam pipe on the ramp flickers cold/hot with it). One fixed point on the steam ramp.
   var STEAM_PIPE_C = 300;
-  function hotLegPhase(s)  { return legContents((s && s.true_state || {}).primary_void_fraction, 'hot'); }
-  function coldLegPhase(s) { return legContents((s && s.true_state || {}).cold_leg_void_fraction, 'cold'); }
+  // The latches are history, so they must not outlive the history they were built from (critic L-5): a rewind (sim_time goes
+  // backwards) or a load (it jumps more than a day) drops them, and the first snapshot after decides from its own void on the
+  // plain 0.5 threshold. Both legs reset together, on the first call of the new snapshot.
+  var _legT = null, LEG_JUMP_S = 86400;
+  function legSync(s) {
+    var t = (s && s.metadata && typeof s.metadata.sim_time === 'number') ? s.metadata.sim_time : null;
+    if (t != null) {
+      if (_legT != null && (t < _legT || t - _legT > LEG_JUMP_S)) {
+        _legSteam.hot = _legSteam.cold = false;
+        var h = ((s && s.true_state) || {}).primary_void_fraction, c = ((s && s.true_state) || {}).cold_leg_void_fraction;
+        _legSteam.hot = typeof h === 'number' && h > 0.5; _legSteam.cold = typeof c === 'number' && c > 0.5;
+      }
+      _legT = t;
+    }
+  }
+  function hotLegPhase(s)  { legSync(s); return legContents((s && s.true_state || {}).primary_void_fraction, 'hot'); }
+  function coldLegPhase(s) { legSync(s); return legContents((s && s.true_state || {}).cold_leg_void_fraction, 'cold'); }
   function legPipeTemp(phaseFn, tempFn) { return function (s) { return phaseFn(s) === 'steam' ? STEAM_PIPE_C : tempFn(s); }; }
   function coldLeg(s, legs) {
     var p = { temp: IN(s).tcold,

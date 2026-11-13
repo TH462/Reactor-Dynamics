@@ -1016,6 +1016,25 @@ function runSuite(quietRec) {
       !!txt.NR && !!txt['0'] && !!txt['100'] && Math.abs(y0 - wideY(30)) < 0.5 && Math.abs(y100 - wideY(75)) < 0.5,
       'NR ' + !!txt.NR + ', "0" at y ' + y0 + ' (wide 30 = ' + wideY(30).toFixed(1) + '), "100" at y ' + y100 + ' (wide 75 = ' + wideY(75).toFixed(1) + ')');
   }
+
+  /* ---- THE LATCH IS HISTORY, NOT STATE OF THE PLANT (critic L-5): a rewind or load must not carry the old phase ------------- */
+  function timedSnap(t, hv, cv) { var sn = legSnap(hv, cv); var md = {}; Object.keys(sn.metadata || {}).forEach(function (k) { md[k] = sn.metadata[k]; }); md.sim_time = t; sn.metadata = md; return sn; }
+  phases(HOT_PIPES, timedSnap(100, 0.9, 0.9));
+  var rwHot = phases(HOT_PIPES, timedSnap(40, 0.5, 0.5)), rwCold = phases(COLD_PIPES, timedSnap(40, 0.5, 0.5));
+  phases(HOT_PIPES, timedSnap(41, 0.9, 0.9));
+  var fwHot = phases(HOT_PIPES, timedSnap(42, 0.5, 0.5));
+  q('rewind: steam at void 0.9 (t=100), then t=40 at void 0.5 reads WATER on both legs; a normal forward step at 0.5 after steam still reads STEAM',
+    allOf(rwHot, 'water') && allOf(rwCold, 'water') && allOf(fwHot, 'steam'),
+    'after rewind hot ' + rwHot[0] + ' cold ' + rwCold[0] + ', forward 0.5 after steam ' + fwHot[0]);
+  var sgR = buildSG();
+  if (sgR) {
+    var sgRu = function (t, v) { sgR.inst.update({ level: 59, narrowLevel: 62, boil: 0, temp: 285, thot: 320, tcold: 290, hotVoid: v, coldVoid: v, simTime: t });
+      return sgR.tubeStopNodes.map(function (st) { return st.attrs['stop-color']; }); };
+    sgRu(100, 0.9); var sgBack = sgRu(40, 0.5); sgRu(41, 0.9); var sgFwd = sgRu(42, 0.5);
+    q('SG tubes: the same rewind drops the steam latch (t=40 at 0.5 is water), a forward step at 0.5 after steam stays steam',
+      sgBack.every(function (c) { return /^water@/.test(c); }) && sgFwd.every(function (c) { return /^steam@/.test(c); }),
+      sgBack.join('|') + ' / ' + sgFwd.join('|'));
+  }
   /* the highlight vocabulary: the two labels the checklists use reach their components */
   q('highlight labels "Pressurizer" and "Steam Generator" resolve through the control-label map',
     D.controlLabelItem('Pressurizer') === 'pressurizer' && D.controlLabelItem('Steam Generator') === 'steamGenerator',
@@ -1858,6 +1877,10 @@ var SVCSRC = fs.readFileSync(SVCPATH, 'utf8').replace(/\r\n/g, '\n');
 var MPPATH = path.join(__dirname, '..', 'ui', 'manual_procedures.js');
 var MPSRC = fs.readFileSync(MPPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  ['a rewind leaves the leg steam latch standing (old phase after a Rewind)', WIRING_PATH, WSRC,
+   "if (_legT != null && (t < _legT || t - _legT > LEG_JUMP_S)) {", "if (false) {"],
+  ['a rewind leaves the SG tube steam latch standing', SGPATH, SGSRC,
+   "if (lastSimT != null && (st < lastSimT || st - lastSimT > 86400)) {", "if (false) {"],
   /* pump contents / vessel froth / relief flow (2026-11-13) */
   ['the pump ignores the cold-leg latch (contents always water)', WIRING_PATH, WSRC,
    "    pr.contents = coldLegPhase(s);", "    pr.contents = 'water';"],
