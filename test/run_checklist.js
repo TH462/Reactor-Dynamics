@@ -685,6 +685,140 @@ ck('...and an explicit start() (what releaseHold calls) resumes it normally',
    svc11.running === true, 'svc11.running = ' + svc11.running);
 svc11.handleCommand({ action: 'stop_checklist' });
 
+// ------------------------- 12. the two step clocks: `inject_delay_s` and `act_pause_s` (2026-11-13)
+head('12. Step clocks — a delayed injection, and a hold for a press the player has not made');
+/* *(OWNER playtest of pwr_tmi2_meltdown, 2026-11-13, item 5: "start with the sim running so when the
+ * player hits continue on the fist step, a few seconds later the issues start."; item 10: "if they
+ * are taking too long and it will negativly impact the walkthrough, pause the sim just before it
+ * becomes an issue and wait for the player to perform the action.")*
+ *
+ * Same synthetic-procedure shape as sections 10 and 11, and the same reason this is a SERVICE
+ * proof: `run()` calls tick() directly, so a stopped service shows as sim_time not moving.
+ * INJECTIONS (2026-11-13, each applied to instructor_layer.js, this file run, then reverted; reds listed):
+ *   - the `!(c.injectIn > 1e-9)` gate removed from `_stepChecklist`          -> 12a (both), 12b', 12c, 12d
+ *   - `enter_t` written as null in getState                                  -> 12c
+ *   - `c.enterT = null` dropped from `_checklistCheckOff`                    -> 12b'
+ *   - the `simTime - c.actAsk.t0 >= ask.n` hold made `if (false)`            -> 12e (both), 12f, 12g
+ *   - the release in `handleCommand` removed                                 -> 12f, 12g
+ *   - `_actAsk`'s `if (st.accs_ordered) return null;` dropped                -> 12g' (then the section stops on the early hold) */
+RD.MANUAL_PROCEDURES.pwr.push({
+  id: 'zz_clock_probe', category: 'incident', title: 'step clock mechanism probe',
+  from: 'hot_full_power', prereq: ['test'],
+  steps: [
+    { text: 'step 0 — the event arrives five plant-seconds after entry',
+      inject: [{ failure: 'porv_indicator_stuck_closed' }], inject_delay_s: 5,
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 1 — a second delayed event, to prove the delay is per step',
+      clear: ['porv_indicator_stuck_closed'], inject_delay_s: 3,
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 2 — a press the clock will wait for', cmd: { action: 'set_hpi', active: true }, act_pause_s: 3,
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
+    { text: 'step 3 — an ordered step: the press is not asked for until the reading before it is met',
+      cmd: { action: 'set_afw_block', open: true }, accs_ordered: true,
+      accs: [{ p: 'hpi_active', op: '<', v: 0.5, label: 'injection is off' },
+             { cmd: { action: 'set_afw_block', open: true }, act_pause_s: 2, label: 'the press' },
+             { p: 'power_pct', op: '>', v: 9e9, label: 'never' }] },
+  ],
+});
+(function () {
+  var svc = mkService();
+  run(svc, 3);
+  var s = svc.handleCommand({ action: 'start_checklist', procedure_id: 'zz_clock_probe' });
+  var t0 = svc.simTime, F = 'porv_indicator_stuck_closed';
+  s = run(svc, 30);
+  var el30 = svc.simTime - t0;
+  ck('12a. `inject_delay_s: 5` — nothing has fired ' + el30.toFixed(1) + ' plant-s into the step',
+     el30 > 1 && el30 < 5 && failIds(s).indexOf(F) === -1 && ckl(s).inject_in_s > 0 && ckl(s).inject_in_s < 5,
+     'active [' + failIds(s).join(',') + '], inject_in_s ' + ckl(s).inject_in_s.toFixed(2));
+  /* (c) a save taken mid-delay resumes the delay where it was, on a fresh service */
+  var saved = JSON.parse(JSON.stringify(svc.saveState()));
+  var firedAt = null;
+  for (var i = 0; i < 60 && firedAt == null; i++) { s = run(svc, 1); if (failIds(svc.assembleSnapshot()).indexOf(F) >= 0) firedAt = svc.simTime - t0; }
+  ck('12a. ...and it fires between 5.0 and 5.3 plant-s after entry',
+     firedAt != null && firedAt >= 5 - 1e-6 && firedAt <= 5.3, 'fired at ' + (firedAt == null ? 'never' : firedAt.toFixed(2) + ' s'));
+  (function () {
+    var svc2 = mkService();
+    run(svc2, 3);
+    svc2.loadState(saved);
+    var tl = svc2.simTime, at = null;
+    for (var j = 0; j < 60 && at == null; j++) { run(svc2, 1); if (failIds(svc2.assembleSnapshot()).indexOf(F) >= 0) at = svc2.simTime - tl; }
+    ck('12c. a save taken ' + el30.toFixed(1) + ' s into the delay owes only the rest of it after a load',
+       at != null && Math.abs((at + el30) - 5) <= 0.35, 'fired ' + (at == null ? 'never' : at.toFixed(2)) + ' s after the load; ' + el30.toFixed(1) + ' s were already spent');
+  })();
+  /* (b) the delay is per step: step 1's own 3 s, not what is left of step 0's */
+  svc.handleCommand({ action: 'checklist_check', index: 0 });
+  var t1 = svc.simTime;
+  s = run(svc, 20);
+  var still = failIds(svc.assembleSnapshot()).indexOf(F) >= 0, clearedAt = null;
+  for (var k = 0; k < 40 && clearedAt == null; k++) { run(svc, 1); if (failIds(svc.assembleSnapshot()).indexOf(F) === -1) clearedAt = svc.simTime - t1; }
+  ck('12b\'. the next step\'s `clear` waits its OWN 3 s (still active at 2 s, gone by 3.3 s)',
+     still && clearedAt != null && clearedAt >= 3 - 1e-6 && clearedAt <= 3.3, 'active at 2 s: ' + still + '; cleared at ' + (clearedAt == null ? 'never' : clearedAt.toFixed(2) + ' s'));
+  /* (d) Rewind onto step 0 re-arms the whole delay */
+  var rw = svc.handleCommand({ action: 'rewind', steps: 2, scope: 'full', exact: true });
+  var tr = svc.simTime;
+  s = run(svc, 30);
+  var quiet = failIds(svc.assembleSnapshot()).indexOf(F) === -1 && ckl(s).step_index === 0, again = null;
+  for (var m = 0; m < 60 && again == null; m++) { run(svc, 1); if (failIds(svc.assembleSnapshot()).indexOf(F) >= 0) again = svc.simTime - tr; }
+  ck('12d. Rewind into the delayed step re-arms it: quiet for 3 s, then it fires 5.0 to 5.3 s after the rewind',
+     rw.type === 'state' && quiet && again != null && again >= 5 - 1e-6 && again <= 5.3,
+     'idx ' + ckl(s).step_index + ', quiet at 3 s: ' + quiet + ', fired at ' + (again == null ? 'never' : again.toFixed(2) + ' s'));
+
+  /* ---- act_pause_s ---- */
+  /* the LAST BROADCAST THE SERVICE MADE: once it stops itself tick() returns null, and run()'s noop fallback is not a snapshot */
+  function runLast(n) { var last = null; for (var q = 0; q < n; q++) { var x = svc.tick(); if (x) last = x; } return last; }
+  svc.handleCommand({ action: 'checklist_check', index: 0 });
+  run(svc, 2);
+  svc.handleCommand({ action: 'checklist_check', index: 1 });
+  var t2 = svc.simTime;
+  s = run(svc, 20);
+  var early = svc.running && !ckl(s).paused && !ckl(s).act_hold;
+  s = runLast(30);
+  var heldAt = svc.simTime - t2;
+  ck('12e. `act_pause_s: 3` — the clock runs 2 s into the ask, then the service stops itself at 3.0 to 3.3 s',
+     early && svc.running === false && ckl(s).paused && ckl(s).act_hold && ckl(s).act_hold_row === -1 && heldAt >= 3 - 1e-6 && heldAt <= 3.3,
+     'running at 2 s: ' + early + '; now running ' + svc.running + ', act_hold ' + ckl(s).act_hold + ', held at ' + heldAt.toFixed(2) + ' s');
+  var frozen = svc.simTime;
+  run(svc, 20);
+  /* a plant command returns nothing; ui/app.js cmd() draws `assembleSnapshot()` after one made on a stopped service, so that is what is read here */
+  svc.handleCommand({ action: 'set_afw_block', open: true });               // not this step's press
+  var wrong = svc.assembleSnapshot();
+  ck('12e. ...20 further broadcasts move sim_time by zero, and a press of something ELSE does not release it',
+     svc.simTime === frozen && ckl(wrong).act_hold && ckl(wrong).paused, 'sim_time ' + frozen.toFixed(2) + ' -> ' + svc.simTime.toFixed(2) + ', act_hold ' + ckl(wrong).act_hold);
+  svc.handleCommand({ action: 'set_hpi', active: true });                   // the press, made with the clock held
+  var pressed = svc.assembleSnapshot();
+  ck('12f. the step\'s press is DELIVERED AND GRADED with the clock held, and its own broadcast lets go of the hold',
+     ckl(pressed).cmd_seen === true && ckl(pressed).act_hold === false && ckl(pressed).paused === false &&
+     pressed.control_state && svc.running === false,
+     'cmd_seen ' + ckl(pressed).cmd_seen + ', act_hold ' + ckl(pressed).act_hold + ', paused ' + ckl(pressed).paused +
+     ' (the service stays stopped until the UI\'s releaseHold calls start(), as for every walkthrough hold)');
+  svc.start(); svc.running = true;
+  s = run(svc, 40);
+  ck('12f. ...and it is not taken again once the press has landed (4 s on, still running)',
+     svc.running && !ckl(s).act_hold && svc.simTime > frozen + 3, 'running ' + svc.running + ', +' + (svc.simTime - frozen).toFixed(1) + ' s');
+
+  /* ordered rows: the press is not the ask until the reading before it is met (injection is ON from step 2) */
+  svc.handleCommand({ action: 'checklist_check', index: 2 });
+  s = runLast(50) || s;
+  ck('12g\'. an `accs_ordered` press row behind an unmet row is NOT yet asked for: 5 s in, no hold',
+     svc.running && !ckl(s).act_hold && ckl(s).step_index === 3 && !ckl(s).accs[0].met, 'running ' + svc.running + ', act_hold ' + ckl(s).act_hold + ', row 0 met ' + ckl(s).accs[0].met);
+  svc.handleCommand({ action: 'set_hpi', active: false });                  // row 0's reading comes true; row 1 becomes the ask
+  var t3 = null;
+  for (var w = 0; w < 50 && t3 == null; w++) { s = run(svc, 1); if (ckl(s).accs[0].met) t3 = svc.simTime; }
+  s = run(svc, 15);
+  var early3 = svc.running && !ckl(s).act_hold;
+  s = runLast(20) || s;
+  var held3 = svc.simTime - t3;
+  ck('12g. ...its clock starts when the row before it is met: running at 1.5 s, held at 2.0 to 2.3 s, on row 1',
+     t3 != null && early3 && svc.running === false && ckl(s).act_hold && ckl(s).act_hold_row === 1 && held3 >= 2 - 1e-6 && held3 <= 2.3,
+     'running at 1.5 s: ' + early3 + '; held at ' + held3.toFixed(2) + ' s on row ' + ckl(s).act_hold_row);
+  svc.handleCommand({ action: 'set_afw_block', open: false }); svc.handleCommand({ action: 'set_afw_block', open: true });
+  var p3 = svc.assembleSnapshot();
+  ck('12g. ...and that row\'s press releases it',
+     ckl(p3).act_hold === false && ckl(p3).paused === false && ckl(p3).accs && ckl(p3).accs[1] && ckl(p3).accs[1].met === true,
+     'act_hold ' + ckl(p3).act_hold + ', row 1 met ' + (ckl(p3).accs && ckl(p3).accs[1] && ckl(p3).accs[1].met));
+  svc.handleCommand({ action: 'stop_checklist' });
+})();
+
 /* A STEP'S `pair: [a, b]` IS ON THE CHART IT DRAWS (lower power 2 review, 2026-10-15). The trend a step draws is the
  * LAST `trend` at or before it (ui/app.js applyCklChart); drawChart spares the active pair from numeric-row demotion and
  * stacks it on top (browser-gated in verify_tmi_callout section 10, at 1600x1000 where two lanes fit), but it can only

@@ -1273,7 +1273,7 @@
   var focus = null;
   function focusReset() {
     focus = { key: null, layer: null, defs: null, ptrs: {}, names: [], lit: [], dim: false, scale: 0,
-              undimTimer: null };
+              undimTimer: null, stepKey: '|', stepOl: {} };
   }
   focusReset();
 
@@ -1304,12 +1304,13 @@
 
   /* One filter per outlined item, its region the item's ART box plus the band and glow — not a
    * blanket region: morphology and blur cost scale with the region's area. */
-  function focusFilter(id) {
-    var fid = 'rdFocusSil_' + id;
+  function focusFilter(id, ink) {
+    var fid = 'rdFocusSil_' + (ink ? 'step_' : '') + id;
     if (focus.defs.querySelector('#' + fid)) return fid;
     var t = tiles[id], o = haloBox[id] || { l: 0, t: 0, r: 0, b: 0 }, pad = 40;
     var f = focus.defs.querySelector('#rdFocusSil').cloneNode(true);
     f.setAttribute('id', fid);
+    if (ink) f.querySelector('feFlood').setAttribute('flood-color', ink);
     f.setAttribute('x', (-o.l - pad).toFixed(0)); f.setAttribute('y', (-o.t - pad).toFixed(0));
     f.setAttribute('width', (t.offsetWidth + o.l + o.r + 2 * pad).toFixed(0));
     f.setAttribute('height', (t.offsetHeight + o.t + o.b + 2 * pad).toFixed(0));
@@ -1384,7 +1385,7 @@
     return clone;
   }
 
-  function focusMakeOutline(id) {
+  function focusMakeOutline(id, ink) {
     var tile = tiles[id];
     var clone = focusClone(id);
     if (!tile || !clone) return null;
@@ -1393,7 +1394,7 @@
     ol.style.width = tile.offsetWidth + 'px'; ol.style.height = tile.offsetHeight + 'px';
     if (tile.style.transform) { ol.style.transform = tile.style.transform; ol.style.transformOrigin = tile.style.transformOrigin; }
     var sil = h('div', { className: 'bd-focus-sil' });
-    sil.style.filter = 'url(#' + focusFilter(id) + ')';
+    sil.style.filter = 'url(#' + focusFilter(id, ink) + ')';
     sil.appendChild(clone);
     ol.appendChild(sil);
     return ol;
@@ -1459,7 +1460,7 @@
    * Deduped by content, so the UI calls it every broadcast for free. */
   function setScope(spec) {
     if (!stage) return;
-    var key = spec ? JSON.stringify([spec.names || [], spec.lit || []]) : null;
+    var key = spec ? JSON.stringify([spec.names || [], spec.lit || [], spec.ids || [], !!spec.tag]) : null;
     if (key === focus.key) return;
     focus.key = key;
     if (!halosMeasured) measureHalos();     // BEFORE any dimming: the art-box measure reads ink
@@ -1467,7 +1468,14 @@
     focus.lit = [];
     var dim = !!spec;
     if (dim) {
-      focus.lit = focusExpand(focusResolve(spec.names, true).concat(focusResolve(spec.lit, true)));
+      // `ids` — board item ids taken as they are (a walkthrough step's lit halos, already resolved by
+      // the shell); `names` / `lit` go through the driver's regions and focus names as before.
+      var seed = focusResolve(spec.names, true).concat(focusResolve(spec.lit, true));
+      (spec.ids || []).forEach(function (id) { if (tiles[id] && seed.indexOf(id) === -1) seed.push(id); });
+      // `tag` — the tagged valve stays lit: a caution tag nobody can read explains nothing.
+      var tagD = spec.tag ? driver() : null, tagIt = tagD && tagD.tagItem ? tagD.tagItem() : null;
+      if (tagIt && tiles[tagIt] && seed.indexOf(tagIt) === -1) seed.push(tagIt);
+      focus.lit = focusExpand(seed);
       focus.lit.forEach(function (id) { tiles[id].classList.add('bd-lit'); });
     }
     if (dim !== focus.dim) {
@@ -1516,6 +1524,62 @@
       focusDrop(r.el);
     });
     focus.ptrs = {};
+  }
+
+  /* STEP OUTLINES (owner playtest of pwr_tmi2_meltdown, 2026-11-13, item 12: "The glow should be
+   * around the outline of the actual object ie reactor instead of the card the part sits on."; item
+   * 6: "when the pressurizer level is climbing and the PZR level indication is highlighted it should
+   * highlight the PZR itself"). The pointer's silhouette, made to STAND: while a walkthrough step
+   * names a piece of component ART (a vessel, a pump, a valve), its glow is drawn along the art's
+   * own outline for as long as the step does, in the walkthrough's cyan, and the rectangular halo
+   * that would have carried it is blanked (`bd-halo-sil`; the halo keeps its glow class, so every
+   * reader of "what is lit" still finds it). Cards, readouts and buttons are not art and keep the
+   * rectangle. PRESS pulses, WATCH is steady — the same two affordances the rectangle has.
+   *
+   * spec: null | { press: [item ids], watch: [item ids] }. Ids that are not art are ignored, so the
+   * shell hands over everything it lit and this decides. Deduped by content. */
+  var STEP_INK = '#5af0ff';
+  var NOT_ART = { 'Indicator Panel': 1, 'Tee': 1, 'Cross': 1 };
+  function isArt(id) {
+    var rec = comps[id];
+    return !!(rec && rec.inst && rec.item && !NOT_ART[rec.item.comp]);
+  }
+  function setStepOutlines(spec) {
+    if (!stage) return [];
+    var want = {}, order = [];
+    function take(list, kind) {
+      (list || []).forEach(function (id) { if (!want[id] && isArt(id)) { want[id] = kind; order.push(id); } });
+    }
+    if (spec) { take(spec.press, 'press'); take(spec.watch, 'watch'); }
+    var key = order.map(function (id) { return id + ':' + want[id]; }).join(',') + '|';
+    if (key === focus.stepKey) return order;
+    focus.stepKey = key;
+    Object.keys(focus.stepOl).forEach(function (id) {
+      if (want[id]) return;
+      var el = focus.stepOl[id];
+      if (el.parentNode) el.parentNode.removeChild(el);
+      delete focus.stepOl[id];
+      if (haloEls[id]) haloEls[id].classList.remove('bd-halo-sil');
+    });
+    if (!order.length) return order;
+    if (!halosMeasured) measureHalos();
+    focusLayer();
+    if (!focus.scale) focusTune();
+    order.forEach(function (id) {
+      var el = focus.stepOl[id];
+      if (!el) {
+        el = focusMakeOutline(id, STEP_INK);
+        if (!el) return;
+        el.classList.add('bd-step-ol');
+        focus.layer.appendChild(el);
+        focus.stepOl[id] = el;
+        var halo = haloFor(id);
+        if (halo) halo.classList.add('bd-halo-sil');
+      }
+      el.classList.toggle('bd-step-press', want[id] === 'press');
+      el.classList.toggle('bd-step-watch', want[id] === 'watch');
+    });
+    return order;
   }
 
   // Stage scale changed (window resize, splitter drag): keep the band in screen px.
@@ -1916,6 +1980,14 @@
     setScope: function (spec) { setScope(spec); },
     pointAt: function (names) { return pointAt(names); },
     clearPointers: function () { clearPointers(); },
+    // A walkthrough step's standing silhouettes (see setStepOutlines): null clears them.
+    setStepOutlines: function (spec) { return setStepOutlines(spec); },
+    stepOutlineState: function () {
+      var o = {};
+      Object.keys(focus.stepOl).forEach(function (id) { o[id] = focus.stepOl[id].classList.contains('bd-step-press') ? 'press' : 'watch'; });
+      return o;
+    },
+    isArt: function (id) { return isArt(id); },
     // The ELEMENTS a pointer would outline (halo where there is one), for the instructor callout
     // (#811 prototype) to measure and keep clear of. Read-only; draws nothing.
     pointTargets: function (names) {
@@ -1940,7 +2012,12 @@
       return (id && tiles[id]) ? haloFor(id) : null;
     },
     // The maintenance-tag prop (TMI-2): show/hide a TAGGED badge over the AFW valve tile.
-    setTag: function (tagId, visible) {
+    /* `opts.compact` — THE WALKTHROUGH'S TAG (owner playtest of pwr_tmi2_meltdown, 2026-11-13, item
+     * 3: "Needs a small caution tag hanging over the AFW valve. this is why the crew didnt see the
+     * valve was closed."). The scenario prop above covers the valve on purpose; this one is a third
+     * the size, reads CAUTION and hangs clear of the valve body, so the player — unlike the crew —
+     * can still see which way the valve is. */
+    setTag: function (tagId, visible, opts) {
       var d = driver();
       var id = d && d.tagItem ? d.tagItem() : null;
       var host = id && tiles[id];
@@ -1950,6 +2027,11 @@
         if (!tag) {
           tag = h('div', { className: 'bd-maint-tag bd-mono' }, 'TAGGED');
           host.appendChild(tag);
+        }
+        var compact = !!(opts && opts.compact);
+        if (tag.classList.contains('bd-tag-compact') !== compact) {
+          tag.classList.toggle('bd-tag-compact', compact);
+          tag.textContent = compact ? 'CAUTION' : 'TAGGED';
         }
         tag.style.display = '';
       } else if (tag) {
