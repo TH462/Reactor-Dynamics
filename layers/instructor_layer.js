@@ -1415,6 +1415,12 @@
      *                       the player"). Authored on the step (covers the step's `cmd`, and is the
      *                       default for every `accs` row that carries a `cmd`) or on one `accs`
      *                       cmd row (overrides the step's). See `_actAsk` for "current ask".
+     *   inject / clear entry `delay_s: N`
+     *                       that ONE entry fires N sim-seconds after the step's injection time (step
+     *                       entry, plus `inject_delay_s`), so one step can trip the polisher at +0 and
+     *                       lose feedwater at +4. Rides the same `enterT` and the same fired-set: a
+     *                       restore neither re-fires an entry that has fired nor forgets one still due.
+     *                       `pause` waits for the LAST delayed entry before it freezes the clock.
      *
      * `enterT` IS NOT `stepAt`. `stepAt` is deliberately not saved (a load re-stamps it, which is
      * what makes the first tick after a Rewind an entry tick again); `enterT` IS saved, so a delay
@@ -1504,8 +1510,8 @@
     c.injectIn = (_injDly && (st.inject || st.clear)) ? Math.max(0, _injDly - (simTime - c.enterT)) : 0;
     if (!stepEntryTick && (st.inject || st.clear) && !(c.injectIn > 1e-9)) {
       var _firedN0 = c.fired.length;
-      this._checklistFire(snapshot, st);
-      if (st.pause && c.fired.length > _firedN0) {
+      var _owed = this._checklistFire(snapshot, st, (simTime - c.enterT) - _injDly);
+      if (st.pause && c.fired.length > _firedN0 && !_owed) {
         this._pauseRequested = true;
         c.awaitingAck = true;
         c.paused = true;
@@ -1738,8 +1744,8 @@
    * by a gate. This runs under a player in free play, and the pwr2 shell refuses by THROWING
    * (#505): an unknown or beyond-model failure id would otherwise take `tick()` down mid-session.
    * The id is authored content and `run_style`/the replay are where a bad one should be caught. */
-  InstructorLayer.prototype._checklistFire = function (snapshot, st) {
-    var c = this.checklist, self = this;
+  InstructorLayer.prototype._checklistFire = function (snapshot, st, since) {
+    var c = this.checklist, self = this, owed = 0;   // owed: entries still waiting on their own `delay_s`
     if (!c.fired) c.fired = [];
     if (!c.injected) c.injected = [];
     if (!this.below) return;
@@ -1750,6 +1756,7 @@
         if (!spec || !spec.failure) continue;
         var key = kind + i + ':' + spec.failure;
         if (c.fired.indexOf(key) >= 0) continue;
+        if (+spec.delay_s > 0 && !(since >= +spec.delay_s - 1e-9)) { owed++; continue; }
         if (spec.when && spec.when.p && !self._grade(snapshot, spec.when).met) continue;
         c.fired.push(key);
         var cmd;
@@ -1772,6 +1779,7 @@
     }
     fire(st.inject, 'i');
     fire(st.clear, 'c');
+    return owed;
   };
 
   /* See the catch-up block in `_stepChecklist`. `past` is one predicate or an array (OR).

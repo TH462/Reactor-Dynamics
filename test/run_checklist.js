@@ -718,6 +718,10 @@ RD.MANUAL_PROCEDURES.pwr.push({
       accs: [{ p: 'hpi_active', op: '<', v: 0.5, label: 'injection is off' },
              { cmd: { action: 'set_afw_block', open: true }, act_pause_s: 2, label: 'the press' },
              { p: 'power_pct', op: '>', v: 9e9, label: 'never' }] },
+    { text: 'step 4 — two events from one step, four plant-seconds apart, and the pause waits for the second',
+      inject: [{ failure: 'porv_indicator_stuck_closed' }, { failure: 'stuck_porv_open', severity: 1.0, delay_s: 4 }],
+      inject_delay_s: 1, pause: true,
+      acc: { p: 'power_pct', op: '>', v: 9e9 } },
   ],
 });
 (function () {
@@ -816,6 +820,37 @@ RD.MANUAL_PROCEDURES.pwr.push({
   ck('12g. ...and that row\'s press releases it',
      ckl(p3).act_hold === false && ckl(p3).paused === false && ckl(p3).accs && ckl(p3).accs[1] && ckl(p3).accs[1].met === true,
      'act_hold ' + ckl(p3).act_hold + ', row 1 met ' + (ckl(p3).accs && ckl(p3).accs[1] && ckl(p3).accs[1].met));
+  /* ---- a per-entry `delay_s` (OWNER, 2026-11-13: "delay them so that they happen a few seconds after each
+   * other instead of all at once"). INJECTIONS (2026-11-13, reds listed): the `delay_s` test in `_checklistFire`
+   * removed -> 12h, 12h', 12i; `&& !_owed` dropped from the pause -> 12h, 12h'; `enter_t` saved as null -> 12c, 12i. */
+  svc.start(); svc.running = true;
+  svc.handleCommand({ action: 'clear_failure', failure_id: 'porv_indicator_stuck_closed' });
+  svc.handleCommand({ action: 'checklist_check', index: 3 });
+  var t4 = svc.simTime, A = 'porv_indicator_stuck_closed', Bf = 'stuck_porv_open';
+  runLast(30);
+  var f3 = failIds(svc.assembleSnapshot()), el4 = svc.simTime - t4;
+  ck('12h. entry `delay_s: 4` — 3 s in, the first entry has fired, the second has not, and `pause` has not stopped the clock',
+     el4 > 2.5 && el4 < 3.5 && f3.indexOf(A) >= 0 && f3.indexOf(Bf) === -1 && svc.running === true,
+     el4.toFixed(1) + ' s in: active [' + f3.join(',') + '], running ' + svc.running);
+  var saved4 = JSON.parse(JSON.stringify(svc.saveState()));
+  var at4 = null;
+  for (var z = 0; z < 60 && at4 == null; z++) { svc.tick(); if (failIds(svc.assembleSnapshot()).indexOf(Bf) >= 0) at4 = svc.simTime - t4; }
+  ck('12h\'. ...the second fires 5.0 to 5.3 s after entry (1 s `inject_delay_s` + its own 4 s), and THAT is the tick the pause takes',
+     at4 != null && at4 >= 5 - 1e-6 && at4 <= 5.3 && svc.running === false,
+     'second fired at ' + (at4 == null ? 'never' : at4.toFixed(2) + ' s') + ', running ' + svc.running);
+  (function () {
+    var svc2 = mkService();
+    run(svc2, 3);
+    svc2.loadState(saved4);
+    var b2 = svc2.instructor.below, real2 = b2.handleCommand.bind(b2), sent = [];
+    b2.handleCommand = function (cmd) { if (cmd && cmd.action === 'inject_failure') sent.push(cmd.failure_id); return real2(cmd); };
+    var tl = svc2.simTime, at = null;
+    for (var y = 0; y < 60 && at == null; y++) { svc2.tick(); if (failIds(svc2.assembleSnapshot()).indexOf(Bf) >= 0) at = svc2.simTime - tl; }
+    ck('12i. a save taken between the two: the load does NOT re-fire the first entry, and the second still fires, the rest of its delay later',
+       sent.length === 1 && sent[0] === Bf && at != null && Math.abs((at + el4) - 5) <= 0.35,
+       'inject_failure sent after the load [' + sent.join(',') + ']; second ' + (at == null ? 'never' : at.toFixed(2) + ' s after the load, ' + el4.toFixed(1) + ' s already spent'));
+    b2.handleCommand = real2;
+  })();
   svc.handleCommand({ action: 'stop_checklist' });
 })();
 
