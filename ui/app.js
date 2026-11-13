@@ -5882,6 +5882,7 @@
      * names; with `op:'<'` it renders "the pump cavitation alarm is not standing". */
     porv_tailpipe_temp_c:   { label: 'PORV tailpipe temperature', dim: 'temp' },
     rcp_cavitating:         { bool: 'the pump cavitation alarm is standing' },
+    fw_flow_normalized:     { label: 'FEED FLOW', u: '% of rated', scale: 100 },   // pwr_tmi2_meltdown 2 (the opening's feed-flow event; a fraction on the wire)
     hpi_flow_normalized:    { label: 'INJ FLOW', u: '% of rated', scale: 100 },   // pwr_tmi2_meltdown 8/10 `overtaken` (a fraction on the wire)
     clad_temp_c:            { label: 'Peak Clad Temp', dim: 'temp' },   // pwr_tmi2_meltdown 11 (true state: no instrument inside the cladding)
     fuel_damaged:           { bool: 'the fuel is damaged (cladding past 2,200 °F)' },   // pwr_tmi2_meltdown 11
