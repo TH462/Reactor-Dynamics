@@ -6687,7 +6687,7 @@
           why: 'The lamp shows the signal sent to the valve, not the valve. The readout is the pipe leaving it: hot means steam is still passing.',
           ahead: 'Coolant keeps leaving through the stuck valve. Pressure falls until emergency injection starts by itself.',
           story: { clock: '04:00:45' },
-          hold: 60,
+          hold: 90,   // 60 -> 90 (2026-11-13): at 75 % stuck the trip comes 59 s after entry, not 47 (MEASURED, live runtime, seed 42)
           pause_on_met: true,
           accs: [{ p: 'scrammed', op: '>', v: 0, label: 'the reactor has tripped' },
                  { p: 'porv_tailpipe_temp_c', op: '>', v: 115.56, label: 'the pipe leaving the PORV is above 240 °F' }],
@@ -6733,7 +6733,7 @@
           why: 'Feedwater gives the heat a way out again. It does nothing about the stuck relief valve.',
           ahead: 'One line-up before the drain: the steam dump goes to holding steam pressure.',
           story: { clock: '04:08:37' },
-          cmd: { action: 'set_afw_block', open: true }, hold: 700,
+          cmd: { action: 'set_afw_block', open: true }, hold: 900,   // 700 -> 900 (2026-11-13): STEAM GENERATOR LEVEL passes 5 % 705 s after entry (MEASURED)
           wait_speed: 60,
           accs: [{ cmd: { action: 'set_afw_block', open: true }, p: 'afw_blocked', op: '<', v: 1, label: 'AFW block valves open' },   // press OR position (#697)
                  { p: 'sg_level_pct', op: '>', v: 5, label: 'STEAM GENERATOR LEVEL back above 5 %' }],
@@ -6798,7 +6798,7 @@
           note: 'The accumulators add some water once pressure falls below 665 psi. It does not cover the core. In 1979 the block valve was closed 2 hours 18 minutes in, with the core already damaged.',   // MEASURED 2026-11-13: accumulators 100 -> 83 % by the latch, core 100 % uncovered throughout
           story: { clock: '06:45:37' },
           trend: ['clad_temp', 'uncovered', 'inventory', 'pzr_level', 'porv'],
-          hold: 1500,   // the REPLAY's dwell: it grades at the end of the hold, and on its own clocks (pumps off at 70 plant-min) the latch comes 18 min later and the core is part-quenched by 125 min (MEASURED 2026-11-12)
+          hold: 2700,   // 1500 -> 2700 (2026-11-13): the latch is 2079 s after entry on the typical route. // the REPLAY's dwell: it grades at the end of the hold, and on its own clocks (pumps off at 70 plant-min) the latch comes 18 min later and the core is part-quenched by 125 min (MEASURED 2026-11-12)
           wait_speed: 60,
           wait_est_s: 2080,   // MEASURED 2026-11-13, live runtime, seed 42, typical route, 75 % stuck, accumulators in service: 1,200 °F 930 s after entry (15.5 plant-min), the damage latch 2079 s (34.7)
           /* THE TWO RECOVERIES, TAKEN HERE (critic round 1): the leak isolated or injection restarted -- the heat-up stops */
