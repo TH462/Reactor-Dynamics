@@ -106,8 +106,11 @@
     // The mid stop was a hardcoded '#7a5a9a' purple — a blend that made sense when the legs
     // rendered red and blue, and stale since #237 put them at orange-red and green. Computed
     // from the mean leg temperature now, which is also what the fluid does along the tube.
-    var tubeStops = [h('stop', { offset: '0' }), h('stop', { offset: '0.5' }), h('stop', { offset: '1' })];
-    var tubeDashStops = [h('stop', { offset: '0' }), h('stop', { offset: '0.5' }), h('stop', { offset: '1' })];
+    // FOUR stops with a doubled 0.5: normally both mid stops carry the same mean colour (the
+    // plain hot -> mid -> cold gradient), but when one side of the bundle is STEAM (owner playtest
+    // 13) they split into a hard edge at the bundle's centre line, hot half left, cold half right.
+    var tubeStops = [h('stop', { offset: '0' }), h('stop', { offset: '0.5' }), h('stop', { offset: '0.5' }), h('stop', { offset: '1' })];
+    var tubeDashStops = [h('stop', { offset: '0' }), h('stop', { offset: '0.5' }), h('stop', { offset: '0.5' }), h('stop', { offset: '1' })];
     var steamGrad = h('linearGradient', { id: ids.steam, gradientUnits: 'userSpaceOnUse', x1: '0', y1: 195, x2: '0', y2: shellTop }, steamStops);
     var waterClipRect = h('rect', { x: 124, y: bendY, width: 172, height: waterBot - bendY });
     var defs = h('defs', null,
@@ -140,6 +143,9 @@
       x: 110, y: waterBot, width: 200, height: tubeSheetY - waterBot,   /* ends at the tube sheet (#509 item 8) */
       fill: 'url(#' + ids.water + ')', opacity: 0.72
     });
+    // Wide <= 0.5 % draws NO water at all (owner playtest 11). `fullY(0)` is `waterBot`, a 5 px
+    // strip above the tube sheet, which read as "some water left" at an empty generator.
+    var DRY_WIDE = 0.5;
     var surfLine = h('line', {
       x1: 124, y1: 0, x2: 296, y2: 0, stroke: '#bdf1ff', strokeWidth: 2, opacity: 0.5,
       strokeDasharray: '22 12'
@@ -199,7 +205,7 @@
       gEls.push(h('rect', { x: gx, y: pctY(z[1]), width: gw, height: pctY(z[0]) - pctY(z[1]), fill: z[2], opacity: 0.85 }));
     });
     [0, 25, 50, 75, 100].forEach(function (pct) {
-      gEls.push(h('line', { x1: gx + gw, y1: pctY(pct), x2: gx + gw + 4, y2: pctY(pct), stroke: '#3b4f5e', strokeWidth: 1 }));
+      gEls.push(h('line', { x1: gx + gw, y1: pctY(pct), x2: gx + gw + 4, y2: pctY(pct), stroke: '#5b93b8', strokeWidth: 2 }));
     });
     var markerGroup = h('g', null,   /* no transition — broadcast-cadence transform, #613 */
       h('polygon', { points: (gx - 2) + ',0 ' + (gx - 9) + ',-5 ' + (gx - 9) + ',5', fill: '#eaf4fb', stroke: '#0b1119', strokeWidth: 0.6 }),
@@ -213,6 +219,23 @@
     // place the trip/alarm zones are drawn, and a layout that drops the tiles wants it back.
     // markerGroup stays live either way; moving a detached node is harmless.
     if (cfg.showGauge !== true) gEls = [];
+
+    // NARROW-RANGE BRACKET on the shell (owner playtest 11). The drawing is the WIDE range, and
+    // a narrow reading of 0 % is wide 30 % (SG_WR_LO), i.e. water still stands to the tube
+    // apex. Nothing said so, so "0 %" over a part-full vessel read as a bug. Two ticks at the
+    // wide heights of narrow 0 and 100 %, on the inside of the left shell wall (outside it the tile strip covers it), in the same mono face as the LVL
+    // label. Drawn only when the full gauge strip (which shows the same window) is off.
+    var brEls = [];
+    if (cfg.showGauge !== true) {
+      var brx = 125, brY0 = pctY(0), brY100 = pctY(100);
+      var brTxt = { fill: '#8fb8d4', fontSize: 15, fontWeight: 600, fontFamily: "'IBM Plex Mono',monospace", letterSpacing: '0.04em', textAnchor: 'start' };
+      brEls.push(h('line', { x1: brx, y1: brY100, x2: brx, y2: brY0, stroke: '#5b93b8', strokeWidth: 2 }));
+      brEls.push(h('line', { x1: brx - 2, y1: brY0, x2: brx + 9, y2: brY0, stroke: '#8fb8d4', strokeWidth: 2.4 }));
+      brEls.push(h('line', { x1: brx - 2, y1: brY100, x2: brx + 9, y2: brY100, stroke: '#8fb8d4', strokeWidth: 2.4 }));
+      brEls.push(h('text', Object.assign({ x: brx + 12, y: brY0 + 6 }, brTxt), '0'));
+      brEls.push(h('text', Object.assign({ x: brx + 12, y: brY100 + 6 }, brTxt), '100'));
+      brEls.push(h('text', Object.assign({ x: brx + 12, y: (brY0 + brY100) / 2 + 6 }, brTxt), 'NR'));
+    }
 
     // ---- root svg (tight, controls-hidden viewBox crop) ----
     var svg = h('svg', {
@@ -251,7 +274,8 @@
       coldNoz,
       h('circle', { cx: 257, cy: 543, r: 0.75, fill: 'none', 'data-port': 'cold-out', 'data-fluid': 'coldLeg', 'data-dir': 'down', 'data-size': 'large', 'data-out': '1' }),
       connsGroup,
-      h('g', null, gEls));
+      h('g', null, gEls),
+      h('g', { 'data-sg-nr-bracket': '1' }, brEls));
 
     var unwatch = StdPipe.watchScale(svg, function (s) {
       if (!lastS || Math.abs(s - lastS) / s > 0.015) { lastS = s; rebuildConns(); }
@@ -335,6 +359,10 @@
 
     // ---- update: cache last-applied values, only touch DOM on change ----
     var last = {};
+    var hotSteam = false, coldSteam = false;
+    // Steam styling's own colour, NOT the temperature ramp: a steam-filled primary side has
+    // no meaningful "temperature" to paint (owner playtest 14). Same fixed point as the pipes.
+    var STEAM_TUBE_C = 300;
     function update(props) {
       props = props || {};
       var power = clampN(num(props.power, 100), 0, 150);
@@ -346,6 +374,11 @@
       var temp = num(props.temp, 285);
       // primary-side leg temperatures for the U-tubes + channel-head reservoirs
       var thot = num(props.thot, 320), tcold = num(props.tcold, 290);
+      // Steam on a side of the bundle: same 0.55 / 0.45 hysteresis as the leg pipes (the wiring
+      // owns the pipe latch; this is the tube halves' copy of the same band).
+      var hv = props.hotVoid, cv = props.coldVoid;
+      if (typeof hv === 'number' && isFinite(hv)) { if (hv > 0.55) hotSteam = true; else if (hv < 0.45) hotSteam = false; } else hotSteam = false;
+      if (typeof cv === 'number' && isFinite(cv)) { if (cv > 0.55) coldSteam = true; else if (cv < 0.45) coldSteam = false; } else coldSteam = false;
       var showFlow = props.showFlow !== false;
       var glowOn = props.glow !== false;
 
@@ -368,23 +401,29 @@
       // U-tubes + the hot/cold channel-head reservoirs carry PRIMARY coolant, so they take
       // the leg temperatures (hot-leg side / cold-leg side) on the same ramp as the pipes —
       // not power. The tube-bundle thermal glow stays power-gated (heat transferred).
-      if (thot !== last.thot || tcold !== last.tcold) {
-        var hotFl = StdPipe.phaseTempColor('water', thot);
-        var coldFl = StdPipe.phaseTempColor('water', tcold);
+      if (thot !== last.thot || tcold !== last.tcold || hotSteam !== last.hotSteam || coldSteam !== last.coldSteam) {
+        var hotFl = hotSteam ? StdPipe.phaseTempColor('steam', STEAM_TUBE_C) : StdPipe.phaseTempColor('water', thot);
+        var coldFl = coldSteam ? StdPipe.phaseTempColor('steam', STEAM_TUBE_C) : StdPipe.phaseTempColor('water', tcold);
         var midFl = StdPipe.phaseTempColor('water', (thot + tcold) / 2);
         var hotC = hotFl.bore, coldC = coldFl.bore;
+        // Both water: the unchanged hot -> mean -> cold gradient. Either side steam: each half
+        // goes flat in its own colour with a hard edge at the centre line.
+        var split = hotSteam || coldSteam;
+        var midHot = split ? hotFl : midFl, midCold = split ? coldFl : midFl;
         tubeStops[0].setAttribute('stop-color', hotC);          // body, hot-leg side
-        tubeStops[1].setAttribute('stop-color', midFl.bore);    // body, mid-tube
-        tubeStops[2].setAttribute('stop-color', coldC);         // body, cold-leg side
-        tubeDashStops[0].setAttribute('stop-color', hotFl.flow);   // dash, hot-leg side
-        tubeDashStops[1].setAttribute('stop-color', midFl.flow);   // dash, mid-tube
-        tubeDashStops[2].setAttribute('stop-color', coldFl.flow);  // dash, cold-leg side
+        tubeStops[1].setAttribute('stop-color', midHot.bore);   // body, mid-tube (hot half edge)
+        tubeStops[2].setAttribute('stop-color', midCold.bore);  // body, mid-tube (cold half edge)
+        tubeStops[3].setAttribute('stop-color', coldC);         // body, cold-leg side
+        tubeDashStops[0].setAttribute('stop-color', hotFl.flow);      // dash, hot-leg side
+        tubeDashStops[1].setAttribute('stop-color', midHot.flow);     // dash, mid-tube
+        tubeDashStops[2].setAttribute('stop-color', midCold.flow);    // dash, mid-tube
+        tubeDashStops[3].setAttribute('stop-color', coldFl.flow);     // dash, cold-leg side
         hotcRect.setAttribute('fill', hotC);
         coldcRect.setAttribute('fill', coldC);
         hotNoz.setAttribute('fill', hotC);
         coldNoz.setAttribute('fill', coldC);
         gGlow.setColor(hotC);
-        last.thot = thot; last.tcold = tcold;
+        last.thot = thot; last.tcold = tcold; last.hotSteam = hotSteam; last.coldSteam = coldSteam;
       }
       if (power !== last.power || glowOn !== last.glowOn) {
         glowRect.setAttribute('opacity', String(Math.min(0.3, p * 0.22)));
@@ -396,6 +435,13 @@
       // NARROW range mapped through the same window (pctY), so at steady state it sits on
       // the surface; in a transient the faster narrow reading leads it slightly (realistic).
       var levelY = fullY(level);
+      var dry = level <= DRY_WIDE;
+      if (dry !== last.dry) {
+        waterRect.style.display = dry ? 'none' : '';
+        surfLine.style.display = dry ? 'none' : '';
+        bubbleGroup.style.display = dry ? 'none' : '';
+        last.dry = dry;
+      }
       if (level !== last.level) {
         steamRect.setAttribute('height', String(Math.max(0, levelY - 20)));
         waterRect.setAttribute('y', String(levelY));

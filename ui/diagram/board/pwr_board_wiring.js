@@ -1822,7 +1822,11 @@
         boil: Math.min(100, (IN(s).steam_flow || 0) * 85),
         temp: satTempC(IN(s).steam_pressure),
         // U-tubes + channel-head reservoirs carry primary coolant — color by leg temps
-        thot: IN(s).thot, tcold: IN(s).tcold, showFlow: true, glow: true };
+        thot: IN(s).thot, tcold: IN(s).tcold, showFlow: true, glow: true,
+        // Hot-side / cold-side tube void: the same two true_state fields the leg pipes read.
+        // A side drawn as steam takes the steam styling, not the temperature ramp.
+        hotVoid: (s && s.true_state || {}).primary_void_fraction,
+        coldVoid: (s && s.true_state || {}).cold_leg_void_fraction };
     },
     pressurizer: function (s) {
       var c = CS(s);
@@ -2048,7 +2052,7 @@
     // always open — it is how the pressurizer stays connected to the RCS.
     ims2kt7fu64: function (s) {
       return { temp: IN(s).thot,
-               contents: legContents((s && s.true_state || {}).primary_void_fraction),
+               contents: hotLegPhase(s),
                flowing: LF(s).primary > 0,
         speed: sysSpeed(s, 'primary') };
     },
@@ -2119,10 +2123,30 @@
    * run is mostly vapour and paints as steam, which `std_pipe` already has a colour ramp for.
    * Absent a void field it stays 'water', so the retired engine and any partial mount are
    * unchanged. */
-  function legContents(v) { return (v != null && isFinite(v) && v > 0.5) ? 'steam' : 'water'; }
+  // HYSTERESIS (2026-11-13, owner playtest 14): the void sits near its threshold for minutes
+  // while the heat-up oscillates, and a bare `> 0.5` strobes the pipe. Steam is entered above
+  // 0.55 and left below 0.45; between the two the leg keeps whatever it showed. One latch per
+  // leg ('hot' | 'cold'), shared by the fittings and the pipe runs (the SG tube halves keep a
+  // copy of the same two thresholds), so they cannot disagree about a leg.
+  var LEG_STEAM_ON = 0.55, LEG_STEAM_OFF = 0.45;
+  var _legSteam = { hot: false, cold: false };
+  function legContents(v, leg) {
+    leg = leg || 'hot';
+    if (v == null || !isFinite(v)) { _legSteam[leg] = false; return 'water'; }
+    if (v > LEG_STEAM_ON) _legSteam[leg] = true;
+    else if (v < LEG_STEAM_OFF) _legSteam[leg] = false;
+    return _legSteam[leg] ? 'steam' : 'water';
+  }
+  // A leg rendered as steam takes the steam styling's OWN colour, not the temperature ramp
+  // (owner playtest 14: the hot-leg node swings 494 -> 826 degF with void 1.00 throughout, and
+  // a steam pipe on the ramp flickers cold/hot with it). One fixed point on the steam ramp.
+  var STEAM_PIPE_C = 300;
+  function hotLegPhase(s)  { return legContents((s && s.true_state || {}).primary_void_fraction, 'hot'); }
+  function coldLegPhase(s) { return legContents((s && s.true_state || {}).cold_leg_void_fraction, 'cold'); }
+  function legPipeTemp(phaseFn, tempFn) { return function (s) { return phaseFn(s) === 'steam' ? STEAM_PIPE_C : tempFn(s); }; }
   function coldLeg(s, legs) {
     var p = { temp: IN(s).tcold,
-              contents: legContents((s && s.true_state || {}).cold_leg_void_fraction),
+              contents: coldLegPhase(s),
               flowing: LF(s).primary > 0,
               speed: sysSpeed(s, 'primary') };
     if (legs) for (var k in legs) if (Object.prototype.hasOwnProperty.call(legs, k)) p[k] = legs[k];
@@ -2835,16 +2859,16 @@
   // exists, so the next re-export fails loudly instead of quietly going stale.
   var PIPE_TEMP = {
     // --- RCS hot leg (RV hot-out → tee → SG hot-in), and the surge line off it
-    pms2ktktnan: function (s) { return IN(s).thot; },                     // RV hot-out → surge tee
-    pms2ktjq4ma: function (s) { return IN(s).thot; },                     // surge tee → SG hot-in
-    pms2kupl3b2: function (s) { return IN(s).thot; },                     // pressurizer surge (ties to the hot leg)
+    pms2ktktnan: legPipeTemp(hotLegPhase, function (s) { return IN(s).thot; }),                     // RV hot-out → surge tee
+    pms2ktjq4ma: legPipeTemp(hotLegPhase, function (s) { return IN(s).thot; }),                     // surge tee → SG hot-in
+    pms2kupl3b2: legPipeTemp(hotLegPhase, function (s) { return IN(s).thot; }),                     // pressurizer surge (ties to the hot leg)
     // --- RCS cold leg (SG cold-out → tee → RCP → tee → cross → tee → RV cold-in)
-    pms2kovvgnh: function (s) { return IN(s).tcold; },                    // SG cold-out → tee
-    pms2kozvu94: function (s) { return IN(s).tcold; },                    // tee → RCP discharge
-    pms2kp1148p: function (s) { return IN(s).tcold; },                    // RCP suction → tee
-    pms3yu50gqp: function (s) { return IN(s).tcold; },                    // tee → cold-leg cross
-    pms3yu3x86i: function (s) { return IN(s).tcold; },                    // cold-leg cross → tee
-    pms3x37ze9p: function (s) { return IN(s).tcold; },                    // tee → RV cold-in
+    pms2kovvgnh: legPipeTemp(coldLegPhase, function (s) { return IN(s).tcold; }),                    // SG cold-out → tee
+    pms2kozvu94: legPipeTemp(coldLegPhase, function (s) { return IN(s).tcold; }),                    // tee → RCP discharge
+    pms2kp1148p: legPipeTemp(coldLegPhase, function (s) { return IN(s).tcold; }),                    // RCP suction → tee
+    pms3yu50gqp: legPipeTemp(coldLegPhase, function (s) { return IN(s).tcold; }),                    // tee → cold-leg cross
+    pms3yu3x86i: legPipeTemp(coldLegPhase, function (s) { return IN(s).tcold; }),                    // cold-leg cross → tee
+    pms3x37ze9p: legPipeTemp(coldLegPhase, function (s) { return IN(s).tcold; }),                    // tee → RV cold-in
     // Pressurizer spray is taken off the COLD leg (at the cross), which is why spraying
     // condenses steam in the pressurizer: it is the coldest water in the primary.
     pms3ytzwwqw: function (s) { return IN(s).tcold; },                    // cold-leg cross → pressurizer spray
@@ -3123,7 +3147,12 @@
   var PIPE_PHASE = {
     pms3tda86bw: function (s) { return pzrSolid(s) ? 'water' : 'steam'; },
     pms3tcop5ni: function (s) { return pzrSolid(s) ? 'water' : 'steam'; },
-    pms3tdwi5n9: function (s) { return pzrSolid(s) ? 'water' : 'steam'; }
+    pms3tdwi5n9: function (s) { return pzrSolid(s) ? 'water' : 'steam'; },
+    // RCS runs: steam once the leg is voided past the hysteresis band (owner playtest 13).
+    // Hot leg + surge read the hot-leg node's void, the cold-leg runs the cold-leg void.
+    pms2ktktnan: hotLegPhase, pms2ktjq4ma: hotLegPhase, pms2kupl3b2: hotLegPhase,
+    pms2kovvgnh: coldLegPhase, pms2kozvu94: coldLegPhase, pms2kp1148p: coldLegPhase,
+    pms3yu50gqp: coldLegPhase, pms3yu3x86i: coldLegPhase, pms3x37ze9p: coldLegPhase
   };
   // Live direction overrides (+1 as drawn, −1 reversed).
   var PIPE_DIR = { pms2kupl3b2: surgeDir };
@@ -3835,7 +3864,7 @@
     'Polisher Status': 'imrqrouhrdr',   // the TMI-2 initiator's step (owner ruling 2026-10-10)
     /* THE VESSEL DRAWING, as a WATCH target (OWNER, 2026-11-12: "highlight the important sections of
      * the diagram"): `pwr_tmi2_meltdown` 8 and 10 point at the water dropping out of the core. */
-    'Reactor Vessel': 'reactorVessel',
+    'Reactor Vessel': 'reactorVessel', 'Pressurizer': 'pressurizer', 'Steam Generator': 'steamGenerator',
     /* TWO LABELS THE CHECKLISTS HAVE ALWAYS USED AND THIS MAP NEVER CARRIED (#598 item 14).
      * `revealControl` returns null for an unknown label and the step then glows NOTHING —
      * silently, because a null highlight looks exactly like a step that asked for none. Twelve
