@@ -1360,7 +1360,14 @@ function runJob(legId, routeId, mutId, ctx) {
     if (out[cur] && c.cmd_seen && out[cur].t_cmd_min == null) out[cur].t_cmd_min = (t() - T0) / 60;   // the wait estimate's 'cmd' anchor (V-1)
     policy(S.spec, st, c, rows, el);
     /* the press releases an `act_pause_s` hold inside handleCommand; ui/app.js then restarts the clock, and so must this */
-    if (heldForPress && !svc.running) { svc.running = true; S.actHoldN = 0; }
+    if (heldForPress && !svc.running) {
+      /* ...BUT ONLY IF THE PRESS RELEASED IT (critic M-2, 2026-11-13). Restarting unconditionally let the next tick's
+       * own `_actPauseTick` clear the hold, so the route stayed green with handleCommand's release deleted -- which in the
+       * UI is a clock held for good. Read the state the press left, before any tick. */
+      var after = (svc.assembleSnapshot().instructor || {}).checklist || {};
+      if (after.act_hold) { result = { kind: 'strand', step: k + 1, why: 'act hold not released by the press' }; break; }
+      svc.running = true; S.actHoldN = 0;
+    }
   }
   if (!result) result = { kind: 'strand', why: 'guard' };
   if (out[cur] && result.kind !== 'complete') { out[cur].at_end = readings(); out[cur].t_end_min = (t() - T0) / 60; }

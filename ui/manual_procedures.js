@@ -6623,19 +6623,20 @@
      *
      * A SECOND LEG ON THE SAME NIGHT, NOT A REWRITE OF `pwr_tmi2_incident`. That one is the
      * crew's four hours and the recovery, drawn as a board callout; this one is the causal
-     * chain only, in the right column (no `callout`), and it STOPS at core damage: relief valve
-     * open, injection off, pumps off, cladding past 2,200 degF. No block valve, no recovery.
+     * chain in the right column (no `callout`): relief valve open, injection off, pumps off,
+     * cladding past 2,200 degF, then (since the 2026-11-13 playtest) the two actions that ended
+     * it, the block valve and injection. Thirteen steps, organised around five `ideas`.
      *
      * EVERY CARD IS WHAT / WHY / NEXT: `text` (the action or the thing to watch), `why` (the
      * card's always-drawn Background, one or two sentences; no `aim`, so the reason is said once)
      * and `ahead`.
-     * EVERY CARD FORECASTS (`ahead`, the "Next:" line): the clock is stopped whenever Continue
-     * lights on a rapid beat (`pause` / `pause_on_met`), so the player reads what the next
-     * Continue lets happen before it happens.
+     * EVERY CARD BUT THE LAST FORECASTS (`ahead`, headed "What happens next"): the clock is
+     * stopped whenever Continue lights on a rapid beat (`pause_on_met`), so the player reads
+     * what the next Continue lets happen before it happens.
      *
      * HISTORY IS ONLY WHAT `Manuals/08_ACCIDENT_TMI.md` ALREADY SOURCES (NUREG/CR-1250 App. II.1
-     * and Vol. I): the source corpus is not in the tree this was authored in, so no new
-     * historical claim was added. Clocks are that chapter's.
+     * and Vol. I): the source corpus is not in the tree this was authored in, so every
+     * historical claim on a card is one that chapter makes, in its words where it hedges. Clocks are that chapter's.
      *
      * THE PLANT SHOWS THE LAST LINK SINCE THE CORE HEAT-UP PHYSICS (2026-11-12, OWNER: "add a
      * proper meltdown ability to the physics"). Before it, the crew's actions left the core 93-96 %
@@ -6648,7 +6649,7 @@
       id: 'pwr_tmi2_meltdown', category: 'incident', manual_ref: 'PWR-E08',
       story_year: 1979,
       title: 'Three Mile Island Unit 2 — the chain of events to core damage',
-      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to core damage, then the two actions that ended it. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 125 plant-minutes.',
+      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to core damage, then the two actions that ended it. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 135 plant-minutes.',
       from: 'hot_full_power',
       /* OWNER PLAYTEST 2026-11-13 (fields: instructor_layer.js / ui/app.js field-doc blocks). `step_kinds`: every card
        * wears a Watch or Your-action chip. `scope: []`: the board dims except each step's ringed targets; a step's own
@@ -6671,7 +6672,7 @@
         { p: 'power_pct', op: '>', v: 90, text: 'Reactor at power: REACTOR POWER above 90 %' },
       ],
       steps: [
-        /* 1 — the plant before. The two latent conditions go in here, with the clock stopped:
+        /* 1 — the plant before. The two latent conditions go in here, with the clock RUNNING (no `pause` since 2026-11-13):
          * the shut AFW block valves (App. II.1 E4) and the P-9 defeat (chapter 08 section 1.1). */
         { text: 'Look over the running plant, then press Continue: full power, with the auxiliary feedwater (AFW) block valves shut and tagged.',
           why: 'AFW is the standby feed for the steam generator. Its valves are shut, and a caution tag hangs over their lights.',
@@ -6683,14 +6684,14 @@
           hold: 2,   // NO `pause` since the 2026-11-13 playtest: the plant runs under the opening card
           trend: ['pressure', 'pzr_level', 'inventory', 'porv'], window: 1800,
           hl_watch: ['AFW', 'Feed Pumps', 'Feed Flow'] },
-        /* 2 — 04:00:37, E1-E3. The stick is armed WITH the feed loss (21 s window, `pwr_tmi2_incident` header trap 1). */
+        /* 2 — 04:00:37, E1-E3. The stick is armed with the polisher fault, 4 s BEFORE the feed loss (21 s window, `pwr_tmi2_incident` header trap 1). */
         { text: 'Watch FEED FLOW fall and PRIMARY PRESSURE climb until the relief valve (PORV) on the pressurizer opens.',
           why: 'With no feedwater the steam generator boils down, so the heat stays in the reactor coolant and its pressure climbs to the relief valve setting.',
           ahead: 'Pressure falls, the valve is told to close, and it sticks open. The reactor trips.',
           story: { clock: '04:00:37' },
           idea: 1, idea_text: 'No feedwater, so the heat stays in the coolant and PRIMARY PRESSURE climbs to the relief valve.',
           scope: ['feed', 'secondary', 'pressurizer'], tag: true,
-          inject_delay_s: 8,   // the failures land 8 s after Continue (owner playtest: 'a few seconds later the issues start')
+          inject_delay_s: 4,   // the polisher fault lands 4 s after Continue and the feed loss (`delay_s: 4`) at 8, which is what step 1's forecast says (owner playtest: 'a few seconds later the issues start')
           /* THE OPENING, ONE EVENT AT A TIME (owner, 2026-11-13: "delay them so that they happen a few seconds after each
            * other instead of all at once"; "dimming the board for a few seconds to show the important parts"). MEASURED
            * 2026-11-13 from the feed loss: turbine trip +0.1 s, relief valve open +5.1, lamp CLOSED for good +10.2, tailpipe
@@ -6703,9 +6704,9 @@
           pause_on_met: true,
           /* ROW ORDER IS TICK ORDER (MEASURED 2026-11-13, browser): the turbine row ticks 1.6 sim-s before the feed row, and a
            * 'now' marker that jumps back up a row reads as out of sequence. */
-          accs: [{ p: 'turbine_tripped', op: '>', v: 0, label: 'the turbine has tripped', say: 'With feedwater lost, the turbine trips.',
+          accs: [{ p: 'turbine_tripped', op: '>', v: 0, label: 'the turbine has tripped', say: 'The feed pumps trip, and the turbine trips with them.',
                    hl_watch: ['Turbine Load'] },
-                 { p: 'fw_flow_normalized', op: '<', v: 0.9, label: 'FEED FLOW falling', say: 'The feed pumps trip. FEED FLOW is falling to zero.',   // 0.9: MEASURED 2026-11-13, the flow passes half 6.7 s after the trip and 5 % at 25 s, both AFTER the relief valve opens (4.7 s)
+                 { p: 'fw_flow_normalized', op: '<', v: 0.9, label: 'FEED FLOW falling', say: 'FEED FLOW is falling to zero.',   // 0.9: MEASURED 2026-11-13, the flow passes half 6.7 s after the trip and 5 % at 25 s, both AFTER the relief valve opens (4.7 s)
                    hl_watch: ['Feed Flow', 'Feed Pumps'] },
                  { p: 'porv_open', op: '>', v: 0, label: 'the relief valve (PORV) is open', say: 'Pressure reaches the relief valve setting and the valve opens.',
                    hl_watch: ['Relief Valve (PORV)', 'Plant Pressure'] }],
@@ -6841,7 +6842,7 @@
                  { p: 'rcp_cavitating', op: '<', v: 1, label: 'the pump cavitation alarm clears' }],
           hl: ['RCP — Off'], hl_watch: ['RCP ON/OFF'] },
         /* 11 — THE LAST LINK, AND THE PLANT NOW SHOWS IT (the core heat-up physics, 2026-11-12). 06:45:37 is
-         * E136, "Radiation alarms are now indicative of extensive fuel damage". 1,200 degF is GEND-061's
+         * E136, "Radiation alarms are now indicative of extensive fuel damage". The card clock is 06:11:37 (E119) since 2026-11-13. 1,200 degF is GEND-061's
          * onset of significant hydrogen generation; 2,200 degF is 10 CFR 50.46's cladding limit and this
          * plant's fuel-damage latch (both in pwr2_damage.js). TIMES ARE THE PLANT'S: MEASURED on the routes
          * below, not real-plant figures. */
@@ -6868,13 +6869,12 @@
          * full stack, 75 % stuck, valve closed one plant-min after the latch: PRIMARY PRESSURE 507 psi at the
          * close, 814 two plant-min later, 998 at four; the cladding still peaks at 3,074 degF, 27.7 % oxidised. */
         { text: 'Close the PORV block valve: click the valve symbol in the relief line.',
-          crew: true,
           control: 'PORV Block Valve', target: 'the relief line isolated',
           why: 'The block valve sits upstream of the stuck valve. It was available from the first minute.',
           note: 'If it is already closed, do not click it again: a second click reopens it.',
-          ahead: 'The leak stops and pressure climbs. The water already lost is still gone, so the cladding keeps heating.',
+          ahead: 'The leak stops and pressure climbs. The water already lost is still gone.',
           story: { clock: '06:18:37' },
-          idea: 5, idea_text: 'This stops the leak. It puts no water back: the cladding keeps climbing.',
+          idea: 5, idea_text: 'This stops the leak. It puts no water back.',
           scope: ['pressurizer', 'primary'],
           act_pause_s: 30,   // the cladding is still climbing: the clock stops rather than let the fuel melt under an unread card
           trend: ['pressure', 'clad_temp', 'uncovered', 'inventory', 'porv'],
@@ -6886,10 +6886,9 @@
          * caused major fuel damage."). MEASURED 2026-11-13, same ride, START five plant-min after the valve:
          * the core is fully covered 35 plant-min after the press and the cladding is at 548 degF at 41. */
         { text: 'Press START on the ECCS card to restart injection, then watch the core re-cover.',
-          crew: true,
           control: 'ECCS', target: 'the core covered again',
           why: 'In 1979 injection was restarted 3 hours 20 minutes in.',
-          note: 'In 1979 the cold water also shattered overheated fuel. This plant does not model that.',
+          note: 'In 1979 the rapid quench probably caused major fuel damage. This plant does not model that.',   // E167: "Rapid quenching probably caused major fuel damage."
           story: { clock: '07:20:37' },
           idea: 5, idea_text: 'Water back on the fuel is what ends it.',
           scope: ['eccs', 'primary'],
@@ -6904,9 +6903,9 @@
           hl: ['ECCS — Start'], hl_watch: ['HPI/LPI', 'Reactor Vessel'] },
       ],
       guard: { never_melted: true },
-      outcome: '1. Feedwater was lost, so the reactor\'s heat stayed in the coolant and pressure rose until the relief valve opened. The valve then stuck open, and its lamp, wired to the signal and not the valve, read CLOSED.\n2. Pressure fell until the hot coolant boiled. The steam pushed water up into the pressurizer, so PRESSURIZER LEVEL read full while RCS INVENTORY fell to about a quarter.\n3. The crew had no gauge for the water in the reactor. A full pressurizer told them the plant was full, and they cut injection back, as trained.\n4. The pumps kept a froth of steam and water moving through the core, and that was cooling it. Shaking, they were stopped. Steam and water separated and the fuel stood dry.\n5. The dry cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged. Shutting the block valve stopped the leak, 2 hours 18 minutes in. Restarting injection, an hour later, re-covered the core. A coolant pump was restarted 15 hours 50 minutes in.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is stuck three-quarters open: at a smaller leak this model\'s cladding stops heating short of damage, which understates the real plant.',
+      outcome: '1. Feedwater was lost, so the reactor\'s heat stayed in the coolant and pressure rose until the relief valve opened. The valve then stuck open, and its lamp, wired to the signal and not the valve, read CLOSED.\n2. Pressure fell until the hot coolant boiled. The steam pushed water up into the pressurizer, so PRESSURIZER LEVEL read full while RCS INVENTORY fell to about a quarter.\n3. The crew had no gauge for the water in the reactor. A full pressurizer told them the plant was full, and they cut injection back, as trained.\n4. The pumps kept a froth of steam and water moving through the core, and that was cooling it. Shaking, they were stopped. Steam and water separated and the fuel stood dry.\n5. The dry cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged. Shutting the block valve stopped the leak, 2 hours 18 minutes in. Injection was restarted an hour later, stopped again within minutes, and restored for good at 3 hours 56 minutes. A coolant pump was restarted 15 hours 50 minutes in.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is stuck three-quarters open: at a smaller leak this model\'s cladding stops heating short of damage, which understates the real plant.',
       route_alt: [{ overtaken: [9], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' },
-        { overtaken: [11], outcome: 'You broke the chain at its last link. With the leak isolated or injection restored, the cladding stops climbing. In 1979 the block valve was closed 2 hours 18 minutes in, after the damage had begun.' }],
+        { overtaken: [11], outcome: 'You broke the chain at its last link. Isolating the leak stops the drain, and injection puts water back. Neither is instant: with the valve shut and no injection, the cladding here climbs for about ten more plant-minutes before the water left in the plant returns to the core. In 1979 the block valve was closed 2 hours 18 minutes in, after the damage had begun.' }],   // MEASURED 2026-11-13 (critic M-4), full stack, valve shut at 78 plant-min with the cladding near 1,000 degF and injection off: 1,118 degF at 80, 1,912 at 90, 1,224 at 95, no damage latch, core covered again at 135
     },
   ];
 
