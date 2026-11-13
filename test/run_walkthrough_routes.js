@@ -526,9 +526,11 @@ var ROUTES = {
        * NOT twenty: MEASURED 2026-11-12, opened 1200 s late the cold feed into a dry generator drops PRIMARY
        * PRESSURE to 188 psia, the accumulators refill the loop to 95 % and the drain starts over -- the leg still
        * completes (102 plant-min) but it is a different ride, and past this gate's step bound. */
-      { id: 'afw_late', kind: 'press late', at: '#7', set: { delay_s: 300 } },
-      /* the pumps left running a quarter of an hour past the cue: step 9 waits for the OFF press */
-      { id: 'pumps_off_late', kind: 'press late', at: '#10', min_dur: { step: 10, s: 900 }, set: { delay_s: 900 } },
+      /* SINCE 2026-11-13 A LATE PRESS CANNOT RUN THE PLANT ON (owner playtest item 10): `act_pause_s` stops the clock
+       * 30 s (step 7) / 60 s (step 10) after the ask, so these two players press on a held clock. `min_dur` is the hold
+       * landing, not the old 900 plant-s. */
+      { id: 'afw_late', kind: 'press late', at: '#7', min_dur: { step: 7, s: 28 }, set: { delay_s: 300 } },
+      { id: 'pumps_off_late', kind: 'press late', at: '#10', min_dur: { step: 10, s: 55 }, set: { delay_s: 900 } },
       /* the two recoveries the sibling leg teaches, taken at the drain step's entry (critic round 1): each strands it
        * without its `overtaken` (MEASURED 150 plant-min) */
       { id: 'block_closed_early', kind: 'press early', at: '#9', set: { policy: 'when', base_spec: { policy: 'observe' },
@@ -1339,7 +1341,12 @@ function runJob(legId, routeId, mutId, ctx) {
      * OWNER RULING 2026-09-28 option D "In step 8 5x while the rods move") -- the player's clock during the hold */
     if (!S.spec.at_speed && +st.moving_speed > 0 && spd > +st.moving_speed && grp().moving) spd = +st.moving_speed;
     setSpeed(spd);
-    if (el < Math.max(ENTRY_S, S.spec.delay_s || 0)) continue;   // the player reads (or dawdles) before acting
+    /* `act_pause_s` (2026-11-13): a step that stops the clock on a late press. The plant-second delay below can never
+     * elapse on a held clock, so the dawdling player is the one who presses once the card says the clock is stopped --
+     * after a few held ticks, like the `pause` ack above. */
+    var heldForPress = !!c.act_hold && (S.actHoldN = (S.actHoldN || 0) + 1) > 20;
+    if (c.act_hold) out[k].act_held = true;
+    if (!heldForPress && el < Math.max(ENTRY_S, S.spec.delay_s || 0)) continue;   // the player reads (or dawdles) before acting
     /* --- Rewind mid-step (once per run) ---------------------------------------------- */
     if (S.spec.rewind_after != null && !rewound && el >= S.spec.rewind_after) {
       rewound = true;
