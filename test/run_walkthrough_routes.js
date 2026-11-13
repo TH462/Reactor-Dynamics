@@ -1359,6 +1359,8 @@ function runJob(legId, routeId, mutId, ctx) {
     }
     if (out[cur] && c.cmd_seen && out[cur].t_cmd_min == null) out[cur].t_cmd_min = (t() - T0) / 60;   // the wait estimate's 'cmd' anchor (V-1)
     policy(S.spec, st, c, rows, el);
+    /* the press releases an `act_pause_s` hold inside handleCommand; ui/app.js then restarts the clock, and so must this */
+    if (heldForPress && !svc.running) { svc.running = true; S.actHoldN = 0; }
   }
   if (!result) result = { kind: 'strand', why: 'guard' };
   if (out[cur] && result.kind !== 'complete') { out[cur].at_end = readings(); out[cur].t_end_min = (t() - T0) / 60; }
