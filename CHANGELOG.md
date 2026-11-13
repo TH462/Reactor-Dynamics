@@ -37,6 +37,8 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+## [Alpha 1.9.0-rc1] — 2026-11-13
+
 ### Changed — the core heats when forced flow is lost (PWR)
 
 - **A tripped reactor coolant pump now comes to rest** (about two minutes in water, eleven in
