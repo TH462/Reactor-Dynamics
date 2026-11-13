@@ -11413,7 +11413,13 @@
        * plant-s in 10 s at 1x on step 2, `paused` true throughout). Playing a held step now does what its
        * lit Continue does, so the card moves on with the clock. */
       var heldCont = !service.running && pausedFor('walkthrough') && document.querySelector('#cklRun [data-ckl-check]');
-      if (service.running) pauseSim('user');
+      /* A BEAT IS NOT A PAUSE, SO PAUSE DURING ONE PAUSES (critic M-1, 2026-11-13). The button wears its running
+       * face through a beat (`syncPlayBtn`), and this handler read the stopped clock as "paused, so play":
+       * resumeSim() emptied every hold and ran the plant under a player who had pressed to stop and read.
+       * A clock held by beats alone is treated as running. The beat's timer then lets go of its own reason
+       * only (`releaseHold('beat')`), so the player's pause stands when it ends. Space comes through here. */
+      var pkNow = Object.keys(pauseWhy), beatOnlyNow = !service.running && pkNow.length > 0 && pkNow.every(function (k) { return k === 'beat'; });
+      if (service.running || beatOnlyNow) pauseSim('user');
       else if (heldCont && !heldCont.disabled) { clearPause('user'); heldCont.click(); }
       else if (pausedFor('walkthrough')) { /* held, and nothing to continue: stay held */ }
       else resumeSim();
