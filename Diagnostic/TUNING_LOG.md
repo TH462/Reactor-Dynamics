@@ -45,11 +45,11 @@ Owner question: *"Why does the pressure drop low enough to fire the accumulators
 
 | Stuck | Stuck-valve rating | Outcome in 3–3.5 h |
 |---|---|---|
-| 36 % (TMI-2's proportion, 1.62 kg/s) | 1.62 kg/s (3.6 lb/s) | 1015–1190 psi (7.0–8.2 MPa) plateau, accumulators 100 %, cladding stalls 1450–1620 °F (790–880 °C), no damage |
-| 50 % | 2.2 kg/s (4.9 lb/s) | peak 1845 °F (1007 °C), accumulators 93 %, no damage |
-| 62 % | 2.8 kg/s (6.1 lb/s) | peak 1906 °F (1041 °C), accumulators 86 %, no damage |
-| 75 % | 3.3 kg/s (7.4 lb/s) | damage at 95.7 min (scripted pump stop 60 min), accumulators 82 % |
-| 100 % | 4.45 kg/s (9.8 lb/s) | damage at 75.3 min, accumulators 76 % |
+| 36 % (TMI-2's proportion) | 3.6 lb/s (1.62 kg/s) | 1015–1190 psi (7.0–8.2 MPa) plateau, accumulators 100 %, cladding stalls 1450–1620 °F (790–880 °C), no damage |
+| 50 % | 4.9 lb/s (2.2 kg/s) | peak 1845 °F (1007 °C), accumulators 93 %, no damage |
+| 62 % | 6.1 lb/s (2.8 kg/s) | peak 1906 °F (1041 °C), accumulators 86 %, no damage |
+| 75 % | 7.4 lb/s (3.3 kg/s) | damage at 95.7 min (scripted pump stop 60 min), accumulators 82 % |
+| 100 % | 9.8 lb/s (4.45 kg/s) | damage at 75.3 min, accumulators 76 % |
 
 **Open, not fixed:** the stall below ~70 %. At the prototypical leak the real plant damaged its core; ours sits just under the oxidation on-ramp. The uncovered region's floor (`h_stagnant`) and the boil-off steam credit are the two [open] terms that set the stall temperature; neither was moved. `node tools/perturb_sweep.js` first.
 

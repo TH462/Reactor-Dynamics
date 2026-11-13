@@ -1495,20 +1495,22 @@ function runSuite(SH, rec, quiet, only) {
      * menu's severity is the fraction of one valve's travel. Asserted on the DISCHARGE, as a
      * ratio between two plants one step apart in everything but the severity -- a write to
      * the driver would pass with the area never reading it. */
-    var stuckFlow = function (sev) {
+    var stuckFlow = function (sev, direct) {
       var eS = new SH.PWR2Engine({}), k;
       for (k = 0; k < 100; k++) eS.step(0.02);
-      eS.applyCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open', severity: sev });
+      eS.applyCommand(direct ? { action: 'stuck_porv_open', severity: sev }
+                             : { action: 'inject_failure', failure_id: 'stuck_porv_open', severity: sev });
       eS.applyCommand({ action: 'open_porv_manual' });
       for (k = 0; k < 5; k++) eS.step(0.02);
       eS.applyCommand({ action: 'close_porv' });
       for (k = 0; k < 5; k++) eS.step(0.02);
       return eS.eng._pzRelief;
     };
-    var fFull = stuckFlow(undefined), fQuarter = stuckFlow(0.25);
+    var fFull = stuckFlow(undefined), fQuarter = stuckFlow(0.25), fHalfDirect = stuckFlow(0.5, true);
     ck('stuck_porv_open\'s severity is the STUCK FRACTION: 25 % passes a quarter of a fully ' +
        'stuck valve, and no severity is fully stuck',
-       fFull > 1 && Math.abs(fQuarter / fFull - 0.25) < 0.01,
+       fFull > 1 && Math.abs(fQuarter / fFull - 0.25) < 0.01 &&
+       Math.abs(fHalfDirect / fFull - 0.5) < 0.01,   /* the mapped command door, the second call site */
        fQuarter.toFixed(3) + ' against ' + fFull.toFixed(3) + ' kg/s, ratio ' +
        (fQuarter / fFull).toFixed(4));
     ck('porv_indicator_stuck_closed is the TMI-2 lamp: it reads "closed" over a valve that ' +
@@ -3107,6 +3109,9 @@ var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var NL_ = '\n';   /* the two-char escape a multi-line anchor needs */
 var MUTATIONS = [
+  ['the mapped stuck_porv_open command drops its fraction (the second call site)',
+   "stuck_porv_open:   function (e, c) { EN.command(e, 'porv_stick', stickFrac(c)); },",
+   "stuck_porv_open:   function (e, c) { EN.command(e, 'porv_stick', true); },", { grp: 'G' }],
   ['the menu\'s stuck fraction never reaches the valve (every stick is a whole valve)',
    "    return (typeof s === 'number' && isFinite(s)) ? Math.max(0, Math.min(1, s)) : true;",
    '    return true;', { grp: 'G' }],

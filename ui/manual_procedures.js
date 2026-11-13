@@ -6642,8 +6642,8 @@
      * uncovered and the cladding at 626 degF for six plant-hours (a tripped pump never stopped and
      * the homogeneous loop kept carrying steam through the generator). Now the pumps coast to
      * rest, the siphon is broken by steam, and the uncovered fuel heats: step 11 is graded on it.
-     * TWO DECLARED DEPARTURES, both on the cards: the P-9 defeat (step 1) and the isolated
-     * accumulators (step 8). */
+     * TWO DECLARED DEPARTURES: the P-9 defeat (step 1, on its card) and the relief valve stuck
+     * 75 % open (step 2's injection; step 8's header has the measurements, the end card says it). */
     {
       id: 'pwr_tmi2_meltdown', category: 'incident', manual_ref: 'PWR-E08',
       story_year: 1979,
@@ -6682,7 +6682,7 @@
           hl_watch: ['Polisher Status', 'Feed Flow', 'Plant Pressure', 'Relief Valve (PORV)'] },
         /* 3 — 04:00:45, E6/E12/E20. NO LAMP FAILURE IS INJECTED: this plant's PORV lamp is the commanded
          * state already (pwr_instruments `porv_indicator`). MEASURED 2026-11-12, live runtime, seed 42:
-         * it reads open at 5.2 s and closed from 21 s on with the valve stuck open; trip at 52 s. */
+         * it reads open at 5.2 s and closed from 21 s on with the valve stuck open; trip at 52 s (RE-MEASURED 2026-11-13 at 75 % stuck: 64 s). */
         { text: 'Watch the reactor trip, then compare the PORV lamp with the temperature readout beside it.',
           why: 'The lamp shows the signal sent to the valve, not the valve. The readout is the pipe leaving it: hot means steam is still passing.',
           ahead: 'Coolant keeps leaving through the stuck valve. Pressure falls until emergency injection starts by itself.',
@@ -6810,7 +6810,7 @@
           hl_watch: ['Reactor Vessel', 'Relief Valve (PORV)', 'PORV Block Valve'] },
       ],
       guard: { never_melted: true },
-      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is larger for the plant\'s size than TMI-2\'s, so it was stuck three-quarters open, and the drain still runs faster than it did in 1979.',
+      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is stuck three-quarters open: at a smaller leak this model\'s cladding stops heating short of damage, which understates the real plant.',
       route_alt: [{ overtaken: [9], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' },
         { overtaken: [11], outcome: 'You broke the chain at its last link. With the leak isolated or injection restored, the cladding stops climbing. In 1979 the block valve was closed 2 hours 18 minutes in, after the damage had begun.' }],
     },
