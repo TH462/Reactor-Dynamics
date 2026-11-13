@@ -741,6 +741,16 @@ function runSuite(RD, rec, quiet) {
       prT.tailpipe_temp_c > 200 && prT.porv_stuck === true,
       prT.relief_kgs.toFixed(2) + ' kg/s (one valve of two, at ' + (sysT.P * PSI).toFixed(0) +
       ' psia; rated 4.45 at 2350), tailpipe ' + prT.tailpipe_temp_c.toFixed(0) + ' degC');
+  /* THE STUCK FRACTION (#408 ruled 2026-08-06, wired 2026-11-13): a numeric stick is how far
+   * open the disc stuck. One step at 0.25 against the same vessel state must pass a quarter
+   * of the one-valve law -- a RATIO, so it cannot pass by both being zero. Then back to a
+   * whole valve, so the ride below is the ride it always was. */
+  rideT(1, { porv_stick: 0.25 });
+  var lawQ = 0.25 * (PZ.reliefAreas().porv_m2 / 2) * PZ.criticalFlux(prT.relief_h, sysT.P);
+  ckT('a PARTLY stuck PORV passes its fraction of one valve: 0.25 stuck is a quarter of the law',
+      Math.abs(prT.relief_kgs - lawQ) < 1e-9 && prT.relief_kgs > 0 && prT.porv_stuck === true,
+      prT.relief_kgs.toFixed(3) + ' kg/s against ' + (4 * lawQ).toFixed(3) + ' fully stuck');
+  rideT(1, { porv_stick: true });
   var invMid = 100 * sysT.M_total / M0T;
   rideT(quiet ? 160 : 480, { porv_stick: true });
   var invLate = 100 * sysT.M_total / M0T;
@@ -1315,6 +1325,9 @@ var MUTATIONS = [
   ['the +5 % anticipatory backup-heater signal is deleted',
    'var backupOnLevel = levErr <= -LEVEL.backup_above_program_pct;',
    'var backupOnLevel = false;'],
+  ['the stuck FRACTION is ignored (any stick is a whole valve)',
+   '(pz.porvManual ? 1 : (pz.porvStuck ? stuckFrac : 0))',
+   '(pz.porvManual ? 1 : (pz.porvStuck ? 1 : 0))'],
   ['the stick lever is dead (a lift never latches)',
    'else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;',
    'else if (false) pz.porvStuck = true;'],
@@ -1325,8 +1338,8 @@ var MUTATIONS = [
    'if (!stickArmed) pz.porvStuck = false;',
    'if (false) pz.porvStuck = false;'],
   ['a stuck PORV flows BOTH valves\' capacity (one valve stuck is one valve)',
-   '(pz.porvOpen ? 2 : (oneValve ? 1 : 0))',
-   '(pz.porvOpen ? 2 : (oneValve ? 2 : 0))'],
+   '(pz.porvManual ? 1 : (pz.porvStuck ? stuckFrac : 0))',
+   '(pz.porvManual ? 2 : (pz.porvStuck ? 2 * stuckFrac : 0))'],
   ['the block valve never isolates',
    'var nPorv = !pz.blockOpen ? 0',
    'var nPorv = false ? 0'],

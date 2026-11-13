@@ -1491,6 +1491,26 @@ function runSuite(SH, rec, quiet, only) {
     eL.applyCommand({ action: 'clear_failure', failure_id: 'stuck_porv_open' });
     eL.applyCommand({ action: 'clear_failure', failure_id: 'porv_indicator_stuck_closed' });
     eL.step(0.02);
+    /* THE STUCK FRACTION REACHES THE VALVE (#408 ruled 2026-08-06, wired 2026-11-13). The
+     * menu's severity is the fraction of one valve's travel. Asserted on the DISCHARGE, as a
+     * ratio between two plants one step apart in everything but the severity -- a write to
+     * the driver would pass with the area never reading it. */
+    var stuckFlow = function (sev) {
+      var eS = new SH.PWR2Engine({}), k;
+      for (k = 0; k < 100; k++) eS.step(0.02);
+      eS.applyCommand({ action: 'inject_failure', failure_id: 'stuck_porv_open', severity: sev });
+      eS.applyCommand({ action: 'open_porv_manual' });
+      for (k = 0; k < 5; k++) eS.step(0.02);
+      eS.applyCommand({ action: 'close_porv' });
+      for (k = 0; k < 5; k++) eS.step(0.02);
+      return eS.eng._pzRelief;
+    };
+    var fFull = stuckFlow(undefined), fQuarter = stuckFlow(0.25);
+    ck('stuck_porv_open\'s severity is the STUCK FRACTION: 25 % passes a quarter of a fully ' +
+       'stuck valve, and no severity is fully stuck',
+       fFull > 1 && Math.abs(fQuarter / fFull - 0.25) < 0.01,
+       fQuarter.toFixed(3) + ' against ' + fFull.toFixed(3) + ' kg/s, ratio ' +
+       (fQuarter / fFull).toFixed(4));
     ck('porv_indicator_stuck_closed is the TMI-2 lamp: it reads "closed" over a valve that ' +
        'is GENUINELY OPEN (board-layer only — the internal numeric table cannot host a ' +
        'string lamp, mirror-only, declared), reports active, and clears without a throw',
@@ -3087,6 +3107,9 @@ var SHSRC = fs.readFileSync(path.join(SRC, 'pwr2_shell.js'), 'utf8').replace(/\r
  * runs only that group, and the BLIND check still reds the runner if the tag is wrong. */
 var NL_ = '\n';   /* the two-char escape a multi-line anchor needs */
 var MUTATIONS = [
+  ['the menu\'s stuck fraction never reaches the valve (every stick is a whole valve)',
+   "    return (typeof s === 'number' && isFinite(s)) ? Math.max(0, Math.min(1, s)) : true;",
+   '    return true;', { grp: 'G' }],
   /* THE LETDOWN SURFACE (#624 items 14/25). The first is the SHIPPED form restored: a board
    * flow derived from the operator's LINEUP rather than from what the plant stepped. It reads
    * 0 gpm on a cold plant passing the full normal magnitude through the RHR cross-connect, and

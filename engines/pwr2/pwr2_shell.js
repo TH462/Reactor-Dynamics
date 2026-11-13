@@ -442,6 +442,14 @@
   }
 
   /* ---- the command registries (see header). value: a mapper fn or a reason string. ---- */
+
+  /* stuck_porv_open's severity IS the stuck fraction of the disc's travel (#408, ruled
+   * 2026-08-06; `PWR_FAILURES.stuck_porv_open.severity_meta`). Absent = fully stuck, which is
+   * what every injection that names no severity has always meant. */
+  function stickFrac(c) {
+    var s = c && c.severity;
+    return (typeof s === 'number' && isFinite(s)) ? Math.max(0, Math.min(1, s)) : true;
+  }
   var MAPPED = {
     /* THE #511 VALVES — real machinery behind the two diagram symbols #509 item 11 had to
      * disable. The MSIV strokes ~5 s and closing it at load trips the turbine (engine). */
@@ -606,7 +614,7 @@
     },
     open_block_valve:  function (e, c) { EN.command(e, 'block_valve', true); },
     close_block_valve: function (e, c) { EN.command(e, 'block_valve', false); },
-    stuck_porv_open:   function (e, c) { EN.command(e, 'porv_stick', true); },
+    stuck_porv_open:   function (e, c) { EN.command(e, 'porv_stick', stickFrac(c)); },
     /* THE #408 CURRENCY, both directions (2026-08-21): the board's charging/letdown SET
      * controls send `normalized` = gpm / 450,000 (pwr_board_wiring's GPM_CHARGING literal).
      * The shipped B2 mapper read that as a 0..1 pump-demand fraction, so any board setpoint
@@ -1055,7 +1063,7 @@
       }
       /* ARMS the latch (owner design, 2026-08-25): the valve stays shut until the plant or
        * the operator lifts it, then it never reseats — pwr2_pressurizer step 3 */
-      else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);
+      else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', stickFrac(c));
       else if (c.failure_id === 'primary_leak') REHOMED.primary_leak(e, c);
       else if (c.failure_id === 'rcp_trip') {
         EN.command(e, 'pump_trip', true);

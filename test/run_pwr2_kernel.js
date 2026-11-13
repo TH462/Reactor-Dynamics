@@ -900,7 +900,7 @@ var MUTS = [
    "intercepts: ['close_porv'], override: 'open_porv_that_does_not_exist',", { grp: 'S' }],
 
   ['the menu\'s PORV stick never latches the valve (the close would then really shut it)', 'SH',
-   "      else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', true);",
+   "      else if (c.failure_id === 'stuck_porv_open') EN.command(e, 'porv_stick', stickFrac(c));",
    '', { grp: 'B2' }],
 
   /* #778 — one mutation per LEG of band 5's bifurcation, so neither half can be a non-event.

@@ -1049,7 +1049,12 @@
         break;
       case 'pzr_spray_manual':   eng.pzDrivers.spray_manual = value === null ? undefined : +value; break;
       case 'aux_spray':      eng.pzDrivers.aux_spray = +value; break;
-      case 'porv_stick':     eng.pzDrivers.porv_stick = !!value; break;   /* ARMS the latch */
+      case 'porv_stick':     /* ARMS the latch. A NUMBER is the stuck fraction of the disc's travel
+                              * (#408, ruled 2026-08-06; wired 2026-11-13): 0..1, 0 = not armed.
+                              * `true` stays a full stick. */
+                             eng.pzDrivers.porv_stick = typeof value === 'number'
+                               ? (value > 0 ? Math.min(1, value) : false) : !!value;
+                             break;
       case 'porv_manual':    eng.pzDrivers.porv_manual = !!value; break;  /* the operator's lift */
       case 'block_valve':    eng.pzDrivers.block_valve = !!value; break;
       case 'dump_mode':      eng.dcDrivers.mode = value; break;    /* 'tavg'|'pressure'|'off' */

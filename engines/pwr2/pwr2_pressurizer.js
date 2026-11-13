@@ -1140,7 +1140,11 @@
     if (!stickArmed) pz.porvStuck = false;                       /* the clear is the only release */
     else if (pz.porvOpen || pz.porvManual) pz.porvStuck = true;  /* the first lift latches it */
     if (drivers.block_valve !== undefined) pz.blockOpen = !!drivers.block_valve;
-    var oneValve = pz.porvStuck || pz.porvManual;
+    /* THE STUCK FRACTION (#408 ruled 2026-08-06, wired here 2026-11-13): a numeric
+     * `drivers.porv_stick` is how far open the disc stuck, 0..1 of ONE valve's area. A manual
+     * open is a whole valve; so is a boolean stick. Live while armed, so the slider moves it. */
+    var stuckFrac = typeof drivers.porv_stick === 'number'
+      ? (drivers.porv_stick > 1 ? 1 : (drivers.porv_stick > 0 ? drivers.porv_stick : 0)) : 1;
     /* WHAT THE VESSEL OFFERS THE VALVES: steam from the steam region at ITS enthalpy
      * (superheated when it is); a SOLID vessel offers liquid from the pool — TMI's regime for
      * 95 % of the ride (measured 2026-08-26), where the same valve passes flashing water at
@@ -1154,7 +1158,7 @@
      * sourced rating through the same law (reliefAreas), so a stuck PORV passes its rated 4.45
      * kg/s of steam AT the rating pressure and proportionally less below it — and 2-4x more
      * when the vessel is solid and it passes water. */
-    var nPorv = !pz.blockOpen ? 0 : (pz.porvOpen ? 2 : (oneValve ? 1 : 0));
+    var nPorv = !pz.blockOpen ? 0 : (pz.porvOpen ? 2 : (pz.porvManual ? 1 : (pz.porvStuck ? stuckFrac : 0)));
     var G_relief = (nPorv > 0 || pz.safetyOpen) ? criticalFlux(relief_h, P) : 0;
     var A = reliefAreas();
     var porv_kgs = nPorv * (A.porv_m2 / 2) * G_relief;
