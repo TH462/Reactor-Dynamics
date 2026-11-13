@@ -47,6 +47,8 @@
  *   cklDimAlarms made a no-op                                                      -> 29
  *   cklDimAlarms called with `true` always                                         -> 1, 30, 14
  *   shell.css: the `:hover` / `:focus-within` restore removed                      -> 29
+ * Pause during a beat (critic M-1, 2026-11-13):
+ *   the play handler's `|| beatOnlyNow` removed (a beat reads as paused, so the press plays) -> 31, 32
  * NOT RED ALONE: syncSpeedUI's `k !== 'beat'` reverted to "any hold" — with syncPlayBtn no longer
  * dropping `lastSpeedSync` on a beat, that repaint does not run during one. Kept as the second guard.
  *   pwr_board.css: `.bd-focus-sil *` pointer-events rule narrowed back to `> *`    -> 13 (the clone takes the valve's click)
@@ -342,6 +344,39 @@ function ck(name, ok, detail) {
   ck('20. a beat is not the player pausing: the speed rung stays lit, the play button does not flash paused, and the speed is what it was',
      heldS.length > 0 && dark === 0 && heldS.every(function (q) { return q.rung && !q.playPaused && q.x === base.x; }) && after.x === base.x,
      JSON.stringify({ samples: heldS.length, darkMoments: dark, noRung: heldS.filter(function (q) { return !q.rung; }).length, playPaused: heldS.filter(function (q) { return q.playPaused; }).length, xMoved: heldS.filter(function (q) { return q.x !== base.x; }).length, x: [base.x, after.x] }));
+
+  // PAUSE pressed during a beat (critic M-1): the button shows its running face, so a press must PAUSE, by button and by Space
+  async function pauseInBeat(k, how) {
+    await armBeat(k, 2.5, 2.5);
+    await page.waitForFunction(function () { return RD.__dev.service().timeAcceleration === 1 && RD.__dev.service().running; }, null, { timeout: 5000 }).catch(function () {});
+    await page.waitForTimeout(400);
+    var lit0 = await page.evaluate(function () { return RD.PwrBoard.scopeState().lit.length; });
+    await fire();
+    var took = await page.waitForFunction(function () { return RD.__dev.holds().join('+') === 'beat'; }, null, { timeout: 6000 }).then(function () { return true; }).catch(function () { return false; });
+    await page.waitForTimeout(300);
+    if (how === 'space') { await page.evaluate(function () { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); }); await page.keyboard.press('Space'); }
+    else await page.click('#playBtn');
+    await page.waitForTimeout(200);
+    function snap() { return page.evaluate(function () { var sv = RD.__dev.service(), b = document.getElementById('playBtn');
+      return { run: sv.running, t: sv.simTime, holds: RD.__dev.holds().sort().join('+'), paused: b.classList.contains('paused'), face: b.textContent,
+               now: !!document.querySelector('#cklRun .ckl-crit-now'), lit: RD.PwrBoard.scopeState().lit.length }; }); }
+    var at = await snap();
+    await page.waitForTimeout(5600);          // both rows' beats (2.5 s each) are over
+    var later = await snap();
+    await page.click('#playBtn');             // the player's own resume
+    await page.waitForTimeout(500);
+    var res = await snap();
+    return { took: took, lit0: lit0, at: at, later: later, res: res };
+  }
+  var pb = await pauseInBeat(9, 'button');
+  ck('31. PAUSE pressed during a beat pauses: the clock is still held 5.6 s later (both beats over, sim_time unmoved), the only hold left is the player\'s, the button shows the paused face, the step\'s scope is back — and play then runs',
+     pb.took && !pb.at.run && pb.at.holds === 'beat+user' && pb.at.paused && !pb.later.run && pb.later.t === pb.at.t && pb.later.holds === 'user' && pb.later.paused && pb.later.face === '▶' &&
+     !pb.later.now && pb.later.lit === pb.lit0 && pb.res.run && pb.res.holds === '',
+     JSON.stringify({ atPress: pb.at.holds, runAtPress: pb.at.run, later: { run: pb.later.run, holds: pb.later.holds, paused: pb.later.paused, moved: pb.later.t - pb.at.t, lit: [pb.lit0, pb.later.lit] }, afterPlay: pb.res.run }));
+  var ps = await pauseInBeat(10, 'space');
+  ck('32. ...and the same from the keyboard: Space during a beat pauses, and the pause outlives the beat',
+     ps.took && !ps.at.run && ps.at.holds === 'beat+user' && !ps.later.run && ps.later.t === ps.at.t && ps.later.holds === 'user' && ps.later.paused && ps.res.run,
+     JSON.stringify({ atPress: ps.at.holds, later: { run: ps.later.run, holds: ps.later.holds, paused: ps.later.paused, moved: ps.later.t - ps.at.t }, afterPlay: ps.res.run }));
 
   // Rewind and End, each pressed with a 6 s beat standing: the hold must go AT ONCE, not when its timer runs out
   await armBeat(4, 6, 6);
