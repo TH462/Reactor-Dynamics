@@ -21,7 +21,16 @@
     if (document.getElementById('bd-pump-styles')) return;
     var s = document.createElement('style');
     s.id = 'bd-pump-styles';
-    s.textContent = '@keyframes rcpSpin{to{transform:rotate(360deg)}}';
+    /* CAVITATION (owner 2026-11-13). CSS-driven, so it runs on the compositor clock and does not depend on sim speed.
+     * The shake is a transform on a trembling ring over the pump body only: nozzles, flanges, ports and the control box
+     * stay put, so no pipe or neighbouring tile moves. The arcs are static marks under reduced motion. */
+    s.textContent = '@keyframes rcpSpin{to{transform:rotate(360deg)}}' +
+      '@keyframes rcpShake{0%{transform:translate(0,0)}20%{transform:translate(-1.6px,.9px)}40%{transform:translate(1.4px,-1px)}' +
+      '60%{transform:translate(-1px,-1.2px)}80%{transform:translate(1.5px,1px)}100%{transform:translate(0,0)}}' +
+      '@keyframes rcpArcPulse{0%,100%{opacity:.45}50%{opacity:1}}' +
+      '.rcp-cav .rcp-body{animation:rcpShake .11s linear infinite}' +
+      '.rcp-cav .rcp-cav-arcs{animation:rcpArcPulse .5s ease-in-out infinite}' +
+      '@media (prefers-reduced-motion: reduce){.rcp-cav .rcp-body,.rcp-cav .rcp-cav-arcs{animation:none!important}.rcp-cav .rcp-cav-arcs{opacity:1}}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -58,9 +67,10 @@
 
     // fluid disc color: global temperature ramp when a temp is supplied, else the
     // design's fluid-preset fallback (power term fixed at 100% — no power prop here)
-    function fluidColors(tempC) {
+    function fluidColors(tempC, contents) {
       if (tempC != null && env.StdPipe.phaseTempColor) {
-        var base = toArr(env.StdPipe.phaseTempColor('water', tempC).bore);
+        // STEAM in the casing takes the steam styling (owner 2026-11-13); the wiring hands it the same fixed point the pipes use
+        var base = toArr(env.StdPipe.phaseTempColor(contents === 'steam' ? 'steam' : 'water', tempC).bore);
         return { dark: mix(base, [8, 14, 20], 0.12), light: mix(base, [255, 255, 255], 0.22) };
       }
       var heatBase = FLUID_HEAT[fluid] != null ? FLUID_HEAT[fluid] : 0.05;
@@ -118,6 +128,21 @@
     vanes.push(h('circle', { key: 'hub', cx: cx, cy: cy, r: 12, fill: '#3a4550', stroke: '#141a20', strokeWidth: 1.2 }));
     var impellerG = h('g', { key: 'impeller', style: { transformBox: 'fill-box', transformOrigin: 'center' } }, vanes);
 
+    /* The shake is carried by a SHAKING RING (casing outline + inner fluid ring) laid over the still body, not by wrapping the
+     * body itself: the board's focus outline clones component art and DROPS every element with a running CSS animation, so an
+     * animated body group would vanish from the silhouette outline while cavitating. The ring is dropped from the clone and the
+     * still body underneath keeps the outline whole. Visually: a doubled, trembling casing edge. */
+    var bodyG = h('g', { key: 'rcpBody', 'class': 'rcp-body', 'data-rcp-cav-ring': '1', style: { display: 'none' } }, [
+      h('circle', { key: 'rr1', cx: cx, cy: cy, r: R, fill: 'none', stroke: '#f0a53b', strokeWidth: 2.4, opacity: 0.8 }),
+      h('circle', { key: 'rr2', cx: cx, cy: cy, r: fluidR, fill: 'none', stroke: '#f0a53b', strokeWidth: 1.4, opacity: 0.55 })]);
+    // arcs = the cartoon vibration marks (hidden until cavitating)
+    function arc(r, a0, a1, key) {
+      var p = function (a) { var t = a * Math.PI / 180; return (cx + r * Math.cos(t)).toFixed(1) + ',' + (cy + r * Math.sin(t)).toFixed(1); };
+      return h('path', { key: key, d: 'M' + p(a0) + ' A' + r + ' ' + r + ' 0 0 1 ' + p(a1), fill: 'none', stroke: '#f0a53b', strokeWidth: 3.2, strokeLinecap: 'round' });
+    }
+    var arcsG = h('g', { key: 'rcpCavArcs', 'class': 'rcp-cav-arcs', 'data-rcp-cav-arcs': '1', style: { display: 'none' } }, [
+      arc(60, -28, 28, 'a1'), arc(70, -24, 24, 'a2'), arc(60, 118, 158, 'b1'), arc(70, 122, 154, 'b2')]);
+
     // ---- control box (rendered state comes only from update() props) ----
     var tglRect = null, tglText = null, sliderInput = null, valText = null;
     var ctrl = [];
@@ -143,7 +168,7 @@
     // crop the empty left/top margins; a touch more room below when the control panel shows
     var vb = showControls ? '70 55 160 184' : '70 55 160 154';
     var svg = h('svg', { viewBox: vb, style: { width: '100%', height: '100%', overflow: 'visible' } },
-      h('g', { key: 'rcpScene' }, [defs, inletG, outletG, casing, fluidC, impellerG, ctrl]));
+      h('g', { key: 'rcpScene' }, [defs, inletG, outletG, casing, fluidC, impellerG, bodyG, arcsG, ctrl]));
 
     var unwatch = env.StdPipe.watchScale(svg, function (s) {
       if (Math.abs(s - sc) / s > 0.015) {
@@ -159,7 +184,8 @@
                               // starts OFF must stop its pipes on render one (#236).
     var lastSpd = null;       // last applied display speed (0..100)
     var lastAnim = null;
-    var lastTemp = void 0;
+    var lastTemp = void 0, lastContents = null;
+    var lastCav = null;
 
     function update(props) {
       props = props || {};
@@ -193,10 +219,21 @@
         }
       }
 
+      // cavitation reads only while the rotor is turning (the wiring gates it too)
+      var cav = props.cavitating === true && spd > 2;
+      if (cav !== lastCav) {
+        lastCav = cav;
+        svg.setAttribute('class', cav ? 'rcp-cav' : '');
+        arcsG.style.display = cav ? '' : 'none';
+        bodyG.style.display = cav ? '' : 'none';
+      }
+
       var temp = props.temp;
-      if (temp !== lastTemp) {
-        lastTemp = temp;
-        var c = fluidColors(temp);
+      var contents = props.contents === 'steam' ? 'steam' : 'water';
+      if (temp !== lastTemp || contents !== lastContents) {
+        lastTemp = temp; lastContents = contents;
+        svg.setAttribute('data-contents', contents);
+        var c = fluidColors(temp, contents);
         stopLight.setAttribute('stop-color', c.light);
         stopDark.setAttribute('stop-color', c.dark);
       }

@@ -74,7 +74,10 @@ require(path.join(__dirname, '..', 'ui', 'manual_procedures.js'));   /* the TMI-
 require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_data.js'));
 var WIRING_PATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_wiring.js');
 require(WIRING_PATH);
-require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_steam_generator.js'));   /* built in a fake DOM, buildSG() */
+require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_steam_generator.js'));
+require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_pump.js'));
+require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_reactor_vessel.js'));
+require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_porv.js'));   /* built in a fake DOM, buildSG() */
 
 var RD = globalThis.RD;
 var BOLD = '[1m', RED = '[31m', GREEN = '[32m', RST = '[0m';
@@ -135,6 +138,7 @@ function fakeNode(tag, attrs) {
   if (attrs && attrs.style) Object.keys(attrs.style).forEach(function (k) { n.style[k] = attrs.style[k]; });
   n.setAttribute = function (k, v) { n.attrs[k] = v; };
   n.getAttribute = function (k) { return n.attrs[k] != null ? String(n.attrs[k]) : null; };
+  n.removeAttribute = function (k) { delete n.attrs[k]; };
   n.appendChild = function (c) { c.parent = n; n.children.push(c); return c; };
   n.removeChild = function (c) { var i = n.children.indexOf(c); if (i >= 0) n.children.splice(i, 1); return c; };
   Object.defineProperty(n, 'firstChild', { get: function () { return n.children[0] || null; } });
@@ -184,6 +188,40 @@ function buildSG() {
     tubeStopNodes: tubeGrad.children,
     bracket: all.filter(function (n) { return n.attrs && n.attrs['data-sg-nr-bracket']; })[0]
   };
+}
+
+function buildVessel() {
+  var comp = RD.BoardComps && RD.BoardComps['Reactor Vessel v2'];
+  if (!comp) return null;
+  RD.BoardH = RD.BoardH || {};
+  RD.BoardH.softGlow = function () { return { def: fakeNode('g'), paint: 'glow', setColor: function () {} }; };
+  var uidN = 0;
+  var kit = { flange: function () { return fakeNode('g'); }, SIZES: { large: 12, medium: 8 }, DASH_CYCLE_S: 1,
+              dashPhase: function (pts) { return { pts: pts, dir: 1, offset: 0, delay: 0, t: 0 }; } };
+  var env = { h: fakeH, uid: function (b) { return b + '_' + (++uidN); }, onControl: function () {},
+    StdPipe: { createKit: function () { return kit; }, watchScale: function () { return function () {}; },
+               phaseTempColor: function (ph, t) { return { bore: ph + '@' + t, flow: ph + '~' + t }; } } };
+  var inst = comp.build({}, env);
+  var all = []; fakeWalk(inst.el, function (n) { all.push(n); });
+  function byAttr(k) { return all.filter(function (n) { return n.attrs && n.attrs[k]; })[0]; }
+  var froth = byAttr('data-rv-froth');
+  return { inst: inst, all: all, froth: froth,
+           glowIdx: all.indexOf(all.filter(function (n) { return n.attrs && n.attrs['class'] === 'rv-core-pulse'; })[0]),
+           frothIdx: all.indexOf(froth) };
+}
+
+function buildPump() {
+  var comp = RD.BoardComps && RD.BoardComps['Pump'];
+  if (!comp) return null;
+  var uidN = 0;
+  var env = { h: fakeH, uid: function (b) { return b + '_' + (++uidN); }, onControl: function () {},
+    StdPipe: { createKit: function () { return { flange: function () { return fakeNode('g'); }, SIZES: { large: 12, medium: 8 } }; },
+               watchScale: function () { return function () {}; }, phaseTempColor: function (ph, t) { return { bore: '#102030' }; } } };
+  var inst = comp.build({}, env);
+  var all = []; fakeWalk(inst.el, function (n) { all.push(n); });
+  return { inst: inst, svg: all.filter(function (n) { return n.tag === 'svg'; })[0],
+           arcs: all.filter(function (n) { return n.attrs && n.attrs['data-rcp-cav-arcs']; })[0],
+           ring: all.filter(function (n) { return n.attrs && n.attrs['data-rcp-cav-ring']; })[0] };
 }
 
 function runSuite(quietRec) {
@@ -983,6 +1021,118 @@ function runSuite(quietRec) {
     D.controlLabelItem('Pressurizer') === 'pressurizer' && D.controlLabelItem('Steam Generator') === 'steamGenerator',
     D.controlLabelItem('Pressurizer') + ' / ' + D.controlLabelItem('Steam Generator'));
 
+
+  /* ---- RCP CAVITATION ON THE BOARD (owner 2026-11-13: "a vibration effect or ... cartoon indication around the RCP") ---------
+   * The prop is the plant's own rcp_cavitating, and only while the pump is TURNING. Three cases through compProps, then the
+   * art in the fake DOM: it gets its class and its marks only when told, and a stopped rotor never draws them. */
+  if (!rec) head('RCP CAVITATION  [prop = plant flag AND turning; the art draws the shake ring + arcs]');
+  function rcpSnap(cav, running, speedPct, coldVoid) {
+    var sn = legSnap(0.1, coldVoid == null ? 0.1 : coldVoid);
+    var ts = {}; Object.keys(sn.true_state).forEach(function (k) { ts[k] = sn.true_state[k]; }); ts.rcp_cavitating = cav; sn.true_state = ts;
+    var ins = {}; Object.keys(sn.instruments || {}).forEach(function (k) { ins[k] = sn.instruments[k]; }); ins.rcp_running = running; sn.instruments = ins;
+    var cs = {}; Object.keys(sn.control_state || {}).forEach(function (k) { cs[k] = sn.control_state[k]; });
+    cs.pumps = [{ id: 'rcp', speed_pct: speedPct, flow_pct: speedPct }]; sn.control_state = cs;
+    return sn;
+  }
+  var cvRun = D.compProps({ id: 'imrobpq4a70' }, rcpSnap(true, true, 100)).cavitating;
+  var cvStop = D.compProps({ id: 'imrobpq4a70' }, rcpSnap(true, false, 0)).cavitating;
+  var cvOff = D.compProps({ id: 'imrobpq4a70' }, rcpSnap(false, true, 100)).cavitating;
+  q('RCP cavitating prop: true when cavitating AND turning; false when cavitating but stopped; false when not cavitating',
+    cvRun === true && cvStop === false && cvOff === false, 'run ' + cvRun + ', stopped ' + cvStop + ', not cavitating ' + cvOff);
+  var pm = buildPump();
+  q('the pump component builds in the fake DOM (the harness itself)', !!pm && !!pm.arcs && !!pm.ring && !!pm.svg, pm ? 'ok' : 'component missing');
+  if (pm) {
+    var up = function (cav, run) { pm.inst.update({ running: run, speed: 1, temp: 290, cavitating: cav }); return { cls: pm.svg.attrs['class'], arcs: pm.arcs.style.display, ring: pm.ring.style.display }; };
+    var aOn = up(true, true), aOff = up(false, true), aStop = up(true, false);
+    q('the pump art draws the rcp-cav class, shake ring and vibration arcs when cavitating, and clears them after',
+      aOn.cls === 'rcp-cav' && aOn.arcs === '' && aOn.ring === '' && aOff.cls === '' && aOff.arcs === 'none' && aOff.ring === 'none',
+      JSON.stringify(aOn) + ' / ' + JSON.stringify(aOff));
+    q('a stopped pump never draws cavitation even if told to', aStop.cls === '' && aStop.arcs === 'none', JSON.stringify(aStop));
+  }
+
+
+  /* ---- THE RCP SHOWS WHAT IT PUMPS; THE VESSEL SHOWS WHAT FILLS IT; THE LEAK SHOWS (owner 2026-11-13) ------------------------
+   * Pump contents come off the cold-leg pipes' own latch, so casing and run cannot disagree. The vessel is fed froth (pumps turning
+   * over a mostly-void core) and steamHead (the hot-leg latch). The relief line and the quench tank pass only when the valve is
+   * TRULY open (true porv_open) AND the block valve is open -- the lamp (an instrument) is not consulted. */
+  if (!rec) head('PUMP CONTENTS, VESSEL FROTH/STEAM, RELIEF FLOW  [owner 2026-11-13]');
+  var pumpPhase = function (cv) { return D.compProps({ id: 'imrobpq4a70' }, rcpSnap(false, true, 100, cv)).contents; };
+  var coldPipe = function (cv) { return D.pipeFlow('pms2kovvgnh', legSnap(0.1, cv)).phase; };
+  var pa = pumpPhase(0.2), pb = pumpPhase(0.9), pc = pumpPhase(0.5);
+  var ca = coldPipe(0.2), cb = coldPipe(0.9), cc = coldPipe(0.5);
+  var pd = pumpPhase(0.2), pe = pumpPhase(0.5);
+  q('RCP contents: water at cold-leg void 0.2, steam at 0.9, steam at 0.5 after steam, water at 0.5 after water',
+    pa === 'water' && pb === 'steam' && pc === 'steam' && pe === 'water', pa + '/' + pb + '/' + pc + '/' + pd + '/' + pe);
+  q('...and the pump agrees with the cold-leg pipe at each of those voids',
+    pa === ca && pb === cb && pc === cc, 'pump ' + [pa, pb, pc] + ' pipe ' + [ca, cb, cc]);
+  var stPump = D.compProps({ id: 'imrobpq4a70' }, rcpSnap(false, true, 100, 0.9));
+  var wtPump = D.compProps({ id: 'imrobpq4a70' }, rcpSnap(false, true, 100, 0.0));
+  q('a steaming pump takes the steam colour point, not the cold-leg temperature',
+    stPump.temp === 300 && wtPump.temp !== 300, 'steam temp ' + stPump.temp + ', water temp ' + wtPump.temp);
+  var pmc = buildPump();
+  if (pmc) {
+    pmc.inst.update({ running: true, speed: 1, temp: 300, contents: 'steam' });
+    var cSteam = pmc.svg.attrs['data-contents'];
+    pmc.inst.update({ running: true, speed: 1, temp: 290, contents: 'water' });
+    q('the pump art records steam vs water contents', cSteam === 'steam' && pmc.svg.attrs['data-contents'] === 'water', cSteam + ' / ' + pmc.svg.attrs['data-contents']);
+  }
+
+  function vSnap(pumpsOn, coreVoid, unc, hotVoid) {
+    var sn = rcpSnap(false, pumpsOn, pumpsOn ? 100 : 0, 0.1);
+    var ts = {}; Object.keys(sn.true_state).forEach(function (k) { ts[k] = sn.true_state[k]; });
+    ts.core_void_fraction = coreVoid; ts.core_uncovered_frac = unc; ts.primary_void_fraction = hotVoid; sn.true_state = ts;
+    return sn;
+  }
+  var vPow = D.compProps({ id: 'reactorVessel' }, vSnap(true, 0.02, 0, 0.0));
+  var vFroth = D.compProps({ id: 'reactorVessel' }, vSnap(true, 0.97, 0.89, 1.0));
+  var vStop = D.compProps({ id: 'reactorVessel' }, vSnap(false, 1.0, 1.0, 1.0));
+  q('vessel state: at power is solid water (no froth, no steam head); pumps turning at core void 0.97 is FROTH under a steam head; ' +
+    'pumps stopped and uncovered is STEAM over the pool (no froth)',
+    vPow.froth === false && vPow.steamHead === false && vFroth.froth === true && vFroth.steamHead === true &&
+    vStop.froth === false && vStop.steamHead === true,
+    JSON.stringify({ pow: [vPow.froth, vPow.steamHead], froth: [vFroth.froth, vFroth.steamHead], stop: [vStop.froth, vStop.steamHead] }));
+  var rvA = buildVessel();
+  q('the reactor vessel component builds in the fake DOM (the harness itself)', !!rvA && !!rvA.froth, rvA ? 'ok' : 'component missing');
+  if (rvA) {
+    var base2 = { regFrac: 0.8, shutFrac: 1, power: 1, coreInv: 100, boil: 0, glow: true, showFlow: true, tcold: 290, thot: 320 };
+    function rvUp(extra) { var p = {}; Object.keys(base2).forEach(function (k) { p[k] = base2[k]; }); Object.keys(extra).forEach(function (k) { p[k] = extra[k]; }); rvA.inst.update(p); return rvA.froth.attrs.display || ''; }
+    var dPow = rvUp({ froth: false, steamHead: false });
+    var dFroth = rvUp({ coreInv: 5.5, boil: 100, froth: true, steamHead: true });
+    var dStop = rvUp({ coreInv: 0, boil: 0, froth: false, steamHead: true });
+    q('the vessel art draws the froth layer only for froth (not at power, not when the pumps are stopped)',
+      dPow === 'none' && dFroth === '' && dStop === 'none', 'power ' + JSON.stringify(dPow) + ', froth ' + JSON.stringify(dFroth) + ', stopped ' + JSON.stringify(dStop));
+    var glowEl = rvA.all.filter(function (n) { return n.attrs && n.attrs['class'] === 'rv-core-pulse'; })[0];
+    rvUp({ coreInv: 5.5, boil: 100, froth: true, steamHead: true, cladC: 1300, damaged: true, oxFrac: 0.1 });
+    var dmgOnFroth = glowEl && glowEl.attrs.display !== 'none' && rvA.frothIdx < rvA.all.indexOf(glowEl);
+    q('the damage glow still applies over the froth, and is drawn AFTER it (never under the steam/froth overlay)',
+      !!dmgOnFroth, 'froth z ' + rvA.frothIdx + ' < glow z ' + rvA.all.indexOf(glowEl) + ', glow display ' + (glowEl && glowEl.attrs.display));
+  }
+
+  /* relief line + quench tank: four cases of (true valve open, block valve open) */
+  function reliefSnap(popen, blockOpen) {
+    var sn = legSnap(0.1, 0.1);
+    var ts = {}; Object.keys(sn.true_state).forEach(function (k) { ts[k] = sn.true_state[k]; }); ts.porv_open = popen; sn.true_state = ts;
+    var cs = {}; Object.keys(sn.control_state || {}).forEach(function (k) { cs[k] = sn.control_state[k]; }); cs.porv_block_open = blockOpen; sn.control_state = cs;
+    var ins = {}; Object.keys(sn.instruments || {}).forEach(function (k) { ins[k] = sn.instruments[k]; }); ins.porv_indicator = 'closed'; sn.instruments = ins;
+    return sn;
+  }
+  var rl = [[true, true], [true, false], [false, true], [false, false]].map(function (c) {
+    var sn = reliefSnap(c[0], c[1]);
+    return { pipe: !!(D.pipeFlow('pms3tdwi5n9', sn) || {}).active, tank: D.compProps({ id: 'imrsi2svtgn' }, sn).receiving };
+  });
+  q('relief line and quench tank pass ONLY when the valve is truly open AND the block valve is open (lamp reads CLOSED throughout)',
+    rl[0].pipe === true && rl[0].tank === true && !rl[1].pipe && rl[1].tank === false && !rl[2].pipe && rl[2].tank === false && !rl[3].pipe && rl[3].tank === false,
+    JSON.stringify(rl));
+  var rtB = RD.BoardComps['Relief Tank'];
+  if (rtB) {
+    var rtN = rtB.build({}, { h: fakeH, uid: function (b) { return b; } });
+    var rtAll = []; fakeWalk(rtN.el, function (n) { rtAll.push(n); });
+    var rim = rtAll.filter(function (n) { return n.attrs && n.attrs['class'] === 'rt-rim'; })[0];
+    rtN.inst = rtN; rtN.update({ receiving: true, contents: 'steam' }); var rOn = rim.style.display;
+    rtN.update({ receiving: false }); var rOff = rim.style.display;
+    q('the quench tank art shows its receiving treatment only while receiving', rOn === '' && rOff === 'none', 'on ' + JSON.stringify(rOn) + ', off ' + JSON.stringify(rOff));
+  }
+
   /* ---- 3. the payload fixes, through the whole stack -------------------------------------- */
   if (!rec) head('ROUND TRIPS  [the #506.1 payload fixes land through service+kernel+shell]');
   /* WHITE-BOX on the pump switch: at 2235 psia a started HHSI pump is DEADHEADED (zero flow
@@ -1689,6 +1839,12 @@ runSuite(null);
 var WSRC = fs.readFileSync(WIRING_PATH, 'utf8').replace(/\r\n/g, '\n');
 var SGPATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_steam_generator.js');
 var SGSRC = fs.readFileSync(SGPATH, 'utf8').replace(/\r\n/g, '\n');
+var RVPATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_reactor_vessel.js');
+var RVSRC = fs.readFileSync(RVPATH, 'utf8').replace(/\r\n/g, '\n');
+var PORVPATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_porv.js');
+var PORVSRC = fs.readFileSync(PORVPATH, 'utf8').replace(/\r\n/g, '\n');
+var PMPATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_pump.js');
+var PMSRC = fs.readFileSync(PMPATH, 'utf8').replace(/\r\n/g, '\n');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
 var SHSRC = fs.readFileSync(SHPATH, 'utf8').replace(/\r\n/g, '\n');
 var KPATH = path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js');
@@ -1702,6 +1858,47 @@ var SVCSRC = fs.readFileSync(SVCPATH, 'utf8').replace(/\r\n/g, '\n');
 var MPPATH = path.join(__dirname, '..', 'ui', 'manual_procedures.js');
 var MPSRC = fs.readFileSync(MPPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* pump contents / vessel froth / relief flow (2026-11-13) */
+  ['the pump ignores the cold-leg latch (contents always water)', WIRING_PATH, WSRC,
+   "    pr.contents = coldLegPhase(s);", "    pr.contents = 'water';"],
+  ['the pump reads the HOT-leg latch (disagrees with the cold-leg pipe)', WIRING_PATH, WSRC,
+   "    pr.contents = coldLegPhase(s);", "    pr.contents = hotLegPhase(s);"],
+  ['a steaming pump stays on the temperature ramp', WIRING_PATH, WSRC,
+   "    if (pr.contents === 'steam') pr.temp = STEAM_PIPE_C;", ""],
+  ['the vessel is never told it is frothing', WIRING_PATH, WSRC,
+   "froth: (!!IN(s).rcp_running || ((pumpRec(s, 'rcp') || {}).speed_pct || 0) > 2) && voidFrac > 0.5,", "froth: false,"],
+  ['the vessel froths with the pumps stopped (turning gate dropped)', WIRING_PATH, WSRC,
+   "froth: (!!IN(s).rcp_running || ((pumpRec(s, 'rcp') || {}).speed_pct || 0) > 2) && voidFrac > 0.5,", "froth: voidFrac > 0.5,"],
+  ['the vessel is never told about the steam head', WIRING_PATH, WSRC,
+   "steamHead: hotLegPhase(s) === 'steam'", "steamHead: false"],
+  ['the vessel art never draws the froth layer', RVPATH, RVSRC,
+   "show(R.froth, !!st.froth && frothH > 2);", "show(R.froth, false);"],
+  ['the vessel art puts the froth layer on top of the damage art (z-order moved after the rods)', RVPATH, RVSRC,
+   "svgKids.push(R.meltGlow = h(", "svgKids.unshift(R.meltGlow = h("],
+  ['the quench tank receives with the valve shut (block valve ignored)', WIRING_PATH, WSRC,
+   "(IN(s).porv_indicator === 'open')) && CS(s).porv_block_open !== false;\n  }\n  function lineFrac",
+   "(IN(s).porv_indicator === 'open'));\n  }\n  function lineFrac"],
+  ['the quench tank follows the LAMP, not the valve', WIRING_PATH, WSRC,
+   "    return (t.porv_open != null ? !!t.porv_open : (IN(s).porv_indicator === 'open')) && CS(s).porv_block_open !== false;\n  }\n  function lineFrac",
+   "    return (IN(s).porv_indicator === 'open') && CS(s).porv_block_open !== false;\n  }\n  function lineFrac"],
+  ['the quench tank art never shows its receiving treatment', PORVPATH, PORVSRC,
+   "var recv = props.receiving === true, contents", "var recv = false, contents"],
+
+  /* RCP cavitation (2026-11-13): one mutation per claim, both directions of the gate */
+  ['the RCP never reports cavitation (the plant flag is not read)', WIRING_PATH, WSRC,
+   "pr.cavitating = ((s && s.true_state) || {}).rcp_cavitating === true && turning;",
+   "pr.cavitating = false;"],
+  ['the RCP reports cavitation on a stopped pump (turning gate dropped)', WIRING_PATH, WSRC,
+   "pr.cavitating = ((s && s.true_state) || {}).rcp_cavitating === true && turning;",
+   "pr.cavitating = ((s && s.true_state) || {}).rcp_cavitating === true;"],
+  ['the RCP reports cavitation when the plant is not cavitating (flag ignored)', WIRING_PATH, WSRC,
+   "pr.cavitating = ((s && s.true_state) || {}).rcp_cavitating === true && turning;",
+   "pr.cavitating = turning;"],
+  ['the pump art ignores the cavitating prop (no class, ring or arcs)', PMPATH, PMSRC,
+   "var cav = props.cavitating === true && spd > 2;", "var cav = false;"],
+  ['the pump art draws cavitation on a stopped rotor (speed gate dropped)', PMPATH, PMSRC,
+   "var cav = props.cavitating === true && spd > 2;", "var cav = props.cavitating === true;"],
+
   /* ============ OWNER PLAYTEST 11/13/14 (2026-11-13): the RCS shows steam, steam is not on the ramp,
    * the SG draws no water when empty. One mutation per claim. ============ */
   ['the hot-leg pipes lose their live phase (an RCS pipe never shows steam)', WIRING_PATH, WSRC,
