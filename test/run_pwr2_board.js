@@ -54,7 +54,7 @@ global.document = {
   querySelector: function () { return null; },
   querySelectorAll: function () { return []; },
   addEventListener: function () {}, removeEventListener: function () {},
-  body: el()
+  body: el(), head: el()
 };
 
 require(path.join(__dirname, '..', 'engines', 'load_mode.js'));
@@ -74,6 +74,7 @@ require(path.join(__dirname, '..', 'ui', 'manual_procedures.js'));   /* the TMI-
 require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_data.js'));
 var WIRING_PATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'pwr_board_wiring.js');
 require(WIRING_PATH);
+require(path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_steam_generator.js'));   /* built in a fake DOM, buildSG() */
 
 var RD = globalThis.RD;
 var BOLD = '[1m', RED = '[31m', GREEN = '[32m', RST = '[0m';
@@ -121,6 +122,68 @@ function bindWorld(world) {
     cmd: world.cmd, units: function (u) { return u; },
     protection: function () { return world.svc.layer && world.svc.layer.config; }
   }, {});
+}
+
+/* ---- a tiny fake DOM, just enough to BUILD comp_steam_generator.js and read back what it drew.
+ * The component is an IIFE over window.RD that needs h(), uid(), StdPipe.createKit/phaseTempColor/
+ * watchScale and RD.BoardH.softGlow. phaseTempColor here is a TAGGED fake: the colour string names
+ * the phase and the temperature it was asked for, so "steam ignores the temperature ramp" is a
+ * string comparison rather than a guess at RGB. */
+function fakeNode(tag, attrs) {
+  var n = { tag: tag, attrs: {}, style: { setProperty: function () {} }, children: [], nodeType: 1, parent: null };
+  Object.keys(attrs || {}).forEach(function (k) { if (k !== 'style') n.attrs[k] = attrs[k]; });
+  if (attrs && attrs.style) Object.keys(attrs.style).forEach(function (k) { n.style[k] = attrs.style[k]; });
+  n.setAttribute = function (k, v) { n.attrs[k] = v; };
+  n.getAttribute = function (k) { return n.attrs[k] != null ? String(n.attrs[k]) : null; };
+  n.appendChild = function (c) { c.parent = n; n.children.push(c); return c; };
+  n.removeChild = function (c) { var i = n.children.indexOf(c); if (i >= 0) n.children.splice(i, 1); return c; };
+  Object.defineProperty(n, 'firstChild', { get: function () { return n.children[0] || null; } });
+  Object.defineProperty(n, 'lastChild', { get: function () { return n.children[n.children.length - 1] || null; } });
+  Object.defineProperty(n, 'childNodes', { get: function () { return n.children; } });
+  Object.defineProperty(n, 'nextSibling', { get: function () {
+    if (!n.parent) return null; var i = n.parent.children.indexOf(n); return n.parent.children[i + 1] || null; } });
+  return n;
+}
+function fakeH(tag, attrs) {
+  var n = fakeNode(tag, attrs);
+  (function add(list) {
+    list.forEach(function (c) {
+      if (c == null || c === false) return;
+      if (Array.isArray(c)) return add(c);
+      if (typeof c === 'string' || typeof c === 'number') { n.text = String(c); return; }
+      n.appendChild(c);
+    });
+  })(Array.prototype.slice.call(arguments, 2));
+  return n;
+}
+function fakeWalk(n, fn) { fn(n); n.children.forEach(function (c) { fakeWalk(c, fn); }); }
+function buildSG() {
+  var comp = RD.BoardComps && RD.BoardComps['Steam Generator'];
+  if (!comp) return null;
+  RD.BoardH = RD.BoardH || {};
+  RD.BoardH.softGlow = function () { return { def: fakeNode('g'), paint: 'glow', setColor: function () {} }; };
+  var uidN = 0;
+  var kit = { flange: function () { return fakeNode('g'); } };
+  var env = {
+    h: fakeH, uid: function (b) { return b + '_' + (++uidN); },
+    StdPipe: {
+      createKit: function () { return kit; },
+      watchScale: function () { return function () {}; },
+      phaseTempColor: function (ph, t) { return { bore: ph + '@' + t, flow: ph + '~' + t }; }
+    }
+  };
+  var inst = comp.build({}, env);
+  var all = [];
+  fakeWalk(inst.el, function (n) { all.push(n); });
+  var waterId = null;
+  all.forEach(function (n) { if (n.tag === 'linearGradient' && /^sgWater/.test(n.attrs.id)) waterId = n.attrs.id; });
+  var tubeGrad = all.filter(function (n) { return n.tag === 'linearGradient' && /^sgTube_/.test(n.attrs.id); })[0];
+  return {
+    inst: inst, all: all,
+    waterRect: all.filter(function (n) { return n.tag === 'rect' && n.attrs.fill === 'url(#' + waterId + ')'; })[0],
+    tubeStopNodes: tubeGrad.children,
+    bracket: all.filter(function (n) { return n.attrs && n.attrs['data-sg-nr-bracket']; })[0]
+  };
 }
 
 function runSuite(quietRec) {
@@ -816,6 +879,109 @@ function runSuite(quietRec) {
     'and the cold leg did not',
     typeof tsV.cold_leg_void_fraction === 'number' && isFinite(tsV.cold_leg_void_fraction),
     'cold_leg_void_fraction ' + tsV.cold_leg_void_fraction);
+
+
+  /* ---- THE RCS RUNS DRAW STEAM, AND STEAM IS NOT ON THE TEMPERATURE RAMP (owner playtest
+   * 2026-11-13, items 13 + 14) ---------------------------------------------------------------
+   * Item 13: no RCS pipe or U-tube showed steam; only the fittings did. Item 14: with the leg
+   * voided the hot-leg NODE temperature swings 494 -> 826 degF and back every 3-8 plant minutes
+   * (MEASURED, full stack), and a pipe painted on the temperature ramp flickered cold/red with it.
+   * A pipe rendered as steam takes the steam styling's own colour, so the swing cannot reach it.
+   * Asserts the EFFECT through the driver's own entry points (pipeFlow phase, pipeTemp colour
+   * input, compProps) — not a scan of the source. Hysteresis: 0.55 on, 0.45 off. */
+  if (!rec) head('RCS PIPES AND U-TUBES SHOW STEAM  [phase from the leg void, hysteresis, no ramp, owner 13/14]');
+  var legBase = w.snap();
+  function legSnap(hv, cv, thot, tcold) {
+    var ts = {}; Object.keys(legBase.true_state).forEach(function (k) { ts[k] = legBase.true_state[k]; });
+    ts.primary_void_fraction = hv; ts.cold_leg_void_fraction = cv;
+    var ins = {}; Object.keys(legBase.instruments || {}).forEach(function (k) { ins[k] = legBase.instruments[k]; });
+    if (thot != null) ins.thot = thot;
+    if (tcold != null) ins.tcold = tcold;
+    var o = {}; Object.keys(legBase).forEach(function (k) { o[k] = legBase[k]; });
+    o.true_state = ts; o.instruments = ins;
+    return o;
+  }
+  var HOT_PIPES = ['pms2ktktnan', 'pms2ktjq4ma', 'pms2kupl3b2'];
+  var COLD_PIPES = ['pms2kovvgnh', 'pms2kozvu94', 'pms2kp1148p', 'pms3yu50gqp', 'pms3yu3x86i', 'pms3x37ze9p'];
+  function phases(ids, sn) { return ids.map(function (i) { return (D.pipeFlow(i, sn) || {}).phase; }); }
+  function allOf(arr, v) { return arr.every(function (x) { return x === v; }); }
+  var hDry = phases(HOT_PIPES, legSnap(0.2, 0.2)), hWet = phases(HOT_PIPES, legSnap(0.9, 0.2));
+  q('hot-leg and surge pipe runs read WATER at void 0.2 and STEAM at 0.9',
+    allOf(hDry, 'water') && allOf(hWet, 'steam'), 'void 0.2 -> ' + hDry.join('/') + ', 0.9 -> ' + hWet.join('/'));
+  var cDry = phases(COLD_PIPES, legSnap(0.2, 0.2)), cWet = phases(COLD_PIPES, legSnap(0.2, 0.9));
+  q('cold-leg pipe runs read WATER at void 0.2 and STEAM at 0.9 (the cold-leg void, not the hot-leg one)',
+    allOf(cDry, 'water') && allOf(cWet, 'steam') && allOf(phases(HOT_PIPES, legSnap(0.2, 0.9)), 'water'),
+    'cold 0.2 -> ' + cDry.join('/') + ', 0.9 -> ' + cWet.join('/'));
+  /* HYSTERESIS: the same 0.5 reads steam after steam and water after water */
+  phases(HOT_PIPES, legSnap(0.2, 0.2));
+  var h1 = phases(HOT_PIPES, legSnap(0.5, 0.2));      /* after water */
+  phases(HOT_PIPES, legSnap(0.9, 0.2));
+  var h2 = phases(HOT_PIPES, legSnap(0.5, 0.2));      /* after steam */
+  var h3 = phases(HOT_PIPES, legSnap(0.44, 0.2));     /* below the off edge */
+  phases(COLD_PIPES, legSnap(0.2, 0.2));
+  var k1 = phases(COLD_PIPES, legSnap(0.2, 0.5));
+  phases(COLD_PIPES, legSnap(0.2, 0.9));
+  var k2 = phases(COLD_PIPES, legSnap(0.2, 0.5));
+  q('hysteresis: void 0.5 after water stays WATER, after steam stays STEAM, 0.44 drops back (hot and cold leg)',
+    allOf(h1, 'water') && allOf(h2, 'steam') && allOf(h3, 'water') && allOf(k1, 'water') && allOf(k2, 'steam'),
+    'hot 0.5: after-water ' + h1[0] + ', after-steam ' + h2[0] + ', 0.44 ' + h3[0] +
+    '; cold 0.5: after-water ' + k1[0] + ', after-steam ' + k2[0]);
+  /* NO RAMP: a steam pipe's colour input must not move with the leg temperature (item 14) */
+  var tA = D.pipeTemp('pms2ktjq4ma', legSnap(1.0, 1.0, 257, 150)), tB = D.pipeTemp('pms2ktjq4ma', legSnap(1.0, 1.0, 441, 150));
+  var cA = D.pipeTemp('pms2kovvgnh', legSnap(1.0, 1.0, 300, 120)), cB = D.pipeTemp('pms2kovvgnh', legSnap(1.0, 1.0, 300, 260));
+  var wA = D.pipeTemp('pms2ktjq4ma', legSnap(0.0, 0.0, 257, 150)), wB = D.pipeTemp('pms2ktjq4ma', legSnap(0.0, 0.0, 441, 150));
+  q('a STEAM pipe takes the steam colour, not the ramp: hot-leg node 257 vs 441 C paints the same; water still tracks it',
+    tA === tB && cA === cB && wA !== wB && wA === 257 && wB === 441,
+    'steam hot ' + tA + '/' + tB + ', steam cold ' + cA + '/' + cB + ', water hot ' + wA + '/' + wB);
+
+  /* the SG U-tubes: hot-side / cold-side void props, and the drawing */
+  var sgP = D.compProps({ id: 'steamGenerator' }, legSnap(0.9, 0.1));
+  q('the steam generator is told the hot-side and cold-side void (true_state fields, no new field)',
+    sgP.hotVoid === 0.9 && sgP.coldVoid === 0.1, 'hotVoid ' + sgP.hotVoid + ', coldVoid ' + sgP.coldVoid);
+  var sg = buildSG();
+  q('the steam generator component builds in the fake DOM (the harness itself)', !!sg && !!sg.waterRect && sg.tubeStopNodes.length === 4,
+    sg ? 'water rect ' + !!sg.waterRect + ', tube stops ' + sg.tubeStopNodes.length : 'component missing');
+  if (sg) {
+    var base = { power: 0, level: 59, narrowLevel: 62, boil: 0, temp: 285, showFlow: false };
+    function sgUp(extra) { var p = {}; Object.keys(base).forEach(function (k) { p[k] = base[k]; }); Object.keys(extra).forEach(function (k) { p[k] = extra[k]; }); sg.inst.update(p); return sg.tubeStopNodes.map(function (st) { return st.attrs['stop-color']; }); }
+    var stWater = sgUp({ thot: 320, tcold: 290, hotVoid: 0.1, coldVoid: 0.1 });
+    var stHot = sgUp({ thot: 320, tcold: 290, hotVoid: 0.9, coldVoid: 0.1 });
+    var stHot2 = sgUp({ thot: 600, tcold: 290, hotVoid: 0.9, coldVoid: 0.1 });
+    var stCold = sgUp({ thot: 320, tcold: 290, hotVoid: 0.1, coldVoid: 0.9 });
+    var stBoth = sgUp({ thot: 320, tcold: 290, hotVoid: 0.9, coldVoid: 0.9 });
+    var stMid = sgUp({ thot: 320, tcold: 290, hotVoid: 0.5, coldVoid: 0.5 });
+    q('U-tubes: both sides water keeps the hot -> mean -> cold gradient (no steam colour anywhere)',
+      stWater.every(function (c) { return /^water@/.test(c); }) && stWater[1] === stWater[2] && stWater[0] !== stWater[3],
+      stWater.join(' | '));
+    q('U-tubes: hot side steam draws the HOT half in steam, cold half stays water',
+      /^steam@/.test(stHot[0]) && /^steam@/.test(stHot[1]) && /^water@/.test(stHot[2]) && /^water@/.test(stHot[3]), stHot.join(' | '));
+    q('U-tubes: cold side steam draws the COLD half in steam, hot half stays water',
+      /^water@/.test(stCold[0]) && /^water@/.test(stCold[1]) && /^steam@/.test(stCold[2]) && /^steam@/.test(stCold[3]), stCold.join(' | '));
+    q('U-tubes: both sides steam, and a steam half ignores the leg temperature (320 vs 600 C same colour)',
+      stBoth.every(function (c) { return /^steam@/.test(c); }) && stHot[0] === stHot2[0], stBoth.join(' | ') + '; hot half ' + stHot[0] + ' vs ' + stHot2[0]);
+    q('U-tubes: hysteresis, void 0.5 after steam stays steam on the tube',
+      stMid.every(function (c) { return /^steam@/.test(c); }), stMid.join(' | '));
+    /* SG level: no water at all at wide <= 0.5 % */
+    sg.inst.update({ level: 0.4, narrowLevel: 0, boil: 0 });
+    var dryHidden = sg.waterRect.style.display === 'none';
+    sg.inst.update({ level: 0.6, narrowLevel: 0, boil: 0 });
+    var wetShown = sg.waterRect.style.display !== 'none';
+    sg.inst.update({ level: 0, narrowLevel: 0, boil: 0 });
+    var zeroHidden = sg.waterRect.style.display === 'none';
+    q('SG draws NO water at wide level 0 (and 0.4), and draws it again at 0.6 (owner 11, the residual strip)',
+      dryHidden && wetShown && zeroHidden, 'wide 0.4 hidden ' + dryHidden + ', 0.6 shown ' + wetShown + ', 0 hidden ' + zeroHidden);
+    /* the narrow-range bracket sits at wide 30 % / 75 % */
+    var txt = {}; fakeWalk(sg.bracket || fakeNode('g'), function (n) { if (n.tag === 'text') txt[n.text] = n; });
+    var y0 = txt['0'] && +txt['0'].attrs.y - 6, y100 = txt['100'] && +txt['100'].attrs.y - 6;
+    var wideY = function (wide) { return 435 - wide / 100 * (435 - 48); };
+    q('the SG shell carries an NR bracket: ticks "0" and "100" at the wide-30 % and wide-75 % heights',
+      !!txt.NR && !!txt['0'] && !!txt['100'] && Math.abs(y0 - wideY(30)) < 0.5 && Math.abs(y100 - wideY(75)) < 0.5,
+      'NR ' + !!txt.NR + ', "0" at y ' + y0 + ' (wide 30 = ' + wideY(30).toFixed(1) + '), "100" at y ' + y100 + ' (wide 75 = ' + wideY(75).toFixed(1) + ')');
+  }
+  /* the highlight vocabulary: the two labels the checklists use reach their components */
+  q('highlight labels "Pressurizer" and "Steam Generator" resolve through the control-label map',
+    D.controlLabelItem('Pressurizer') === 'pressurizer' && D.controlLabelItem('Steam Generator') === 'steamGenerator',
+    D.controlLabelItem('Pressurizer') + ' / ' + D.controlLabelItem('Steam Generator'));
 
   /* ---- 3. the payload fixes, through the whole stack -------------------------------------- */
   if (!rec) head('ROUND TRIPS  [the #506.1 payload fixes land through service+kernel+shell]');
@@ -1521,6 +1687,8 @@ runSuite(null);
 
 /* ---- injection self-test ------------------------------------------------------------------ */
 var WSRC = fs.readFileSync(WIRING_PATH, 'utf8').replace(/\r\n/g, '\n');
+var SGPATH = path.join(__dirname, '..', 'ui', 'diagram', 'board', 'components', 'comp_steam_generator.js');
+var SGSRC = fs.readFileSync(SGPATH, 'utf8').replace(/\r\n/g, '\n');
 var SHPATH = path.join(SRC, 'pwr2_shell.js');
 var SHSRC = fs.readFileSync(SHPATH, 'utf8').replace(/\r\n/g, '\n');
 var KPATH = path.join(__dirname, '..', 'layers', 'control', 'control_kernel.js');
@@ -1534,6 +1702,44 @@ var SVCSRC = fs.readFileSync(SVCPATH, 'utf8').replace(/\r\n/g, '\n');
 var MPPATH = path.join(__dirname, '..', 'ui', 'manual_procedures.js');
 var MPSRC = fs.readFileSync(MPPATH, 'utf8').replace(/\r\n/g, '\n');
 var MUTS = [
+  /* ============ OWNER PLAYTEST 11/13/14 (2026-11-13): the RCS shows steam, steam is not on the ramp,
+   * the SG draws no water when empty. One mutation per claim. ============ */
+  ['the hot-leg pipes lose their live phase (an RCS pipe never shows steam)', WIRING_PATH, WSRC,
+   "    pms2ktktnan: hotLegPhase, pms2ktjq4ma: hotLegPhase, pms2kupl3b2: hotLegPhase,",
+   "    pms2ktktnan: null, pms2ktjq4ma: null, pms2kupl3b2: null,"],
+  ['the cold-leg pipes read the HOT-leg void (a cold-leg void never paints)', WIRING_PATH, WSRC,
+   "    pms2kovvgnh: coldLegPhase, pms2kozvu94: coldLegPhase, pms2kp1148p: coldLegPhase,",
+   "    pms2kovvgnh: hotLegPhase, pms2kozvu94: hotLegPhase, pms2kp1148p: hotLegPhase,"],
+  ['the leg phase loses its hysteresis (a pipe at 0.5 strobes with the history)', WIRING_PATH, WSRC,
+   "    return _legSteam[leg] ? 'steam' : 'water';\n  }\n  // A leg rendered",
+   "    return v > 0.5 ? 'steam' : 'water';\n  }\n  // A leg rendered"],
+  ['a steam pipe goes back onto the temperature ramp (the hot leg flickers cold/red again)', WIRING_PATH, WSRC,
+   "return phaseFn(s) === 'steam' ? STEAM_PIPE_C : tempFn(s);",
+   "return tempFn(s);"],
+  ['the steam generator is never told the tube voids', WIRING_PATH, WSRC,
+   "        hotVoid: (s && s.true_state || {}).primary_void_fraction,\n        coldVoid: (s && s.true_state || {}).cold_leg_void_fraction };",
+   "        hotVoid: 0, coldVoid: 0 };"],
+  ['the highlight map loses the Steam Generator label', WIRING_PATH, WSRC,
+   "'Pressurizer': 'pressurizer', 'Steam Generator': 'steamGenerator',\n    /* TWO LABELS",
+   "'Pressurizer': 'pressurizer',\n    /* TWO LABELS"],
+  ['the U-tube hot half ignores steam (the hot half stays on the ramp)', SGPATH, SGSRC,
+   "var hotFl = hotSteam ? StdPipe.phaseTempColor('steam', STEAM_TUBE_C) : StdPipe.phaseTempColor('water', thot);",
+   "var hotFl = StdPipe.phaseTempColor('water', thot);"],
+  ['the U-tube cold half ignores steam (the cold half stays on the ramp)', SGPATH, SGSRC,
+   "var coldFl = coldSteam ? StdPipe.phaseTempColor('steam', STEAM_TUBE_C) : StdPipe.phaseTempColor('water', tcold);",
+   "var coldFl = StdPipe.phaseTempColor('water', tcold);"],
+  ['a steam U-tube half takes the leg temperature instead of the steam colour point', SGPATH, SGSRC,
+   "StdPipe.phaseTempColor('steam', STEAM_TUBE_C) : StdPipe.phaseTempColor('water', thot)",
+   "StdPipe.phaseTempColor('steam', thot) : StdPipe.phaseTempColor('water', thot)"],
+  ['the U-tube steam latch loses its hysteresis (0.5 after steam reads water)', SGPATH, SGSRC,
+   "if (hv > 0.55) hotSteam = true; else if (hv < 0.45) hotSteam = false;",
+   "hotSteam = hv > 0.5;"],
+  ['the SG keeps drawing its water at wide 0 (the residual strip)', SGPATH, SGSRC,
+   "var dry = level <= DRY_WIDE;",
+   "var dry = false;"],
+  ['the NR bracket "0" tick sits at the wrong height', SGPATH, SGSRC,
+   "brEls.push(h('text', Object.assign({ x: brx + 12, y: brY0 + 6 }, brTxt), '0'));",
+   "brEls.push(h('text', Object.assign({ x: brx + 12, y: brY100 + 6 }, brTxt), '0'));"],
   /* THE VESSEL'S CORE DAMAGE (2026-11-12) — one mutation per prop the art is fed */
   ['the vessel is never told the cladding temperature (the rods never glow)', WIRING_PATH, WSRC,
    'cladC: t.clad_temp_c, oxFrac: t.oxidation_frac,', 'oxFrac: t.oxidation_frac,'],
@@ -1711,8 +1917,8 @@ var MUTS = [
    * voided loop draws as coolant — the shipped defect. Not a severed publication but a swapped
    * READ, the #516-item-1 shape: the void can be published perfectly and the pipe ignore it. */
   ['the primary pipes declare WATER again (a voided loop draws as coolant)', WIRING_PATH, WSRC,
-   "  function legContents(v) { return (v != null && isFinite(v) && v > 0.5) ? 'steam' : 'water'; }",
-   "  function legContents(v) { return 'water'; }"],
+   "    return _legSteam[leg] ? 'steam' : 'water';\n  }\n  // A leg rendered",
+   "    return 'water';\n  }\n  // A leg rendered"],
   /* #561: the plant stops handing its own delta-T equation to the reused instrument layer, so
    * the gauge falls back on the retired plant's fitted DNB surface — the shipped defect */
   ['the plant stops publishing its delta-T setpoint form (the gauge reverts to the DNB surface)',
