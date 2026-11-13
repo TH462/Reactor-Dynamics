@@ -6744,7 +6744,7 @@
         { text: 'Watch PRESSURIZER LEVEL climb, then press STOP on the ECCS card.',
           crew: true,
           control: 'ECCS', target: 'injection stopped with PRESSURIZER LEVEL climbing',
-          why: 'The crew had no gauge for the water in the reactor. They read the rising pressurizer level as a plant filling up and throttled injection hard. This board has one control for it: STOP.',   // App. II.1 E35/E36 (chapter 08 section 3.2): valves throttled, one of three pumps stopped -- not a full stop
+          why: 'They had no gauge for the water in the reactor. This board has one control for injection: STOP.',   // App. II.1 E35/E36 (chapter 08 section 3.2): valves throttled, one of three pumps stopped -- not a full stop
           ahead: 'The coolant boils. PRESSURIZER LEVEL pegs full while RCS INVENTORY keeps falling.',
           story: { clock: '04:05:07' },
           idea: 3, idea_text: 'A rising level normally means too much water, so the crew cut injection, as trained.',
@@ -6759,7 +6759,7 @@
           hl: ['ECCS — Stop'], hl_watch: ['Pressurizer Level', 'Pressurizer', 'HPI/LPI'] },
         /* 6 — 04:06:28, E42/E43. */
         { text: 'Watch PRESSURIZER LEVEL peg at 100 % and SUBCOOLING MARGIN fall to zero: the coolant is boiling.',
-          why: 'The pressurizer is full because steam in the loop pushed the water there. Level is not inventory.',
+          why: 'Zero SUBCOOLING MARGIN means the coolant is at its boiling point.',
           ahead: 'In 1979, eight minutes in, an operator sees the steam generator boiled dry and finds the AFW block valves shut.',
           story: { clock: '04:06:28' },
           idea: 2, idea_text: 'Steam in the loop pushed the water up here. The gauge reads full while the plant empties.',
@@ -6808,7 +6808,7 @@
         /* 9 — 04:10:37 (E56, first pump vibration alarm) to 05:13:37 (E99: "increasing vibration and
          * decreasing flow and amperage"). The drain, watched at 60x. */
         { text: 'Watch RCS INVENTORY on the chart fall while PRESSURIZER LEVEL reads full, then RCP FLOW fall below 25 %.',
-          why: 'Soon half the water is gone, and the one gauge the crew trusts for it says full. The pumps are moving more steam than water.',
+          why: 'By the end the pumps are moving more steam than water.',
           ahead: 'The pumps shake. The crew stops them to save them.',
           story: { clock: '04:10:37' },
           idea: 2, idea_text: 'The gauge stays at 100 % while RCS INVENTORY on the chart falls past half.',
@@ -6845,8 +6845,8 @@
          * onset of significant hydrogen generation; 2,200 degF is 10 CFR 50.46's cladding limit and this
          * plant's fuel-damage latch (both in pwr2_damage.js). TIMES ARE THE PLANT'S: MEASURED on the routes
          * below, not real-plant figures. */
-        { text: 'Watch Peak Clad Temp on the chart and the fuel in the vessel drawing pass 1,200 °F, then 2,200 °F.',
-          why: 'Above 1,200 °F the cladding reacts with the steam: it makes hydrogen and adds its own heat to the decay heat. 2,200 °F is the limit past which the fuel is counted as damaged.',   // critic round 2 M2: MEASURED, the climb is SLOWER above 1,200 °F on this plant (about 100 °F a plant-minute just below it, 1,000 °F in the 20 minutes above), so the card no longer says it speeds up
+        { text: 'Watch Peak Clad Temp on the chart pass 1,200 °F, then 2,200 °F.',
+          why: 'Above 1,200 °F the cladding reacts with steam and adds heat of its own. 2,200 °F is the damage limit.',   // critic round 2 M2: MEASURED, the climb is SLOWER above 1,200 °F on this plant (about 100 °F a plant-minute just below it, 1,000 °F in the 20 minutes above), so the card no longer says it speeds up
           note: 'The accumulators add a little water below 665 psi. It does not cover the core.',   // MEASURED 2026-11-13: accumulators 100 -> 83 % by the latch, core 100 % uncovered throughout
           story: { clock: '06:11:37' },   // E119, the hot leg off the top of its scale: the heat-up under way. Was 06:45:37 (E136, the radiation alarms), which read as LATER than step 12's 06:18:37 once the recovery steps were added
           idea: 5, idea_text: 'Shut down, the fuel still makes heat. With no water on it, nothing takes that heat away.',
@@ -6870,7 +6870,7 @@
         { text: 'Close the PORV block valve: click the valve symbol in the relief line.',
           crew: true,
           control: 'PORV Block Valve', target: 'the relief line isolated',
-          why: 'The block valve sits upstream of the stuck relief valve. Shut, it stops the leak whatever the relief valve is doing. It was available from the first minute.',
+          why: 'The block valve sits upstream of the stuck valve. It was available from the first minute.',
           note: 'If it is already closed, do not click it again: a second click reopens it.',
           ahead: 'The leak stops and pressure climbs. The water already lost is still gone, so the cladding keeps heating.',
           story: { clock: '06:18:37' },
@@ -6888,7 +6888,7 @@
         { text: 'Press START on the ECCS card to restart injection, then watch the core re-cover.',
           crew: true,
           control: 'ECCS', target: 'the core covered again',
-          why: 'Only injection puts the water back. In 1979 it was restarted 3 hours 20 minutes in, an hour after the block valve was shut.',
+          why: 'In 1979 injection was restarted 3 hours 20 minutes in.',
           note: 'In 1979 the cold water also shattered overheated fuel. This plant does not model that.',
           story: { clock: '07:20:37' },
           idea: 5, idea_text: 'Water back on the fuel is what ends it.',
