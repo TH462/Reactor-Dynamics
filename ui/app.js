@@ -5193,6 +5193,12 @@
    *         act_pause_s: N       (instructor) the clock is held if the asked-for press has not landed N
    *                              sim-seconds after it became the current ask; the card says so (`act_hold`).
    *
+   *   leg   why_fold: true       On a step that carries `idea`, Background (`why`) is drawn folded behind a
+   *                              one-line "Background" disclosure (a button: click, Enter or Space; closed
+   *                              again on every new step). A step's own `why_fold: true / false` overrides.
+   *                              ⚠ OPT-IN BECAUSE IT CROSSES A STANDING RULING (owner, 2026-10-02, #819: asked
+   *                              "(a) keep the fold / (b) revert to Background always open", replied "B").
+   *                              Nothing folds until content authors this field; authoring it is the owner's call.
    *   step / accs row
    *         beat_s: N            (UI, WALL seconds) when an `accs` row of the active step ticks, the clock is
    *                              held N wall-seconds and then released by itself, no Continue: the row is
@@ -5269,6 +5275,23 @@
   function cklBeatSpot(s) {
     var a = cklActiveStep(s), r = a ? cklBeatRow(a.ck) : -1, en = (r >= 0 && a.st.accs) ? a.st.accs[r] : null;
     return (en && ((en.hl && en.hl.length) || (en.hl_watch && en.hl_watch.length))) ? en : null;
+  }
+  /* `why_fold` — is this step's Background folded, and has the player opened it. The open state is
+   * keyed by leg + step, so it is closed again on every step entered (and after a Rewind). */
+  var cklWhyOpenKey = null, cklWhyFocus = false;
+  function cklWhyFolded(pr, st) {
+    if (!st || !st.why) return false;
+    if (st.why_fold != null) return !!st.why_fold;
+    return !!(pr && pr.why_fold && st.idea);
+  }
+  /* THE ALARM PANEL DIMS WITH THE BOARD (coordinator finding from live screenshots, 2026-11-13: 11-15
+   * full-strength alarms beside a dimmed board compete with the one thing spotlit). Only the STACK
+   * dims; the header and its count stay at full strength, so a new alarm's arrival is never hidden,
+   * and the stack comes back under the pointer or keyboard focus. Only ever under a walkthrough
+   * step's scope or a beat's spotlight. */
+  function cklDimAlarms(on) {
+    var ap = document.querySelector('.alarm-panel');
+    if (ap && ap.classList.contains('ckl-dimmed') !== !!on) ap.classList.toggle('ckl-dimmed', !!on);
   }
   function cklStepScope(s) {
     var a = cklActiveStep(s);
@@ -6164,7 +6187,7 @@
      * nothing the build renders, because the banner is latched at open. What replaces it is the
      * one bit that still changes the output: whether the checklist is underway. */
     var pcKey = (ck.step_index > 0 || (ck.steps_done || []).some(Boolean)) ? 'go' : 'entry';
-    var key = [ck.procedure_id, 'bt' + cklBeatRow(ck), (ck.act_hold ? 'ah' + ck.act_hold_row : ''),   // `act_pause_s`: the held line
+    var key = [ck.procedure_id, 'wf' + (cklWhyOpenKey === ck.procedure_id + '#' + ck.step_index ? 1 : 0), 'bt' + cklBeatRow(ck), (ck.act_hold ? 'ah' + ck.act_hold_row : ''),   // `act_pause_s`: the held line
       (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
       (ck.done_by || []).join(','),   // route-true text (#670) reads how each step was done
 
@@ -6902,7 +6925,14 @@
        * the background. we just need to clean up the steps and subtext to be more streamlined and
        * concise.")*. #818 package C made this a <details> closed on arrival; the answer to unread
        * subtext is SHORTER subtext (#819), not hidden subtext. Do not re-fold it. */
-      if (st.why) {
+      if (st.why && cklWhyFolded(pr, st)) {
+        /* `why_fold` (opt-in, see the field block): the ruling above stands for every step that does not author it */
+        var whyOpen = cklWhyOpenKey === pr.id + '#' + i;
+        det += '<div class="ckl-why ckl-why-fold' + (whyOpen ? ' ckl-why-open' : '') + '">' +
+          '<button type="button" class="ckl-why-tog" data-ckl-whyfold="' + i + '" aria-expanded="' + (whyOpen ? 'true' : 'false') + '">' +
+          '<i aria-hidden="true"></i>Background</button>' +
+          (whyOpen ? '<div class="ckl-why-body">' + mesc(st.why) + '</div>' : '') + '</div>';
+      } else if (st.why) {
         det += '<div class="ckl-why"><span class="ckl-why-lbl">Background</span>' +
           mesc(st.why) + '</div>';
       }
@@ -6991,6 +7021,9 @@
     var prevLog = cklScroller();
     var prevTop = prevLog ? prevLog.scrollTop : 0;
     cur.innerHTML = h;
+    /* `why_fold`: the rebuild replaced the disclosure the keyboard was on; put focus back on the new one
+     * (here, not in the click handler: the card is rebuilt on the paint after it) */
+    if (cklWhyFocus) { cklWhyFocus = false; var wfB = cur.querySelector('[data-ckl-whyfold]'); if (wfB) wfB.focus(); }
     cur.classList.toggle('ckl-co', coOn);
     cklPairPanel(s, ck, pr);
     // Persistent highlight for the up-next step (#244 item 5) — applied on every key
@@ -7798,6 +7831,7 @@
     var live = !!(ins && ins.scenario_id && !ins.level_complete);
     if (!live) B.clearPointers();
     var f = live ? ins.scope : null;
+    cklDimAlarms(!f && (!!cklBeatSpot(s) || !!cklStepScope(s)));
     if (!f) {
       /* A WALKTHROUGH STEP'S `scope` (see the field block above `cklStepScope`). Only when no beat
        * owns the dimming. The lit set is what the glow pass has ringed, by item id. */
@@ -11729,6 +11763,15 @@
         return;
       }
       if (e.target.closest('[data-ckl-stop]')) { releaseHold('walkthrough'); cmd({ action: 'stop_checklist' }); return; }
+      var wf = e.target.closest('[data-ckl-whyfold]');
+      if (wf) {   // `why_fold`: a real <button>, so Enter and Space arrive here as this click
+        var wfCk = latest && latest.instructor && latest.instructor.checklist;
+        var wfKey = wfCk ? wfCk.procedure_id + '#' + wf.getAttribute('data-ckl-whyfold') : null;
+        cklWhyOpenKey = (cklWhyOpenKey === wfKey) ? null : wfKey;
+        cklWhyFocus = true;   // renderChecklist puts focus back on the rebuilt line
+        if (latest) render(latest);
+        return;
+      }
       /* ⚰ THE `[data-ckl-why-all]` TOGGLE AND THE `.ckl-step` CLICK-TO-EXPAND WERE HERE and are
        * deleted (#737, owner-ruled 2026-09-13). See the cklState declaration for what they did,
        * why they were inert under the one-step card, and the measurement. The card click called
