@@ -6815,7 +6815,7 @@
         { text: 'Watch Peak Clad Temp on the chart and the fuel in the vessel drawing pass 1,200 °F, then 2,200 °F.',
           why: 'Above 1,200 °F the cladding reacts with the steam: it makes hydrogen and adds its own heat to the decay heat. 2,200 °F is the limit past which the fuel is counted as damaged.',   // critic round 2 M2: MEASURED, the climb is SLOWER above 1,200 °F on this plant (about 100 °F a plant-minute just below it, 1,000 °F in the 20 minutes above), so the card no longer says it speeds up
           note: 'The accumulators add some water once pressure falls below 665 psi. It does not cover the core. In 1979 the block valve was closed 2 hours 18 minutes in, with the core already damaged.',   // MEASURED 2026-11-13: accumulators 100 -> 83 % by the latch, core 100 % uncovered throughout
-          story: { clock: '06:45:37' },
+          story: { clock: '06:11:37' },   // E119, the hot leg off the top of its scale: the heat-up under way. Was 06:45:37 (E136, the radiation alarms), which read as LATER than step 12's 06:18:37 once the recovery steps were added
           scope: ['primary', 'pressurizer'],
           trend: ['clad_temp', 'uncovered', 'inventory', 'pzr_level', 'porv'],
           hold: 2700,   // 1500 -> 2700 (2026-11-13): the latch is 2079 s after entry on the typical route. // the REPLAY's dwell: it grades at the end of the hold, and on its own clocks (pumps off at 70 plant-min) the latch comes 18 min later and the core is part-quenched by 125 min (MEASURED 2026-11-12)
