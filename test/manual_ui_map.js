@@ -283,6 +283,8 @@ var STEP_UI = {
     { i: 6, view: 'board', control: 'AFW' },          // 04:08:37 — the found block valves
     { i: 7, view: 'board', control: 'Steam Dump' },   // AUTO after the trip = pressure mode
     { i: 9, view: 'board', control: 'RCP ON/OFF' },   // 05:41:37 — the pumps secured
+    { i: 11, view: 'board', control: 'PORV Block Valve' },   // 06:18:37 — the recovery
+    { i: 12, view: 'board', control: 'ECCS' },               // 07:20:37 — injection restored
   ],
   pwr_startup: [
     { i: 2,  view: 'board', control: 'Feed Pumps' },
