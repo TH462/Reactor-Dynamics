@@ -2594,6 +2594,23 @@ select.num-input { width: auto; }
 .ckl-kind-action > i { width: 0; height: 0; border-left: 7px solid currentColor; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent; }
 .ckl-step.ckl-active.ckl-k-event { border-left: 3px dashed #7fa8dd; }
 .ckl-step.ckl-active.ckl-k-event .ckl-ico { color: #7fa8dd; }
+/* `why_fold` -- Background behind a one-line disclosure (opt-in; ui/app.js cklWhyFolded). The caret is
+   drawn: right when closed, down when open. */
+.ckl-why.ckl-why-fold { margin-top: 8px; }
+.ckl-why-tog {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px 2px 2px; margin: 0;
+  background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 700; color: var(--text-2);
+}
+.ckl-why-tog:hover { color: var(--text); }
+.ckl-why-tog:focus-visible { outline: 2px solid #7fa8dd; outline-offset: 1px; }
+.ckl-why-tog > i { width: 0; height: 0; border-left: 6px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.ckl-why-open .ckl-why-tog > i { border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid currentColor; border-bottom: 0; }
+.ckl-why-body { margin-top: 4px; }
+/* the alarm stack under a walkthrough's dimming: the board's own numbers (pwr_board.css .bd-dimming) */
+.alarm-panel.ckl-dimmed .alarm-stack { opacity: 0.38; filter: grayscale(0.75); transition: opacity 0.45s ease, filter 0.45s ease; }
+.alarm-panel.ckl-dimmed:hover .alarm-stack, .alarm-panel.ckl-dimmed:focus-within .alarm-stack { opacity: 1; filter: none; }
+@media (prefers-reduced-motion: reduce) { .alarm-panel.ckl-dimmed .alarm-stack { transition: none; } }
 /* `idea` -- the key idea a step carries (ui/app.js renderChecklist). The heaviest thing on the card:
    a ruled panel in the card's own text colour with its largest type. No accent colour on purpose --
    amber is the action chip's and the cobalt rule is the forecast's. */

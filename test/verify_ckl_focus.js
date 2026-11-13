@@ -38,6 +38,15 @@
  *   the idea block made `if (false)`                                               -> 23
  *   the idea's range test dropped                                                  -> 24
  *   the finished card's ideas list made `if (false)`                               -> 25
+ * `why_fold` and the alarm panel (2026-11-13):
+ *   cklWhyFolded made to return false                                              -> 26, and the run stops there (no line to click)
+ *   renderChecklist: focus not put back on the rebuilt line                        -> 27
+ *   cklWhyFolded: the `st.idea` test dropped (folds every step of a `why_fold` leg) -> 30
+ *   the fold's click handler: the toggle of `cklWhyOpenKey` removed                -> 27
+ *   the render key's `wf` term removed (the click does not redraw)                 -> 27
+ *   cklDimAlarms made a no-op                                                      -> 29
+ *   cklDimAlarms called with `true` always                                         -> 1, 30, 14
+ *   shell.css: the `:hover` / `:focus-within` restore removed                      -> 29
  * NOT RED ALONE: syncSpeedUI's `k !== 'beat'` reverted to "any hold" — with syncPlayBtn no longer
  * dropping `lastSpeedSync` on a beat, that repaint does not run during one. Kept as the second guard.
  *   pwr_board.css: `.bd-focus-sil *` pointer-events rule narrowed back to `> *`    -> 13 (the clone takes the valve's click)
@@ -121,6 +130,15 @@ function ck(name, ok, detail) {
             afterText: !!(txt && (txt.compareDocumentPosition(b) & 4)), beforeRest: !next || !!(b.compareDocumentPosition(next) & 4),
             titlePx: parseFloat(getComputedStyle(t).fontSize), titleWeight: +getComputedStyle(t).fontWeight, otherPx: parseFloat(getComputedStyle(bg).fontSize) };
         })(),
+        why: (function () {
+          var w = act && act.querySelector('.ckl-why'); if (!w) return null;
+          var tg = w.querySelector('[data-ckl-whyfold]'), bd = w.querySelector('.ckl-why-body');
+          return { fold: w.classList.contains('ckl-why-fold'), expanded: tg ? tg.getAttribute('aria-expanded') : null, body: bd ? bd.textContent : null,
+            button: !!tg && tg.localName === 'button', focused: !!tg && document.activeElement === tg, text: w.textContent };
+        })(),
+        alarmDim: document.querySelector('.alarm-panel').classList.contains('ckl-dimmed'),
+        stackOpacity: +getComputedStyle(document.querySelector('.alarm-stack')).opacity,
+        titleOpacity: +getComputedStyle(document.getElementById('alarmTitle')).opacity,
         held: held ? held.textContent : null, idx: c ? c.idx : -1 };
     }, VALVE);
   }
@@ -128,13 +146,13 @@ function ck(name, ok, detail) {
   // ---------------------------------------------------------------- control: the leg with none of the fields
   await page.evaluate(function (id) {
     var L = RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === id; })[0];
-    delete L.scope; delete L.step_kinds; delete L.ideas;
-    L.steps.forEach(function (s) { delete s.idea; delete s.idea_text; delete s.beat_s; delete s.scope; delete s.tag; delete s.ahead_label; delete s.act_pause_s; delete s.inject_delay_s; (s.accs || []).forEach(function (a) { delete a.act_pause_s; }); });
+    delete L.scope; delete L.step_kinds; delete L.ideas; delete L.why_fold;
+    L.steps.forEach(function (s) { delete s.why_fold; delete s.idea; delete s.idea_text; delete s.beat_s; delete s.scope; delete s.tag; delete s.ahead_label; delete s.act_pause_s; delete s.inject_delay_s; (s.accs || []).forEach(function (a) { delete a.act_pause_s; }); });
   }, LEG);
   await start();
   var c0 = await read();
   ck('1. CONTROL — a leg that authors none of the fields: no dimming, no tag, no kind chip, solid rule',
-     !c0.dimming && c0.dim === 0 && !c0.tag && c0.kind == null && c0.rule === 'solid' && c0.idea == null,
+     !c0.dimming && c0.dim === 0 && !c0.tag && c0.kind == null && c0.rule === 'solid' && c0.idea == null && !c0.alarmDim && c0.stackOpacity === 1 && !!c0.why && !c0.why.fold,
      JSON.stringify({ dimming: c0.dimming, dim: c0.dim, tag: c0.tag, kind: c0.kind, rule: c0.rule }));
   await page.evaluate(function () { RD.__dev.cmd({ action: 'stop_checklist' }); });
   await page.waitForTimeout(500);
@@ -149,8 +167,9 @@ function ck(name, ok, detail) {
     L.ideas = ['Heat with nowhere to go', 'Level is not inventory'];
     L.steps[0].idea = 2; L.steps[0].idea_text = 'The pressurizer can read full while the plant drains.';
     L.steps[8].idea = 7;                   // out of range: draws nothing
+    L.why_fold = true;                     // Background folds on the steps that carry an `idea`
     L.steps[8].scope = ['Steam Generator'];
-    L.steps[6].scope = false;
+    L.steps[6].scope = false; delete L.steps[6].idea;
   }, LEG);
   await start();
   var a = await read();
@@ -170,8 +189,36 @@ function ck(name, ok, detail) {
   ck('23. `idea`: the step carries a KEY IDEA block under its instruction line and above everything else: "Key idea 2 of 2", the leg\'s title, the step\'s text, in the card\'s largest type',
      !!a.idea && a.idea.h === 'Key idea 2 of 2' && a.idea.t === 'Level is not inventory' && a.idea.x === 'The pressurizer can read full while the plant drains.' &&
      a.idea.afterText && a.idea.beforeRest && a.idea.titleWeight >= 700 && a.idea.titlePx > a.idea.otherPx, JSON.stringify(a.idea));
+  // `why_fold`: Background behind a disclosure on an idea step, opened by click, closed by Enter, closed again on the next step
+  var whyWant = await page.evaluate(function (id) { return RD.MANUAL_PROCEDURES.pwr2.filter(function (p) { return p.id === id; })[0].steps[0].why; }, LEG);
+  ck('26. `why_fold`: on a step that carries an `idea`, Background is one focusable line and its text is not drawn',
+     !!a.why && a.why.fold && a.why.button && a.why.expanded === 'false' && a.why.body == null && a.why.text.indexOf(whyWant.slice(0, 30)) === -1,
+     JSON.stringify(a.why));
+  await page.click('#cklRun [data-ckl-whyfold]');
+  await page.waitForTimeout(250);
+  var wo = (await read()).why;
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
+  var wc = (await read()).why;
+  ck('27. ...a click opens it (the full text, aria-expanded true, focus kept on the line) and Enter from the keyboard closes it',
+     !!wo && wo.expanded === 'true' && wo.body === whyWant && wo.focused && !!wc && wc.expanded === 'false' && wc.body == null,
+     JSON.stringify({ opened: wo && wo.expanded, bodyMatches: !!wo && wo.body === whyWant, focused: wo && wo.focused, afterEnter: wc && wc.expanded }));
+  await page.click('#cklRun [data-ckl-whyfold]');   // left OPEN on this step, to prove the next one arrives closed
+  // the alarm panel dims with the board
+  await page.mouse.move(400, 400);
+  await page.waitForTimeout(700);
+  var al1 = await read();
+  await page.hover('.alarm-stack');
+  await page.waitForTimeout(700);
+  var al2 = await read();
+  await page.mouse.move(400, 400);
+  ck('29. under a step\'s `scope` the alarm STACK dims to the board\'s 0.38, its header and count stay at full strength, and it comes back under the pointer',
+     al1.alarmDim && Math.abs(al1.stackOpacity - 0.38) < 0.02 && al1.titleOpacity === 1 && al2.stackOpacity === 1,
+     JSON.stringify({ dimClass: al1.alarmDim, stack: al1.stackOpacity, title: al1.titleOpacity, hovered: al2.stackOpacity }));
   await jump(8);   // step 9: hl_watch names Reactor Vessel (component art) and two cards
   var b = await read();
+  ck('28. ...and the fold is closed again on the next step that has one (it was left open on step 1)',
+     !!b.why && b.why.fold && b.why.expanded === 'false' && b.why.body == null, JSON.stringify(b.why));
   ck('24. ...and a step without a valid `idea` draws none (step 9 here: `idea: 7` of 2)', b.idea == null && b.idx === 8, JSON.stringify(b.idea));
   var rv = b.ols.reactorVessel, rvHalo = b.silHalo.filter(function (h) { return h.id === 'reactorVessel'; })[0];
   ck('7. a WATCHED component is outlined on its own art: a standing, steady silhouette on the reactor vessel',
@@ -188,6 +235,8 @@ function ck(name, ok, detail) {
   var vo = d.ols[VALVE];
   ck('10. a component the step asks you to PRESS pulses on its outline (bdStepSil), and `scope: false` lifts the dimming for that step',
      !!vo && vo.kind === 'press' && vo.anim === 'bdStepSil' && !d.dimming && d.dim === 0, JSON.stringify({ valve: vo || null, dimming: d.dimming, dim: d.dim }));
+  ck('30. a step without an `idea` keeps Background open as ruled, and with `scope: false` the alarm panel is not dimmed',
+     !!d.why && !d.why.fold && d.why.text.length > 30 && !d.alarmDim && d.stackOpacity === 1, JSON.stringify({ why: d.why && { fold: d.why.fold, len: d.why.text.length }, alarmDim: d.alarmDim, stack: d.stackOpacity }));
   ck('11. `step_kinds`: step 7 asks for a press — chip "Your action", solid rule',
      d.kind === 'Your action' && d.rule === 'solid', d.kind + ' / ' + d.rule);
 
@@ -334,7 +383,7 @@ function ck(name, ok, detail) {
   await page.waitForTimeout(700);
   var e = await read();
   ck('14. ending the walkthrough lifts all of it: no dimming, no outlines, no tag',
-     !e.dimming && e.dim === 0 && Object.keys(e.ols).length === 0 && !e.tag && e.silHalo.length === 0,
+     !e.dimming && e.dim === 0 && Object.keys(e.ols).length === 0 && !e.tag && e.silHalo.length === 0 && !e.alarmDim,
      JSON.stringify({ dimming: e.dimming, dim: e.dim, ols: Object.keys(e.ols), tag: e.tag }));
 
   await browser.close();
