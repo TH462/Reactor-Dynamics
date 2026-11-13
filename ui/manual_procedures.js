@@ -6648,7 +6648,7 @@
       id: 'pwr_tmi2_meltdown', category: 'incident', manual_ref: 'PWR-E08',
       story_year: 1979,
       title: 'Three Mile Island Unit 2 — the chain of events to core damage',
-      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to the point serious core damage began. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 100 plant-minutes.',
+      purpose: 'The chain of events that uncovered the core at Three Mile Island Unit 2, link by link, from the feed pump trip to core damage, then the two actions that ended it. Each card says what happens next. The failures arrive by themselves; you take the crew\'s actions. About 125 plant-minutes.',
       from: 'hot_full_power',
       prereq: [
         'Plant at Mode 1, At Power: REACTOR POWER near 100 % with the turbine on line (auto-checked).',
@@ -6807,10 +6807,44 @@
             text: 'Overtaken: you closed the PORV block valve or restarted injection. That is the recovery the 1979 crew reached too late.' },
           accs: [{ p: 'clad_temp_c', op: '>', v: 648.9, label: 'Peak Clad Temp above 1,200 °F: hydrogen is being made' },
                  { p: 'fuel_damaged', op: '>', v: 0, label: 'Peak Clad Temp above 2,200 °F: the fuel is damaged' }],
+          ahead: 'In 1979 a new shift supervisor compared the relief line temperatures, concluded the valve was leaking, and had the block valve shut.',
           hl_watch: ['Reactor Vessel', 'Relief Valve (PORV)', 'PORV Block Valve'] },
+        /* 12 — THE RECOVERY, 06:18:37 (App. II.1 E122/E124, chapter 08 section 5.0). Added 2026-11-13 on the
+         * owner's playtest ("add the recovery actions that the crews took after meltdown"). MEASURED 2026-11-13,
+         * full stack, 75 % stuck, valve closed one plant-min after the latch: PRIMARY PRESSURE 507 psi at the
+         * close, 814 two plant-min later, 998 at four; the cladding still peaks at 3,074 degF, 27.7 % oxidised. */
+        { text: 'Close the PORV block valve: click the valve symbol in the relief line.',
+          crew: true,
+          control: 'PORV Block Valve', target: 'the relief line isolated',
+          why: 'The block valve sits upstream of the stuck relief valve. Shut, it stops the leak whatever the relief valve is doing. It was available from the first minute.',
+          note: 'If it is already closed, do not click it again: a second click reopens it.',
+          ahead: 'The leak stops and pressure climbs. The water already lost is still gone, so the cladding keeps heating.',
+          story: { clock: '06:18:37' },
+          trend: ['pressure', 'clad_temp', 'uncovered', 'inventory', 'porv'],
+          cmd: { action: 'close_block_valve' }, hold: 300,
+          accs: [{ cmd: { action: 'close_block_valve' }, p: 'block_valve_open', op: '<', v: 1, label: 'PORV block valve closed' },   // press OR position: the symbol toggles
+                 { p: 'pressure_mpa', op: '>', v: 6.205, label: 'PRIMARY PRESSURE back above 900 psi' }],
+          hl: ['PORV Block Valve'], hl_watch: ['Plant Pressure', 'Reactor Vessel'] },
+        /* 13 — 07:20:37 (E167, "ESF manually initiated. Makeup pump MU-P1C starts."; "Rapid quenching probably
+         * caused major fuel damage."). MEASURED 2026-11-13, same ride, START five plant-min after the valve:
+         * the core is fully covered 35 plant-min after the press and the cladding is at 548 degF at 41. */
+        { text: 'Press START on the ECCS card to restart injection, then watch the core re-cover.',
+          crew: true,
+          control: 'ECCS', target: 'the core covered again',
+          why: 'Only injection puts the water back. In 1979 it was restarted 3 hours 20 minutes in, an hour after the block valve was shut.',
+          note: 'In 1979 the cold water on overheated fuel did more damage: "Rapid quenching probably caused major fuel damage." This plant does not model that.',
+          story: { clock: '07:20:37' },
+          trend: ['clad_temp', 'uncovered', 'inventory', 'pressure'],
+          cmd: { action: 'set_hpi', active: true }, hold: 1800,
+          wait_speed: 60,
+          wait_est_s: 1215, wait_est_from: 'cmd',
+          accs: [{ cmd: { action: 'set_hpi', active: true }, p: 'hpi_flow_normalized', op: '>', v: 0.02, label: 'injection flowing' },
+                 { p: 'clad_temp_c', op: '<', v: 371.1, label: 'Peak Clad Temp back below 700 °F' },
+                 { p: 'core_uncovered_frac', op: '<', v: 0.02, label: 'the core is covered again' }],   // MEASURED 2026-11-13, live runtime, seed 42: 700 degF 867 s after entry, covered 1221 s (20.4 plant-min); peak 3,254 degF
+          hl: ['ECCS — Start'], hl_watch: ['HPI/LPI', 'Reactor Vessel'] },
       ],
       guard: { never_melted: true },
-      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is stuck three-quarters open: at a smaller leak this model\'s cladding stops heating short of damage, which understates the real plant.',
+      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\n8. The block valve was shut, 2 hours 18 minutes in. The leak stopped.\n9. Injection was restarted and the core re-covered. A coolant pump was restarted 15 hours 50 minutes in, and the plant was stable.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is stuck three-quarters open: at a smaller leak this model\'s cladding stops heating short of damage, which understates the real plant.',
       route_alt: [{ overtaken: [9], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' },
         { overtaken: [11], outcome: 'You broke the chain at its last link. With the leak isolated or injection restored, the cladding stops climbing. In 1979 the block valve was closed 2 hours 18 minutes in, after the damage had begun.' }],
     },
