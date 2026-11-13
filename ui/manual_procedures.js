@@ -6655,6 +6655,15 @@
        * `scope` names the context left un-dimmed without a ring. */
       step_kinds: true,
       scope: [],
+      /* THE FIVE IDEAS (owner, 2026-11-13: "the goal isn't strictly to have a person be able to regurgitate what went wrong
+       * in what order but to understand the major points in the major causes of it and how that interacts with the plant";
+       * "I agree with adjusting the steps and giving more weight to the important parts"). A step that carries one says
+       * `idea: n`; the steps that carry none are set-up and stay light. */
+      ideas: ['Heat with nowhere to go raises pressure, and a relief valve that stays open is a leak',
+              'Level is not inventory: boiling pushes water into the pressurizer while the plant empties',
+              'The crew acted correctly on a wrong picture',
+              'Moving froth still cools: stopping the pumps left the fuel dry',
+              'Dry fuel heats itself, and only water ends it'],
       prereq: [
         'Plant at Mode 1, At Power: REACTOR POWER near 100 % with the turbine on line (auto-checked).',
       ],
@@ -6679,6 +6688,7 @@
           why: 'With no feedwater the steam generator boils down, so the heat stays in the reactor coolant and its pressure climbs to the relief valve setting.',
           ahead: 'Pressure falls, the valve is told to close, and it sticks open. The reactor trips.',
           story: { clock: '04:00:37' },
+          idea: 1, idea_text: 'With feedwater gone the steam generator stops taking heat. The heat stays in the reactor coolant: watch PRIMARY PRESSURE climb until the relief valve lifts.',
           scope: ['feed', 'secondary', 'pressurizer'], tag: true,
           inject_delay_s: 8,   // the failures land 8 s after Continue (owner playtest: 'a few seconds later the issues start')
           inject: [{ failure: 'condensate_polisher_trip' }, { failure: 'loss_of_feedwater' },
@@ -6694,6 +6704,7 @@
           why: 'The lamp shows the signal sent to the valve, not the valve. The readout is the pipe leaving it: hot means steam is still passing.',
           ahead: 'Coolant keeps leaving through the stuck valve. Pressure falls until emergency injection starts by itself.',
           story: { clock: '04:00:45' },
+          idea: 1, idea_text: 'The valve did its job, then failed to close. From here the plant is losing coolant, and the one lamp for the valve says it is shut.',
           scope: ['pressurizer'], tag: true,
           hold: 90,   // 60 -> 90 (2026-11-13): at 75 % stuck the trip comes 59 s after entry, not 47 (MEASURED, live runtime, seed 42)
           pause_on_met: true,
@@ -6706,6 +6717,7 @@
           note: 'INJ FLOW reads 0 GPM until pressure falls below about 1380 psi: the pump cannot push against more.',
           ahead: 'PRESSURIZER LEVEL rises. Steam forming in the hot coolant pushes water up into the pressurizer, so the level climbs while the plant loses water.',
           story: { clock: '04:02:39' },
+          idea: 2, idea_text: 'Pressure is falling toward the point where water this hot boils. Watch SUBCOOLING MARGIN: at zero, steam starts to form in the loop.',
           scope: ['eccs', 'pressurizer'], tag: true,
           hold: 90,   // the replay's STOP on step 5 must land after the reset window opens (125.5 s, `pwr_tmi2_incident` 6)
           pause_on_met: true,
@@ -6718,6 +6730,7 @@
           why: 'The crew had no gauge for the water in the reactor. They read the rising pressurizer level as a plant filling up and throttled injection hard. This board has one control for it: STOP.',   // App. II.1 E35/E36 (chapter 08 section 3.2): valves throttled, one of three pumps stopped -- not a full stop
           ahead: 'With injection off the coolant boils. PRESSURIZER LEVEL pegs at the top while RCS INVENTORY, the water really in the plant, keeps falling.',
           story: { clock: '04:05:07' },
+          idea: 3, idea_text: 'A rising pressurizer level normally means too much water. The crew read it that way and did what their training said: cut injection.',
           scope: ['pressurizer', 'eccs'], tag: true,
           act_pause_s: 20,   // the clock stops if STOP is not pressed 20 s after the level row ticks
           pair: ['pzr_level', 'inventory'],
@@ -6732,6 +6745,7 @@
           why: 'The pressurizer is full because steam in the loop pushed the water there. Level is not inventory.',
           ahead: 'In 1979, eight minutes in, an operator sees the steam generator boiled dry and finds the AFW block valves shut.',
           story: { clock: '04:06:28' },
+          idea: 2, idea_text: 'The pressurizer is full because steam elsewhere pushed the water into it. Compare PRESSURIZER LEVEL with RCS INVENTORY: one reads full, the other is falling.',
           scope: ['pressurizer', 'primary'], tag: true,
           pair: ['pzr_level', 'inventory'],
           hold: 200,
@@ -6780,6 +6794,7 @@
           why: 'Soon half the water is gone, and the one gauge the crew trusts for it says full. The pumps are moving more steam than water.',
           ahead: 'The pumps shake. The crew stops them to save them.',
           story: { clock: '04:10:37' },
+          idea: 2, idea_text: 'For most of an hour the two readings move apart. The gauge the crew trusts stays at 100 % while half the water leaves.',
           scope: ['primary', 'pressurizer'],
           pair: ['pzr_level', 'inventory'],
           trend: ['pressure', 'pzr_level', 'inventory', 'uncovered', 'porv'], window: 7200,
@@ -6801,6 +6816,7 @@
           why: 'Stopping the pumps was right for the pumps. It also ended the only flow cooling the core.',
           ahead: 'The pumps coast to a stop. With no flow, "natural circulation was blocked by steam": nothing carries the heat away, and the cladding starts to climb.',
           story: { clock: '05:41:37' },
+          idea: 4, idea_text: 'The pumps are shaking because they are pumping froth. That froth is still carrying heat off the fuel. When they stop, steam rises, water settles, and the top of the core is left in steam.',
           scope: ['primary'],
           act_pause_s: 60,
           cmd: { action: 'set_rcp', running: false }, hold: 120,
@@ -6816,6 +6832,7 @@
           why: 'Above 1,200 °F the cladding reacts with the steam: it makes hydrogen and adds its own heat to the decay heat. 2,200 °F is the limit past which the fuel is counted as damaged.',   // critic round 2 M2: MEASURED, the climb is SLOWER above 1,200 °F on this plant (about 100 °F a plant-minute just below it, 1,000 °F in the 20 minutes above), so the card no longer says it speeds up
           note: 'The accumulators add some water once pressure falls below 665 psi. It does not cover the core. In 1979 the block valve was closed 2 hours 18 minutes in, with the core already damaged.',   // MEASURED 2026-11-13: accumulators 100 -> 83 % by the latch, core 100 % uncovered throughout
           story: { clock: '06:11:37' },   // E119, the hot leg off the top of its scale: the heat-up under way. Was 06:45:37 (E136, the radiation alarms), which read as LATER than step 12's 06:18:37 once the recovery steps were added
+          idea: 5, idea_text: 'Fuel keeps making heat after shutdown. With no water on it, nothing takes that heat away, and above 1,200 °F the cladding adds heat of its own.',
           scope: ['primary', 'pressurizer'],
           trend: ['clad_temp', 'uncovered', 'inventory', 'pzr_level', 'porv'],
           hold: 2700,   // 1500 -> 2700 (2026-11-13): the latch is 2079 s after entry on the typical route. // the REPLAY's dwell: it grades at the end of the hold, and on its own clocks (pumps off at 70 plant-min) the latch comes 18 min later and the core is part-quenched by 125 min (MEASURED 2026-11-12)
@@ -6840,6 +6857,7 @@
           note: 'If it is already closed, do not click it again: a second click reopens it.',
           ahead: 'The leak stops and pressure climbs. The water already lost is still gone, so the cladding keeps heating.',
           story: { clock: '06:18:37' },
+          idea: 5, idea_text: 'Shutting the leak keeps what water is left. It does not put any back: watch the cladding keep climbing.',
           scope: ['pressurizer', 'primary'],
           act_pause_s: 30,   // the cladding is still climbing: the clock stops rather than let the fuel melt under an unread card
           trend: ['pressure', 'clad_temp', 'uncovered', 'inventory', 'porv'],
@@ -6856,6 +6874,7 @@
           why: 'Only injection puts the water back. In 1979 it was restarted 3 hours 20 minutes in, an hour after the block valve was shut.',
           note: 'In 1979 the cold water on overheated fuel did more damage: "Rapid quenching probably caused major fuel damage." This plant does not model that.',
           story: { clock: '07:20:37' },
+          idea: 5, idea_text: 'Water back on the fuel is what ends it. Watch Core Uncovered fall to zero and the cladding follow.',
           scope: ['eccs', 'primary'],
           act_pause_s: 30,
           trend: ['clad_temp', 'uncovered', 'inventory', 'pressure'],
@@ -6868,7 +6887,7 @@
           hl: ['ECCS — Start'], hl_watch: ['HPI/LPI', 'Reactor Vessel'] },
       ],
       guard: { never_melted: true },
-      outcome: 'The chain, link by link:\n1. Feedwater lost. The heat had no way out, pressure rose, and the relief valve opened, as designed.\n2. The valve stuck open. Its lamp showed the signal sent, not the valve, and read CLOSED.\n3. Pressure fell and injection started by itself.\n4. Steam in the loop pushed water into the pressurizer. The crew read the rising level as a full plant and cut injection back.\n5. The plant drained through the open valve while PRESSURIZER LEVEL read full: RCS INVENTORY fell to about a quarter.\n6. The pumps, shaking on steam, were stopped. The flow that had been cooling the core ended.\n7. The uncovered cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged.\n8. The block valve was shut, 2 hours 18 minutes in. The leak stopped.\n9. Injection was restarted and the core re-covered. A coolant pump was restarted 15 hours 50 minutes in, and the plant was stable.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is stuck three-quarters open: at a smaller leak this model\'s cladding stops heating short of damage, which understates the real plant.',
+      outcome: '1. Feedwater was lost, so the reactor\'s heat stayed in the coolant and pressure rose until the relief valve opened. The valve then stuck open, and its lamp, wired to the signal and not the valve, read CLOSED.\n2. Pressure fell until the hot coolant boiled. The steam pushed water up into the pressurizer, so PRESSURIZER LEVEL read full while RCS INVENTORY fell to about a quarter.\n3. The crew had no gauge for the water in the reactor. A full pressurizer told them the plant was full, and they cut injection back, as trained.\n4. The pumps kept a froth of steam and water moving through the core, and that was cooling it. Shaking, they were stopped. Steam and water separated and the fuel stood dry.\n5. The dry cladding heated, reacted with the steam, and passed 2,200 °F: the core was damaged. Shutting the block valve stopped the leak, 2 hours 18 minutes in. Restarting injection, an hour later, re-covered the core. A coolant pump was restarted 15 hours 50 minutes in.\nTwo things differ from 1979. This plant\'s turbine trip was kept from tripping the reactor. Its relief valve is stuck three-quarters open: at a smaller leak this model\'s cladding stops heating short of damage, which understates the real plant.',
       route_alt: [{ overtaken: [9], outcome: 'You broke the chain. Closing the PORV block valve stops the leak, and injection puts the water back: either one, taken in time, keeps the core covered. In 1979 the valve stayed open for 2 hours 18 minutes and injection stayed throttled, and serious core damage followed.' },
         { overtaken: [11], outcome: 'You broke the chain at its last link. With the leak isolated or injection restored, the cladding stops climbing. In 1979 the block valve was closed 2 hours 18 minutes in, after the damage had begun.' }],
     },
