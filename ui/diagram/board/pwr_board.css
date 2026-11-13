@@ -581,6 +581,19 @@
   border-radius: 50%; border: 1px solid #1a1206; transform: translateX(-50%);
 }
 
+/* THE WALKTHROUGH'S TAG (setTag `compact`) — small, reads CAUTION, and hangs BESIDE the valve from
+   its stem instead of over the body, so the valve's open/closed drawing stays readable. */
+.bd-maint-tag.bd-tag-compact {
+  left: 50%; top: 0; transform: translate(9px, -72%) rotate(9deg); transform-origin: 0 0;
+  min-width: 0; border-radius: 2px;
+  font-size: 6.5px; letter-spacing: 0.06em; padding: 5px 3px 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.bd-maint-tag.bd-tag-compact::before {
+  left: 3px; top: 2px; width: 11px; height: 1px; transform: rotate(150deg); transform-origin: 0 50%;
+}
+.bd-maint-tag.bd-tag-compact::after { left: 3px; top: 1px; width: 2px; height: 2px; transform: translate(-50%, 0); }
+
 /* ---- paused overlay (spec: Pause freeze) ---- */
 .pwr-board-paused {
   position: absolute; inset: 0; display: none; z-index: 60;
@@ -630,7 +643,10 @@
 }
 .bd-focus-ol { position: absolute; pointer-events: none; opacity: 0; will-change: opacity; }
 .bd-focus-sil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-.bd-focus-sil > * { pointer-events: none !important; }
+/* EVERY descendant, not only the clone's root: a valve's hit circle carries its own pointer-events,
+   and a STANDING outline (setStepOutlines) sits over the live valve for a whole step — measured
+   2026-11-13: the clone's `circle.vlv-hit` took the click and the valve never opened. */
+.bd-focus-sil, .bd-focus-sil * { pointer-events: none !important; }
 /* THE POINTER'S CUE: fade in, three pulses, fade out — 4.2 s, run once. pointAt() removes the
    element on a timer just after (POINT_MS / POINT_REMOVE_MS), so it expires with or without the
    animation. Clearing it early (End) fades it out. */
@@ -662,7 +678,21 @@
 .pwr-board-stage.bd-undimming > .bd-tile, .pwr-board-stage.bd-undimming > svg:first-child > * {
   transition: opacity 0.45s ease, filter 0.45s ease;
 }
+/* STEP OUTLINES (pwr_board.js setStepOutlines): the walkthrough glow on a component's own outline.
+   Standing, not a cue: steady for WATCH, an opacity pulse for PRESS at the rectangle's own 1.2 s.
+   The halo underneath keeps its glow class and loses its paint — except the PRESS ring under
+   reduced motion, where the dashed rectangle is the one declared moving cue (#740) and stays. */
+.bd-focus-ol.bd-step-ol { opacity: 0.95; }
+.bd-focus-ol.bd-step-ol.bd-step-press { animation: bdStepSil 1.2s ease-in-out infinite; }
+@keyframes bdStepSil { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+.pwr-board-stage .bd-halo.bd-halo-sil:is(.ckl-watch-glow, .ckl-check-glow, .ckl-step-done) {
+  box-shadow: none; outline-color: transparent; animation: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pwr-board-stage .bd-halo.bd-halo-sil.ckl-step-glow { box-shadow: none; outline-color: transparent; animation: none; }
+}
 @media (prefers-reduced-motion: reduce) {
+  .bd-focus-ol.bd-step-ol.bd-step-press { animation: none; opacity: 0.95; }
   .bd-focus-ol.on { animation: none; opacity: 0.9; }
   .bd-focus-ol.bd-out { animation: none; opacity: 0; }
   .pwr-board-stage.bd-dimming > .bd-tile, .pwr-board-stage.bd-dimming > svg:first-child > *,

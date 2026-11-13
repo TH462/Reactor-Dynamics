@@ -3588,7 +3588,10 @@
       var chat = s.instructor && s.instructor.chat;
       var granted = !!(tagId && chat && chat.interactions && chat.interactions[tagId] &&
                        chat.interactions[tagId].granted);
-      pwrDisp.setTag(tagId || null, !!tagId && !granted);
+      /* a walkthrough step's own `tag: true` -- the compact CAUTION tag; the scenario prop wins */
+      var cklTagA = tagId ? null : cklActiveStep(s);
+      if (cklTagA && cklTagA.st.tag) pwrDisp.setTag('ckl', true, { compact: true });
+      else pwrDisp.setTag(tagId || null, !!tagId && !granted);
     }
   }
 
@@ -5160,6 +5163,73 @@
   }
   /* The active walkthrough step, or null — the same lookup `syncWarpInfo` does, named once so the
    * clock and the words cannot read different steps. */
+  /* ===================== WALKTHROUGH PRESENTATION FIELDS (owner playtest of pwr_tmi2_meltdown, 2026-11-13)
+   * Read here and in layers/instructor_layer.js (`_stepChecklist`); all OPT-IN, and a leg that
+   * authors none of them draws and times exactly as before.
+   *
+   *   step  scope: [names]       While the step is active the board is DIMMED except (i) the step's `hl` /
+   *                              `hl_watch` targets, which keep their glow, and the card each lit control
+   *                              sits on; and (ii) the `scope` names, un-dimmed with no glow: board regions
+   *                              (primary, pressurizer, rods, nis, secondary, feed, cvcs, eccs), component
+   *                              names (Reactor Vessel, Pressurizer, Steam Generator, ...) or any highlight
+   *                              label. `scope: []` dims everything but (i). An instructor beat's own
+   *                              scope wins while a scenario runs. Lifted when the walkthrough ends.
+   *   leg   scope: [names]       The default for every step of the leg; a step's own `scope` replaces it,
+   *                              `scope: false` on a step turns dimming off for that step.
+   *   step  tag: true            The small CAUTION tag hangs on the AFW block valve while the step is active.
+   *   leg   step_kinds: true     Every card of the leg wears its kind: WATCH (the plant does it) or YOUR
+   *                              ACTION (the step asks for a press: `cmd`, or an `accs` row with a `cmd`).
+   *   step  ahead_label: '...'   Replaces the forecast block's heading ("What happens next").
+   *   step  inject_delay_s: N    (instructor) `inject` / `clear` fire N sim-seconds after step entry.
+   *   step / accs row
+   *         act_pause_s: N       (instructor) the clock is held if the asked-for press has not landed N
+   *                              sim-seconds after it became the current ask; the card says so (`act_hold`).
+   *
+   * NOT A FIELD: the glow on component art (a vessel, a pump, a valve named in `hl` / `hl_watch`) is
+   * drawn on the object's outline for every walkthrough (`cklSyncSil`). */
+  function cklStepScope(s) {
+    var a = cklActiveStep(s);
+    if (!a) return null;
+    var sc = a.st.scope != null ? a.st.scope : a.pr.scope;
+    return Array.isArray(sc) ? sc : null;
+  }
+  function cklStepIsAction(st) {
+    if (!st) return false;
+    if (st.cmd) return true;
+    for (var i = 0; st.accs && i < st.accs.length; i++) if (st.accs[i] && st.accs[i].cmd) return true;
+    return false;
+  }
+  /* What the walkthrough has lit on the BOARD right now, as item ids, read off the glow classes
+   * themselves so the dimming and the outlines can never disagree with the rings. `press` is what
+   * still pulses; everything else lit (a pressed control, a watched indication, a checked control)
+   * is `steady`; `panel` is the card a lit control sits on. */
+  function cklLitItems() {
+    var B = scopeBoard(), out = { press: [], steady: [], panel: [] };
+    if (!B || !B.itemIdFor) return out;
+    function add(list, el) { var id = B.itemIdFor(el); if (id && list.indexOf(id) === -1) list.push(id); }
+    document.querySelectorAll('#viewArea .bd-halo.ckl-step-glow').forEach(function (el) {
+      add(el.classList.contains('ckl-step-done') ? out.steady : out.press, el);
+    });
+    document.querySelectorAll('#viewArea .bd-halo.ckl-watch-glow, #viewArea .bd-halo.ckl-check-glow').forEach(function (el) { add(out.steady, el); });
+    document.querySelectorAll('#viewArea .bd-halo.ckl-panel-glow').forEach(function (el) { add(out.panel, el); });
+    return out;
+  }
+  /* The standing silhouettes follow the glow classes. Coalesced to a microtask because one glow
+   * pass is a clear followed by an apply: syncing on each would tear every outline down and
+   * rebuild it (a re-raster of its filter) on every press and every card redraw. */
+  var cklSilQueued = false;
+  function cklSyncSil() {
+    if (cklSilQueued) return;
+    cklSilQueued = true;
+    Promise.resolve().then(function () {
+      cklSilQueued = false;
+      var B = scopeBoard();
+      if (!B || !B.setStepOutlines) return;
+      var lit = cklLitItems();
+      B.setStepOutlines((lit.press.length || lit.steady.length) ? { press: lit.press, watch: lit.steady } : null);
+      if (latest) renderScope(latest);   // the dimming keeps the same things lit
+    });
+  }
   function cklActiveStep(s) {
     var ck = s && s.instructor && s.instructor.checklist;
     if (!ck || ck.complete) return null;
@@ -6007,7 +6077,8 @@
      * nothing the build renders, because the banner is latched at open. What replaces it is the
      * one bit that still changes the output: whether the checklist is underway. */
     var pcKey = (ck.step_index > 0 || (ck.steps_done || []).some(Boolean)) ? 'go' : 'entry';
-    var key = [ck.procedure_id, (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
+    var key = [ck.procedure_id, (ck.act_hold ? 'ah' + ck.act_hold_row : ''),   // `act_pause_s`: the held line
+      (ck.steps_done || []).map(function (d) { return d ? 1 : 0; }).join(''),
       (ck.done_by || []).join(','),   // route-true text (#670) reads how each step was done
 
       ck.step_index, ck.acc_met ? 1 : 0, ck.graded_by || '', ck.complete ? 1 : 0, pcKey, ui.register,
@@ -6267,7 +6338,11 @@
        * at the top of every step. */
       var waitLineShown = false;
       var ackRow = '';   /* same reason — #687 item 3 builds it above and emits it below the why */
-      h += '<div class="ckl-step ' + cls + hoverable + (lastShown ? ' ckl-last-kept' : '') + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
+      /* `step_kinds` (leg) -- EVENT OR ACTION, SAID THREE WAYS (owner, 2026-11-13, item 9: "events and
+       * player actions need a better visual differentiator"): the chip's words, its mark (a hollow ring
+       * against a solid arrowhead) and the card's left rule (dashed against solid). Colour is the fourth. */
+      var kindCls = pr.step_kinds ? (cklStepIsAction(st) ? ' ckl-k-action' : ' ckl-k-event') : '';
+      h += '<div class="ckl-step ' + cls + hoverable + kindCls + (lastShown ? ' ckl-last-kept' : '') + '" data-ckl-step="' + i + '"><div class="ckl-ico">' + (done ? '✓' : active ? '▸' : '○') + '</div><div class="ckl-body">';
       /* THE NUMBERED INSTRUCTION IS THE HEAD OF THE STACK, ON EVERY STEP *(OWNER, 2026-09-04,
        * #628: "move the numbered step to always be the first part of the stack. then the rest of
        * the step that appears when its active goes below it.")*.
@@ -6309,6 +6384,9 @@
        * player to stop the safety injection pumps, as the TMI-2 crew did, without the sim
        * appearing to recommend it. Never suppressed by register: the disclaimer is the same
        * sentence to a student and to an operator. */
+      if (kindCls) h += cklStepIsAction(st)
+        ? '<div class="ckl-kind ckl-kind-action"><i aria-hidden="true"></i>Your action</div>'
+        : '<div class="ckl-kind ckl-kind-event"><i aria-hidden="true"></i>Watch</div>';
       h += '<div class="ckl-txt">' + (i + 1) + '. ' + mesc(st.text) +
         (st.crew ? ' <span class="ckl-crew">the crew\'s action, as taken — not a recommendation</span>' : '') + '</div>';
       /* THE ONE-LINE WHY, DIRECTLY UNDER THE STEP'S FIRST LINE *(OWNER RULING, 2026-09-24: "I like
@@ -6744,7 +6822,14 @@
       /* `ahead` — WHAT THE NEXT CONTINUE LETS HAPPEN *(OWNER, 2026-11-12: "It should explain events before
        * they happen")*. The last thing above the Continue row, so it is read with the button; not drawn
        * on a finished leg's kept last step, which has nothing ahead of it. */
-      if (active && st.ahead && !lastShown) h += '<div class="ckl-ahead"><span>Next</span>' + mesc(st.ahead) + '</div>';
+      if (active && st.ahead && !lastShown) h += '<div class="ckl-ahead"><span>' + mesc(st.ahead_label || 'What happens next') + '</span>' + mesc(st.ahead) + '</div>';
+      /* `act_pause_s` -- THE CLOCK IS HELD FOR A PRESS (owner, 2026-11-13, item 10). One line, directly
+       * above the Continue row: what stopped, and the press that starts it again (the row's own `ask`). */
+      if (active && ck.act_hold && !ck.complete) {
+        var ahRow = (st.accs && ck.act_hold_row >= 0) ? st.accs[ck.act_hold_row] : null;
+        h += '<div class="ckl-held" role="status"><i aria-hidden="true"></i><span>The clock is stopped until you ' +
+          (ahRow && ahRow.ask ? 'do this: ' + mesc(ahRow.ask) : 'make this step\'s press.') + '</span></div>';
+      }
       h += ackRow;
       h += '</div></div>';
     }
@@ -7304,8 +7389,10 @@
      * window shut again) pulses rather than sitting steady on a window that is closed */
     openers.forEach(function (op) { op.classList.add('ckl-step-glow'); op.classList.remove('ckl-step-done'); });
     cklLightOpenerPanels();
+    cklSyncSil();
   }
   function clearCklStepGlow() {
+    cklSyncSil();
     document.querySelectorAll('.ckl-step-glow').forEach(function (el) {
       el.classList.remove('ckl-step-glow'); el.classList.remove('ckl-step-done');
       el.removeAttribute('data-ckl-hl');
@@ -7358,8 +7445,10 @@
       if (el && !cklHasGlow(el)) el.classList.add('ckl-panel-glow');
     });
     cklLightOpenerPanels();
+    cklSyncSil();
   }
   function clearCklWatchGlow() {
+    cklSyncSil();
     CKL_WATCH_CLASSES.forEach(function (c) {
       document.querySelectorAll('.' + c).forEach(function (el) { el.classList.remove(c); el.removeAttribute('data-ckl-w'); el.removeAttribute('data-ckl-op'); });
     });
@@ -7598,7 +7687,16 @@
     var live = !!(ins && ins.scenario_id && !ins.level_complete);
     if (!live) B.clearPointers();
     var f = live ? ins.scope : null;
-    if (!f) { B.setScope(null); return; }
+    if (!f) {
+      /* A WALKTHROUGH STEP'S `scope` (see the field block above `cklStepScope`). Only when no beat
+       * owns the dimming. The lit set is what the glow pass has ringed, by item id. */
+      var cs = cklStepScope(s);
+      if (!cs) { B.setScope(null); return; }
+      var litNow = cklLitItems();
+      var csA = cklActiveStep(s);
+      B.setScope({ names: cs, lit: [], ids: litNow.press.concat(litNow.steady, litNow.panel), tag: !!(csA && csA.st.tag) });
+      return;
+    }
     var hl = ins.highlight && ins.highlight.control_label;
     B.setScope({ names: f.names || [], lit: hl ? [hl] : [] });
   }

@@ -1399,6 +1399,28 @@
     }
     var stepEntryTick = (c.stepAt == null);
     if (stepEntryTick) c.stepAt = simTime;
+    /* TWO OPT-IN STEP CLOCKS (owner playtest of `pwr_tmi2_meltdown`, 2026-11-13). Both count SIM
+     * seconds, so a paused or held clock does not spend them, and a step that authors neither
+     * field takes none of these branches.
+     *
+     *   inject_delay_s: N   the step's `inject` / `clear` fire N sim-seconds after the step was
+     *                       ENTERED instead of on the first tick after entry (item 5: "a few
+     *                       seconds later the issues start"). A `when` predicate is evaluated only
+     *                       once the delay has run. `pause` still freezes on the tick the event
+     *                       lands, i.e. after the delay. Default 0 = today's behaviour.
+     *   act_pause_s: N      on a step that asks for a press: if the press has not landed N
+     *                       sim-seconds after it became the CURRENT ASK, the clock is held (the
+     *                       same `paused` / 'walkthrough' hold `pause_on_met` takes) until it does
+     *                       (item 10: "pause the sim just before it becomes an issue and wait for
+     *                       the player"). Authored on the step (covers the step's `cmd`, and is the
+     *                       default for every `accs` row that carries a `cmd`) or on one `accs`
+     *                       cmd row (overrides the step's). See `_actAsk` for "current ask".
+     *
+     * `enterT` IS NOT `stepAt`. `stepAt` is deliberately not saved (a load re-stamps it, which is
+     * what makes the first tick after a Rewind an entry tick again); `enterT` IS saved, so a delay
+     * half-run at a save resumes where it was, and the step's own start checkpoint carries the
+     * entry time it was laid at, so a Rewind onto it owes the whole delay again. */
+    if (c.enterT == null) c.enterT = simTime;
 
     /* ================================================================================
      * THE REACTOR TRIPPED AND THE WALKTHROUGH SAID NOTHING (#709, layman playthrough
@@ -1478,7 +1500,9 @@
      * cascade: polisher / feed pump / turbine as three steps, not three injects on one) —
      * `_serviceInstructorRequests` (simulation_service.js) is what actually stops the clock;
      * `ui/app.js` releases the hold on Continue, the checklist's own Rewind, or Stop. */
-    if (!stepEntryTick && (st.inject || st.clear)) {
+    var _injDly = +st.inject_delay_s > 0 ? +st.inject_delay_s : 0;
+    c.injectIn = (_injDly && (st.inject || st.clear)) ? Math.max(0, _injDly - (simTime - c.enterT)) : 0;
+    if (!stepEntryTick && (st.inject || st.clear) && !(c.injectIn > 1e-9)) {
       var _firedN0 = c.fired.length;
       this._checklistFire(snapshot, st);
       if (st.pause && c.fired.length > _firedN0) {
@@ -1614,6 +1638,7 @@
      * acknowledgement (#619 item 4). The overtaken path (#641) still advances by itself: it is
      * the plant moving past a step, not the player finishing one. */
     c.awaitingAck = !!met;
+    this._actPauseTick(c, st, simTime);
     /* `pause_on_met` (TMI-2 layman pass 4, S-1): the RAPID watch beats hold the clock the tick
      * their Continue lights, so the next beat's event cannot play out under this card (measured:
      * TMI step 2 held lit 60 wall-s at 1x ran 47 plant-s, and step 4 opened already met). The same
@@ -1622,6 +1647,54 @@
     if (met && st.pause_on_met && !c.paused) {
       this._pauseRequested = true;
       c.paused = true;
+    }
+  };
+
+  /* `act_pause_s` — THE PRESS THE STEP IS WAITING FOR RIGHT NOW, or null.
+   *
+   * With `accs`: on an `accs_ordered` step the ask is the FIRST UNMET VISIBLE ROW, and only if
+   * that row carries a `cmd` — so a press row behind an unmet reading is not yet asked for and
+   * its clock has not started ("after the rows before it are met"). On an unordered step it is
+   * the first unmet row that carries a `cmd`. Without cmd rows it is the step's own `cmd`, until
+   * `cmdSeen`. `n` is the row's `act_pause_s`, else the step's; no positive `n` means no ask. */
+  InstructorLayer.prototype._actAsk = function (c, st) {
+    if (!st) return null;
+    var stepN = +st.act_pause_s > 0 ? +st.act_pause_s : 0;
+    var rows = st.accs || [], state = c.accsState || [], anyCmdRow = false;
+    for (var i = 0; i < rows.length; i++) {
+      var en = rows[i];
+      if (!en || en.hidden) continue;
+      if (en.cmd) anyCmdRow = true;
+      if ((state[i] || {}).met) continue;
+      if (!en.cmd) { if (st.accs_ordered) return null; continue; }
+      var n = +en.act_pause_s > 0 ? +en.act_pause_s : stepN;
+      return n > 0 ? { key: 'r' + i, n: n, row: i } : null;
+    }
+    if (anyCmdRow || !st.cmd || !stepN || c.cmdSeen) return null;
+    return { key: 'cmd', n: stepN, row: -1 };
+  };
+  /* Run on every tick AND after every command (`handleCommand`), because the release must not
+   * need the clock: the hold has stopped it. Takes the hold when the ask has stood `n` sim-seconds;
+   * lets go the moment the ask is answered or changes. Never touches a hold it did not take
+   * (`actHold` is its ownership flag — `pause` and `pause_on_met` share `c.paused`). */
+  InstructorLayer.prototype._actPauseTick = function (c, st, simTime) {
+    var ask = (c.complete || !st) ? null : this._actAsk(c, st);
+    if (!ask) {
+      if (c.actHold) { c.actHold = false; c.paused = false; }
+      c.actAsk = null;
+      return;
+    }
+    if (!c.actAsk || c.actAsk.key !== ask.key) {
+      if (c.actHold) { c.actHold = false; c.paused = false; }
+      c.actAsk = { key: ask.key, t0: simTime, row: ask.row };
+    }
+    if (simTime == null) return;                       // a command, not a tick: release only
+    if (c.actAsk.t0 == null) c.actAsk.t0 = simTime;    // an ask that began on a command starts its clock here
+    if (c.actHold || c.paused) return;
+    if (simTime - c.actAsk.t0 >= ask.n - 1e-9) {
+      this._pauseRequested = true;
+      c.paused = true;
+      c.actHold = true;
     }
   };
 
@@ -1803,6 +1876,8 @@
     c.stepAt = null;                    // re-stamped on the next tick — see the dwell above
     c.overtakenStreak = 0;              // #641 — the next step's own predicate starts from zero
     c.paused = false;                   // #694 — the new step has not fired its own pause yet
+    c.enterT = null; c.injectIn = 0;    // `inject_delay_s` — the new step's delay starts at ITS entry
+    c.actAsk = null; c.actHold = false; // `act_pause_s` — the ask and its hold belong to the step left
     /* #670 — the fired-set is PER STEP ENTRY, and it is cleared HERE, before the checkpoint
      * request below, so the checkpoint M5 lays at the start of the step just entered carries an
      * empty set. A Rewind back onto it therefore re-enters a step that has not fired yet, beside
@@ -2475,6 +2550,9 @@
         this.checklist.cmdSeenHead = this._accsActiveHead(this.checklist, cst);
       }
       if (cst) this._accsCmdWatch(this.checklist, cst, command);   // multi-check-off cmd entries
+      /* `act_pause_s`: the press that answers the ask RELEASES ITS HOLD HERE, not on the next tick —
+       * the hold has stopped the clock, so there is no next tick until something lets go. */
+      if (cst && this.checklist.actHold) this._actPauseTick(this.checklist, cst, null);
     }
 
     // 1/M plot point — an operator ACTION with no plant effect. Pressing "Plot
@@ -3395,6 +3473,12 @@
         // plant fact, not a broadcast the UI can wait on (the clock stopping IS what ends
         // the broadcasts). Cleared with the step it belonged to in `_checklistCheckOff`.
         paused: !!this.checklist.paused,
+        /* `act_pause_s` — the hold above is THIS kind: the clock is stopped for a press the player
+         * has not made. `act_hold_row` is the `accs` row asked for (-1 = the step's own `cmd`), so
+         * the card can name it. `inject_in_s` is what is left of an `inject_delay_s` (0 = none). */
+        act_hold: !!this.checklist.actHold,
+        act_hold_row: (this.checklist.actHold && this.checklist.actAsk) ? this.checklist.actAsk.row : -1,
+        inject_in_s: +(this.checklist.injectIn || 0),
         /* CAN "REWIND STEP" LAND? (#660 items 17-18). The button used to be drawn on
          * `step_index > 0` alone, which is a claim about the WALKTHROUGH when the thing it
          * depends on is the rewind RING — and the two come apart on a loaded save, which
@@ -3548,6 +3632,11 @@
          * injection and the step fires it again" true rather than an assumption. */
         fired: (this.checklist.fired || []).slice(),
         injected: (this.checklist.injected || []).slice(),
+        /* `inject_delay_s` / `act_pause_s` — the two step clocks ride with the fired-set. The HOLD
+         * itself is not saved (no hold is: `paused` is re-derived), only when the ask began, so a
+         * load whose ask is already overdue takes the hold again on its first tick. */
+        enter_t: (this.checklist.enterT == null ? null : this.checklist.enterT),
+        act_ask: this.checklist.actAsk ? { key: this.checklist.actAsk.key, t0: this.checklist.actAsk.t0, row: this.checklist.actAsk.row } : null,
         /* #732 — the once-per-run precondition latch rides with them, for the same reason. The
          * REWIND button is a loadState of a checkpoint, so without this every rewind re-armed the
          * comment and the flicker came back one press at a time. Absent in an old save reads as
@@ -3606,6 +3695,9 @@
           // #670 — restored, not re-derived: a save written before this field is an empty set,
           // which is exactly what it used to behave as.
           fired: (cs.fired || []).slice(), injected: (cs.injected || []).slice(),
+          // absent on an older save: null, i.e. the delay and the ask start again from the load
+          enterT: (cs.enter_t == null ? null : cs.enter_t), injectIn: 0,
+          actAsk: cs.act_ask ? { key: cs.act_ask.key, t0: cs.act_ask.t0, row: cs.act_ask.row } : null, actHold: false,
           /* #709 — `scramExempt` is a property of the CONTENT, so it is recomputed from the
            * re-resolved proc rather than restored from the save: an edit to a leg must take
            * effect on an old save, and a stale exemption riding a checkpoint is exactly the

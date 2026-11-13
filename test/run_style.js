@@ -181,7 +181,7 @@ var CHECKS = [
   {
     id: 'checklist_vague',
     rule: 'W12 — no vague quantifier in a checklist step',
-    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'ahead_label', 'target', 'control', 'note', 'story', 'accs'], VAGUE); },
     /* `aim` (the step's one-line WHY, 2026-09-25) gets its OWN injection — a per-field harvest
      * needs a per-field proof, the #741 lesson on `checklist_no_si` below. So does each of the
      * four `accs` strings (workbench-f): delete any one from the harvest and its injection
@@ -197,7 +197,7 @@ var CHECKS = [
   {
     id: 'checklist_modal',
     rule: 'W16 — no shall/should/must in a checklist step (the step is an imperative)',
-    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead'], MODAL); },
+    run: function (d) { return scanSteps(d, ['text', 'aim', 'ahead', 'ahead_label'], MODAL); },
     inject: [function (d) { d.steps[0].step.text = 'The operator must open the valve.'; },
              function (d) { d.steps[0].step.aim = 'The valve should be open before heat is added.'; },
              function (d) { d.steps[0].step.ahead = 'The valve should open next.'; }],
@@ -362,7 +362,7 @@ var CHECKS = [
         (p.precond || []).forEach(function (c, i) { chk(p.id + '.precond' + i, c.text); });
       });
       d.steps.forEach(function (s) {
-        ['text', 'aim', 'ahead', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
+        ['text', 'aim', 'ahead', 'ahead_label', 'note', 'why', 'target', 'wait_hint', 'speed_text'].forEach(function (k) { chk(s.proc + ' step ' + s.n + '.' + k, s.step[k]); });
         // the incident walkthrough's narrative block (#670) — four strings on the card, bound by
         // the ruling exactly as `why` is. It is prose ABOUT a plant, which is where an "(11 MPa)"
         // is most likely to be written without thinking.
