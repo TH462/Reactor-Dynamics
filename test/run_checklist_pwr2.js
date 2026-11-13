@@ -4529,7 +4529,7 @@ if (!only && RUN_LIVE) {
       'pwr_cooldown:15': 'rhr_valve_open',
       /*#670 cut: 'pwr_tmi2_incident:4': 'turbine_tripped',*/ /*#670 cut: 'pwr_tmi2_incident:7': 'scrammed',*/
       'pwr_tmi2_incident:4': 'hpi_active,scrammed', 'pwr_tmi2_incident:7': 'rcp_cavitating',   // 4 carries old 7's trip row (#670 redesign)
-      /* pwr_tmi2_meltdown (2026-11-12): valve, trip and injection facts, RCS INVENTORY (no instrument on this board), and the
+      /* pwr_tmi2_meltdown (2026-11-12; step 2 gained the turbine-trip event row 2026-11-13): valve, trip and injection facts, RCS INVENTORY (no instrument on this board), and the
        * cladding itself on step 11 -- there is no gauge inside the cladding, so the leg's last link is graded on truth (HR1: declared) */
       'pwr_tmi2_meltdown:2': 'turbine_tripped,porv_open', 'pwr_tmi2_meltdown:3': 'scrammed', 'pwr_tmi2_meltdown:4': 'hpi_active',
       'pwr_tmi2_meltdown:9': 'core_inventory_pct', 'pwr_tmi2_meltdown:11': 'clad_temp_c,fuel_damaged',
