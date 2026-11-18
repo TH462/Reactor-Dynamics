@@ -252,13 +252,18 @@
               'Clock 5×. Power reducing toward load; Tavg restoring toward program.'),
         ],
         // The settled-power line is said only where it is TRUE (#811 layman pass 2, OWNER RULING
-        // 2026-09-28): power near 84 % with the steam dump still open. Measured: typical route
+        // 2026-09-28): power near 82 % with the steam dump still open. Measured: typical route
         // 83.2-84.8 % with the dump 15-24 % open through this watch (Tavg 7 °F over Tref); the
         // 90 MWe route never opens the dump (0.0 %), and hands-off is still at 93.5 % / 46 % as the
         // instructor's rods finish moving. Otherwise straight on to the spray ask, on the timing
         // the spray ask always had (dump under 30 % and 30 s, or 75 s).
+        // #768 (owner ruling 2026-11-18, Doppler logarithmic in fuel temperature): the full-power
+        // Doppler coefficient is weaker (-1.08 vs -1.39 pcm/°F), so the same 40 steps take power
+        // further down. MEASURED, run_opener routes, seed 42, the same bank 566: typical 84.0-84.3 %
+        // on the linear term, 81.7-82.1 % on the 1/T term (dump 8-15 %). The band moved with the
+        // plant, 82-86 -> 80-84, and the line with it (84 -> 82).
         branches: [
-          { trigger: { type: 'all', triggers: [delay(6), inst('power_range', 'above', 82), inst('power_range', 'below', 86),
+          { trigger: { type: 'all', triggers: [delay(6), inst('power_range', 'above', 80), inst('power_range', 'below', 84),
               inst('steam_dump_valve', 'above', 5)] }, goto: 'o5_settled' },
           { trigger: { type: 'all', triggers: [inst('steam_dump_valve', 'below', 30), delay(30)] }, goto: 'o6_spray' },
           { trigger: delay(75), goto: 'o6_spray' },
@@ -270,8 +275,8 @@
         trigger: delay(0),
         highlight: { control_label: 'Tavg' },
         dialogue: [
-          say('Power settles near 84 %: Tavg is still above its target, so the steam dump stays a little open. More rods in would close it.',
-              'Power steady near 84 %; Tavg above program, steam dump partly open. Further rod insertion would close the dumps.'),
+          say('Power settles near 82 %: Tavg is still above its target, so the steam dump stays a little open. More rods in would close it.',
+              'Power steady near 82 %; Tavg above program, steam dump partly open. Further rod insertion would close the dumps.'),
         ],
         // The 6 s already spent in o5 comes off the spray ask's 30 s / 75 s, so the watch is as long.
         branches: [
@@ -355,8 +360,11 @@
         advance: 'wait_for_trigger' },
 
       // ---------------------------------------------------------------- 4. trip
+      // 80 s, not 40 (#768): o9 says the heaters "slowly" rebuild pressure, and on the hands-off
+      // route (power 78.5-79 % on the 1/T Doppler plant) pressure sits flat for the first ~50 s
+      // after the spray shuts. MEASURED o9 -> +40 s / +80 s, rise from the low: see run_opener's o10 check.
       { id: 'o10_scram',
-        trigger: delay(40),
+        trigger: delay(80),
         speed: 1,
         highlight: { control_label: 'SCRAM' },
         scope: null,                                   // the whole board for the trip

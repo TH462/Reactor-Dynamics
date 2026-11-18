@@ -875,7 +875,7 @@ if (!only && RUN_LIVE) {
     var t0 = s.metadata.sim_time;
     while (s.metadata.sim_time - t0 < 2.5 * 3600) s = svc.tick();
     var ch = (s.automation && s.automation.channels || []).filter(function (c) { return c.id === 'boron_conc'; })[0];
-    ck('the heatup\'s 918 ppm plant dilutes to the startup step\'s 719 ppm and stops there',
+    ck('the heatup\'s 938 ppm plant dilutes to the startup step\'s 719 ppm and stops there',
        Math.abs(s.true_state.boron_ppm - 719) <= 3,
        b0.toFixed(0) + ' -> ' + s.true_state.boron_ppm.toFixed(1) + ' ppm after 2.5 plant-hours (books-by-command landed ~788)');
     ck('...and the channel still reports the 719 the operator set, not a re-anchored shortfall',
@@ -1229,7 +1229,7 @@ if (!only && RUN_LIVE) {
         var c = s.instructor && s.instructor.checklist;
         if (!c) continue;
         if (c.complete) return { done: true, step: c.step_index };
-        if (c.step_index === 0 && !didBoron) { svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }); didBoron = true; }
+        if (c.step_index === 0 && !didBoron) { svc.handleCommand({ action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 938 }); didBoron = true; }   // 920 -> 938 with the card (cold IC 938.2 ppm, 2026-11-18)
         if (c.step_index === 1 && !didPressure1) { svc.handleCommand({ action: 'set_pressure_setpoint', mpa: 13.1 }); didPressure1 = true; }
         if (c.step_index === 2 && !didTripBlocks) {
           svc.handleCommand({ action: 'set_trip_block', trip_id: 'lo_press', blocked: true });

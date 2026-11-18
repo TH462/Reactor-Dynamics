@@ -382,7 +382,13 @@ var ROUTES = {
           '#3': { policy: 'load_stair', from: 75, to: 50, step: 5, wait_s: 180, ins_above: 569, pull: 3, dwell: 60, delay_s: 60 },
           '#4': { policy: 'load_stair', from: 50, to: 30, step: 5, wait_s: 180, ins_above: 562, pull: 3, dwell: 60, delay_s: 60 },
           '#5': { policy: 'load_stair', from: 30, to: 15, step: 5, wait_s: 180, ins_above: 557, pull: 3, dwell: 60, delay_s: 60 } } },
-      { id: 'rods_lead_2', kind: 'wrong order', at: '#2', set: { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 570, pull: 10, dwell: 30 } },
+      /* #768 RE-AIMED 570 -> 568 degF (1/T Doppler, owner ruling 2026-11-18). The premise is a player whose rods lead EVERY cut.
+       * At 570 on the 1/T plant the water cooled faster (568.8 degF at 3.5 min vs 571.5 linear), so the inserts stopped one pull
+       * early (bank 536 vs 526) and the LAST cut, 80 -> 75 MW at 4.27 min, landed on still rods: power -4.2 points with Tavg
+       * +1.6 degF inside 60 s, the relation honestly met at 4.75 min -- lower_no_row_overtaken_2 went BLIND (complete). MEASURED,
+       * seed 42, at 568: bank 526 at the last cut on the 1/T plant (the linear route's own 570 profile), base completes on the
+       * relief at 2.25 min on BOTH terms (bank 526 / 516); without the relief, strand at step 2 on BOTH; lower_latch_old_form red. */
+      { id: 'rods_lead_2', kind: 'wrong order', at: '#2', set: { policy: 'load_stair', from: 100, to: 75, step: 5, wait_s: 60, ins_above: 568, pull: 10, dwell: 30 } },
     ],
   },
   pwr_shutdown: {
@@ -666,6 +672,12 @@ var MUTATIONS = [
   { id: 'startup8_no_recovery', route: 'overshoot_8_recover', expect: 'must_complete',
     why: '8a note without its recovery sentence (the pre-#824 card: 10 past trips on SR HIGH FLUX)',
     mutate: function (P) { P.steps[7].accs[0].note = P.steps[7].accs[0].note.replace(/ If SOURCE RANGE passes[^]*$/, ''); } },
+  /* #768 (coordinator ruling 2026-11-18): 13a's note without its high-power sentence (the card before it): the overpulled
+   * arrival (8.7 % and climbing) types 100 on the 1.5 % rule and settles at ~11 %, level held at 33 %: a SILENT strand
+   * (MEASURED, 1/T Doppler plant, 60 plant-min; on the linear term it was an SG LO-LO trip, which the invariant accepts). */
+  { id: 'startup13_no_power_branch', route: 'overpull_10', expect: 'invariant',
+    why: "13a's note without 'If REACTOR POWER reads above 5 %, type 100, then tap INSERT ...': the overpulled arrival strands at 11 %",
+    mutate: function (P) { var e = P.steps[12].accs[0]; e.note = e.note.replace(/If REACTOR POWER reads above[^.]*\. /, ''); } },
   { id: 'step17_1005', route: 'late_second_block', expect: 'invariant',
     why: 'step 18 (was 17 before #808) floor back to 10.05 % (unfinishable at LOAD 10 MWe, owner ruling 2026-09-23)',
     mutate: function (P) { P.steps[17].accs[0].v = 10.05; } },
@@ -804,7 +816,8 @@ var MUTATIONS = [
       st.accs = [st.accs[0], { p: 'spray_flow_pct', op: '<', v: 1, ask: 'Watch SUBCOOLING MARGIN, and when it reads below 30 °F, press OFF under SPRAY on the PRESSURIZER (PZR) card.',
         note: 'The spray is still running and keeps taking SUBCOOLING MARGIN down; the Low Subcooling Margin alarm comes in at 20 °F. Shut it much earlier and pressure climbs back over the RHR limit.', wait_speed: 60, label: 'OFF lit under SPRAY' }, st.accs[3]];
     } },
-  /* critic M-2: raise power 9 WITHOUT its trim row -- the slow climb then ends at the 573 degF stop, 6.6 degF under 580 */
+  /* critic M-2: raise power 9 WITHOUT its trim row -- the slow climb then ends at the 573 degF stop, 6.6 degF under 580
+   * (#768 re-measure: 574.3 linear Doppler, 574.7 on the 1/T term; the leg-end edge is 4.0 under N since then, see `settle`) */
   { id: 'raise_no_trim_9', leg: 'pwr_raise_power', route: 'slow_climb', expect: 'settle',
     why: 'raise-power 9 without the slow-climb trim row (the card before critic M-2)',
     mutate: function (P) { P.steps[8].accs = P.steps[8].accs.filter(function (e) { return !(e.p === 'tavg_c' && e.op === '>='); }); } },
@@ -1041,7 +1054,7 @@ function runJob(legId, routeId, mutId, ctx) {
     send(typeof c === 'string' ? { action: c } : c); return true;
   }
   var speedNow = null;
-  var critSeen = null;   // #824 plot_band: first bank at true reactivity >= 0
+  var critSeen = null, critPrev = null, critBelow = null;   // #824 plot_band: first bank at true reactivity >= 0 (#768: + the last sample under it)
   function setSpeed(v) { v = Math.max(1, Math.min(600, v || 10)); if (v !== speedNow) { send({ action: 'set_speed', value: v }); speedNow = v; } }
 
   for (var w = 0; w < 3; w++) tick();
@@ -1292,7 +1305,14 @@ function runJob(legId, routeId, mutId, ctx) {
     /* #824: the TRUE critical rod position for `plot_band` -- the first control-bank position the leg reaches with true
      * reactivity >= 0 (a measurement of the plant, never shown to the player; Hard Rule 1 is the card's, not the gate's) */
     var rhoL = (s.true_state || {}).reactivity_pcm;
-    if (critSeen == null && grp() && typeof rhoL === 'number' && rhoL >= 0) { critSeen = bank(); out[k].crit_seen = critSeen; }
+    /* #768 (2026-11-18): and the REAL crossing, fractional -- true reactivity interpolated linearly in bank between the last
+     * sample under zero at a LOWER bank and the first sample at or over it. A lower bank, not just the last sample: on the
+     * linear term the last negative sample sat at the crossing bank itself (rho rising with the rods still), and a same-bank
+     * pair returned the integer bank (MEASURED: 207 for a 206.7 crossing). */
+    if (critSeen == null && grp() && typeof rhoL === 'number' && rhoL < 0) { if (critPrev && critPrev.b !== bank()) critBelow = critPrev; critPrev = { b: bank(), rho: rhoL }; }
+    if (critSeen == null && grp() && typeof rhoL === 'number' && rhoL >= 0) { critSeen = bank(); out[k].crit_seen = critSeen;
+      var cp = critPrev && critPrev.b < critSeen ? critPrev : critBelow;
+      out[k].crit_x = cp && cp.b < critSeen ? +(cp.b + (critSeen - cp.b) * (-cp.rho) / (rhoL - cp.rho)).toFixed(2) : critSeen; }
     /* WR_TRACE=<step,step>: a measurement knob, never the gate — [min into step, bank, power %,
      * startup rate, source range, true rho pcm, INTER RANGE A, SG level %, PRIMARY PRESSURE psia] every 15 plant-seconds on the named steps */
     if (process.env.WR_TRACE && (',' + process.env.WR_TRACE + ',').indexOf(',' + (k + 1) + ',') >= 0 && t() - (S.trT == null ? -1e9 : S.trT) >= 15) {
@@ -1444,7 +1464,25 @@ function runJob(legId, routeId, mutId, ctx) {
       return;
     }
     if (P === 'feed_fill') {                             // #808 startup 13a as the card reads: 50 gpm, 100 from 1.5 %
-      if (!S.memo.ff) { S.memo.ff = true; S.acts++; press({ action: 'set_feed_pump_speed', pct: pv('power_pct') >= 1.45 ? 10 : 5 }); }   // the ask's cutoff, "reads 1.5 % or more" (tile floor 1.45; develop-h)
+      /* #768 (coordinator ruling 2026-11-18): 13a's note, READ OFF THE CARD (so the note is its own injection) -- "If REACTOR
+       * POWER reads above <hi> %, type 100, then tap INSERT <k> times a plant-minute apart until it reads under <hi> %."
+       * Graded on the tile: REACTOR POWER draws one decimal, so "above 5" is a reading of 5.1 or more (>= 5.05) and "under 5"
+       * one of 4.9 or less (< 4.95). Decided at the typing, as the ask's own 1.5 % cutoff is. */
+      var ffm = /If REACTOR POWER reads above (\d+(?:\.\d)?) %, type 100, then tap INSERT (\d+) times a plant-minute apart until it reads under \1 %/.exec(
+        [st2.note || ''].concat((st2.accs || []).map(function (e) { return (e && e.note) || ''; })).join(' '));
+      if (!S.memo.ff) {
+        S.memo.ff = true; S.acts++;
+        S.memo.ffIns = !!(ffm && pv('power_pct') >= +ffm[1] + 0.05);
+        press({ action: 'set_feed_pump_speed', pct: S.memo.ffIns || pv('power_pct') >= 1.45 ? 10 : 5 });   // the ask's cutoff, "reads 1.5 % or more" (tile floor 1.45; develop-h)
+        if (S.memo.ffIns) out[cur].ff_ins = { power: +pv('power_pct').toFixed(2), bank: bank(), taps: 0 };
+      }
+      if (S.memo.ffIns && !S.memo.ffDone) {
+        if (pv('power_pct') < +ffm[1] - 0.05) { S.memo.ffDone = true; out[cur].ff_ins.done_min = +((t() - S.t0) / 60).toFixed(2); out[cur].ff_ins.bank_end = bank(); }
+        else if (!moving() && (S.memo.ffT == null || t() - S.memo.ffT >= 60)) {
+          nudge(-(+ffm[2]), 'normal');   // k taps back to back: one k-step insert (a tap is one step at any rung)
+          S.memo.ffT = t(); S.acts++; out[cur].ff_ins.taps += +ffm[2];
+        }
+      }
       pressRows(st2, c2); return;
     }
     if (P === 'seq') {                                   // an explicit sequence, one per tick
@@ -2131,10 +2169,15 @@ function verdicts(r) {
     if (st.settle == null || !st.at_done) return false;
     /* ASYMMETRIC (critic L-6): the card's own stop widens the allowance BELOW N only; above N it stays 5.4 degF */
     var below = Math.max(5.4, st.settle_floor != null ? st.settle - st.settle_floor + 0.05 : 0), dT = st.at_done.tavg_F - st.settle;
-    return dT > 5.4 || -dT > below || !(legEnd && Math.abs(legEnd.at_done.tavg_F - st.settle) <= 5.4);
+    /* THE LEG-END HALF IS ASYMMETRIC TOO (#768, 2026-11-18): no more than 4.0 degF UNDER N. The card's last word on the settle is
+     * 9c's trim, "until it reads 577 degF" (graded at 576.5, N - 3.5), less 0.5 degF of tile noise. The symmetric 5.4 sat on
+     * the edge of the no-trim leg it exists to catch: raise_no_trim_9 ends 574.3 degF on the linear Doppler term (5.7 under,
+     * red) and 574.7 on the 1/T term (5.3 under, BLIND). MEASURED legs that follow the card: 579.8-580.7 brisk, 577.1 slow_climb
+     * (1/T) -- 2.9 under, 1.1 clear of the new edge. Above N it stays 5.4. */
+    return dT > 5.4 || -dT > below || !(legEnd && legEnd.at_done.tavg_F - st.settle <= 5.4 && st.settle - legEnd.at_done.tavg_F <= 4.0);
   });
   if ((r.steps || []).some(function (st) { return st.settle != null; }))
-    v.settle = { ok: st8.length === 0, name: 'a step that says "settle on/near N degF" completes within 5.4 degF of N (or inside its own band, above its floor) and the leg ends within 5.4 degF of N',
+    v.settle = { ok: st8.length === 0, name: 'a step that says "settle on/near N degF" completes within 5.4 degF of N (or inside its own band, above its floor) and the leg ends no more than 4.0 degF under N (5.4 over)',
       note: st8.length ? st8.map(function (st) { return 'step ' + st.n + ' done at ' + f(st.at_done.tavg_F) + ' degF, leg ends at ' + (legEnd ? f(legEnd.at_done.tavg_F) : '?') + ' degF, against ' + st.settle; }).join('; ') : 'all inside' };
   var pkx = (r.steps || []).filter(function (st) { return st.peak_max != null && st.thi != null && st.thi > st.peak_max; });
   /* `no_peak` on a mistake (#825 slow_cut): a route that deliberately leaves out the card's inserts during the cuts is not the
@@ -2202,12 +2245,24 @@ function verdicts(r) {
   var MD0 = ((ROUTES[r.leg] || {}).mistakes || []).filter(function (m) { return m.id === r.route; })[0];
   var sp0 = PB ? (r.steps || []).filter(function (st) { return st.n === PB; })[0] : null;
   var critL = (r.steps || []).map(function (st) { return st.crit_seen; }).filter(function (x) { return x != null; })[0];
+  var critX = (r.steps || []).map(function (st) { return st.crit_x; }).filter(function (x) { return x != null; })[0];
+  /* #768 (2026-11-18, coordinator ruling (a')): THE FLOOR IS RE-POINTED, NOT RE-BANDED. Floor = floor(REAL crossing) - 1, the
+   * real crossing being `crit_x` (true reactivity interpolated in bank); top unchanged, first critical integer bank + 3.
+   * WHY: on the 1/T Doppler plant (owner ruling 2026-11-18) the core at 547 degF is 4.4 pcm more reactive than on the linear
+   * term, and the first critical integer bank no longer bounds the crossing from below by less than a step. MEASURED,
+   * overshoot_8_recover, seed 42: real crossing 206.16, panel 205 (two-point estimate 205.6; the floor of 207 was missed by
+   * 2); linear term real 206.7, panel 207; seed 7 real ~207, panel 207-208 at every recovery wait tried (2-15 plant-min,
+   * and re-approached from 196 / 199: seed 42 stayed 205 in all of them). WHY -1: the panel ROUNDS a trailing-3-point fit,
+   * so a prediction within one step of the crossing can print a whole step under its floor. LOW is the slow side: 10a stops
+   * further short and 10b pulls on -- step 10 took 3.5 plant-min against its stated 6 on the 205 route. HIGH stays the
+   * danger side (#748), so the top is untouched. */
+  var pbLo = critX != null ? Math.floor(critX) - 1 : (critL != null ? critL - 1 : null);
   if (PB && (r.route === 'typical' || (MD0 && (MD0.safe_plot || MD0.band)))) {
     var pp = sp0 && sp0.pred_now;
     var recRan = !(MD0 && MD0.safe_plot) || !!(sp0 && sp0.recover && sp0.recover.rel_bank != null);
-    v.plot_band = { ok: recRan && pp != null && critL != null && pp >= critL && pp <= critL + 3,
-      name: 'the step ' + PB + ' 1/M prediction sits in the band step 10 relies on: true critical <= prediction <= true critical + 3 (10a stops at or below the first critical bank)',
-      note: (recRan ? '' : 'THE CARD RECOVERY NEVER RE-RELEASED | ') + 'prediction ' + pp + ' against true critical ' + critL + (sp0 && sp0.pulse_at ? ' | plotted on the pulse ' + JSON.stringify(sp0.pulse_at) : '') +
+    v.plot_band = { ok: recRan && pp != null && critL != null && pbLo != null && pp >= pbLo && pp <= critL + 3,
+      name: 'the step ' + PB + ' 1/M prediction sits in the band step 10 relies on: floor(real crossing) - 1 <= prediction <= first critical bank + 3 (10a stops at or below the first critical bank)',
+      note: (recRan ? '' : 'THE CARD RECOVERY NEVER RE-RELEASED | ') + 'prediction ' + pp + ' against true critical ' + critL + ' (real crossing ' + critX + ', floor ' + pbLo + ')' + (sp0 && sp0.pulse_at ? ' | plotted on the pulse ' + JSON.stringify(sp0.pulse_at) : '') +
         (sp0 && sp0.recover ? ' | recovery ' + JSON.stringify(sp0.recover) : '') + (sp0 && sp0.plot_bank != null ? ' | plot at bank ' + sp0.plot_bank + ', SR ' + sp0.plot_sr : '') };
   }
   /* 10b's band on the route that pulls past +1.0: the step must not complete while STARTUP RATE reads above 1.0 */
