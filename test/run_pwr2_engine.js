@@ -2482,7 +2482,14 @@ function runSuite(RD, rec, quiet, only) {
    * plant. */
   EN.command(engL, 'rod_speed', 'fast');
   EN.command(engL, 'rod_target', frac(0.72));
-  tsL = run(engL, walk(70));
+  /* SAMPLED THROUGH THE INSERT (#768, 2026-11-18): the same 219 s, the same steps, in 3 s pieces, so
+   * the sag the insert drives is part of what the limit is read against (see the chase check). */
+  var swL = { lo: null, hi: null }, insT = 0, insEnd = walk(70);
+  while (insT < insEnd) {
+    var dtI = Math.min(3, insEnd - insT); tsL = run(engL, dtI); insT += dtI;
+    if (!swL.lo || tsL.power_pct < swL.lo.p) swL.lo = { p: tsL.power_pct, r: engL._rilSteps };
+    if (!swL.hi || tsL.power_pct > swL.hi.p) swL.hi = { p: tsL.power_pct, r: engL._rilSteps };
+  }
   var rilIns = engL._rilSteps, marginIns = engL._rodLimitMargin, pwrIns = tsL.power_pct;
   ckT('the limit is LIVE under a deep insert: the bank is inside it, the margin is finite',
       rilIns > 0 && marginIns > 0 && marginIns < 60 && engL._rodAtLimit === false &&
@@ -2508,19 +2515,27 @@ function runSuite(RD, rec, quiet, only) {
   EN.command(engL, 'boron_rate', -0.10);
   tsL = run(engL, 60);
   var rilHi = engL._rilSteps, pwrHi = tsL.power_pct;
-  var lo = { p: pwrHi, r: rilHi }, hi = { p: pwrHi, r: rilHi };
+  var lo = swL.lo.p < pwrHi ? swL.lo : { p: pwrHi, r: rilHi }, hi = swL.hi.p > pwrHi ? swL.hi : { p: pwrHi, r: rilHi };
   for (var lk = 0; lk < 9; lk++) {
     tsL = run(engL, 60);
     if (tsL.power_pct < lo.p) lo = { p: tsL.power_pct, r: engL._rilSteps };
     if (tsL.power_pct > hi.p) hi = { p: tsL.power_pct, r: engL._rilSteps };
   }
-  ckT('...and the LIMIT CHASES POWER — across the whole dilution the limit stands lower at ' +
+  /* RE-POINTED 2026-11-18 (#768), NOT RE-BANDED. This required the limit to step UP between the end
+   * of the insert and t+60 of the dilution (`rilHi > rilIns`) — two instants of an INTEGER output
+   * one step apart. MEASURED on both Doppler forms, same fixture: linear 98.90 % / RIL 434 -> 99.14 /
+   * 435 (passed by one step); 1/T 99.09 / 435 -> 99.20 / 435 (red by none). The V the note above
+   * describes (98.3 -> 100.7 -> 96 %) happens on NEITHER plant any more. What both DO show is the
+   * claim: the insert sags power to 86.2 % (linear) / 85.6 % (1/T) with the limit at 380 / 377, and
+   * it climbs back to 99.8 % at 438. So the function is read over the WHOLE ride, insert included:
+   * a span of at least 5 points of power, the limit lower at the lowest, and the dilution still
+   * raising power. A constant limit cannot pass it; neither can a plant that does not move. */
+  ckT('...and the LIMIT CHASES POWER — across the insert and the dilution the limit stands lower at ' +
       'the ride\'s lowest power than at its highest',
-      pwrHi > pwrIns && rilHi > rilIns &&
-      lo.p < hi.p && lo.r < hi.r && tsL.scrammed === false,
-      'insert ' + pwrIns.toFixed(1) + ' % / RIL ' + rilIns + '; peak ' + pwrHi.toFixed(1) +
-      ' % / RIL ' + rilHi + '; over the 540 s tail power spans ' + lo.p.toFixed(1) + '-' +
-      hi.p.toFixed(1) + ' % and the limit spans ' + lo.r + '-' + hi.r +
+      pwrHi > pwrIns && hi.p - lo.p >= 5 && lo.r < hi.r && tsL.scrammed === false,
+      'insert end ' + pwrIns.toFixed(1) + ' % / RIL ' + rilIns + '; dilution t+60 ' + pwrHi.toFixed(1) +
+      ' % / RIL ' + rilHi + '; over the ride power spans ' + lo.p.toFixed(1) + '-' +
+      hi.p.toFixed(1) + ' % and the limit ' + lo.r + '-' + hi.r +
       ' — the limit is a FUNCTION of power, which is the whole interlock');
   /* ⚠ AT-LIMIT ITSELF, and this check exists because the MUTATION HARNESS CAUGHT ITS ABSENCE.
    * The re-aim above dropped the only ride that ever drove `_rodAtLimit` TRUE — the old story's
