@@ -387,7 +387,14 @@ function runSuite(G, rec, quiet) {
    * a-time pattern this file's own header warns about. THE MAGNITUDE OF THE DROOP IS NOW
    * UNPINNED — the load-plus-dump identity above is the honest replacement and is filed as
    * follow-up work, not smuggled in here as a side effect of two unrelated changes. */
-  ckT('...which RAISES primary Tavg', cut.tavg_f > pre.tavg_f + 5,
+  /* #768 (2026-11-18): +5 -> +3 degF, ADJUDICATED, not refitted. The Doppler term went from linear to
+   * 1/T (owner ruling "Do 1."), which is WEAKER above ~471 degC fuel — the whole load-cut range here —
+   * so less moderator heating is needed to offset the fuel cooling: the rise measured +6.04 degF
+   * (577.83 -> 583.87) on the linear plant and +4.99 (578.24 -> 583.23) on 1/T, power 99.30 -> 89.44
+   * against 99.41 -> 89.23, fuel 698.3 -> 659.2 against 699.1 -> 657.8 degC. The plant MOVES on both;
+   * the floor exists to exclude one that does not, and +3 clears both behaviours by >= 1.99 degF
+   * (both-sides rule). The magnitude stays unpinned, as the note above already says. */
+  ckT('...which RAISES primary Tavg', cut.tavg_f > pre.tavg_f + 3,
       pre.tavg_f.toFixed(2) + ' -> ' + cut.tavg_f.toFixed(2) + ' degF — a hotter sink removes less');
   ckT('...which LOWERS power, with no rod motion at all', cut.power < pre.power - 5,
       pre.power.toFixed(2) + ' -> ' + cut.power.toFixed(2) + ' % on temperature feedback alone');

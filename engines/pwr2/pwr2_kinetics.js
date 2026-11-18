@@ -328,27 +328,28 @@
    * falls. A green gate with items still here means "known incomplete", not "fine". */
   var OPEN = {
     alpha_D: {
-      value: -2.5e-5,          // K^-1
-      why: 'DOPPLER COEFFICIENT. Needs a source, AND a decision on functional form: this is LINEAR ' +
-           'in fuel temperature, where real Doppler goes as d/dsqrt(T). Sourcing the coefficient ' +
-           'without settling the form buys a sourced number in the wrong equation.'
-      /* WHAT THE FORM COSTS, MEASURED (#768, 2026-11-18). The linear term is a FIT through two
-       * points: hot zero power (fuel = moderator, 286.3 degC measured at the HZP IC) and full power
-       * (the reference). A 1/sqrt(T) form forced through the same two points (C = -1.3677e-3 per
-       * sqrt(K)) — the form is RECALLED physics, not sourced — differs from it, at the fuel
-       * temperature each IC settles to (full stack, 10 min, fuel_temp_c):
-       *     cold shutdown  122 degF  +188 pcm    (3 % of the 5,807 pcm the IC sits subcritical)
-       *     hot shutdown   250 degF  +108 pcm
-       *     HZP            547 degF    +2 pcm    (the criticality approach: unaffected)
-       *     50 %           893 degF   -32 pcm    (the at-power maximum)
-       *     full power    1295 degF    +5 pcm
-       * The power defect HZP -> HFP is 1,038 vs 1,035 pcm. What the linear form DOES lose is the
-       * slope: a constant -1.39 pcm/degF against -1.61 at HZP and -1.22 at full power (+/-16 %).
-       * Not adopted: the 1/sqrt(T) form needs its own source (Ginna UFSAR 4.3 / Fig 15.0-2 are
-       * not in this tree; ADAMS was unreachable from the cloud session that took this).
-       * NOTE the reference vs the plant: full power settles at 701.4 degC, 17.2 above this
-       * module's 684.2 (the steady solve's coolant is 304.5, the core node runs hotter). Linear,
-       * that is a constant 43 pcm the IC boron trim absorbs; a nonlinear form would make it matter. */
+      value: -2.5e-5,          // K^-1 -- the CHORD between the two Doppler anchors, NOT the coefficient
+      why: 'DOPPLER, as a CHORD: (defect HZP -> HFP) / (T_ref - T_hzp). The term itself is now ' +
+           'LOGARITHMIC in absolute fuel temperature (DOPPLER below, #768 owner ruling 2026-11-18 ' +
+           '"Do 1."): a fit chosen because it reproduces the anchor plant\'s SOURCED Doppler-only ' +
+           'power coefficient shape (Ginna UFSAR Table 15.0-5 / Table 4.2-4, -12.0 + 0.045Q ' +
+           'pcm/% at BOC). The 1/T law itself is not LWR-sourced (GEAP-3646, fast oxide: ' +
+           '"approximately a 1/T variation"), so the entry stays OPEN.'
+      /* WHY THE FORM CHANGED (#768, MEASURED 2026-11-18). Each IC's settled fuel temperature (full
+       * stack, 10 min) turned into a Doppler-only power coefficient, every form forced through the
+       * same two anchors, pcm per % power:
+       *                    Ginna BOC (sourced)   linear (was)   1/sqrt(T)   1/T (now)
+       *     0 -> 9.6 %          -11.8               -9.2          -10.5       -11.9
+       *     9.6 -> 49.6 %       -10.7               -9.8          -10.4       -11.0
+       *     49.6 -> 99.6 %       -8.6              -11.2          -10.5        -9.7
+       * The linear form STRENGTHENED with power where the plant's own source weakens, because this
+       * fuel model's rise per % power grows with power (3.7 -> 4.5 degC/%) and a constant
+       * coefficient passed it straight through. Ginna's Doppler TEMPERATURE coefficient range,
+       * "-0.91 -2.90" pcm/F (Table 15.0-5, BOC/EOC), holds the new one at operating temperature:
+       * -1.83 pcm/F at HZP, -1.08 at the full-power reference. Cold, it is -3.2 pcm/F (50 degC
+       * fuel) — outside a table quoted for operating states, and DECLARED as the law's
+       * extrapolation. Ginna's BOC numbers are bounding "minimum feedback" values; the SHAPE is the
+       * claim adopted, and the EOC row (-24.0 + 0.100Q) weakens with power the same way. */
     },
     xenon_worth: {
       value: 0.025,            // dk/k at full-power equilibrium
@@ -402,6 +403,22 @@
            'no corpus document gives an assembly total or a core loading. Owes that figure.'
     }
   };
+
+  /* THE DOPPLER TERM (#768). rho_D(T) = A * ln(T_K / T_ref_K): a coefficient dRho/dT = A / T_K that
+   * weakens with absolute fuel temperature. A is DERIVED so the term passes through BOTH anchors the
+   * linear form did — hot zero power (fuel = moderator, HZP.temp_c) and the full-power reference —
+   * so the HZP -> HFP defect, rho_excess's HZP solve and pwr2_fuel's h_gap solve against the sourced
+   * 1000 pcm defect are all unchanged BY CONSTRUCTION. Only the curvature between and beyond them
+   * moved. The reference only adds a constant (ln T - ln T_ref), so the 17 degC by which the plant's
+   * full-power fuel sits above DEFAULT_T_FUEL_REF is still absorbed by the IC boron trim. */
+  var DOPPLER = (function () {
+    var K0 = 273.15, Th = HZP.temp_c, Tr = DEFAULT_T_FUEL_REF;
+    var A = OPEN.alpha_D.value * (Tr - Th) / Math.log((Tr + K0) / (Th + K0));
+    return { A: A, T_hzp_c: Th, T_ref_c: Tr, K0: K0 };
+  })();
+  function dopplerReactivity(T_fuel_c, T_ref_c) {
+    return DOPPLER.A * Math.log((T_fuel_c + DOPPLER.K0) / (T_ref_c + DOPPLER.K0));
+  }
 
   /* ================================================================ THE ANALYTIC ADVANCE */
 
@@ -746,7 +763,7 @@
    * step rho at 2.2e-1 relative error for a 0.1 dk/s ramp; a real scram is 0.016-0.024 dk/s. */
   function reactivity(kin, T_mod_c, T_fuel_c, B_ppm, rodGroups, P_mpa, h_core) {
     var rho_rods = rodGroups ? rodReactivity(rodGroups) : 0;
-    var rho_dop  = OPEN.alpha_D.value * (T_fuel_c - kin.T_fuel_ref_c);
+    var rho_dop  = dopplerReactivity(T_fuel_c, kin.T_fuel_ref_c);
     var rho_mod  = moderatorReactivity(T_mod_c, kin.T_mod_ref_c, B_ppm, P_mpa);
     /* THE VOID HALF of the density coupling. Omitted when the caller has no core enthalpy to
      * offer — `critical()` and `boronWorth()` are single-phase by definition — and zero to
@@ -783,7 +800,7 @@
     var P      = opts.P_mpa    === undefined ? HZP.P_mpa    : opts.P_mpa;
     var TfRef  = opts.T_fuel_ref_c === undefined ? DEFAULT_T_FUEL_REF : opts.T_fuel_ref_c;
     var TmRef  = opts.T_mod_ref_c  === undefined ? DEFAULT_T_MOD_REF  : opts.T_mod_ref_c;
-    var rho_dop = OPEN.alpha_D.value * (T - TfRef);
+    var rho_dop = dopplerReactivity(T, TfRef);
     var rho_mod = moderatorReactivity(T, TmRef, B, P);
     var rho_bor = -BORON.worth_per_ppm * B;
     return -(rho_dop + rho_mod + rho_bor);
@@ -826,7 +843,7 @@
     if (T_fuel_c === undefined) T_fuel_c = T_c;      /* zero power: fuel sits at the moderator */
     var base = kin.rho_excess
              + (rodGroups ? rodReactivity(rodGroups) : 0)
-             + OPEN.alpha_D.value * (T_fuel_c - kin.T_fuel_ref_c)
+             + dopplerReactivity(T_fuel_c, kin.T_fuel_ref_c)
              - OPEN.xenon_worth.value * xeFrac;
     function rhoAt(B) {
       return base + moderatorReactivity(T_c, kin.T_mod_ref_c, B, P_mpa) - BORON.worth_per_ppm * B;
@@ -939,6 +956,7 @@
   root.RD.pwr2 = root.RD.pwr2 || {};
   root.RD.pwr2.kinetics = {
     DELAYED: DELAYED, DECAY: DECAY, XENON: XENON, MOD: MOD, RODS: RODS, OPEN: OPEN,
+    DOPPLER: DOPPLER, dopplerReactivity: dopplerReactivity,
     BORON: BORON, HZP: HZP,
     solveRhoExcess: solveRhoExcess, criticalBoron: criticalBoron,
     createKinetics: createKinetics, stepKinetics: stepKinetics,

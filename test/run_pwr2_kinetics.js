@@ -771,6 +771,42 @@ function runSuite(K, rec, quiet) {
       K.MOD.anchor_pcm_per_F !== K.OPEN.alpha_D.value &&
       typeof K.OPEN.alpha_D.value === 'number',
       'when the evidence pass lands, entries move UP and this count falls');
+
+  /* ---- 9. THE DOPPLER FORM (#768, owner ruling 2026-11-18 "Do 1.") --------------------------
+   * The claim adopted is the anchor plant's SOURCED Doppler-only power coefficient SHAPE —
+   * Ginna UFSAR Table 15.0-5 / Table 4.2-4: "-12.0 + 0.045Q" pcm/%power at BOC — not the 1/T law.
+   * Read on pwr2_fuel's OWN steady map (coolant on the 291.67 -> 304.5 degC no-load-to-rated
+   * program), interval-averaged, pcm per % power:
+   *                  Ginna BOC   linear (pre-#768)   1/T (shipped)
+   *     0 -> 10 %     -11.78        -8.62              -11.02
+   *     10 -> 50 %    -10.65        -9.21              -10.23
+   *     50 -> 100 %    -8.63       -10.53               -9.24
+   * The linear form STRENGTHENED with power (the fuel rise per % grows with power and a constant
+   * coefficient passed it through) and sat 22-27 % off at both ends; both checks red on it. */
+  if (!quiet) console.log('\nTHE DOPPLER FORM  [#768 -- the sourced power-coefficient shape]');
+  (function () {
+    var g = FUEL.deriveGeometry();
+    var Tf = function (q) { return FUEL.steadyFuelTemp(g, 300000 * q, 291.67 + (304.5 - 291.67) * q); };
+    var qs = [0, 0.1, 0.5, 1.0], pc = [], boc = [];
+    for (var i = 0; i < 3; i++) {
+      var a = qs[i] * 100, b = qs[i + 1] * 100;
+      pc.push((K.dopplerReactivity(Tf(qs[i + 1]), 684.2) - K.dopplerReactivity(Tf(qs[i]), 684.2)) * 1e5 / (b - a));
+      boc.push((-12.0 * (b - a) + 0.0225 * (b * b - a * a)) / (b - a));
+    }
+    var txt = pc.map(function (v, k) { return v.toFixed(2) + ' vs ' + boc[k].toFixed(2); }).join('; ');
+    ckT('the Doppler-only power coefficient WEAKENS with power, as the anchor plant\'s does',
+        Math.abs(pc[0]) > Math.abs(pc[1]) && Math.abs(pc[1]) > Math.abs(pc[2]),
+        'pcm/%: ' + txt + ' (ours vs Ginna BOC, 0-10 / 10-50 / 50-100 %); the linear form read -8.62 / -9.21 / -10.53');
+    ckT('...and every interval sits within 10 % of Ginna Table 15.0-5 BOC',
+        pc.every(function (v, k) { return Math.abs(v / boc[k] - 1) < 0.10; }),
+        txt + '; linear was 27 % / 14 % / 22 % off');
+    ckT('the form keeps BOTH anchors: HZP reads the chord defect exactly, the reference reads zero',
+        Math.abs(K.dopplerReactivity(K.DOPPLER.T_hzp_c, K.DOPPLER.T_ref_c) -
+                 K.OPEN.alpha_D.value * (K.DOPPLER.T_hzp_c - K.DOPPLER.T_ref_c)) < 1e-12 &&
+        K.dopplerReactivity(K.DOPPLER.T_ref_c, K.DOPPLER.T_ref_c) === 0,
+        'HZP ' + (K.dopplerReactivity(K.DOPPLER.T_hzp_c, K.DOPPLER.T_ref_c) * 1e5).toFixed(2) +
+        ' pcm = the linear chord, so rho_excess and the h_gap solve are untouched');
+  })();
 }
 
 console.log('\nPWR2 Layer 5 -- kinetics: analytic, and knowingly unfinished');
@@ -779,6 +815,9 @@ runSuite(K, rec, false);
 var pass = rec.filter(function (r) { return r.ok; }).length, fail = rec.length - pass;
 
 var MUTATIONS = [
+  ['#768: the Doppler term reverted to LINEAR (the slope strengthens with power again)',
+   '    return DOPPLER.A * Math.log((T_fuel_c + DOPPLER.K0) / (T_ref_c + DOPPLER.K0));',
+   '    return OPEN.alpha_D.value * (T_fuel_c - T_ref_c);'],
   ['a delayed-group beta mistyped', '0.002568', '0.002200'],
   ['a delayed decay constant mistyped', '0.0305,   0.111', '0.0405,   0.111'],
   ['beta typed separately from its parts', 'beta:     0.006502,', 'beta:     0.006600,'],
@@ -863,7 +902,7 @@ var MUTATIONS = [
    'temp_c: 291.67,', 'temp_c: 286.0,'],
   ['rho_excess stops being solved and returns a fixed number',
    '    return -(rho_dop + rho_mod + rho_bor);', '    return 0.087354;'],
-  ['the solve drops the Doppler term', '    var rho_dop = OPEN.alpha_D.value * (T - TfRef);',
+  ['the solve drops the Doppler term', '    var rho_dop = dopplerReactivity(T, TfRef);',
    '    var rho_dop = 0;'],
   ['the solve drops the moderator term',
    '    var rho_mod = moderatorReactivity(T, TmRef, B, P);', '    var rho_mod = 0;'],
