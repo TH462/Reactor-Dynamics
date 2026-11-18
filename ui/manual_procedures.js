@@ -3900,7 +3900,11 @@
                    ask: 'Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT about 12 steps. Then above +0.02 tap INSERT; below −0.02, WITHDRAW.',
                    ask_1m: 'Insert the CONTROL RODS until STARTUP RATE holds between −0.02 and +0.02; this will be near the critical point indicated on the 1/M Startup Plot. Press MED, hold INSERT to step {pred}. Then above +0.02 tap INSERT; below −0.02, WITHDRAW.',   /* 40 words, the owner-format ask cap (run_checklist_pwr2 askSweep); the read timing is the note's first sentence */
                    show_1m: true,
-                   note: 'Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot reads a little high: critical is usually two or three steps below its prediction. Expect INTER RANGE to level near 1.0e-8 to 2.0e-8 A, higher if the insert starts late or stops short.',
+                   /* #768 (2026-11-18): was "reads a little high: critical is usually two or three steps below its prediction" -- false on the
+                    * 1/T Doppler plant. MEASURED, routes harness (step 8 prediction vs the real crossing, true reactivity interpolated): see
+                    * run_walkthrough_routes plot_band notes, real crossing / prediction: seed 42 typical 206.33 / 207, overshoot recovery 206.33 / 205;
+                    * seed 7 typical 207 / 210, overshoot recovery ~207 / 207-208. Three steps, either side, matches 9a's "good to about three steps". */
+                   note: 'Read STARTUP RATE two plant-minutes after the rods stop. The 1/M Startup Plot lands within about three steps of critical, either side. Expect INTER RANGE to level near 1.0e-8 to 2.0e-8 A, higher if the insert starts late or stops short.',
                    /* 2026-11-06-develop-a, MEASURED (run_walkthrough_routes, the card's insert to the printed prediction, then the
                     * two-minute reads and taps): ends 2 below the number on typical / base / 13 mistake routes (209 -> 207,
                     * 2 INSERT taps), 3 below on typical_seed7 (211 -> 208, 3 taps) / flicker_release_5, 5 on plot_early, 0 on

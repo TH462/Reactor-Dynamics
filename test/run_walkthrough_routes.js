@@ -1054,7 +1054,7 @@ function runJob(legId, routeId, mutId, ctx) {
     send(typeof c === 'string' ? { action: c } : c); return true;
   }
   var speedNow = null;
-  var critSeen = null;   // #824 plot_band: first bank at true reactivity >= 0
+  var critSeen = null, critPrev = null, critBelow = null;   // #824 plot_band: first bank at true reactivity >= 0 (#768: + the last sample under it)
   function setSpeed(v) { v = Math.max(1, Math.min(600, v || 10)); if (v !== speedNow) { send({ action: 'set_speed', value: v }); speedNow = v; } }
 
   for (var w = 0; w < 3; w++) tick();
@@ -1305,7 +1305,14 @@ function runJob(legId, routeId, mutId, ctx) {
     /* #824: the TRUE critical rod position for `plot_band` -- the first control-bank position the leg reaches with true
      * reactivity >= 0 (a measurement of the plant, never shown to the player; Hard Rule 1 is the card's, not the gate's) */
     var rhoL = (s.true_state || {}).reactivity_pcm;
-    if (critSeen == null && grp() && typeof rhoL === 'number' && rhoL >= 0) { critSeen = bank(); out[k].crit_seen = critSeen; }
+    /* #768 (2026-11-18): and the REAL crossing, fractional -- true reactivity interpolated linearly in bank between the last
+     * sample under zero at a LOWER bank and the first sample at or over it. A lower bank, not just the last sample: on the
+     * linear term the last negative sample sat at the crossing bank itself (rho rising with the rods still), and a same-bank
+     * pair returned the integer bank (MEASURED: 207 for a 206.7 crossing). */
+    if (critSeen == null && grp() && typeof rhoL === 'number' && rhoL < 0) { if (critPrev && critPrev.b !== bank()) critBelow = critPrev; critPrev = { b: bank(), rho: rhoL }; }
+    if (critSeen == null && grp() && typeof rhoL === 'number' && rhoL >= 0) { critSeen = bank(); out[k].crit_seen = critSeen;
+      var cp = critPrev && critPrev.b < critSeen ? critPrev : critBelow;
+      out[k].crit_x = cp && cp.b < critSeen ? +(cp.b + (critSeen - cp.b) * (-cp.rho) / (rhoL - cp.rho)).toFixed(2) : critSeen; }
     /* WR_TRACE=<step,step>: a measurement knob, never the gate — [min into step, bank, power %,
      * startup rate, source range, true rho pcm, INTER RANGE A, SG level %, PRIMARY PRESSURE psia] every 15 plant-seconds on the named steps */
     if (process.env.WR_TRACE && (',' + process.env.WR_TRACE + ',').indexOf(',' + (k + 1) + ',') >= 0 && t() - (S.trT == null ? -1e9 : S.trT) >= 15) {
@@ -2238,12 +2245,24 @@ function verdicts(r) {
   var MD0 = ((ROUTES[r.leg] || {}).mistakes || []).filter(function (m) { return m.id === r.route; })[0];
   var sp0 = PB ? (r.steps || []).filter(function (st) { return st.n === PB; })[0] : null;
   var critL = (r.steps || []).map(function (st) { return st.crit_seen; }).filter(function (x) { return x != null; })[0];
+  var critX = (r.steps || []).map(function (st) { return st.crit_x; }).filter(function (x) { return x != null; })[0];
+  /* #768 (2026-11-18, coordinator ruling (a')): THE FLOOR IS RE-POINTED, NOT RE-BANDED. Floor = floor(REAL crossing) - 1, the
+   * real crossing being `crit_x` (true reactivity interpolated in bank); top unchanged, first critical integer bank + 3.
+   * WHY: on the 1/T Doppler plant (owner ruling 2026-11-18) the core at 547 degF is 4.4 pcm more reactive than on the linear
+   * term, and the first critical integer bank no longer bounds the crossing from below by less than a step. MEASURED,
+   * overshoot_8_recover, seed 42: real crossing 206.16, panel 205 (two-point estimate 205.6; the floor of 207 was missed by
+   * 2); linear term real 206.7, panel 207; seed 7 real ~207, panel 207-208 at every recovery wait tried (2-15 plant-min,
+   * and re-approached from 196 / 199: seed 42 stayed 205 in all of them). WHY -1: the panel ROUNDS a trailing-3-point fit,
+   * so a prediction within one step of the crossing can print a whole step under its floor. LOW is the slow side: 10a stops
+   * further short and 10b pulls on -- step 10 took 3.5 plant-min against its stated 6 on the 205 route. HIGH stays the
+   * danger side (#748), so the top is untouched. */
+  var pbLo = critX != null ? Math.floor(critX) - 1 : (critL != null ? critL - 1 : null);
   if (PB && (r.route === 'typical' || (MD0 && (MD0.safe_plot || MD0.band)))) {
     var pp = sp0 && sp0.pred_now;
     var recRan = !(MD0 && MD0.safe_plot) || !!(sp0 && sp0.recover && sp0.recover.rel_bank != null);
-    v.plot_band = { ok: recRan && pp != null && critL != null && pp >= critL && pp <= critL + 3,
-      name: 'the step ' + PB + ' 1/M prediction sits in the band step 10 relies on: true critical <= prediction <= true critical + 3 (10a stops at or below the first critical bank)',
-      note: (recRan ? '' : 'THE CARD RECOVERY NEVER RE-RELEASED | ') + 'prediction ' + pp + ' against true critical ' + critL + (sp0 && sp0.pulse_at ? ' | plotted on the pulse ' + JSON.stringify(sp0.pulse_at) : '') +
+    v.plot_band = { ok: recRan && pp != null && critL != null && pbLo != null && pp >= pbLo && pp <= critL + 3,
+      name: 'the step ' + PB + ' 1/M prediction sits in the band step 10 relies on: floor(real crossing) - 1 <= prediction <= first critical bank + 3 (10a stops at or below the first critical bank)',
+      note: (recRan ? '' : 'THE CARD RECOVERY NEVER RE-RELEASED | ') + 'prediction ' + pp + ' against true critical ' + critL + ' (real crossing ' + critX + ', floor ' + pbLo + ')' + (sp0 && sp0.pulse_at ? ' | plotted on the pulse ' + JSON.stringify(sp0.pulse_at) : '') +
         (sp0 && sp0.recover ? ' | recovery ' + JSON.stringify(sp0.recover) : '') + (sp0 && sp0.plot_bank != null ? ' | plot at bank ' + sp0.plot_bank + ', SR ' + sp0.plot_sr : '') };
   }
   /* 10b's band on the route that pulls past +1.0: the step must not complete while STARTUP RATE reads above 1.0 */
