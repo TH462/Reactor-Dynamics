@@ -29,6 +29,26 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-18-develop-a (#803: the dry generator's last kilogram; an untracked TMI-2 red on develop)
+
+**#803 fixed** (`pwr2_sg.js` stepSG, `wet = 0` at the mass floor). The filed ride (large break + blackout + auxiliary-feed failure) no longer reaches dryout since the 2026-11-12 heat-up physics: the generator holds mass fraction 1.06 at 701 psi (4.83 MPa) and the model holds at ~1h15m. The defect was still live on **blackout + auxiliary-feed failure, no break** (full stack, seed 4660, 1×):
+
+| after dryout (1h15m–5h) | pre-fix | fixed |
+|---|---|---|
+| steam pressure | 2,135 → 2,466 psi (14.7 → 17.0 MPa) | 1,027 psi (7.08 MPa) flat |
+| `sg_safety_open` | true | false |
+| `sg_safety_kgs` / `adv_flow_kgs` | 347 / 19.8 kg/s (demand; 0 delivered) | 0 / 0 |
+| `fuel_damaged` | by 2h00m | by 2h00m |
+| clad at model hold (3h30m) | 5,824 °F (3,218 °C) | 5,813 °F (3,212 °C) |
+
+**The trap:** a shape declared "linearly to zero" never reached zero, because the mass floor stopped it at wet = 2.0e-4, and at the floor the export is capped at the inflow, so every joule went into one kilogram. The check that guarded #510 ("the dry secondary equilibrates toward the primary") was asserting the climb; re-stated, both forms validated against both lines.
+
+**Still declared, now narrower:** `pwr2_engine.js` stepSG call — relief/dump flows are reported at DEMAND, not prorated to `steam_delivered_kgs` ("one-step overstatement"). Pre-fix it was 347 kg/s for hours; post-fix the dry generator holds below the ADV setpoint so demand is 0. Any other permanent starvation (a dry generator with the ADV opened by hand) would still report demanded flow. Not fixed.
+
+**Core damage with no break reaches the latch by 2h00m** on this ride — the leg `run_pwr2_coredamage_stack`'s header lists as "owed its own ride". Measured, not gated.
+
+**Untracked red on develop `0bfd948`:** `run_checklist_pwr2` 297/299 — `pwr_tmi2_incident` step 9 (core inventory moves +3.78 of 10 needed; subcooling −11.93 °C (−21.5 °F) vs ≤ −27.8 °C (−50 °F)). Identical on the pre-#803 tree, solo, twice. BASELINES still reads 299/0.
+
 ## Session log — 2026-11-13-develop-a (why the accumulators fired on the TMI ride: the steam dump, not the leak; the stuck fraction wired)
 
 Owner question: *"Why does the pressure drop low enough to fire the accumulators in ours? I didn't think the real incident got low enough to fire them."* Three hypotheses, two refuted by measurement (full stack, the crew's actions, seed 42):
