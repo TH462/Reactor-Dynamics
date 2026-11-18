@@ -220,9 +220,13 @@ var ROUTE_PATH = {
   hands_off: ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
   show_me:   ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
   fiddler:   ['o0_hello', 'o1_load', 'o1_help', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o6_help', 'o7_spray_watch', 'o8_auto', 'o8_help', 'o9_heaters', 'o10_scram', 'o10_help', 'o11_trip', 'o12_settle', 'o13_end'],
-  partial_rods: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
+  /* #768 (1/T Doppler, 2026-11-18): no o5_settled on partial_rods. 6 + the help's 40 = 46 steps take power to 80.6 % with the
+   * dump SHUT (0 %) when the watch decides (~40 s in), so "the steam dump stays a little open" would be false (linear term: 82.6 %, dump 11 %) */
+  partial_rods: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
   stop20: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_help_more', 'o5_rods_watch', 'o5_settled', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
-  // no o5_settled: at 31 steps power is 86.2 % at the watch's 6 s (the line says near 84), so it is rightly not said
+  // no o5_settled: at 31 steps power is 84.3 % when the watch decides (the line says near 82; band 80-84), so it is rightly not said.
+  // MEASURED #768: 84.1-84.8 % over the watch on the 1/T Doppler plant (86.1-86.7 % on the linear term against the old 82-86 band) --
+  // the same 0.3-point margin to the band top the route had before
   steps30: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
   show_me_wrong: ['o0_hello', 'o1_load', 'o2_watch', 'o3_dump', 'o4_rods', 'o4_wrong', 'o4_help', 'o5_rods_watch', 'o6_spray', 'o7_spray_watch', 'o8_auto', 'o9_heaters', 'o10_scram', 'o11_trip', 'o12_settle', 'o13_end'],
 };
@@ -526,14 +530,14 @@ Object.keys(ROUTES).forEach(function (name) {
     ck('o6: Tavg came back down from its peak over the rod ask', tPk.toFixed(1) + ' -> ' + degF(I(S.o6_spray, 'tavg')).toFixed(1) + ' °F',
        degF(I(S.o6_spray, 'tavg')) < tPk - 1, 'down > 1 °F');
 
-    // o5_settled (#811 layman pass 2): "Power settles near 84 %: Tavg is still above its target, so
+    // o5_settled (#811 layman pass 2; 84 -> 82 % for #768, the 1/T Doppler plant): "Power settles near 82 %: Tavg is still above its target, so
     // the steam dump stays a little open." Said only where all three are true; never said with the
     // dump shut (the 90 MWe route never opens it).
     if (S.o5_settled) {
       var s5 = S.o5_settled, gap5 = degF(I(s5, 'tavg')) - degF(s5.true_state.tref_c);
-      ck('o5_settled: power near 84 %, dump open, Tavg above Tref', I(s5, 'power_range').toFixed(1) + ' %, dump ' + I(s5, 'steam_dump_valve').toFixed(1) +
-         ' %, Tavg - Tref ' + gap5.toFixed(1) + ' °F', I(s5, 'power_range') > 82 && I(s5, 'power_range') < 86 && I(s5, 'steam_dump_valve') > 5 && gap5 > 3,
-         '82..86 %, dump > 5 %, > +3 °F');
+      ck('o5_settled: power near 82 %, dump open, Tavg above Tref', I(s5, 'power_range').toFixed(1) + ' %, dump ' + I(s5, 'steam_dump_valve').toFixed(1) +
+         ' %, Tavg - Tref ' + gap5.toFixed(1) + ' °F', I(s5, 'power_range') > 80 && I(s5, 'power_range') < 84 && I(s5, 'steam_dump_valve') > 5 && gap5 > 3,
+         '80..84 %, dump > 5 %, > +3 °F');
     }
     var dump5 = max(window_(r, 'o5_rods_watch', 'o6_spray', function (s) { return I(s, 'steam_dump_valve'); }));
     if (dump5 < 1) ck('o5_settled not said with the dump shut', 'dump max ' + dump5.toFixed(1) + ' %, line ' + (S.o5_settled ? 'SAID' : 'not said'), !S.o5_settled, 'not said');
@@ -566,6 +570,12 @@ Object.keys(ROUTES).forEach(function (name) {
     // the heaters are the whole rise (+6.5 vs +0.9 from the low). Mistake: +16.0 / +8.7 / +5.1 / 0.0.
     // So this check is causal only on hands-off; `heaters near full` below (the kW gauge) is what
     // reddens on every route when the heaters are off (0 kW under both injections).
+    // #768 (1/T Doppler, owner ruling 2026-11-18): o9 -> o10 is now 80 s (was 40). Hands-off settles at
+    // 78.5-79 % (84 % on the linear term) and its pressure sat FLAT for ~50 s after the spray shut:
+    // +1.7 psi from the low at 40 s, red. MEASURED at 80 s, seed 42 (from the low): hands-off +6.6,
+    // typical +6.3, stop20 +8.0, mistake +31.2. Injection (failed_pzr_heaters at o9, 0 kW): hands-off
+    // +0.0, typical +0.3 -> red. On the LINEAR term the 80 s form is green (hands-off +29.1) but the
+    // injection is blind there (+15.8: charging's insurge carries it) -- the guard is a 1/T-plant guard.
     var pLo = Math.min.apply(null, window_(r, 'o9_heaters', 'o10_scram', function (s) { return psi(I(s, 'primary_pressure')); }));
     ck('o10: pressure RISING once back in AUTO (the text: heaters rebuild it, slowly)', '+' + (p10 - pLo).toFixed(1) + ' psi from the low (' + (p10 - p9).toFixed(1) + ' from o9) in ' + (dtm * 60).toFixed(0) + ' s', p10 - pLo > 3 && (p10 - p9) / dtm < 60, '> +3 psi from the low, < +60 psi/min');
     ck('o10: heaters near full', S.o10_scram.true_state.pzr_heater_kw.toFixed(0) + ' kW', S.o10_scram.true_state.pzr_heater_kw > 100, '> 100 kW');

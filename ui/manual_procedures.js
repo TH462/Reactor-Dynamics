@@ -4551,7 +4551,7 @@
           /* the chart for this leg's relation (relations plan, raise power 4): LOAD and power, the water and its program */
           trend: ['tavg', 'tref', 'mwe', 'power'], window: 900, pair: ['tavg', 'tref'],   /* the pair FIRST (lower power 2 review, 2026-10-15): two lanes fit at the default height, so the old order drew Tavg/TREF as numeric rows */
           cmd: { action: 'set_load_target', mwe: 30 }, hold: 480, wait_hint: false,
-          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 28, speed: 'normal' } },   /* 20 -> 28 (#825, mid-band): MEASURED replay (inbox/825/replay_probe.js), stage ends 558.7 / 566.1 / 574.0 / 577.5 / 581.3 degF with step 7 at 12; 20 ended stage 4 at 552.7 degF, under the new 556.5 floor */
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 32, speed: 'normal' } },   /* 28 -> 32 (#768, 1/T Doppler 2026-11-18; with stage 7 12 -> 8): MEASURED run_checklist_pwr2 pwr_raise_power, stage ends 558.6 / 565.2 / 574.8 / 577.8 / 582.2 degF (linear term 562.0 / 568.7 / 576.3 / 577.5 / 581.3), no scram on either; 28 ended stage 4 at 555.7 (floor 556.5), 30 alone stage 8 at 583.1 (top 583.0). Before: 20 -> 28 (#825, mid-band): MEASURED replay (inbox/825/replay_probe.js), stage ends 558.7 / 566.1 / 574.0 / 577.5 / 581.3 degF with step 7 at 12; 20 ended stage 4 at 552.7 degF, under the new 556.5 floor */
           /* LAYMAN PASS 9 (2026-09-26, #653 S-2): THE OUTPUT ROW NOW COMES BEFORE THE CONDITIONAL, on all
            * five stages. The paragraph above ("met at entry on no stage") went stale when pass 7 moved the
            * temperature row to `b`, straight after LOAD: MEASURED, `low_power`, seed 42, no pull — the
@@ -4598,7 +4598,7 @@
                   * Measured numbers for all four stages: Diagnostic/TUNING_LOG.md 2026-11-03-develop-b. */
                  { p: 'tavg_c', op: '~', v: 296.694, tol: 5.306, latch: true,   /* 556.5-575.6 degF */
                    hl: ['Rod Speed — Normal', 'Withdraw'], hl_watch: ['Tavg', 'Reactor Power'],
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 557 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 557 °F, the middle of its green band, 25 to 30 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 557 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 557 °F, the middle of its green band, 30 to 35 steps. Otherwise leave the rods.',   /* #768 (1/T Doppler, 2026-11-18): 25-30 -> 30-35. MEASURED routes harness, seed 42, stage-4 pull: typical 35 (linear 30), band_floor 35, double_boron 35, rewind_mid_stage3 35, hot_stage4 32, slow_climb 30 (linear 25-32) */
                    note: 'Keep it under 590 °F on every stage: the plant trips on temperature before power.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 557 and 576 °F (mid-green 557)' },
                  { cont: true, p: 'power_pct', op: '>', v: 28, label: 'REACTOR POWER near 30 %' },
@@ -4676,7 +4676,7 @@
           aim: 'Near full power the 103 % rod stop is close, so pulls get smaller.',
           control: 'Control Bank', target: 'OUTPUT 90 MWe; AVG COOLANT TEMPERATURE in the middle of its band, 576 °F',
           cmd: { action: 'set_load_target', mwe: 90 }, hold: 480, wait_hint: false,
-          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 12, speed: 'normal' } },   /* 20 -> 12 (#825): gives back stage 4's +8 so the replay's full-power end stays where it was -- MEASURED, peak 582.3 degF both ways, min OTdT margin 0.253 vs 0.251 (setpoint minus delta-T fraction), no trip; [38,28,32,20] tripped on OTdT at step 8 */
+          replay_then: { after_acc: 0, cmd: { action: 'rod_nudge', group_id: 'control', steps: 8, speed: 'normal' } },   /* 12 -> 8 (#768, with stage 4 28 -> 32). Before: 20 -> 12 (#825): gives back stage 4's +8 so the replay's full-power end stays where it was -- MEASURED, peak 582.3 degF both ways, min OTdT margin 0.253 vs 0.251 (setpoint minus delta-T fraction), no trip; [38,28,32,20] tripped on OTdT at step 8 */
           accs_ordered: true,
           accs: [{ cmd: { action: 'set_load_target', mwe: 90 },
                    hl: ['Load Setpoint'],
@@ -4688,7 +4688,7 @@
                    wait_speed: 10, speed_text: '10×, while OUTPUT climbs.', label: 'OUTPUT 90 MW' },
                  { p: 'tavg_c', op: '~', v: 304.722, tol: 2.778, latch: true,   /* 575.5-585.5 degF: mid-band, TREF 576 at 90 MW (#825, see stage 4) */
                    hl: ['Withdraw', 'Insert'], hl_watch: ['Tavg'],
-                   ask: 'If AVG COOLANT TEMPERATURE reads below 576 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 576 °F, the middle of its green band, 15 to 20 steps. Otherwise leave the rods.',
+                   ask: 'If AVG COOLANT TEMPERATURE reads below 576 °F, withdraw at MED in 5-step pulls a plant-minute apart until it reads 576 °F, the middle of its green band, 10 to 20 steps. Otherwise leave the rods.',   /* #768: 15-20 -> 10-20. MEASURED stage-7 pull, seed 42: typical / double_boron / rewind_mid_stage3 10 (linear 20), band_floor 15, slow_climb 20, hot_stage4 20 (linear 15-20); stage 4 takes the extra 5 */
                    note: 'If LOAD changes by itself, the turbine ran back on high temperature: hold INSERT until AVG COOLANT TEMPERATURE is back in its band, then set LOAD again.',
                    wait_speed: 5, label: 'AVG COOLANT TEMPERATURE between 576 and 585 °F (mid-green 576)' },
                  { cont: true, p: 'tavg_c', op: '~', v: 301.5, tol: 6, label: 'AVG COOLANT TEMPERATURE still between 564 and 585 °F' }],
