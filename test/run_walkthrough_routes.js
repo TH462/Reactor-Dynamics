@@ -672,6 +672,12 @@ var MUTATIONS = [
   { id: 'startup8_no_recovery', route: 'overshoot_8_recover', expect: 'must_complete',
     why: '8a note without its recovery sentence (the pre-#824 card: 10 past trips on SR HIGH FLUX)',
     mutate: function (P) { P.steps[7].accs[0].note = P.steps[7].accs[0].note.replace(/ If SOURCE RANGE passes[^]*$/, ''); } },
+  /* #768 (coordinator ruling 2026-11-18): 13a's note without its high-power sentence (the card before it): the overpulled
+   * arrival (8.7 % and climbing) types 100 on the 1.5 % rule and settles at ~11 %, level held at 33 %: a SILENT strand
+   * (MEASURED, 1/T Doppler plant, 60 plant-min; on the linear term it was an SG LO-LO trip, which the invariant accepts). */
+  { id: 'startup13_no_power_branch', route: 'overpull_10', expect: 'invariant',
+    why: "13a's note without 'If REACTOR POWER reads above 5 %, type 100, then tap INSERT ...': the overpulled arrival strands at 11 %",
+    mutate: function (P) { var e = P.steps[12].accs[0]; e.note = e.note.replace(/If REACTOR POWER reads above[^.]*\. /, ''); } },
   { id: 'step17_1005', route: 'late_second_block', expect: 'invariant',
     why: 'step 18 (was 17 before #808) floor back to 10.05 % (unfinishable at LOAD 10 MWe, owner ruling 2026-09-23)',
     mutate: function (P) { P.steps[17].accs[0].v = 10.05; } },
@@ -1451,7 +1457,25 @@ function runJob(legId, routeId, mutId, ctx) {
       return;
     }
     if (P === 'feed_fill') {                             // #808 startup 13a as the card reads: 50 gpm, 100 from 1.5 %
-      if (!S.memo.ff) { S.memo.ff = true; S.acts++; press({ action: 'set_feed_pump_speed', pct: pv('power_pct') >= 1.45 ? 10 : 5 }); }   // the ask's cutoff, "reads 1.5 % or more" (tile floor 1.45; develop-h)
+      /* #768 (coordinator ruling 2026-11-18): 13a's note, READ OFF THE CARD (so the note is its own injection) -- "If REACTOR
+       * POWER reads above <hi> %, type 100, then tap INSERT <k> times a plant-minute apart until it reads under <hi> %."
+       * Graded on the tile: REACTOR POWER draws one decimal, so "above 5" is a reading of 5.1 or more (>= 5.05) and "under 5"
+       * one of 4.9 or less (< 4.95). Decided at the typing, as the ask's own 1.5 % cutoff is. */
+      var ffm = /If REACTOR POWER reads above (\d+(?:\.\d)?) %, type 100, then tap INSERT (\d+) times a plant-minute apart until it reads under \1 %/.exec(
+        [st2.note || ''].concat((st2.accs || []).map(function (e) { return (e && e.note) || ''; })).join(' '));
+      if (!S.memo.ff) {
+        S.memo.ff = true; S.acts++;
+        S.memo.ffIns = !!(ffm && pv('power_pct') >= +ffm[1] + 0.05);
+        press({ action: 'set_feed_pump_speed', pct: S.memo.ffIns || pv('power_pct') >= 1.45 ? 10 : 5 });   // the ask's cutoff, "reads 1.5 % or more" (tile floor 1.45; develop-h)
+        if (S.memo.ffIns) out[cur].ff_ins = { power: +pv('power_pct').toFixed(2), bank: bank(), taps: 0 };
+      }
+      if (S.memo.ffIns && !S.memo.ffDone) {
+        if (pv('power_pct') < +ffm[1] - 0.05) { S.memo.ffDone = true; out[cur].ff_ins.done_min = +((t() - S.t0) / 60).toFixed(2); out[cur].ff_ins.bank_end = bank(); }
+        else if (!moving() && (S.memo.ffT == null || t() - S.memo.ffT >= 60)) {
+          nudge(-(+ffm[2]), 'normal');   // k taps back to back: one k-step insert (a tap is one step at any rung)
+          S.memo.ffT = t(); S.acts++; out[cur].ff_ins.taps += +ffm[2];
+        }
+      }
       pressRows(st2, c2); return;
     }
     if (P === 'seq') {                                   // an explicit sequence, one per tick

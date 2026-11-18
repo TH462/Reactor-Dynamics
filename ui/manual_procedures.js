@@ -464,7 +464,7 @@
       title: 'Mode 5, Cold Shutdown → Mode 3, Hot Standby — plant heatup (pump heat)',
       purpose: 'Take the plant from Mode 5, Cold Shutdown to Mode 3, Hot Standby on reactor-coolant-pump heat alone: start the RCPs, pressurize to NOP, bottle the steam generator, re-align the SI accumulators, and ride temperature up with the reactor never critical. This is the commercial heatup and what mission "The Big Warm-Up" drives.',
       // #524 (2026-08-31): cold_shutdown is REAL again — the water-property floor moved
-      // 0.002 MPa and PWR2 carries a Mode 5 IC (122 degF / 363 psia / 918 ppm). The #532
+      // 0.002 MPa and PWR2 carries a Mode 5 IC (122 degF / 363 psia / 938 ppm; 938.2 MEASURED 2026-11-18, measure_stack --ic=cold_shutdown, was 918). The #532
       // hot_shutdown fence this line wore for a day is retired with the wall that forced it.
       from: 'cold_shutdown',
       prereq: ['Plant in Mode 5, Cold Shutdown: cold (~122 °F / 50 °C), depressurized (~363 psi / 2.5 MPa), subcritical, RHR in service.', 'RCPs available to start (heat source).'],
@@ -477,7 +477,7 @@
       ],
       cautions: [
         'This heatup runs on REAL rates (#419 wave 1 — the training compression is retired; time acceleration carries the pacing). Measured on THIS engine (2026-08-31, engine-direct): the pumps alone warm the Mode 5 plant at 94.9 °F/hr (52.7 °C/hr) over the first half hour, and at the rated rotor the pump-heat class runs up to 113.7 °F/hr (63.2 °C/hr) — ABOVE the 100 °F/hr administrative limit, so rate compliance is yours: trim the RHR heat exchanger to bleed the excess (the same lever the cooldown throttles). The Pressure SP walks at the sourced 0.23 psi/s heater class.',
-        'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull the CONTROL bank or dilute — Hot Standby means hot AND subcritical, and the control bank stays at its cold-shutdown position the whole way. The SHUTDOWN bank is the exception and has its own step: Mode 5 ships with both banks inserted (measured on this engine: ρ = −5807 pcm on 918 ppm; the bank alone is worth 3676 pcm), and withdrawing the shutdown bank is a prerequisite for the approach to criticality, not part of it.',
+        'The heat source is the reactor coolant pumps (pump_heat_frac 0.55 % of rated core heat at full flow) plus the pressurizer heaters. Do NOT pull the CONTROL bank or dilute — Hot Standby means hot AND subcritical, and the control bank stays at its cold-shutdown position the whole way. The SHUTDOWN bank is the exception and has its own step: Mode 5 ships with both banks inserted (measured on this engine: ρ = −5807 pcm on 938 ppm; the bank alone is worth 3676 pcm), and withdrawing the shutdown bank is a prerequisite for the approach to criticality, not part of it.',
         'The steam dump is a COARSE lever at these powers: measured, a 5 % manual dump demand is roughly ten times pump-heat generation and reverses the heatup at −263 °F/hr (−146 °C/hr) anywhere above about 302 °F (150 °C); below ~219.2 °F (104 °C) the same demand only ARRESTS the climb. To slow or hold a heatup, secure the RCP — measured, that takes the rate to 0.004 °F/hr.',
         'Keep the turbine OFF LINE and the dumps SHUT so the SG bottles: heat crossing the tubes then has nowhere to go but into secondary pressure, which rides up with Tavg. A turbine left in FOLLOW opens its governor and takes the whole heat source (~6 % open is enough on pump heat alone). The cold_shutdown IC spawns already off line (#251); the Disconnect Grid step confirms rather than changes.',
         'Step 7 (re-align the SI accumulators) is YOURS, nothing does it for you, and it belongs INSIDE step 6 rather than after it — on the real pressurization clock the compliant 600-to-1000 psi window is ~14 plant-minutes wide (measured: opens ~+9 min, shuts ~+23 min) and closes about an hour and a half before the full pressurization completes. The cold lineup ships them isolated — correct below their 600 psi (4.14 MPa) cover gas — and re-alignment is deliberately procedural *(OWNER RULING, 2026-07-30: "lets leave opening of the accumulators to the procedure instead of auto opening them.")*. Skip it and you reach Mode 1 with no passive injection; the SI ACCUM ALIGNED annunciator (PWR-A32) is silent on this case because shut tanks are what it clears on.',
@@ -2591,7 +2591,7 @@
           { p: 'power_pct', op: '>', v: 1 },
         ],
       },
-      outcome: 'Plant at Mode 3, Hot Standby: hot, at pressure, reactor shut down, control bank never moved. Boron is still at the cold concentration near 918 ppm; the startup walkthrough begins by diluting it.',
+      outcome: 'Plant at Mode 3, Hot Standby: hot, at pressure, reactor shut down, control bank never moved. Boron is still at the cold concentration near 938 ppm; the startup walkthrough begins by diluting it.',
     },
     {
       id: 'pwr_startup', category: 'startup', manual_ref: 'PWR-T03', next: 'pwr_raise_power',
@@ -2602,7 +2602,7 @@
       prereq: ['Plant at Mode 3, Hot Standby: AVG COOLANT TEMPERATURE near 547 °F, PRIMARY PRESSURE 2235 psi, reactor shut down (auto-checked).', 'RCP FLOW on.', 'CONTROL ROD POSITION 0 of 627; SHUTDOWN ROD POSITION 627 of 627.'],
       /* MEASURED on hot_zero_power (2026-08-31, full stack): tavg 286.2 °C, 15.41 MPa,
        * boron 719 ppm, ρ −1,137 pcm, SR 502 cps. The boron row is the heatup→startup seam:
-       * a pump-heat heatup arrives at ≈ 918 ppm — the dilution steps below are the remedy. */
+       * a pump-heat heatup arrives at ≈ 938 ppm (918 before 2026-11-18) — the dilution steps below are the remedy. */
       precond: [
         { p: 'tavg_c', op: '~', v: 286, tol: 8, text: 'Hot: AVG COOLANT TEMPERATURE 532 to 561 °F' },
         { p: 'pressure_mpa', op: '~', v: 15.41, tol: 0.5, text: 'At pressure: PRIMARY PRESSURE near 2235 psi' },
@@ -4100,7 +4100,15 @@
           accs_ordered: true,
           accs: [{ p: 'sg_level_pct', op: '>=', v: 59.5,
                    ask: 'Type 50 in the gpm box beside RESTORE on the SG FEED card, or 100 if REACTOR POWER reads 1.5 % or more. Wait for STEAM GENERATOR LEVEL to reach 60 %.',
-                   note: 'If STEAM GENERATOR LEVEL stops rising for 3 plant-minutes, type 100.',
+                   note: 'If REACTOR POWER reads above 5 %, type 100, then tap INSERT 5 times a plant-minute apart until it reads under 5 %, 20 to 25 taps in all. If STEAM GENERATOR LEVEL stops rising for 3 plant-minutes, type 100.',
+                   /* #768 (coordinator ruling 2026-11-18): THE OVERPULLED ARRIVAL. A player who let go of 10's pull at ~1.5 DPM arrives
+                    * here at 8.5-10 % and climbing; aux feed + 100 gpm cannot carry 11 % (1/T Doppler plant: level held 33 %, a SILENT
+                    * strand 60 plant-min; linear term: 13.4 %, SG lo-lo trip at 36.7). INSERT FIRST, THEN FEED was measured and REFUTED:
+                    * with nothing typed the level fell ~7 points a plant-minute and SG LO-LO tripped at 1.75 plant-min (overpull_10, 3-tap
+                    * pulls). Feed first, then 5-tap pulls, MEASURED routes harness seed 42 (arrival power -> taps -> under 5 % at): overpull_10
+                    * 8.66 % -> 20 -> 3.27 plant-min, step 7.2; overpull_notrim 8.96 -> 20 -> 3.52, 7.4; overshoot_235 10.07 -> 25 -> 4.24, 8.0;
+                    * linear term overpull_10 10.17 -> 25 -> 4.14, 7.7. All complete; Tavg never below 548.3 degF. Typical (2.0 %) never
+                    * reads above 5 %: unchanged, 8.6 plant-min. run_walkthrough_routes reads this sentence off the card. */
                    wait_speed: 10,
                    hl: ['SG Feed Rate'], hl_watch: ['SG Level', 'Feed Flow', 'Reactor Power'],   // FEED FLOW, not the card (#809 quality pass)
                    label: 'STEAM GENERATOR LEVEL 60 % or more, main feed in MAN' },
@@ -5417,9 +5425,9 @@
          * that follows it = the step `note`. Steps 4 and 6 keep per-substep rungs (1× then 60×,
          * 1× then 5×). Record: the step file's Notes, "Bring-down record — 2026-09-25". */
         { text: 'Add the boron a cold core needs before any cooling starts.',
-        why: 'Hot, the core is shut down on about 719 ppm. At 122 °F it needs about 920 ppm for the same margin, so the boron goes in before the cold arrives.',
+        why: 'Hot, the core is shut down on about 719 ppm. At 122 °F it needs about 938 ppm for the same margin, so the boron goes in before the cold arrives.',
           aim: 'Cold water makes the chain reaction easier, so the boron goes in first.',
-          control: 'Boron control', target: 'BORON reads 920 ppm, ON lit',
+          control: 'Boron control', target: 'BORON reads 938 ppm, ON lit',
           /* 3 ppm A MINUTE IS THE PLANT'S OWN NUMBER, AND IT IS FLAT (#753, re-measured 2026-09-14
            * after the figure was filed as refuted). BORATION AND DILUTION ARE NOT THE SAME SHAPE:
            * dilution is a first-order approach and slows as it closes, which is the finding that
@@ -5452,7 +5460,7 @@
            * (MEASURED by the bring-down, inherited here: 920 -> 718.2 ppm). 1a is now the ON
            * check and 1b the target; the band grading stays on the target row. */
           wait_hint: false,
-          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 920 }, hold: 3900,
+          cmd: { action: 'set_auto_setpoint', channel_id: 'boron_conc', value: 938 }, hold: 3900,   /* 920 -> 938 (2026-11-18): the cold_shutdown IC boots at 938.2 ppm (MEASURED, measure_stack), so the cycle closes on it. 880 still ticks 1c at 3.00 ppm/min (unchanged); the target is reached ~6 min later than 920 */
           wait_speed: 600, speed_text: true,
           /* THE SHUTDOWN'S SCRAM TRANSIENT CAN LAND HERE (#825 critic round 1, 2026-11-03). MEASURED, routes harness chain,
            * seed 42: the trip from ~12 % power drives COOLDOWN RATE to about 100 degF/hr (the alarm) as the steam dump takes
@@ -5467,10 +5475,10 @@
                    hl: ['Boron ON'],
                    ask: 'Check ON is lit on the BORON card. If ON is not lit, press ON.',
                    label: 'ON is lit on the BORON card' },
-                 { p: 'boron_target_ppm', op: '~', v: 1710, tol: 790.5,   /* 919.5-2500.5 ppm: the "920" floor to the box's ceiling */
+                 { p: 'boron_target_ppm', op: '~', v: 1719, tol: 781.5,   /* 937.5-2500.5 ppm: the "938" floor to the box's ceiling (was 919.5, the "920" floor) */
                    hl: ['Boron Target'],
-                   ask: 'Set the boron target to 920 ppm: type it in the BORON card\'s 0-2500 ppm box, press Enter, and check BORON STATUS reads BORATING.',
-                   label: 'BORON target reads 920 ppm' },
+                   ask: 'Set the boron target to 938 ppm: type it in the BORON card\'s 0-2500 ppm box, press Enter, and check BORON STATUS reads BORATING.',
+                   label: 'BORON target reads 938 ppm' },
                  { p: 'boron_ppm', op: '>=', v: 879.5,
                    hl_watch: ['Boron Concentration', 'Boron Status'],
                    ask: 'Wait for BORON CHEM to read 880 ppm or more.',
