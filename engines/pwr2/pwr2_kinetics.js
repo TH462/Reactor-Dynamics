@@ -332,6 +332,23 @@
       why: 'DOPPLER COEFFICIENT. Needs a source, AND a decision on functional form: this is LINEAR ' +
            'in fuel temperature, where real Doppler goes as d/dsqrt(T). Sourcing the coefficient ' +
            'without settling the form buys a sourced number in the wrong equation.'
+      /* WHAT THE FORM COSTS, MEASURED (#768, 2026-11-18). The linear term is a FIT through two
+       * points: hot zero power (fuel = moderator, 286.3 degC measured at the HZP IC) and full power
+       * (the reference). A 1/sqrt(T) form forced through the same two points (C = -1.3677e-3 per
+       * sqrt(K)) — the form is RECALLED physics, not sourced — differs from it, at the fuel
+       * temperature each IC settles to (full stack, 10 min, fuel_temp_c):
+       *     cold shutdown  122 degF  +188 pcm    (3 % of the 5,807 pcm the IC sits subcritical)
+       *     hot shutdown   250 degF  +108 pcm
+       *     HZP            547 degF    +2 pcm    (the criticality approach: unaffected)
+       *     50 %           893 degF   -32 pcm    (the at-power maximum)
+       *     full power    1295 degF    +5 pcm
+       * The power defect HZP -> HFP is 1,038 vs 1,035 pcm. What the linear form DOES lose is the
+       * slope: a constant -1.39 pcm/degF against -1.61 at HZP and -1.22 at full power (+/-16 %).
+       * Not adopted: the 1/sqrt(T) form needs its own source (Ginna UFSAR 4.3 / Fig 15.0-2 are
+       * not in this tree; ADAMS was unreachable from the cloud session that took this).
+       * NOTE the reference vs the plant: full power settles at 701.4 degC, 17.2 above this
+       * module's 684.2 (the steady solve's coolant is 304.5, the core node runs hotter). Linear,
+       * that is a constant 43 pcm the IC boron trim absorbs; a nonlinear form would make it matter. */
     },
     xenon_worth: {
       value: 0.025,            // dk/k at full-power equilibrium
