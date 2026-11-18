@@ -343,7 +343,12 @@
             if (latExt[j] === null || (lo ? v < latExt[j] : v > latExt[j])) latExt[j] = v;
           }
           latStreak[j] = pred(s, en) ? latStreak[j] + 1 : 0;
-          if (latAt[j] === null && latStreak[j] >= LAT_N) latAt[j] = s.metadata ? s.metadata.sim_time : 0;
+          /* ...and, as live (`_gradeAccs`: `ax.streak >= ACC_STABLE_N && !blocked`), a row of an
+           * ORDERED step may not latch while an earlier row is unmet (critic M-1, 2026-11-18:
+           * without this a blocked row that held 5 ticks and fell back passed here while live
+           * left the player stuck — the #756 ordering gate gone hollow). The streak still counts. */
+          var unblockedL = !ordMet || ordMet.slice(0, j).every(Boolean);
+          if (latAt[j] === null && latStreak[j] >= LAT_N && unblockedL) latAt[j] = s.metadata ? s.metadata.sim_time : 0;
         });
       }
       var thenIssued = false;
@@ -429,11 +434,14 @@
            * it off the step's LAST snapshot, so a row the player sees tick mid-wait and keep could fail
            * here if the plant moved back across the line before the hold ran out. MEASURED, the case
            * that found it — `pwr_tmi2_incident` step 9, SUBCOOLING MARGIN <= -50 degF: latched at
-           * t = 4,367 s, extreme -290 degF (-161 degC), then the accumulators injected and it read
-           * -21.5 degF (-11.9 degC) at the end of the 3,900 s hold. Red on Node 22, green on Node 24
-           * (CI): the two runtimes differ only on whether that recovery lands inside the hold, which
-           * a live player never sees because the row has already ticked. The end-of-hold value is
-           * still printed, so a row that latched and was lost says so. */
+           * t = 4,367 s, extreme -290 degF (-161 degC) in TRUE STATE, then the accumulators injected
+           * and true state read -21.5 degF (-11.9 degC) at the end of the 3,900 s hold. Red on Node 22,
+           * green on Node 24 (CI). HALF THE CAUSE IS THE CHANNEL (critic L-1): `pv` reads true state
+           * first, while live grades the INSTRUMENT (`subcooling_margin`, range floor -28 degC), which
+           * latched at the same 4,367 s and was still past the line for the hold's last 353
+           * broadcasts — the board never crossed back. The verdict is the same either way; the
+           * truth-vs-instrument read is the harness's standing choice and is not changed here. The
+           * end-of-hold value is still printed, so a row that latched and was lost says so. */
           var lj = key.indexOf('accs') === 0 ? +key.slice(4) : -1;
           if (lj >= 0 && latchable(c)) {
             var endOk = pred(lastSnap, c);
