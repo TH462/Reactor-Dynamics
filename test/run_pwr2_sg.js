@@ -752,6 +752,9 @@ var MUTATIONS = [
   ['the dryout wet fraction deleted (a dry SG transfers rated UA — #510 H-1 re-armed)',
    'var Q = U_eff * wet * sg.area * (primaryT - T_sec);',
    'var Q = U_eff * sg.area * (primaryT - T_sec);', { grp: 'C1' }],
+  ['the floor zero deleted (a 1 kg generator keeps the line\'s residual wet = 2.0e-4 and ' +
+   'climbs onto the h_hi clip with nothing leaving — #803 re-armed)',
+   '    if (sg.mass <= SG.mass_floor_kg * 1.01) wet = 0;\n', '', { grp: 'C1' }],
   /* THE ANCHOR MOVED WITH #549 (2026-08-27) — the one line became three, and a mutation whose
    * anchor has been refactored away goes BLIND, which the runner reports but which is easy to
    * wave through. Re-pointed at the surviving `min`, and the two halves now have an anchor

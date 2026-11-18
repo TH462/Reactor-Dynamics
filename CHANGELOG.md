@@ -11,7 +11,7 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 ### Fixed — a boiled-dry steam generator no longer reads 2,466 psia with its safeties "lifting" (2026-11-18, #803)
 
 - **A steam generator at its 1 kg mass floor takes no heat from the primary.** The dryout curve was declared to reach zero but the floor stopped it short, and the leftover heat on one kilogram walked the secondary up to the 17.0 MPa (2,466 psia) property ceiling with zero flow out.
-- **Board, full stack, blackout + auxiliary-feed failure, after dryout (1h15m–5h):** steam pressure 2,135–2,466 psi (14.7–17.0 MPa) → **1,027 psi (7.08 MPa), flat**; "SG Safeties Lifting" lit → **seated**; safety-valve flow reported 347 kg/s (765 lb/s) with none delivered → **0**. Core damage time and peak cladding unchanged within 11 °F.
+- **Board, full stack, blackout + auxiliary-feed failure, after dryout (1h15m–5h):** steam pressure 2,135–2,466 psia (14.7–17.0 MPa) → **1,027 psia (7.08 MPa), flat**; "SG Safeties Lifting" lit → **seated**; safety-valve flow reported 765 lb/s (347 kg/s) with none delivered → **0**. Core damage time and peak cladding unchanged within 11 °F.
 - Above the floor the plant is bit-identical.
 
 ### Changed — the stuck relief valve's severity now works, and the TMI-2 meltdown walkthrough uses it (2026-11-13)

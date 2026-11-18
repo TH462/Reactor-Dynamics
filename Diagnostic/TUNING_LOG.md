@@ -35,9 +35,9 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 | after dryout (1h15m–5h) | pre-fix | fixed |
 |---|---|---|
-| steam pressure | 2,135 → 2,466 psi (14.7 → 17.0 MPa) | 1,027 psi (7.08 MPa) flat |
+| steam pressure | 2,135 → 2,466 psia (14.7 → 17.0 MPa) | 1,027 psia (7.08 MPa) flat |
 | `sg_safety_open` | true | false |
-| `sg_safety_kgs` / `adv_flow_kgs` | 347 / 19.8 kg/s (demand; 0 delivered) | 0 / 0 |
+| `sg_safety_kgs` / `adv_flow_kgs` | 765 / 43.6 lb/s (347 / 19.8 kg/s) (demand; 0 delivered) | 0 / 0 |
 | `fuel_damaged` | by 2h00m | by 2h00m |
 | clad at model hold (3h30m) | 5,824 °F (3,218 °C) | 5,813 °F (3,212 °C) |
 
@@ -47,7 +47,11 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 **Core damage with no break reaches the latch by 2h00m** on this ride — the leg `run_pwr2_coredamage_stack`'s header lists as "owed its own ride". Measured, not gated.
 
-**Untracked red on develop `0bfd948`:** `run_checklist_pwr2` 297/299 — `pwr_tmi2_incident` step 9 (core inventory moves +3.78 of 10 needed; subcooling −11.93 °C (−21.5 °F) vs ≤ −27.8 °C (−50 °F)). Identical on the pre-#803 tree, solo, twice. BASELINES still reads 299/0.
+**Untracked red on develop `0bfd948`:** `run_checklist_pwr2` 297/299 — `pwr_tmi2_incident` step 9 (core inventory moves +3.78 of 10 needed; subcooling −21.5 °F (−11.93 °C) vs ≤ −50 °F (−27.8 °C)). Identical on the pre-#803 tree, solo, twice. BASELINES still reads 299/0.
+
+**Open, found by the critic, not fixed:** the `h_hi` clip still binds on ONE dry path — a tube leak into a dry generator with donor enthalpy above h_g (2,900 kJ/kg at 7.17 MPa, 752 °F (400 °C) primary): 29,980/30,000 steps, 2,466 psia (17.0 MPa), identical pre/post fix. The leak's energy, not the bundle's, carries it. Needs SGTR + dry generator + superheated core exit. Declared at `pwr2_sg.js` backstop comment.
+
+**Critic loop:** 1 round, VERDICT PASS, three LOW — mutation entry for the floor zero added (36/36 caught), the superheated-leak path recorded above, this entry's units put US-first.
 
 ## Session log — 2026-11-13-develop-a (why the accumulators fired on the TMI ride: the steam dump, not the leak; the stuck fraction wired)
 

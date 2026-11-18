@@ -461,7 +461,14 @@
      * ledger's, and it left with the floor: h_f(0.002 MPa) ~ 73 kJ/kg sits below every
      * physical inflow this plant has, so the subcooled-inflow state is representable and the
      * clip reports ZERO material bindings on the same transient (gated in run_pwr2_sg). If
-     * this clip ever reports binding again, it is a defect, not a declared residual. */
+     * this clip ever reports binding again, it is a defect, not a declared residual.
+     * ONE KNOWN DEFECT OF THAT CLASS, OPEN (#803 critic, 2026-11-18): a TUBE LEAK into a DRY
+     * generator whose donor enthalpy is above h_g(P) (superheated primary steam — measured
+     * 2,900 kJ/kg at 7.17 MPa) carries enough energy to leave as vapour, so the vessel never
+     * leaves the floor, and the leak's own energy (not the bundle's duty) runs h onto this
+     * clip: 29,980 of 30,000 steps, P at 17.0 MPa (2,466 psia), identical before and after
+     * the #803 floor zero. Reachable only with SGTR + a dry generator + a superheated core
+     * exit. Recorded in Diagnostic/TUNING_LOG.md 2026-11-18; not fixed. */
     /* The flag reports MATERIAL corrections only. When the #549 energy limiter binds it
      * lands the post-step h exactly AT h_lo by construction, and float roundoff puts the
      * recomputed value a ulp either side — the restore then moves ~1e-12 kJ/kg and no
