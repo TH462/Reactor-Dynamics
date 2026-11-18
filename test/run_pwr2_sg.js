@@ -234,12 +234,44 @@ function runSuite(G, rec, quiet, only) {
    * while the mechanism it names was untouched. MEASURED ON BOTH: the pre-#549 mass-only
    * limiter and the current one BOTH equilibrate at 9.145 MPa = Psat(304.5 degC) exactly, so
    * this form passes on the old behaviour too — it is a better test, not a refitted one. */
-  for (var kd2 = 0; kd2 < 15000; kd2++) G.stepSG(sgD, 304.5, 0.02, { steam: 200 });
-  ckT('...and the dry secondary EQUILIBRATES toward the primary instead of pinning at the ' +
-      'property floor as a 211 degF infinite sink',
-      Math.abs(sgD.P - W.P_sat(304.5)) < 0.01 && sgD.P > 1.0,
-      'P ' + sgD.P.toFixed(3) + ' MPa at equilibrium vs Psat(304.5 degC) = ' +
-      W.P_sat(304.5).toFixed(3) + ' (the pre-fix defect pinned 0.1)');
+  /* RE-STATED 2026-11-18 (#803). This read "the dry secondary EQUILIBRATES toward the primary"
+   * — Psat(304.5 degC) = 9.145 MPa — and that climb WAS the #803 defect: a vessel at its mass
+   * floor exports nothing (s_mass reduces to its inflow), so the floor's residual wet = 2.0e-4
+   * poured duty into one kilogram and walked P up the saturated-liquid line with the demand
+   * standing and 0.000 kg delivered. Above 352 degC that walk ends on the h_hi backstop at
+   * 17.0 MPa (2,466 psia). What the old form guarded — the #510 211 degF INFINITE SINK — is
+   * the duty, and that is asserted here and by the near-zero-duty check below. VALIDATED BOTH
+   * WAYS: on the pre-#803 line this form reds (duty 11.9 kW, P climbs 8.365 -> 9.145 MPa in the 300 s);
+   * the old form reds on the fix (P holds at 0.002, where this fixture's constant 200 kg/s
+   * demand drew it — a fixture that pumps to vacuum, not a plant reading). */
+  var P_dry0 = sgD.P, dutyD2 = 0;
+  for (var kd2 = 0; kd2 < 15000; kd2++) dutyD2 = Math.max(dutyD2, Math.abs(G.stepSG(sgD, 304.5, 0.02, { steam: 200 }).duty_kW));
+  ckT('...and the DRY secondary takes no duty and HOLDS its pressure — it neither sinks the ' +
+      'primary (#510) nor climbs toward it with nothing leaving (#803)',
+      dutyD2 === 0 && sgD.P === P_dry0,
+      'max |duty| ' + dutyD2.toFixed(3) + ' kW over 300 s at the floor; P ' + P_dry0.toFixed(4) +
+      ' -> ' + sgD.P.toFixed(4) + ' MPa (pre-#803 climbed to Psat(304.5 degC) = ' +
+      W.P_sat(304.5).toFixed(3) + ')');
+  /* #803's OWN CHECK, the form the issue asked for: h_clipped == 0 across a dry endgame. The
+   * fixture is the endgame the board showed — a dry generator at the dump valve's 1,025 psig
+   * (7.17 MPa), relief demand standing, a damaged core's primary at 400 degC (752 degF), well
+   * past T_sat(17 MPa) = 352 degC. MEASURED pre-fix: 29,849 of 30,000 steps clipped and P
+   * pegged at 17.0000 MPa with 0.000 kg delivered — the "SG Safeties Lifting" lamp lit for
+   * no flow. It must be able to fail, and it does on the old line. */
+  (function () {
+    var sgE = G.createSG({ P: 7.17, mass: 1 }), clipE = 0, maxPE = 0, rE;
+    for (var ke = 0; ke < 30000; ke++) {
+      rE = G.stepSG(sgE, 400, 0.02, { steam: 30 });
+      if (rE.h_clipped) clipE++;
+      if (rE.P_sec > maxPE) maxPE = rE.P_sec;
+    }
+    ckT('a DRY generator next to a 400 degC primary never binds the h_hi backstop and never ' +
+        'rises above the pressure it dried at (#803)',
+        clipE === 0 && maxPE <= 7.17 + 1e-9,
+        'clipped ' + clipE + '/30000; max P ' + maxPE.toFixed(4) + ' MPa (' +
+        (maxPE * 145.038 - 14.696).toFixed(0) + ' psig) — pre-fix 29,849/30,000 and 17.0000 MPa ' +
+        '(2,466 psia)');
+  })();
   var sgDry = G.createSG({ mass: 1 });
   var dDry = G.stepSG(sgDry, 304.5, 0.02, {});
   ckT('a dry SG is a NEAR-ZERO heat sink — duty collapses with the wetted fraction',

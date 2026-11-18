@@ -324,6 +324,19 @@
      * "sink" ran 1.88 GW at 211 degF. See dryout_mass_frac above for the adopted shape. */
     var mf = sg.mass / SG.mass_nominal;
     var wet = mf >= SG.dryout_mass_frac ? 1 : Math.max(0, mf / SG.dryout_mass_frac);
+    /* THE ZERO SITS AT THE FLOOR, NOT AT 0 kg (#803). The shape above is declared to go
+     * "linearly to zero", but the vessel cannot reach 0 kg — the mass floor stops it at 1 kg,
+     * where the line still reads wet = 2.0e-4. That residual is what the #803 endgame was:
+     * a vessel that cannot export (s_mass reduces to its inflow at the floor) kept taking
+     * duty into ONE KILOGRAM, so its enthalpy ran up the saturated-liquid line until the h_hi
+     * backstop pinned P at 17.0 MPa (2,466 psia). MEASURED module-direct, 1 kg at 7.17 MPa (1,025 psig)
+     * with 30 kg/s of relief demand standing and 0.000 kg delivered: a 310 degC primary drove
+     * it to 9.86 MPa on 0.1 MJ — over the 7.58 MPa safety set, so the board's "SG Safeties
+     * Lifting" lit with no flow — and a 400 degC one bound the clip 29,849 of 30,000 steps.
+     * At the floor the bundle is dry by definition (`dry` below is the same test), so it
+     * takes no duty and holds the pressure the boil-down left it at. Above the floor this
+     * line changes nothing, bit for bit. */
+    if (sg.mass <= SG.mass_floor_kg * 1.01) wet = 0;
     /* THE PRIMARY SIDE (#588). `wet` is the SECONDARY's degradation — the wetted fraction of the
      * bundle, an AREA effect, so it stays a multiplier on the whole UA. The primary film is a
      * RESISTANCE IN SERIES inside U and is degraded there; see PRIMARY_FILM above.
