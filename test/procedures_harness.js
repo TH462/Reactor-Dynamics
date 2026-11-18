@@ -322,6 +322,30 @@
           if (!ordMet[i]) break;
         }
       }
+      /* THE LIVE LATCH, TRACKED (2026-11-18). Live `_gradeAccs` latches a plain `<`/`>`/`<=`/`>=`
+       * row once it has held ACC_STABLE_N consecutive broadcasts, and never un-ticks it. Recorded
+       * here for every such row: the plant time it latched (null if never) and the extreme value
+       * seen, so a row that was met mid-hold and lost by the end says so in its observation. */
+      var LAT_N = RD.InstructorLayer.ACC_STABLE_N || 5;
+      var latStreak = (st.accs || []).map(function () { return 0; });
+      var latAt = (st.accs || []).map(function () { return null; });
+      var latExt = (st.accs || []).map(function () { return null; });
+      function latchable(en) {
+        return !!(en && en.p && /^(<|>|<=|>=)$/.test(en.op) && !(en.mean_s > 0) && !(en.still_s > 0) &&
+                  en.below_1m == null && en.reach_1m == null);
+      }
+      function latTick(s) {
+        (st.accs || []).forEach(function (en, j) {
+          if (!latchable(en)) return;
+          var v = pv(s, en.p);
+          if (typeof v === 'number' && isFinite(v)) {
+            var lo = en.op.charAt(0) === '<';
+            if (latExt[j] === null || (lo ? v < latExt[j] : v > latExt[j])) latExt[j] = v;
+          }
+          latStreak[j] = pred(s, en) ? latStreak[j] + 1 : 0;
+          if (latAt[j] === null && latStreak[j] >= LAT_N) latAt[j] = s.metadata ? s.metadata.sim_time : 0;
+        });
+      }
       var thenIssued = false;
       var sawHits = [], ticks = Math.round((st.hold || 0) / SEC_PER_TICK);
       for (var i = 0; i < ticks; i++) {
@@ -350,6 +374,7 @@
         });
         if (ordMet) ordAdvance(s);
         otTick(s); if (ordMet) ordAdvance(s);   /* a row overtaken this tick unblocks its successors on the same tick, as live */
+        latTick(s);
         /* `replay_then` (2026-09-24, pwr_startup 9a): a REPLAY-ONLY second command, issued once
          * on the first tick the named accs row has been met — the player's next action after a
          * milestone, which a single step-entry `cmd` cannot express. The live runtime never reads it. */
@@ -399,6 +424,23 @@
           if (c.still_s > 0) {             /* develop-k: the row's own rods-still conjunct */
             var hS = predBags[key.replace('accs', 'still')], lS = hS && hS.last;
             return { pass: pred(lastSnap, c) && !!(lS && lS.met), obs: pv(lastSnap, c.p) + ', rods still ' + (lS && lS.still != null ? lS.still.toFixed(0) : '?') + ' s' };
+          }
+          /* A PLAIN THRESHOLD ROW PASSES IF IT LATCHED, AS LIVE (2026-11-18). Before this the replay read
+           * it off the step's LAST snapshot, so a row the player sees tick mid-wait and keep could fail
+           * here if the plant moved back across the line before the hold ran out. MEASURED, the case
+           * that found it — `pwr_tmi2_incident` step 9, SUBCOOLING MARGIN <= -50 degF: latched at
+           * t = 4,367 s, extreme -290 degF (-161 degC), then the accumulators injected and it read
+           * -21.5 degF (-11.9 degC) at the end of the 3,900 s hold. Red on Node 22, green on Node 24
+           * (CI): the two runtimes differ only on whether that recovery lands inside the hold, which
+           * a live player never sees because the row has already ticked. The end-of-hold value is
+           * still printed, so a row that latched and was lost says so. */
+          var lj = key.indexOf('accs') === 0 ? +key.slice(4) : -1;
+          if (lj >= 0 && latchable(c)) {
+            var endOk = pred(lastSnap, c);
+            return { pass: endOk || latAt[lj] !== null,
+                     obs: pv(lastSnap, c.p) + (endOk ? '' : ' at the end; live latch ' +
+                          (latAt[lj] === null ? 'never' : 'at t=' + latAt[lj].toFixed(0) + ' s') +
+                          ', extreme ' + (latExt[lj] === null ? '?' : Number(latExt[lj]).toFixed(2))) };
           }
           return { pass: pred(lastSnap, c), obs: pv(lastSnap, c.p) };
         }

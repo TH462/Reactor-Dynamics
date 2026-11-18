@@ -47,7 +47,15 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 **Core damage with no break reaches the latch by 2h00m** on this ride — the leg `run_pwr2_coredamage_stack`'s header lists as "owed its own ride". Measured, not gated.
 
-**Untracked red on develop `0bfd948`:** `run_checklist_pwr2` 297/299 — `pwr_tmi2_incident` step 9 (core inventory moves +3.78 of 10 needed; subcooling −21.5 °F (−11.93 °C) vs ≤ −50 °F (−27.8 °C)). Identical on the pre-#803 tree, solo, twice. BASELINES still reads 299/0.
+**`run_checklist_pwr2` TMI-2 step 9 (297/299 here) — CORRECTION: it WAS tracked**, in the BASELINES note as a Node-22-only bifurcation (this container is Node 22.23; CI's Node 24 reads 299/0), "NOT RESOLVED … the row wants a form that does not depend on it". I first logged it as untracked; wrong. **Resolved below** — the replay's grading, not the walkthrough or the plant:
+
+| replay, step 9, Node 22 | value |
+|---|---|
+| SUBCOOLING MARGIN live latch (5 broadcasts ≤ −50 °F) | **t = 4,367 s** |
+| extreme reached inside the hold | −290 °F (−161 °C) |
+| at the end of the 3,900 s hold | −21.5 °F (−11.9 °C) — the accumulators refilled the loop |
+
+**The trap:** `procedures_harness.js` graded a plain `<`/`>`/`<=`/`>=` row on an unordered step at the END of the hold, while live `_gradeAccs` latches it after `ACC_STABLE_N` broadcasts and never un-ticks. A row the player sees tick and keep failed in the replay whenever the plant crossed back before the hold ran out; the two Node versions only disagreed on whether the accumulators' recovery lands inside the hold. Fix: the replay passes such a row if it latched, printing the end value and latch time beside it. Injection: threshold moved to −200 °C (−360 °F) → both rows red ("live latch never, extreme −161.11"); the pre-fix end-of-hold form reds on Node 22 as before.
 
 **Open, found by the critic, not fixed:** the `h_hi` clip still binds on ONE dry path — a tube leak into a dry generator with donor enthalpy above h_g (2,900 kJ/kg at 7.17 MPa, 752 °F (400 °C) primary): 29,980/30,000 steps, 2,466 psia (17.0 MPa), identical pre/post fix. The leak's energy, not the bundle's, carries it. Needs SGTR + dry generator + superheated core exit. Declared at `pwr2_sg.js` backstop comment.
 
