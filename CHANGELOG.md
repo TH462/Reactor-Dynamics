@@ -8,12 +8,6 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 > **Releasing:** at each `develop` → `main` merge, rename the `## [Unreleased]` heading
 
-### Fixed — a boiled-dry steam generator no longer reads 2,466 psia with its safeties "lifting" (2026-11-18, #803)
-
-- **A steam generator at its 1 kg mass floor takes no heat from the primary.** The dryout curve was declared to reach zero but the floor stopped it short, and the leftover heat on one kilogram walked the secondary up to the 17.0 MPa (2,466 psia) property ceiling with zero flow out.
-- **Board, full stack, blackout + auxiliary-feed failure, after dryout (1h15m–5h):** steam pressure 2,135–2,466 psia (14.7–17.0 MPa) → **1,027 psia (7.08 MPa), flat**; "SG Safeties Lifting" lit → **seated**; safety-valve flow reported 765 lb/s (347 kg/s) with none delivered → **0**. Core damage time and peak cladding unchanged within 11 °F.
-- Above the floor the plant is bit-identical.
-
 ### Changed — the stuck relief valve's severity now works, and the TMI-2 meltdown walkthrough uses it (2026-11-13)
 
 - **`stuck_porv_open` severity is the stuck fraction** of one valve's area (#408's ruled meaning). The PWR2 plant ignored it and always stuck the valve fully open. No severity is still fully stuck, so every existing scenario is unchanged.
@@ -43,7 +37,17 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.9.0-rc2] — 2026-11-13
+## [Alpha 1.9.0-rc3] — 2026-11-18
+
+### Fixed — a boiled-dry steam generator no longer reads 2,466 psia with its safeties "lifting" (2026-11-18, #803)
+
+- **A steam generator at its 1 kg mass floor takes no heat from the primary.** The dryout curve was declared to reach zero but the floor stopped it short, and the leftover heat on one kilogram walked the secondary up to the 17.0 MPa (2,466 psia) property ceiling with zero flow out.
+- **Board, full stack, blackout + auxiliary-feed failure, after dryout (1h15m–5h):** steam pressure 2,135–2,466 psia (14.7–17.0 MPa) → **1,027 psia (7.08 MPa), flat**; "SG Safeties Lifting" lit → **seated**; safety-valve flow reported 765 lb/s (347 kg/s) with none delivered → **0**. Core damage time and peak cladding unchanged within 11 °F.
+- Above the floor the plant is bit-identical.
+
+### Replay grading — a threshold row passes on its live latch (2026-11-18, test-only)
+
+- `test/procedures_harness.js` graded plain `<`/`>`/`<=`/`>=` rows at the END of the hold; live latches them after 5 broadcasts (and, on an ordered step, only once unblocked). `pwr_tmi2_incident` step 9 latched at 4,367 s and lost it in true state by the hold's end on Node 22 only — the tracked Node-22 red. `run_checklist_pwr2` 299/0 on both runtimes.
 
 ### Changed — the TMI-2 meltdown walkthrough after the owner's playtest (2026-11-13, preview)
 
