@@ -134,12 +134,24 @@ Net reactivity is the sum of six terms:
 |---|---|---|
 | Core excess | `rho_excess` = 0.087544 | +8754 pcm, held down by boron/rods/xenon |
 | Control + shutdown rods | worth 0.04068 / 0.03676 | 4068 / 3676 pcm (all RCCAs **7744 pcm**) |
-| **Doppler** (fuel temperature) | −2.5 × 10⁻⁵ K⁻¹ | ≈ **−1.39 pcm/°F** (−2.5 pcm/°C) of fuel |
+| **Doppler** (fuel temperature) | A · ln(T / T_ref), T absolute; A = −0.0186 | **−1.83 pcm/°F** of fuel at hot zero power, **−1.08** at the full-power reference, **−3.2** at 122 °F (50 °C) |
 | **Moderator** (density-shaped) | see §4.3.1 | **−1 pcm/°F cold → −3 pcm/°F hot** at operating boron |
 | Boron (direct term) | 1.0 × 10⁻⁴ per ppm | ≈ **−10 pcm/ppm**, plus the density coupling below |
 | Xenon | worth 0.025 | 2500 pcm at equilibrium |
 
-The Doppler coefficient is **referenced to the settled full-power condition**, so it is exactly
+**The Doppler term is logarithmic in absolute fuel temperature** (since 2026-11-18, #768), so
+its coefficient, A / T, weakens as the fuel heats. A is fixed by the two points the earlier
+linear term ran through, hot zero power (557.0 °F (291.67 °C) fuel) and the full-power reference
+(1263.6 °F (684.2 °C) fuel): the defect between them is unchanged, and the old
+**−2.5 × 10⁻⁵ K⁻¹** (**−1.39 pcm/°F**) survives only as the average slope between those two
+points. The anchor plant's Doppler temperature coefficient spans **−0.91 to −2.90 pcm/°F**
+(Ginna UFSAR Table 15.0-5), and ours sits inside it at operating temperatures. **The cold value
+(−3.2 pcm/°F at 122 °F (50 °C)) is outside that range and is our extrapolation, not a sourced
+figure**: Ginna's table covers operating states only. The 1/T law is chosen because it gives
+the shape of Ginna's power coefficient (weaker at high power); the law itself has no light-water
+reactor source here, so the coefficient stays an open item.
+
+The Doppler term is **referenced to the settled full-power condition**, so it is exactly
 zero there and acts purely as a stabilising perturbation on a transient. That is a modelling
 convenience, not a claim that a real core has zero defect at power. The moderator term shares
 the same reference.

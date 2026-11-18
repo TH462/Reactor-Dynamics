@@ -81,7 +81,7 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 | Type | Text |
 |------|------|
 | **CAUTION** | Do **not** withdraw the **control** bank or dilute. Hot Standby is hot **and** subcritical. The **shutdown** bank is a different matter — it is withdrawn at step 2a, and withdrawing it is not a step toward criticality but a prerequisite for one. |
-| **WARNING** | **The shutdown bank is IN when you arrive, and it is worth 3676 pcm.** Measured on this engine: Mode 5 holds ρ = **−5809 pcm** on **918 ppm** with both banks inserted; withdrawing the shutdown bank alone takes that to roughly **−2100 pcm** and the plant is still deeply subcritical — but you have just spent most of the margin that was buying you time against an unattended dilution. Withdraw it deliberately, verify shutdown margin first, and do not leave a dilution running. |
+| **WARNING** | **The shutdown bank is IN when you arrive, and it is worth 3676 pcm.** Measured on this engine: Mode 5 holds ρ = **−5809 pcm** on **938 ppm** with both banks inserted; withdrawing the shutdown bank alone takes that to roughly **−2100 pcm** and the plant is still deeply subcritical — but you have just spent most of the margin that was buying you time against an unattended dilution. Withdraw it deliberately, verify shutdown margin first, and do not leave a dilution running. |
 | **CAUTION** | Keep the steam generator **bottled** — turbine off, dumps shut — **for the climb, and only for the climb**. Opening dump early removes pump heat faster than the pumps can put it in: a small demand (about 5 %) is roughly ten times pump-heat generation, and it does not trim the heatup — it reverses it, measured at **−263 °F/hr (−146 °C/hr)** anywhere above about 302 °F (150 °C). Below roughly **219.2 °F (104 °C)** the same 5 % only *arrests* the climb; the secondary has too little steam to carry more. **Once the secondary reaches the 1020 psi (7.03 MPa) no-load anchor the bottle has to be handed to the dumps** — that is step 8b, and skipping it leaves the atmospheric dump valve as the heat sink (see the WARNING below). |
 | **WARNING** | **Place the steam dumps in AUTO at the top of the ride (step 8b), or the plant's heat sink is an overpressure relief valve.** The dumps hold the secondary at the **1020 psi (7.03 MPa)** no-load anchor only in **steam-pressure mode**, and the cold plant boots with the dump controller **out of service** — pressing AUTO is what selects that mode, because the turbine is tripped (**03** §12.3). Miss it and the secondary climbs past the anchor until the **atmospheric dump valve** relieves at **1042 psig**, and *that* valve becomes the heat sink for the rest of the heatup: measured on this plant, Tavg parks at **551.6 °F (288.7 °C)** with the valve modulating **7–9 %** — **4.4 °F (2.4 °C) above the no-load band, venting to atmosphere** — against **547.2 °F (286.2 °C)** and 1005 psig with AUTO in, the valve shut and the condenser dumps carrying **0.4–2.9 %**. Nothing alarms; the plant simply runs hot on a relief. And if that valve ever carries *more* than pump heat (measured, forced to 100 % during the pressurization): the RCS contracts, pressurizer level falls **25.0 → 14.2 % in 2.5 min**, the **17 %** low-level cut sheds the heaters **157.8 → 0 kW**, and pressure falls **1687 → 1598 psi** and never reaches setpoint. |
 | **CAUTION** | Rate control at these powers: **secure the RCP** to slow or hold the heatup — measured, the rate falls to **0.004 °F/hr (0.002 °C/hr)**, i.e. the heatup simply stops. This plant models one lumped RCP (see **PWR-N13** scope note), so securing it removes *all* forced flow and uncouples the steam generator; on a multi-loop plant you would secure one pump of four. Do not use the dump as a fine throttle. |
@@ -111,17 +111,17 @@ Heat and pressurize the RCS from **Mode 5, Cold Shutdown** through **Mode 4, Hot
 ### Acceptance (Mode 3 declared)
 - RCS at NOP T/P class: P ≈ **2235 psi (15.41 MPa)**, Tavg at no-load band ≈ **546.8 °F (286 °C)** — measured on the shipped plant with the dumps in AUTO, **547.2 °F (286.2 °C)**.
 - **Heat sink is the condenser dumps, not a relief**: STEAM DUMP status **STM PRESS**, dumps carrying **0.4–2.9 %**, steam header on the **1020 psi (7.03 MPa)** anchor (1005 psig), **atmospheric dump valve shut**. A plant sitting at 551.6 °F (288.7 °C) with that valve at 7–9 % is a plant that never got step 8b.
-- Reactor **subcritical** (measured arrival on this plant: ρ = **−3399 pcm** on **~918 ppm**, control bank still fully inserted at 0 of 627 steps; re-measured 2026-09-14, and re-confirmed by the 2026-09-18 end-to-end replay at **−3400 pcm on 917.8 ppm**. The **−2772 pcm on 857 ppm** printed here until then was wrong twice over — 857 ppm is the RETIRED engine’s cold-shutdown target, and −2772 is this plant at 857 ppm evaluated 10 °F above its no-load point. The shipped `cold_shutdown` boots at **917.8 ppm** and PWR-N01 dilutes nothing, so ~918 ppm is what arrives).
+- Reactor **subcritical** (measured arrival on this plant: ρ = **−3627 pcm** on **~938 ppm**, control bank still fully inserted at 0 of 627 steps; re-measured 2026-11-18 end to end on the walkthrough route, **−3627 pcm on 938.2 ppm**, after the Doppler change of **12** §4.3 raised the cold-shutdown boron. It read −3399 pcm on ~918 ppm from 2026-09-14 until then. The **−2772 pcm on 857 ppm** printed here until then was wrong twice over — 857 ppm is the RETIRED engine’s cold-shutdown target, and −2772 is this plant at 857 ppm evaluated 10 °F above its no-load point. The shipped `cold_shutdown` boots at **938.2 ppm** and PWR-N01 dilutes nothing, so ~938 ppm is what arrives).
 - **Shutdown bank fully withdrawn** (step 2a) — this is the state every mode above Mode 5 assumes, and PWR-N03 cannot reach criticality without it.
 - Accumulators **aligned**.
 - Ready for **PWR-N02** (lineup) then **PWR-N03** (approach to criticality).
 
 > **You arrive at cold-shutdown boron, and it is NOT the boron the approach to criticality
-> assumes.** The heatup dilutes nothing — **~918 ppm in, ~918 ppm out**. That is ~199 ppm above the
+> assumes.** The heatup dilutes nothing — **~938 ppm in, ~938 ppm out**. That is ~219 ppm above the
 > **719 ppm** that puts criticality at the reference position, and measured it
-> moves the critical rod position from **208 steps to 490** — far outside the ±750 pcm acceptance
+> moves the critical rod position from **208 steps to 531** — far outside the ±750 pcm acceptance
 > band (**88–297**) the estimate is checked against. **PWR-N02 step 15 is the dilution that closes
-> it**, and it takes **~88 plant-minutes**. Do not carry cold-shutdown boron into PWR-N03.
+> it**, and it takes **about 2 plant-hours**. Do not carry cold-shutdown boron into PWR-N03.
 
 ### Expected heatup performance
 Pump heat only — no rod motion, no dilution. Heat source is RCP work (about 0.55 % of rated core heat at full flow) plus pressurizer heaters.
@@ -153,7 +153,7 @@ the heaters shed (157.8 kW → 0) and the pressurization parks at **~1922 psi (1
 
 | Milestone | Plant time | Notes |
 |-----------|-----------|--------|
-| Start, Mode 5, Cold Shutdown | 0 | **122.0 °F (50.0 °C)**, **363 psi (2.50 MPa)**, **917.8 ppm**, ρ = **−5807 pcm**, both banks fully inserted |
+| Start, Mode 5, Cold Shutdown | 0 | **122.0 °F (50.0 °C)**, **363 psi (2.50 MPa)**, **938.2 ppm**, ρ = **−5807 pcm**, both banks fully inserted |
 | Shutdown bank out at 627 / 627 | **~0.16 plant-h** | 9.3 plant-minutes at Fast from a single click (step 2a) |
 | Heaters and spray in AUTO — **stage 1 begins** | ~0.20 plant-h | No dial to turn: the Pressure SP box is already on its 1700 psi (11.72 MPa) floor |
 | **Mode 4 entry** (199.4 °F (93 °C)) | **~0.85 plant-h** | 648 psi (4.47 MPa), ρ = **−2312 pcm**. The retired table said 18 plant-minutes; it is **51** |
@@ -161,11 +161,11 @@ the heaters shed (157.8 kW → 0) and the pressurization parks at **~1922 psi (1
 | …passes 1000 psi (6.895 MPa), the LCO 3.5.1 point | ~1.61 plant-h | 263.4 °F (128.6 °C) |
 | Accumulator window **CLOSES** — 1600 psig valve-power lock | **~2.23 plant-h** | 1616 psi (11.14 MPa), 313.4 °F (156.3 °C). **The window is ~79 plant-minutes wide** — the "about 14 plant-minutes" in older revisions was the single-stage ride and does not apply |
 | Stage 1 tops out on the box floor | ~2.30 plant-h | 1700 psi (11.72 MPa), 319.7 °F (159.8 °C); pressure then sits there for the rest of the climb |
-| **Mode 3 entry** (350 °F (176.7 °C)) | **~2.69 plant-h** | 1727 psi (11.91 MPa), ρ = **−2735 pcm**. Still deeply subcritical |
-| Ride step's target, **541.4 °F (283 °C)** | **~5.83 plant-h** | 1713 psi (11.81 MPa), steam header 973 psi (6.71 MPa), ρ = **−3371 pcm** |
+| **Mode 3 entry** (350 °F (176.7 °C)) | **~2.69 plant-h** | 1727 psi (11.91 MPa), ρ = **−2948 pcm**. Still deeply subcritical |
+| Ride step's target, **541.4 °F (283 °C)** | **~5.83 plant-h** | 1713 psi (11.81 MPa), steam header 973 psi (6.71 MPa), ρ = **−3602 pcm** |
 | Steam dumps to AUTO (step 8b) | **~5.83 plant-h** on the player's route | Tavg first reaches the 546.8 °F (286.0 °C) no-load figure at ~5.95 plant-h. **This replay held on instead of pressing AUTO**, so it shows what skipping step 8b costs: Tavg climbed to **551.6 °F (288.7 °C)** on the atmospheric dump valve by ~6.1 plant-h and sat there for six plant-hours; pressing AUTO pulled it back to **547.2 °F (286.2 °C)** on the condenser dumps. Both endpoints measured in this one run |
 | **Stage 2** — Pressure SP to 2235 psi, NOP reached | **+21 plant-minutes** | 1713 → 2176 psi (11.81 → 15.00 MPa) at full heaters (157.8 kW); the second half of the pressurization is *fast*, not slow |
-| Arrival | **≈ 6.2 plant-h** total — DERIVED | 5.83 plant-h to the ride's target plus the 21 plant-minutes of stage 2; the replay itself took 13.57 plant-h because of the authored hold, so this sum is arithmetic on two measured legs, not a measured end-to-end clock. End state, measured: 547.2 °F (286.2 °C), 2245 psi (15.48 MPa), **917.8 ppm** undiluted, ρ = **−3400 pcm**, control bank never moved |
+| Arrival | **≈ 6.2 plant-h** total — DERIVED | 5.83 plant-h to the ride's target plus the 21 plant-minutes of stage 2; the replay itself took 13.57 plant-h because of the authored hold, so this sum is arithmetic on two measured legs, not a measured end-to-end clock. End state, measured: 547.2 °F (286.2 °C), 2245 psi (15.48 MPa), **938.2 ppm** undiluted, ρ = **−3627 pcm**, control bank never moved (both re-measured 2026-11-18 on the walkthrough route, as are the two ρ figures above) |
 
 **Rate.** The pumps warm the cold plant fastest and then fade as the ΔT to the no-load anchor
 closes: measured per quarter plant-hour, **98.4 °F/hr (54.7 °C/hr)** average over the first
@@ -204,8 +204,8 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | Type | Text |
 |------|------|
 | **CAUTION** | Do not withdraw rods until this checklist is complete. |
-| **CAUTION** | **Boron is a prerequisite, not an observation.** Step 8 samples it and step 15 adjusts it. A plant that arrived here from **PWR-N01** is at cold-shutdown boron (**~918 ppm**) and is *not* ready to start — see step 15. |
-| **NOTE** | **Dilute HOT, never cold.** This is the whole reason the dilution lives here in Mode 3 and not at the end of the heatup: critical boron with the bank inserted is **811 ppm at 122 °F** but only **619 ppm at 546.8 °F** (**09 §7.5**), so a figure that is comfortably subcritical hot is critical cold. Reaching the no-load temperature *before* you dilute is what makes the dilution safe. |
+| **CAUTION** | **Boron is a prerequisite, not an observation.** Step 8 samples it and step 15 adjusts it. A plant that arrived here from **PWR-N01** is at cold-shutdown boron (**~938 ppm**) and is *not* ready to start — see step 15. |
+| **NOTE** | **Dilute HOT, never cold.** This is the whole reason the dilution lives here in Mode 3 and not at the end of the heatup: critical boron with the bank inserted is **832 ppm at 122 °F** but only **620 ppm at 546.8 °F** (**09 §7.5**), so a figure that is comfortably subcritical hot is critical cold. Reaching the no-load temperature *before* you dilute is what makes the dilution safe. |
 | **NOTE** | Speed for the following approach should allow SUR to be followed (typically 1×–10×). |
 
 ### Procedure
@@ -219,7 +219,7 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 | 5 | Confirm RCPs running | RCP / flow | Flow ~100 % |
 | 6 | Confirm control bank fully inserted | Rod control | Position at bottom |
 | 7 | **Confirm shutdown bank parked withdrawn.** It should already be out — **PWR-N01 step 2a** withdrew it during the heatup. If it is **in** (you arrived here by trip rather than by heatup, and the trip dropped it), verify shutdown margin and withdraw it **now**, before any control-bank motion. It is worth **3676 pcm** and PWR-N03 cannot reach criticality with it inserted | Shutdown bank | Fully out, 627 / 627 |
-| 8 | **Sample boron and record it** — there is no live meter, and the number depends on how you reached Mode 3. Two normal arrivals: **~918 ppm** from a **PWR-N01** heatup (cold-shutdown boron, undiluted — the shipped `cold_shutdown` boots at 917.8 ppm and PWR-N15 borates to 920), **~719 ppm** on a plant already lined up at Hot Standby (the `hot_zero_power` preset boots at 718.9 ppm) | CHEM SAMPLE | Result logged; it is the **E** input to the ECC (**09 §7.5.2**) |
+| 8 | **Sample boron and record it** — there is no live meter, and the number depends on how you reached Mode 3. Two normal arrivals: **~938 ppm** from a **PWR-N01** heatup (cold-shutdown boron, undiluted — the shipped `cold_shutdown` boots at 938.2 ppm; PWR-N15 borates to 920), **~719 ppm** on a plant already lined up at Hot Standby (the `hot_zero_power` preset boots at 718.9 ppm) | CHEM SAMPLE | Result logged; it is the **E** input to the ECC (**09 §7.5.2**) |
 | 9 | Confirm Source Range energized and counting | SR | SR On; hundreds of counts per second |
 | 10 | Confirm Intermediate Range available for handoff | IR | IR on scale or ready as power rises |
 | 11 | Confirm SG heat sink | SG level | ~65 %; not LO-LO |
@@ -233,11 +233,12 @@ Verify the unit is correctly lined up in **Mode 3, Hot Standby** before any appr
 **Measured full stack**. At the **719 ppm** Hot Standby hold the
 reactor sits at **ρ = −1137 pcm** with the bank in, and withdrawing the control bank to
 **about 208 steps** brings it critical — that is the reference position. Diluting there from a
-**PWR-N01** arrival (**~918 ppm**, ρ = **−3399 pcm**) takes **~88 plant-minutes**: measured end to
-end, 850 ppm at +28 min, 800 at +50, 760 at +68, 740 at +78, 725 at +85. Boron differential worth
-over that span is **11.38 pcm/ppm**, and the 719 ppm hold is **path-independent** — borate away
+**PWR-N01** arrival (**~938 ppm**, ρ = **−3627 pcm**) takes **about 2 plant-hours**: measured end to
+end on the walkthrough route (2026-11-18), 850 ppm at +48 min, 800 at +70, 760 at +88, 740 at +98,
+725 at +109, 720 at +124, and the step completes at **+131 min** on 719.3 ppm. The dilution slows
+as it nears the target. Boron differential worth over that span is **11.36 pcm/ppm**, and the 719 ppm hold is **path-independent** — borate away
 from it and dilute back and the plant returns to **−1141 pcm** against the **−1137 pcm** it boots
-at, and the 918 → 719 dilution ends at **−1138.8**.
+at, and the 938 → 719 dilution ends at **−1141**.
 
 > **Why the old numbers here were wrong, and it was not a stale plant.** This section printed
 > criticality at **223 steps** and ρ = **−1257 pcm**, and PWR-N03 printed a **226–238** band, a
@@ -263,9 +264,9 @@ at, and the 918 → 719 dilution ends at **−1138.8**.
 > (15 slow steps from 211) — eighteen steps past critical, and not a measurement of anything. Now
 > it lands on **213**, five steps past, and the burst that plotted a point at 211 is gone.
 
-**Skip the dilution and the numbers in PWR-N03 stop being true.** Measured at the **~918 ppm** you
-arrive with, the bank does not go critical until **490 of 627 steps (78 % withdrawn)** — **282
-steps above** the reference position and **193 above the upper edge** of the ±750 pcm acceptance
+**Skip the dilution and the numbers in PWR-N03 stop being true.** At the **~938 ppm** you
+arrive with, the bank does not go critical until **531 of 627 steps (85 % withdrawn)** — **323
+steps above** the reference position and **234 above the upper edge** of the ±750 pcm acceptance
 band (**88–297 steps**) that **09 §7.5.1** tells you to stop and re-work the estimate at. (At the
 **857 ppm** this section assumed until 2026-09-14 — the retired engine's cold-shutdown target, not
 this plant's — it is **392 steps**.) The 1/M burst sizes in PWR-N03 are sized for the 719 ppm plant
@@ -810,7 +811,7 @@ After **PWR-N14** or any hot, subcritical plant.
 
 | Step | MODE | Action | Control | Acceptance |
 |------|------|--------|---------|------------|
-| 1 | Mode 3 | Borate to the cold-shutdown boron — **920 ppm** on this plant, which is the figure the walkthrough's own BORON command types. It is chosen to close the operating cycle: the `cold_shutdown` initial condition boots at **917.8 ppm**, so a cooldown that ends at 920 ppm hands the next **PWR-N01** heatup the plant it expects. Measured full stack from `hot_zero_power`, **718.9 → 920 ppm takes ~67 plant-minutes** at a flat **3.0 ppm/min** make-up rate (measured twice — a scripted ride and the walkthrough replay, both 67 min; **boration and dilution are NOT the same rate on this plant** — dilution runs ~2.2 ppm/min). **What 920 ppm buys, cold:** critical boron at 122 °F (50 °C) with the control bank in and the shutdown bank out is **811 ppm** (**09 §7.5**), so 920 ppm is **109 ppm** above it — about **2230 pcm** at the cold differential worth of 20.46 pcm/ppm. The replay's own cold end measures **ρ = −2325 pcm** at 197.2 °F (91.8 °C) in that rod configuration. **That is the boron's contribution alone — it is not the SHUTDOWN MARGIN**, which is computed with all rods assumed inserted (**09 §7.5.3**). If you got here through PWR-N14 the trip also dropped the shutdown bank, worth another **3676 pcm**, so the plant you arrive at in Mode 5 sits deeply shut down. (**857 ppm** stood here until 2026-09-18 and was the RETIRED engine's cooldown target; so did a **806 ppm** cold critical figure that this plant has never had.) | CVCS Borate | Boron at **920 ppm** before any cooling |
+| 1 | Mode 3 | Borate to the cold-shutdown boron — **920 ppm** on this plant, which is the figure the walkthrough's own BORON command types. It was chosen to close the operating cycle when the `cold_shutdown` initial condition booted at 917.8 ppm; since the Doppler change of 2026-11-18 (**12** §4.3) that preset boots at **938.2 ppm**, so a cooldown that ends at 920 ppm hands the next **PWR-N01** heatup **18 ppm less** boron than the preset carries. Measured full stack from `hot_zero_power`, **718.9 → 920 ppm takes ~67 plant-minutes** at a flat **3.0 ppm/min** make-up rate (measured twice — a scripted ride and the walkthrough replay, both 67 min; **boration and dilution are NOT the same rate on this plant** — dilution runs ~2.2 ppm/min). **What 920 ppm buys, cold:** critical boron at 122 °F (50 °C) with the control bank in and the shutdown bank out is **832 ppm** (**09 §7.5**), so 920 ppm is **88 ppm** above it; measured full stack at 122 °F (50 °C) in that rod configuration, 920 ppm holds **ρ = −1748 pcm**. The walkthrough's own cold end measures **ρ = −2018 pcm** at 197.2 °F (91.8 °C) in that rod configuration (re-measured 2026-11-18). **That is the boron's contribution alone — it is not the SHUTDOWN MARGIN**, which is computed with all rods assumed inserted (**09 §7.5.3**). If you got here through PWR-N14 the trip also dropped the shutdown bank, worth another **3676 pcm**, so the plant you arrive at in Mode 5 sits deeply shut down. (**857 ppm** stood here until 2026-09-18 and was the RETIRED engine's cooldown target; so did a **806 ppm** cold critical figure that this plant has never had.) | CVCS Borate | Boron at **920 ppm** before any cooling |
 | 1a | Mode 3 | **Block SI at the Trip Blocks panel** — `si_trip`. See the WARNING. It is refused above **P-11**, so the pressure setpoint (step 1b) comes down first. **Taking HPI/LPI to OFF is NOT this step**: there is no ESF arm on this plant (**03 §17.4**), so switching the pumps off leaves the actuation live and it will start them again at 1715 psi (11.824 MPa) | Trip Blocks | SI actuation BLOCKED |
 | 1b | Mode 3 | Lower the **Pressure SP to 1900 psi (13.10 MPa)** — the figure the walkthrough types, and it is chosen to put you inside the **P-11** permissive (below 1972 psi / 13.60 MPa), which is what makes 1c/1d possible at all. Measured, the plant crosses P-11 at **1.45 plant-h** and the blocks go in at **1.50**. *(The **1901 psi** that stood here until 2026-09-18 was derived as saturation plus 63 °F (35 °C) off the RETIRED engine's 566.6 °F Mode 3; this plant's Mode 3 is 547 °F and the same arithmetic gives ~1640 psi, below the box's own 1700 psi floor — so the derivation never applied here. Subcooling on this route is not "held" at a margin either: measured, it runs **83.6 °F (46.4 °C) at the start of the walk to 286.2 °F (159.0 °C) at the end of it** and only collapses to 13.7 °F (7.6 °C) at the cold end, because the pressure walk deliberately lags the temperature walk — step 3.)* | Pressure SP | Pressure below 1972 psi (13.60 MPa) |
 | 1c | Mode 3 | **Block the low-pressure reactor trip** (1775 psi / 12.24 MPa) | Trip Blocks | Trip BLOCKED |
@@ -855,12 +856,12 @@ to **1.08**, so a player who advances on the tile arrives at every row below up 
 | Boration to the cold-shutdown boron complete, **920 ppm** | **~1.11 plant-h** | 3.0 ppm/min, 67 plant-minutes; ρ = **−3414 pcm**. **Cooling does not start until this is done** |
 | SI blocked, both low-pressure reactor trips blocked | **~1.50 plant-h** | Inside **P-11**, which the plant reaches at **1.45 plant-h** / 1972 psi (13.60 MPa); Tavg still 547 °F |
 | Dump-SP walk begins — Tavg starts down | **~1.51 plant-h** | *Replay of 2026-09-18:* four legs, **1020 → 641 → 400 → 241 → 120 psi**, walk to **4.17 plant-h**. **Since 2026-09-28 it is ONE entry of 120 psi, paced by the controller at 60 °F/hr (33.3 °C/hr)** — measured on the typical route, that walk alone takes **202.7 plant-minutes** (3.4 plant-h), so every row below it runs about **0.7 plant-h later** than written here. The rows below were NOT re-measured |
-| **Mode 4 entry** (350 °F (176.7 °C)) | **~4.11 plant-h** | 1925 psi (13.27 MPa), ρ = **−2772 pcm** |
+| **Mode 4 entry** (350 °F (176.7 °C)) | **~4.11 plant-h** | 1925 psi (13.27 MPa), ρ = **−2634 pcm** (re-measured 2026-11-18 on the current walkthrough route) |
 | Heaters off, spray to MANUAL 50 % | ~4.59 plant-h | The Pressure SP box is already on its **1700 psi (11.72 MPa)** floor; spray is the only pressure control left |
 | Isolate accumulators — window **8.6 plant-minutes** wide | **~4.60 – 4.74 plant-h** | Opens when the **1600 psig** valve-power lock clears (1615 psi / 11.133 MPa) at 4.60, shuts before the **665 psi (4.585 MPa)** cover gas at 4.74; Tavg 341.6 °F (172.0 °C), SIT inventory still 100 % |
 | RHR permissive reached, **440 psi (3.03 MPa)** | **~4.82 plant-h** | Tavg **341.9 °F (172.2 °C)** — close to the commercial ~350 °F / ~350 psig practice in the NOTE above |
 | RHR aligned at 7 % HX split, RCPs secured | **~5.00 plant-h** | RHR carries the heat from here; the split then walks 7 → 12 % |
-| Cold end, **Mode 5** (199.4 °F (93 °C)) | **~6.99 plant-h** | **15 psi (0.10 MPa)**, boron **919.6 ppm**, ρ = **−2325 pcm**, accumulators **100 % full and isolated**, RHR on at 12 % split, RCPs off, shutdown bank out at 627/627 and the control bank in at 0 |
+| Cold end, **Mode 5** (199.4 °F (93 °C)) | **~6.99 plant-h** | **15 psi (0.10 MPa)**, boron **919.6 ppm**, ρ = **−2025 pcm** (re-measured 2026-11-18 on the current walkthrough route), accumulators **100 % full and isolated**, RHR on at 12 % split, RCPs off, shutdown bank out at 627/627 and the control bank in at 0 |
 | Walkthrough ends | ~7.04 plant-h | 197.2 °F (91.8 °C), 14 psi (0.10 MPa), 13.7 °F (7.6 °C) of subcooling. **It does NOT end on the `cold_shutdown` preset's 363 psi (2.50 MPa)** — that claim stood here until 2026-09-18 and is 349 psi wrong; this route depressurizes essentially to atmospheric |
 
 Measured rate, over 60-second windows binned by quarter plant-hour:

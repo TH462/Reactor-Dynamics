@@ -252,7 +252,7 @@ Campaign missions and Scenarios are not offered in the Main Menu.
 | `50_percent` | 50 % Power | **Mode 1, At Power** | Critical, 50 % power, 50 MWe |
 | `low_power` | At Power — power ascension | **Mode 1, At Power** | Critical, about **10 %** power and **10 MWe** — the hand-off point between the startup and the power ascension |
 | `hot_zero_power` | Hot Standby | **Mode 3, Hot Standby** | Subcritical, hot T/P, control bank in, SR on |
-| `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS **122 °F (50 °C) / 363 psi (2.50 MPa)**, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, boron 918 ppm — the SG secondary rides at its own saturation, **1.8 psi (0.0127 MPa)** |
+| `cold_shutdown` | Cold Shutdown | **Mode 5, Cold Shutdown** | Subcritical, RCS **122 °F (50 °C) / 363 psi (2.50 MPa)**, **RCPs secured**, **RHR in service**, both banks in, the P-11 blocks taken, SR on, boron 938 ppm — the SG secondary rides at its own saturation, **1.8 psi (0.0127 MPa)** |
 
 The cold end is **Mode 5, Cold Shutdown**. Take the plant up with **PWR-T20**, or run **PWR-T21** down from power; both run end to end. These five states are the whole list — there is no Mode 4, Hot Shutdown start; you pass through Mode 4 on the way.
 

@@ -325,27 +325,29 @@ withdrawn, no xenon, zero power:
 
 | Tavg | bank IN (0) | 25 % (157) | 50 % (314) | 75 % (470) | ARO (627) |
 |---|---|---|---|---|---|
-| 122 °F (50.0 °C) | 811 | 849 | 910 | 971 | 1010 |
-| 200 °F (93.3 °C) | 797 | 837 | 901 | 965 | 1005 |
-| 250 °F (121.1 °C) | 786 | 827 | 894 | 961 | 1002 |
-| 300 °F (148.9 °C) | 772 | 816 | 886 | 955 | 999 |
-| 350 °F (176.7 °C) | 755 | 802 | 876 | 949 | 996 |
-| 400 °F (204.4 °C) | 734 | 784 | 863 | 942 | 992 |
-| 450 °F (232.2 °C) | 707 | 761 | 848 | 934 | 988 |
-| 500 °F (260.0 °C) | 670 | 730 | 827 | 922 | 983 |
-| 545 °F (285.0 °C) | 622 | 690 | 800 | 908 | 977 |
-| 546.8 °F (286.0 °C) | 619 | 688 | 798 | 908 | 977 |
+| 122 °F (50.0 °C) | 832 | 870 | 932 | 992 | 1031 |
+| 200 °F (93.3 °C) | 813 | 853 | 917 | 981 | 1021 |
+| 250 °F (121.1 °C) | 799 | 840 | 907 | 973 | 1015 |
+| 300 °F (148.9 °C) | 782 | 826 | 896 | 966 | 1010 |
+| 350 °F (176.7 °C) | 763 | 810 | 884 | 957 | 1004 |
+| 400 °F (204.4 °C) | 740 | 790 | 869 | 948 | 998 |
+| 450 °F (232.2 °C) | 711 | 765 | 852 | 938 | 992 |
+| 500 °F (260.0 °C) | 672 | 733 | 829 | 925 | 985 |
+| 545 °F (285.0 °C) | 622 | 691 | 800 | 909 | 977 |
+| 546.8 °F (286.0 °C) | 620 | 689 | 799 | 908 | 977 |
 
 *(Re-measured 2026-09-03 on the **shipped** engine, `RD.pwr2.kinetics.criticalBoron`, against the
 627-step bank. It previously described the RETIRED engine's 912-step bank, and so did the gate that
 was supposed to catch the drift — see the note below. The bank-IN and ARO columns barely moved; the
 25 % and 75 % columns did, because this plant's worth curve is a different shape:
-`curve_flatten` 0.36, the four-bank overlap program of WTSM 8.1 §8.1.5.4.)*
+`curve_flatten` 0.36, the four-bank overlap program of WTSM 8.1 §8.1.5.4. **Re-measured 2026-11-18 (#768)** when the Doppler
+term became logarithmic in fuel temperature (**12** §4.3): the cold rows rose by **21 ppm at
+122 °F (50.0 °C)**, shrinking toward the hot rows, which moved by under 1 ppm.)*
 
 **Every cell is computed at normal operating pressure, 2235 psi (15.41 MPa)**, including the cold
 rows — which is a stated simplification, not a claim that a 122 °F plant is at 2235 psi. Boron is
-a density coupling, so pressure moves these numbers: the same 122 °F bank-IN cell reads **818 ppm**
-at a realistic cold-shutdown 363 psi (2.5 MPa) against **811 ppm** here, and the spread is largest
+a density coupling, so pressure moves these numbers: the same 122 °F bank-IN cell reads **838 ppm**
+at a realistic cold-shutdown 363 psi (2.5 MPa) against **832 ppm** here, and the spread is largest
 in the bank-IN column and smallest at ARO. **Read the cold rows for the temperature lesson in
 §7.5.1, not as a dilution target for a depressurized plant.**
 
@@ -368,7 +370,7 @@ an S: least effective at either end, most effective mid-travel.
 ### 7.5.1 Reading the table — and the one rule that matters
 
 > **WARNING — do not dilute toward a hot boron figure while the plant is cold.** Read the
-> first column of the table again: with the bank inserted, critical boron is **811 ppm at
+> first column of the table again: with the bank inserted, critical boron is **832 ppm at
 > 122 °F (50.0 °C)** and only **619 ppm at 547.0 °F (286.1 °C)**, this plant's no-load
 > temperature. A number that is comfortably subcritical hot is
 > **critical, or worse, cold.** This is not a modelling quirk — cold water is a better
@@ -590,7 +592,7 @@ persists is either a transient in progress or a failed instrument.
 | Fuel average temp °F (°C) | 1295 (701.5) | 893 (478.3) | 610 (321.4) | 547 (286.1) | 250 (121.1) | 123 (50.5) |
 | Decay heat (%) | 6.23 | 3.11 | 0.60 | ~0 | ~0 | ~0 |
 | Xenon (% of equilibrium) | 100 | 66 | 0 | 0 | 0 | 0 |
-| Boron (ppm) | 612 | 768 | 719 | 719 | 894 | 918 |
+| Boron (ppm) | 612 | 768 | 719 | 719 | 906 | 938 |
 | Net reactivity (pcm) | 0 | 0 | 0 | ≈ −1141 | ≈ −5635 | ≈ −5809 |
 | Source range (cps) | 0 (de-energized) | 0 (de-energized) | 0 (de-energized) | ≈ 501 | ≈ 101 | ≈ 98 |
 | Intermediate range (A) | ≈ 8.3e-3 | ≈ 4.1e-3 | ≈ 8.0e-4 | ≈ 1.6e-11 | ≈ 3.2e-12 | ≈ 3.2e-12 |
