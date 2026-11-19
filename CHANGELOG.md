@@ -37,6 +37,10 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
+### Changed — Atomic Sandbox latest develop build (site)
+
+- `lab/` replaced with the Project_Gadget lab `develop` build at 2a5cb22 (2026-11-19, 1,228 commits past the stage 2a bundle dbd0f3a), copied as built for playtesting: Speed control with Auto slow, material picker with role tabs and search, Scenario / Panel / Energy sections, and a split-out solver bundle. Old hashed assets removed. No network calls in the bundle (the URLs in it are data citations). Still behind the preview-stage `lab` flag; not in the offline download. Website-only: no version bump.
+
 ## [Alpha 1.9.0-rc4] — 2026-11-19
 
 ### Changed — Doppler is logarithmic in fuel temperature (2026-11-18/19, #768, owner ruling "Do 1.")

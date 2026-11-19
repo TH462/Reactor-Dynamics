@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reactor Dynamics: Atomic Sandbox</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="./assets/main-4HBZJ324.css">
+<link rel="stylesheet" href="./assets/main-INEO67KC.css">
 </head>
 <body>
 <canvas id="view"></canvas>
@@ -43,9 +43,10 @@
       <button class="b-btn" id="b-reset" title="Back to tick 0">Reset</button>
       <span class="b-run-state" id="b-run-state"></span>
     </span>
-    <span class="b-group" title="Ticks per step. Keys: [ and ]">
-      <span class="b-word">Ticks per step</span>
+    <span class="b-group" id="b-speed" title="Ticks a frame. 1/8 is 1 tick every 8 frames, slow enough to follow one neutron. Keys: [ and ]">
+      <span class="b-word">Speed</span>
       <span class="b-segs" id="b-speeds"></span>
+      <label class="b-toggle" id="b-auto-slow-wrap"><input type="checkbox" id="b-auto-slow">Auto</label>
     </span>
     <span class="b-group" id="b-snap" title="Hold Ctrl to place freely">
       <span class="b-word">Snap</span>
@@ -77,8 +78,14 @@
       <button class="b-tool" data-tool="detector" id="b-tool-detector" title="Click to place a neutron counter. Key D">Detector<kbd>D</kbd></button>
     </div>
     <div class="b-rail-head">Material</div>
-    <div id="b-palette"></div>
+    <button class="b-tool b-material-pick" id="b-material-pick"><span class="b-chip"></span><span class="b-swatch-name"></span></button>
   </nav>
+  <div class="b-material-menu" id="b-material-menu" hidden>
+    <div id="b-role-tabs" role="tablist" aria-label="Material roles"></div>
+    <input id="b-palette-search" type="search" placeholder="Search materials" aria-label="Search materials" hidden>
+    <div id="b-palette"></div>
+    <div class="b-material-none" id="b-palette-none" hidden>No match</div>
+  </div>
   <canvas id="b-overlay"></canvas>
   <div id="b-note" hidden></div>
   <div id="b-caption" hidden></div>
@@ -88,13 +95,25 @@
     <div id="b-dialog-body"></div>
   </div>
   <aside id="b-side">
-    <div id="b-pause-line" hidden>Pause to edit.</div>
+    <div id="b-pause-line" hidden>Pause to draw or delete.</div>
     <details id="b-tune-section" class="b-section" open hidden><summary>Tuning</summary><div id="b-tune"></div></details>
-    <details id="b-lesson-section" class="b-section" open hidden><summary>Lesson</summary><div id="b-lesson"></div></details>
+    <details id="b-lesson-section" class="b-section" open hidden><summary>Scenario</summary><div id="b-lesson"></div></details>
+    <details class="b-section" open><summary>Panel</summary><div id="c-panel"></div></details>
     <details class="b-section" open><summary>Controls</summary><div id="b-controls"></div></details>
+    <details class="b-section" open><summary>Energy</summary><div id="b-energy">
+      <div class="b-row b-read" id="ro-power-wrap"><span class="b-row-label">Power</span><span class="b-value" id="ro-power"></span></div>
+      <div class="b-row b-read" id="ro-energy-wrap"><span class="b-row-label">Energy</span><span class="b-value" id="ro-energy"></span></div>
+      <div class="b-row"><label class="b-toggle" id="b-show-heat-wrap"><input type="checkbox" id="b-show-heat">Show heat</label></div>
+      <div class="b-row b-read" id="ro-heat-wrap"><span class="b-row-label">Heat</span><span class="b-value" id="ro-heat"></span></div>
+      <div class="b-row b-read" id="ro-hottest-wrap"><span class="b-row-label">Hottest</span><span class="b-value" id="ro-hottest"></span></div>
+      <div class="b-row"><label class="b-toggle" id="b-heat-expands-wrap"><input type="checkbox" id="b-heat-expands">Heat expands</label></div>
+      <div class="b-row b-read" id="ro-density-wrap"><span class="b-row-label">Density</span><span class="b-value" id="ro-density"></span></div>
+    </div></details>
+    <details class="b-section" open><summary>Groups</summary><div id="c-groups"></div></details>
     <details class="b-section" open><summary>Selected</summary><div id="b-selected"></div></details>
     <details class="b-section" open><summary>Composition</summary><div id="b-composition"></div></details>
     <details class="b-section" open><summary>Ratios</summary><div id="b-ratios"></div></details>
+    <details class="b-section" open><summary>World edges</summary><div id="b-edges"></div></details>
     <details class="b-section" open><summary id="b-warnings-title">Warnings</summary><div id="b-warnings"></div></details>
   </aside>
   <section id="b-bottom">
@@ -106,13 +125,97 @@
     <span id="ro-dk-wrap"><span class="label">Δk</span><span id="ro-dk"></span></span>
     <span id="ro-rho-wrap"><span class="label">ρ/β</span><span id="ro-rho"></span></span>
     <span><span class="label">generation</span><span id="ro-generation"></span></span>
-    <span title="Tracked neutrons, weights not counted. The chart's neutron trace counts their weight."><span class="label">neutrons</span><span id="ro-neutrons"></span></span>
+    <span title="Neutrons flying now, one dot each. The chart's neutron trace is the same count."><span class="label">neutrons</span><span id="ro-neutrons"></span></span>
+    <span title="Delayed neutrons waiting in the atoms that made them. Each flies, as a dot, when its wait ends."><span class="label">held</span><span id="ro-held"></span></span>
     <span><span class="label">time</span><span id="ro-time"></span></span>
-    <span title="Fissions per tick-window, weights counted."><span class="label">fission rate</span><span id="ro-fission"></span></span>
+    <span title="Fissions per tick-window."><span class="label">fission rate</span><span id="ro-fission"></span></span>
     <span><span class="label">atoms</span><span id="ro-atoms"></span></span>
   </div>
   <input type="file" id="b-file" accept=".json,application/json,text/plain" hidden>
 </template>
-<script type="module" src="./assets/main-PTHFJL5Q.js"></script>
+<template id="flux-chrome">
+  <header id="b-top">
+    <span class="b-title">Atomic Sandbox</span>
+    <span class="f-mode" title="The solved field, drawn as maps">Flux mode</span>
+    <span class="b-group">
+      <button class="b-btn" id="b-scenario">Scenario</button>
+      <button class="b-btn" id="b-save" title="Download this scenario as JSON">Save</button>
+      <button class="b-btn" id="b-share" title="This scenario as a string or a link">Share</button>
+    </span>
+    <span class="b-group" id="b-time">
+      <button class="b-btn b-go" id="b-run" title="Space">Run</button>
+      <button class="b-btn" id="b-pause" title="Space">Pause</button>
+      <button class="b-btn" id="b-step" title="Period: one step">Step</button>
+      <button class="b-btn" id="b-reset" title="Back to tick 0">Reset</button>
+      <span class="b-run-state" id="b-run-state"></span>
+    </span>
+    <span class="b-group" title="The clock's speed over real time. Keys: [ and ]">
+      <span class="b-word">Time warp</span>
+      <span class="b-segs" id="f-warps"></span>
+    </span>
+    <span class="b-group">
+      <button class="b-btn" id="b-fit" title="Show the whole design">Fit</button>
+    </span>
+  </header>
+  <nav id="b-rail">
+    <div class="b-rail-head">Map</div>
+    <div id="f-maps"></div>
+    <button class="b-tool" id="f-even-scale">One colour<kbd>E</kbd></button>
+    <button class="b-tool" id="f-scale-shape">Shape only</button>
+    <button class="b-tool" id="f-change-power">Include power change</button>
+    <button class="b-tool" id="f-arrows">Arrows<kbd>A</kbd></button>
+    <button class="b-tool" id="f-hatch">Hatch<kbd>H</kbd></button>
+    <div class="b-rail-head">Edit</div>
+    <button class="b-tool" id="f-tool-paint" title="Drag a rectangle: its cells take the chosen material, even mid-run. Key P">Paint<kbd>P</kbd></button>
+    <div class="b-rail-head">Place</div>
+    <button class="b-tool" id="f-tool-source">Source<kbd>S</kbd></button>
+    <button class="b-tool" id="f-tool-detector">Detector<kbd>D</kbd></button>
+    <div class="b-rail-head">Material</div>
+    <button class="b-tool b-material-pick" id="f-material-pick"><span class="b-chip"></span><span class="b-swatch-name"></span></button>
+  </nav>
+  <div class="b-material-menu" id="f-material-menu" hidden>
+    <div id="f-role-tabs" role="tablist" aria-label="Material roles"></div>
+    <input id="f-palette-search" type="search" placeholder="Search materials" aria-label="Search materials" hidden>
+    <div id="f-palette"></div>
+    <div class="b-material-none" id="f-palette-none" hidden>No match</div>
+  </div>
+  <canvas id="f-trails" hidden></canvas>
+  <canvas id="f-overlay"></canvas>
+  <div id="f-view-key" hidden><div id="f-key-chamber" hidden></div><div id="f-key-arrows" hidden></div></div>
+  <div id="b-note" hidden></div>
+  <div id="b-dialog" hidden>
+    <div class="b-dialog-head"><span id="b-dialog-title"></span><button class="b-btn" id="b-dialog-close">Close</button></div>
+    <div id="b-dialog-body"></div>
+  </div>
+  <aside id="b-side">
+    <details class="b-section" open><summary>Scenario</summary><div><div id="f-scenario-title" class="b-lesson-title"></div><div id="f-scenario-text" class="b-prose"></div><div id="f-sliders"></div></div></details>
+    <details class="b-section" open><summary>Panel</summary><div id="c-panel"></div></details>
+    <details class="b-section" open><summary>Rods</summary><div id="f-rods"></div></details>
+    <details class="b-section" open><summary>Groups</summary><div id="c-groups"></div></details>
+    <details class="b-section" open><summary>Power</summary><div><canvas id="f-power-chart"></canvas></div></details>
+    <details class="b-section" open><summary>Source and detectors</summary><div id="f-place"></div></details>
+    <details class="b-section" open><summary>Approach to critical</summary><div id="f-approach"></div></details>
+    <details class="b-section" open><summary>World edges</summary><div><div id="f-edges"></div><div id="f-edge-cutoff" class="b-prose" data-kind="caution" role="status" hidden></div><div id="f-mirror-open" class="b-prose" data-kind="caution" role="status" hidden></div></div></details>
+    <details class="b-section" open><summary>Grid</summary><div><div id="f-cell"></div><div id="f-cell-count" class="b-prose"></div><div id="f-cell-notice" class="b-prose" hidden></div></div></details>
+    <details class="b-section" open><summary>Solver</summary><div id="f-tables" class="b-prose"></div></details>
+  </aside>
+  <div id="f-legend">
+    <span id="f-legend-title"></span>
+    <span class="f-legend-zero" id="f-legend-min">0</span>
+    <span id="f-legend-bar"><span id="f-legend-ticks"></span><span id="f-legend-now" hidden></span></span>
+    <span id="f-legend-max"></span>
+    <span id="f-legend-unit"></span>
+    <span id="f-legend-here"></span>
+  </div>
+  <div id="b-readouts">
+    <span id="fr-k-wrap"><span class="label">k</span><span id="fr-k"></span></span>
+    <span id="fr-dk-wrap"><span class="label">Δk</span><span id="fr-dk"></span></span>
+    <span id="fr-rho-wrap"><span class="label">ρ/β</span><span id="fr-rho"></span></span>
+    <span id="fr-power-wrap"><span class="label">power</span><span id="fr-power"></span></span>
+    <span id="fr-warp-wrap"><span class="label">warp</span><span id="fr-warp"></span></span>
+    <span><span class="label">time</span><span id="fr-time"></span></span>
+  </div>
+</template>
+<script type="module" src="./assets/main-SWDPG2IC.js"></script>
 </body>
 </html>
