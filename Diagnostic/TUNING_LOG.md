@@ -29,6 +29,19 @@ and the user-visible summary in `CHANGELOG.md`. This file points at those and tr
 
 ---
 
+## Session log — 2026-11-18-develop-b (#768: Doppler goes logarithmic; seven runners settled against it)
+
+Owner ruling 2026-11-18 "Do 1." after the evidence pass (PC session; ADAMS ML20339A101 Table 15.0-5, ML20339A022 Table 4.2-4). **The trap:** the shipped linear Doppler term matched the sourced DEFECT (981 vs ~1000 pcm) and the sourced coefficient RANGE (-1.39 inside -0.91..-2.90 pcm/°F), and still had the power coefficient's SLOPE backwards — a defect anchored at two points says nothing about the shape between them. The fuel model's rise per % power grows with power (3.7 -> 4.5 °C/%), so a constant coefficient strengthened with power; Ginna's weakens.
+
+| power coefficient, pcm/% | 0-10 % | 10-50 % | 50-100 % |
+|---|---|---|---|
+| Ginna BOC (sourced) | -11.78 | -10.65 | -8.63 |
+| linear (shipped before) | -8.62 | -9.21 | -10.53 |
+| 1/sqrt(T) (the issue's candidate) | flat ~ -10.4 | | |
+| 1/T, ln form (shipped now) | -11.02 | -10.23 | -9.24 |
+
+Seven runners went red; each adjudicated (none a defect): RIL chase check was passing on a one-step integer cliff (re-pointed to the whole ride); loadfollow floor +5 -> +3 °F (6.04 -> 4.99, plant still moves); manuals re-measured (cold IC 918 -> 938 ppm; the old "~88 min" dilution was already stale at 124 min before #768); opener 84 -> 82 %, SCRAM delay 40 -> 80 s (two browser fixtures faked the old 40 s); startup overpull routes had always stranded or tripped — step 13 now has a branch; 1/M floor re-pointed (the panel prints 205 against a real crossing of 206.33). **Declared:** the cold (+435 pcm at 122 °F) and hot (-2170 vs -5290 pcm at 5072 °F) extrapolations are the law's, not sourced. Critic: round 1 one MEDIUM (stale BASELINES) + three LOW, fixed.
+
 ## Session log — 2026-11-18-develop-a (#803: the dry generator's last kilogram; an untracked TMI-2 red on develop)
 
 **#803 fixed** (`pwr2_sg.js` stepSG, `wet = 0` at the mass floor). The filed ride (large break + blackout + auxiliary-feed failure) no longer reaches dryout since the 2026-11-12 heat-up physics: the generator holds mass fraction 1.06 at 701 psi (4.83 MPa) and the model holds at ~1h15m. The defect was still live on **blackout + auxiliary-feed failure, no break** (full stack, seed 4660, 1×):

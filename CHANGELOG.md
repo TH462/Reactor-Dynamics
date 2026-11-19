@@ -37,7 +37,13 @@ tallies) see `Blueprint/BUILD_DECISIONS.md` — this file is the skimmable summa
 
 ## [Unreleased]
 
-## [Alpha 1.9.0-rc3] — 2026-11-18
+## [Alpha 1.9.0-rc4] — 2026-11-19
+
+### Changed — Doppler is logarithmic in fuel temperature (2026-11-18/19, #768, owner ruling "Do 1.")
+
+- **rho_D = A ln(T_K / T_ref_K)**, A fixed by the same two anchors the linear term used (HZP 557.0 °F (291.67 °C), full-power reference 1263.6 °F (684.2 °C)): the 981 pcm chord, rho_excess and the h_gap solve are unchanged. Chosen because it reproduces Ginna UFSAR Table 15.0-5 / 4.2-4's sourced Doppler-only power coefficient SHAPE (BOC -12.0 + 0.045Q pcm/%): on the fuel model's map -11.02 / -10.23 / -9.24 pcm/% (0-10 / 10-50 / 50-100 %) vs Ginna -11.78 / -10.65 / -8.63; the linear form read -8.62 / -9.21 / -10.53 (wrong slope). The 1/T law itself is not LWR-sourced; cold (+435 pcm at 122 °F) and hot extrapolations declared in 12 §4.3.
+- **Plant numbers that moved**: cold-shutdown IC boron 918 -> 938 ppm, hot shutdown 894 -> 906; the 122 °F critical-boron row +21 ppm (under 1 ppm by 546.8 °F); heatup arrival -3400 -> -3627 pcm; load-cut Tavg rise 6.04 -> 4.99 °F.
+- **Content settled against the plant (HR9)**: opener settle line 84 -> 82 %, SCRAM ask delay 40 -> 80 s; raise-power step counts; startup step 13 overpulled-arrival branch (power > 5 %: type 100, then insert); cooldown boron target 920 -> 938; startup 1/M band floor re-pointed to floor(real crossing) - 1 (top unchanged); step 11 note says the plot lands within about three steps either side. Gates re-pointed with both-forms validation and injections: RIL chase (whole ride), loadfollow floor +5 -> +3 °F.
 
 ### Fixed — a boiled-dry steam generator no longer reads 2,466 psia with its safeties "lifting" (2026-11-18, #803)
 

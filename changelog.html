@@ -168,17 +168,18 @@
   <details class="log-entry" open>
     <summary class="log-head">
       <h2>The core can melt</h2>
-      <span class="log-ver mono">Alpha 1.9.0-rc3</span>
-      <time class="log-date mono" datetime="2026-11-18">18 November 2026</time>
+      <span class="log-ver mono">Alpha 1.9.0-rc4</span>
+      <time class="log-date mono" datetime="2026-11-19">19 November 2026</time>
     </summary>
     <ul>
-      <li><span class="log-tag added">Added</span><strong>Core heat-up and damage.</strong> Fuel left uncovered with no flow now heats. Above 1,200 °F the cladding reacts with steam and makes hydrogen; at 2,200 °F the fuel is damaged.</li>
-      <li><span class="log-tag added">Added</span><strong>Vessel drawing shows it.</strong> The fuel glows as it heats, slumps once damaged, and pools if it melts.</li>
+      <li><span class="log-tag added">Added</span><strong>Core heat-up and damage.</strong> Fuel left uncovered with no flow now heats. Above 1,200 °F the cladding reacts with steam and makes hydrogen; at 2,200 °F the fuel is damaged. On the vessel drawing the fuel glows as it heats, slumps once damaged, and pools if it melts.</li>
+      
       <li><span class="log-tag changed">Changed</span><strong>Stopped pumps stop.</strong> A tripped coolant pump coasts to rest, and natural circulation ends when the top of the loop fills with steam.</li>
       <li><span class="log-tag changed">Changed</span><strong>PORV Stuck Open.</strong> Its slider now sets how far open the valve sticks.</li>
       <li><span class="log-tag changed">Changed</span><strong>Steam on the diagram.</strong> Coolant pipes, steam generator tubes and the coolant pump draw as steam when more than half void. The reactor vessel shows water, froth and steam as three different things.</li>
       <li><span class="log-tag added">Added</span><strong>Pump cavitation and relief discharge.</strong> The coolant pump shakes when it cavitates. A relief tank lights while the pressurizer relief valve is discharging.</li>
       <li><span class="log-tag changed">Changed</span><strong>Walkthroughs.</strong> A highlighted component glows along its own outline; the steam generator carries a narrow-range bracket. TMI-2 end card and step text corrected for the new core behaviour.</li>
+      <li><span class="log-tag changed">Changed</span><strong>Doppler feedback.</strong> The fuel-temperature feedback weakens as the fuel heats, matching the reference plant: stronger at low power, weaker at full power. Cold-shutdown boron is now 938 ppm; the cooldown walkthrough borates to 938, and the startup walkthrough says what to do if power arrives above 5 % at step 13.</li>
       <li><span class="log-tag fixed">Fixed</span><strong>Dry steam generator.</strong> A boiled-dry steam generator holds its pressure (about 1,027 psia) instead of reading 2,466 psia, and SG Safeties Lifting no longer lights with no steam flowing.</li>
     </ul>
   </details>
