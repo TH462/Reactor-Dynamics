@@ -147,7 +147,11 @@ linear term ran through, hot zero power (557.0 °F (291.67 °C) fuel) and the fu
 points. The anchor plant's Doppler temperature coefficient spans **−0.91 to −2.90 pcm/°F**
 (Ginna UFSAR Table 15.0-5), and ours sits inside it at operating temperatures. **The cold value
 (−3.2 pcm/°F at 122 °F (50 °C)) is outside that range and is our extrapolation, not a sourced
-figure**: Ginna's table covers operating states only. The 1/T law is chosen because it gives
+figure**: Ginna's table covers operating states only. **So is the hot side**: above the full-power
+reference the coefficient keeps falling (**−0.34 pcm/°F** at 5072 °F (2800 °C) fuel), so a power
+excursion that heats the fuel far past operating temperature, such as a failure to scram, meets
+weaker Doppler feedback than the earlier linear term gave: about **−2170 pcm** from the reference
+at 5072 °F, against **−5290** on the linear term. The 1/T law is chosen because it gives
 the shape of Ginna's power coefficient (weaker at high power); the law itself has no light-water
 reactor source here, so the coefficient stays an open item.
 

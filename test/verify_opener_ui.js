@@ -376,7 +376,7 @@ var OFFER = '#instrCurrent [data-opener-start]';
   await page.waitForFunction(function () { return !!document.querySelector('.pwr-board-stage.bd-dimming'); }, null, { timeout: 15000 }).catch(function () {});
   await page.evaluate(function () {
     var s = RD.__dev.service(), I = s.instructor;
-    I.branchWatch = null; I.currentBeatId = 'o10_scram'; I.lastBeatFireTime = s.simTime - 40;   // dev jump
+    I.branchWatch = null; I.currentBeatId = 'o10_scram'; I.lastBeatFireTime = s.simTime - 80;   // dev jump (o10's delay, 40 -> 80 s with #768)
   });
   await page.waitForFunction(function () { return RD.__dev.service().instructor.currentBeatId === 'o10_scram' && !!RD.__dev.service().instructor.branchWatch; }, null, { timeout: 15000 }).catch(function () {});
   await page.waitForTimeout(700);

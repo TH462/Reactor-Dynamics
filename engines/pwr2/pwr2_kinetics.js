@@ -332,7 +332,7 @@
       why: 'DOPPLER, as a CHORD: (defect HZP -> HFP) / (T_ref - T_hzp). The term itself is now ' +
            'LOGARITHMIC in absolute fuel temperature (DOPPLER below, #768 owner ruling 2026-11-18 ' +
            '"Do 1."): a fit chosen because it reproduces the anchor plant\'s SOURCED Doppler-only ' +
-           'power coefficient shape (Ginna UFSAR Table 15.0-5 / Table 4.2-4, -12.0 + 0.045Q ' +
+           'power coefficient shape (Ginna UFSAR Table 15.0-5, ADAMS ML20339A101 / Table 4.2-4, ML20339A022; -12.0 + 0.045Q ' +
            'pcm/% at BOC). The 1/T law itself is not LWR-sourced (GEAP-3646, fast oxide: ' +
            '"approximately a 1/T variation"), so the entry stays OPEN.'
       /* WHY THE FORM CHANGED (#768, MEASURED 2026-11-18). Each IC's settled fuel temperature (full

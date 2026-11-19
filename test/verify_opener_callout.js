@@ -142,7 +142,7 @@ var BUB = '#instrCallout';
   await d.ctx.close();
 
   // ---------------------------------------------------------------- 2-4 at both resolutions
-  var ASKS = [['o4_rods', 41], ['o6_spray', 80], ['o8_auto', 20], ['o10_scram', 40]];
+  var ASKS = [['o4_rods', 41], ['o6_spray', 80], ['o8_auto', 20], ['o10_scram', 80]];   // o10 40 -> 80 (#768, 2026-11-18): the scenario's delay before the SCRAM ask moved with it
   var OBS = [['o2_watch', 2], ['o3_dump', 30], ['o7_spray_watch', 2], ['o12_settle', 5]];
   var VPS = [{ width: 1366, height: 768 }, { width: 1920, height: 1080 }];
   for (var v = 0; v < VPS.length; v++) {

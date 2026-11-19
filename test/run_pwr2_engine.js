@@ -2526,7 +2526,8 @@ function runSuite(RD, rec, quiet, only) {
    * one step apart. MEASURED on both Doppler forms, same fixture: linear 98.90 % / RIL 434 -> 99.14 /
    * 435 (passed by one step); 1/T 99.09 / 435 -> 99.20 / 435 (red by none). The V the note above
    * describes (98.3 -> 100.7 -> 96 %) happens on NEITHER plant any more. What both DO show is the
-   * claim: the insert sags power to 86.2 % (linear) / 85.6 % (1/T) with the limit at 380 / 377, and
+   * claim: the insert sags power to 85.5 % (linear) / 84.8 % (1/T) with the limit at 377 / 374 (this runner's own
+   * ride, 3 s samples), and
    * it climbs back to 99.8 % at 438. So the function is read over the WHOLE ride, insert included:
    * a span of at least 5 points of power, the limit lower at the lowest, and the dilution still
    * raising power. A constant limit cannot pass it; neither can a plant that does not move. */

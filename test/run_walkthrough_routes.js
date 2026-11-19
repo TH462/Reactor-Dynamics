@@ -661,13 +661,13 @@ var MUTATIONS = [
     why: "12a's overtaken armed from entry (the relief would stand in for the card's own +0.15 read)",
     mutate: function (P) { P.steps[11].accs[0].overtaken.v = -1; } },
   { id: 'startup8_rate_only_pulse', route: 'overshoot_8_recover', expect: 'plot_band',
-    why: "8b's pulse back on the pre-#824 cue, the rate alone (< 0.035): it lights on the falling count the moment the recovery INSERT stops, and the board-follower plots there (the LOW side: MEASURED 205 against 207, 'insert 10 back', and 198 at 185)",
+    why: "8b's pulse back on the pre-#824 cue, the rate alone (< 0.035): it lights on the falling count the moment the recovery INSERT stops, and the board-follower plots there (the LOW side: MEASURED 205 against 207, 'insert 10 back', and 198 at 185, on the linear Doppler plant; on 1/T (#768, 2026-11-18) seed 42 it reads 204 against the re-pointed floor 205 = floor(206.33) - 1 -- red by ONE step now, where it was three)",
     mutate: function (P) { P.steps[7].accs[1].hl_when = { p: 'startup_rate_dpm', op: '<', v: 0.035 }; } },
   { id: 'startup8_pulse_early', route: 'overshoot_8_recover', expect: 'plot_band',
     why: "8b's pulse widened to any rising rate (0 to +1.0): it lights the broadcast the late let-go stops, past critical, before any recovery (the HIGH, danger side: plotting at +0.11 on 202 MEASURED 211 against 207)",
     mutate: function (P) { P.steps[7].accs[1].hl_when = { p: 'startup_rate_dpm', op: '~', v: 0.5, tol: 0.5 }; } },
   { id: 'startup8_text_floor', route: 'overshoot_8_recover_text', expect: 'plot_band',
-    why: "8a's recovery reading 'climbs back to -0.50' instead of 0.00: the text reader plots on the falling count the moment the insert stops (the LOW side)",
+    why: "8a's recovery reading 'climbs back to -0.50' instead of 0.00: the text reader plots on the falling count the moment the insert stops (the LOW side; on 1/T (#768) seed 42 MEASURED 204 against the re-pointed floor 205 -- red by one step)",
     mutate: function (P) { P.steps[7].accs[0].note = P.steps[7].accs[0].note.replace('climbs back to 0.00', 'climbs back to -0.50'); } },
   { id: 'startup8_no_recovery', route: 'overshoot_8_recover', expect: 'must_complete',
     why: '8a note without its recovery sentence (the pre-#824 card: 10 past trips on SR HIGH FLUX)',
@@ -2250,7 +2250,7 @@ function verdicts(r) {
    * real crossing being `crit_x` (true reactivity interpolated in bank); top unchanged, first critical integer bank + 3.
    * WHY: on the 1/T Doppler plant (owner ruling 2026-11-18) the core at 547 degF is 4.4 pcm more reactive than on the linear
    * term, and the first critical integer bank no longer bounds the crossing from below by less than a step. MEASURED,
-   * overshoot_8_recover, seed 42: real crossing 206.16, panel 205 (two-point estimate 205.6; the floor of 207 was missed by
+   * overshoot_8_recover, seed 42: real crossing 206.33, panel 205 (two-point estimate 205.6; the floor of 207 was missed by
    * 2); linear term real 206.7, panel 207; seed 7 real ~207, panel 207-208 at every recovery wait tried (2-15 plant-min,
    * and re-approached from 196 / 199: seed 42 stayed 205 in all of them). WHY -1: the panel ROUNDS a trailing-3-point fit,
    * so a prediction within one step of the crossing can print a whole step under its floor. LOW is the slow side: 10a stops
