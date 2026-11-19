@@ -6571,7 +6571,13 @@
             saw: 'Pressure low enough to justify starting the emergency systems by hand.',
             knew: 'The tank the injection water comes from had alarmed low, so injection felt like something to spend carefully.',
             did: 'They started a makeup pump, and stopped it again 17 minutes later.' },
-          cmd: { action: 'set_hpi', active: true }, hold: 3600,
+          /* hold 3600 -> 7200 (#768, 2026-11-19): the REPLAY's dwell, not the player's (the live step waits for its
+           * row). MEASURED, the authored replay from step entry to SUBCOOLING MARGIN > 10 °F: 1,577 s on Node 22,
+           * 5,738 s on Node 24 (CI) -- the 1/T Doppler plant reaches step 9's end with less water on one runtime, and
+           * the refill at ~1,020 psia sits saturated until inventory passes ~98 %. 3600 covered only the fast branch
+           * (CI run 44450025204 red: margin 0, then pumps restarted at 79.99 %). The live rung is unchanged:
+           * RD.CklSpeedHint picks 600x for any hold up to 18,000 s. Live routes on Node 24: 69/69. */
+          cmd: { action: 'set_hpi', active: true }, hold: 7200,
           wait_est_s: false,   // was 6150 (MEASURED 2026-10-15); route-dependent since the core heat-up physics (2026-11-12), see the hint above
           accs: [{ cmd: { action: 'set_hpi', active: true }, label: 'START pressed for high-pressure injection' },   // the press, not only the margin (#670 Fable pass: the margin row had a second cause)
                  { p: 'subcooling_c', op: '>', v: 5.56, label: 'SUBCOOLING MARGIN back above 10 °F' }],
